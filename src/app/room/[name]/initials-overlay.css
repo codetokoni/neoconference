@@ -82,3 +82,31 @@
 :fullscreen .room-fullscreen-exit:focus {
   opacity: 1;
 }
+
+
+/* Hide local participant's tile when data-hide-self="true" is set on room shell */
+[data-hide-self="true"] .lk-participant-tile[data-lk-local-participant="true"] {
+  display: none !important;
+}
+
+/* Cross-browser fullscreen rules: also support :-webkit-full-screen */
+:-webkit-full-screen [data-room-chrome="true"] {
+  display: none !important;
+}
+:-webkit-full-screen .lk-control-bar {
+  display: none !important;
+}
+
+/* When a single tile is fullscreened via double-click, make it fill the screen */
+.lk-participant-tile:fullscreen,
+.lk-participant-tile:-webkit-full-screen {
+  width: 100vw !important;
+  height: 100vh !important;
+  background: #000 !important;
+}
+.lk-participant-tile:fullscreen video,
+.lk-participant-tile:-webkit-full-screen video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
