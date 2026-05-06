@@ -40,41 +40,37 @@ export async function POST(req: Request) {
 
     let downloadUrl: string | null = null;
     if (filepath) {
-      // Generate a presigned URL valid for 24 hours.
       const s3 = new S3Client({
         region: process.env.S3_REGION || "auto",
         endpoint: requiredEnv("S3_ENDPOINT"),
+        forcePathStyle: true,
         credentials: {
           accessKeyId: requiredEnv("S3_ACCESS_KEY"),
           secretAccessKey: requiredEnv("S3_SECRET_KEY"),
         },
-        forcePathStyle: true,
       });
-      try {
-        downloadUrl = await getSignedUrl(
-          s3,
-          new GetObjectCommand({
-            Bucket: requiredEnv("S3_BUCKET"),
-            Key: filepath,
-          }),
-          { expiresIn: 60 * 60 * 24 }
-        );
-      } catch (e) {
-        console.error("presign failed", e);
-      }
+      const cmd = new GetObjectCommand({
+        Bucket: requiredEnv("S3_BUCKET"),
+        Key: filepath,
+      });
+      const signed = await getSignedUrl(s3, cmd, {
+        expiresIn: 60 * 60 * 24,
+        unhoistableHeaders: new Set(["x-amz-checksum-mode"]),
+      });
+      const u = new URL(signed);
+      u.searchParams.delete("x-amz-checksum-mode");
+      u.searchParams.delete("x-id");
+      downloadUrl = u.toString();
     }
 
     return NextResponse.json({
+      ok: true,
       egressId: info.egressId,
-      status: String(info.status),
+      status: info.status,
       downloadUrl,
-      filepath,
     });
-  } catch (e: any) {
-    console.error("egress/stop failed", e);
-    return NextResponse.json(
-      { error: e?.message || "Failed to stop egress" },
-      { status: 500 }
-    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
