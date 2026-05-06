@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useUser, RedirectToSignIn } from "@clerk/nextjs";
 import {
   LiveKitRoom,
   VideoConference,
@@ -40,18 +40,40 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   }, [isLoaded, isSignedIn, roomName]);
 
   if (!isLoaded) return <div className="p-8">Loading…</div>;
-  if (!isSignedIn)
+
+  if (!isSignedIn) {
     return (
-      <div className="p-8">
-        Please sign in to join <strong>{roomName}</strong>.
+      <RedirectToSignIn
+        redirectUrl={typeof window !== "undefined" ? window.location.pathname : "/"}
+      />
+    );
+  }
+
+  if (error)
+    return (
+      <div className="p-8 max-w-md mx-auto text-center">
+        <h1 className="text-xl font-semibold mb-2">Could not join room</h1>
+        <p className="text-sm text-gray-600 mb-4">
+          We couldn't get a connection token for <strong>{roomName}</strong>.
+        </p>
+        <p className="text-xs text-red-600 break-all">{error}</p>
+        <a href="/" className="inline-block mt-6 underline text-sm">
+          ← Back to home
+        </a>
       </div>
     );
-  if (error) return <div className="p-8 text-red-600">Error: {error}</div>;
+
   if (!token || !wsUrl) return <div className="p-8">Connecting…</div>;
 
   return (
     <div data-lk-theme="default" style={{ height: "calc(100vh - 65px)" }}>
-      <LiveKitRoom serverUrl={wsUrl} token={token} connect={true} audio={true} video={true}>
+      <LiveKitRoom
+        serverUrl={wsUrl}
+        token={token}
+        connect={true}
+        audio={true}
+        video={true}
+      >
         <VideoConference />
         <RoomAudioRenderer />
         <ControlBar />
