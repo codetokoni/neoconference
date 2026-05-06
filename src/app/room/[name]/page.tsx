@@ -11,9 +11,12 @@ import {
   type LocalUserChoices,
   useRoomContext,
   useChat,
+  useParticipants,
+  useLocalParticipant,
 } from "@livekit/components-react";
-import { RoomEvent, type Room } from "livekit-client";
+import { RoomEvent, Track, type Participant } from "livekit-client";
 import "@livekit/components-styles";
+import "./initials-overlay.css";
 
 type TokenResponse = { token: string; wsUrl: string };
 
@@ -97,6 +100,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
       user?.username ||
       user?.primaryEmailAddress?.emailAddress ||
       "Guest";
+
     return (
       <div className="min-h-[calc(100vh-65px)] flex flex-col items-center justify-center p-4 gap-4">
         <div className="flex items-center gap-2 text-sm">
@@ -154,6 +158,7 @@ function RoomContainer({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showPeople, setShowPeople] = useState(false);
 
   useEffect(() => {
     const onChange = () => setIsFullscreen(!!document.fullscreenElement);
@@ -201,6 +206,14 @@ function RoomContainer({
       >
         <button
           type="button"
+          onClick={() => setShowPeople((v) => !v)}
+          className="px-3 py-1.5 text-xs rounded bg-white/90 hover:bg-white border shadow-sm"
+          title="Show participants"
+        >
+          People
+        </button>
+        <button
+          type="button"
           onClick={copyLink}
           className="px-3 py-1.5 text-xs rounded bg-white/90 hover:bg-white border shadow-sm"
           title="Copy room link"
@@ -216,6 +229,7 @@ function RoomContainer({
           {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
         </button>
       </div>
+
       <LiveKitRoom
         serverUrl={wsUrl}
         token={token}
@@ -225,11 +239,246 @@ function RoomContainer({
         onDisconnected={onLeave}
       >
         <ChatTranscriptDownloader roomName={roomName} />
+        <InitialsOverlay />
+        <RaiseHandButton />
         <VideoConference />
         <RoomAudioRenderer />
+        {showPeople && (
+          <ParticipantsPanel onClose={() => setShowPeople(false)} />
+        )}
       </LiveKitRoom>
     </div>
   );
+}
+
+/**
+ * Tags every participant tile with data-initials and a CSS color variable so
+ * the stylesheet can render a colored circular avatar over the silhouette
+ * when the camera is off. Re-runs whenever participants change.
+ */
+function InitialsOverlay() {
+  const participants = useParticipants();
+
+  useEffect(() => {
+    const apply = () => {
+      const tiles = document.querySelectorAll<HTMLElement>(
+        ".lk-participant-tile"
+      );
+      tiles.forEach((tile) => {
+        const nameEl = tile.querySelector<HTMLElement>(
+          ".lk-participant-name"
+        );
+        const display = (nameEl?.textContent || "").trim() || "Guest";
+        tile.setAttribute("data-initials", getInitials(display));
+        tile.style.setProperty("--lk-initials-bg", stringToColor(display));
+      });
+    };
+    apply();
+    const id = window.setInterval(apply, 1500);
+    return () => window.clearInterval(id);
+  }, [participants]);
+
+  return null;
+}
+
+function ParticipantsPanel({ onClose }: { onClose: () => void }) {
+  const participants = useParticipants();
+  const room = useRoomContext();
+  const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!room) return;
+    const onData = (
+      payload: Uint8Array,
+      participant?: Participant
+    ) => {
+      try {
+        const text = new TextDecoder().decode(payload);
+        const msg = JSON.parse(text);
+        if (msg?.type === "hand" && participant?.identity) {
+          setRaisedHands((prev) => {
+            const next = new Set(prev);
+            if (msg.raised) next.add(participant.identity);
+            else next.delete(participant.identity);
+            return next;
+          });
+        }
+      } catch {
+        // ignore
+      }
+    };
+    room.on(RoomEvent.DataReceived, onData);
+    return () => {
+      room.off(RoomEvent.DataReceived, onData);
+    };
+  }, [room]);
+
+  return (
+    <aside
+      style={{
+        position: "absolute",
+        top: 48,
+        right: 8,
+        bottom: 8,
+        width: 260,
+        zIndex: 11,
+        background: "rgba(17, 17, 24, 0.95)",
+        color: "#fff",
+        borderRadius: 8,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          padding: "8px 12px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          borderBottom: "1px solid #2a2a33",
+          fontSize: 13,
+        }}
+      >
+        <strong>People ({participants.length})</strong>
+        <button
+          onClick={onClose}
+          className="text-xs opacity-70 hover:opacity-100"
+        >
+          Close
+        </button>
+      </div>
+      <ul
+        style={{
+          listStyle: "none",
+          margin: 0,
+          padding: 0,
+          overflowY: "auto",
+          flex: 1,
+        }}
+      >
+        {participants.map((p) => {
+          const display = p.name || p.identity;
+          const initials = getInitials(display);
+          const micOn = !p.getTrackPublication(Track.Source.Microphone)
+            ?.isMuted;
+          const camOn = !p.getTrackPublication(Track.Source.Camera)?.isMuted;
+          const handUp = raisedHands.has(p.identity);
+          return (
+            <li
+              key={p.identity}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "8px 12px",
+                borderBottom: "1px solid #1d1d25",
+                fontSize: 13,
+              }}
+            >
+              <span
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  background: stringToColor(display),
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 600,
+                  fontSize: 12,
+                  color: "#fff",
+                  flex: "0 0 auto",
+                }}
+              >
+                {initials}
+              </span>
+              <span
+                style={{
+                  flex: 1,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {display}
+                {p.isLocal ? " (you)" : ""}
+              </span>
+              {handUp && <span title="Hand raised">✋</span>}
+              <span title={micOn ? "Mic on" : "Mic muted"}>
+                {micOn ? "🎤" : "🔇"}
+              </span>
+              <span title={camOn ? "Camera on" : "Camera off"}>
+                {camOn ? "🎥" : "📷"}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </aside>
+  );
+}
+
+function RaiseHandButton() {
+  const { localParticipant } = useLocalParticipant();
+  const [raised, setRaised] = useState(false);
+
+  const toggle = async () => {
+    const next = !raised;
+    setRaised(next);
+    try {
+      const payload = new TextEncoder().encode(
+        JSON.stringify({ type: "hand", raised: next })
+      );
+      await localParticipant.publishData(payload, { reliable: true } as any);
+    } catch (e) {
+      console.error("publishData hand failed", e);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      title={raised ? "Lower hand" : "Raise hand"}
+      style={{
+        position: "absolute",
+        left: 8,
+        top: 8,
+        zIndex: 10,
+        padding: "6px 12px",
+        borderRadius: 999,
+        border: "none",
+        background: raised ? "#fbbf24" : "rgba(255,255,255,0.92)",
+        color: raised ? "#000" : "#111",
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: "pointer",
+        boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+      }}
+    >
+      {raised ? "✋ Lower hand" : "✋ Raise hand"}
+    </button>
+  );
+}
+
+function getInitials(name: string): string {
+  const trimmed = (name || "").trim();
+  if (!trimmed) return "?";
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function stringToColor(input: string): string {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = input.charCodeAt(i) + ((hash << 5) - hash);
+    hash |= 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue} 60% 45%)`;
 }
 
 /**
