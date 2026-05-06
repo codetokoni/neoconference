@@ -29,3 +29,56 @@
 .lk-participant-tile {
   position: relative;
 }
+
+
+/* Immersive fullscreen mode.
+   When the room shell is fullscreen, hide every chrome overlay so only the
+   video grid and audio remain. The shell itself is whatever element called
+   requestFullscreen() — its :fullscreen pseudo-class is true while active. */
+:fullscreen [data-room-chrome="true"] {
+  display: none !important;
+}
+
+:fullscreen .lk-control-bar {
+  display: none !important;
+}
+
+:fullscreen {
+  background: #000 !important;
+}
+
+:fullscreen .lk-grid-layout,
+:fullscreen .lk-focus-layout,
+:fullscreen .lk-video-conference,
+:fullscreen .lk-room-container {
+  width: 100vw !important;
+  height: 100vh !important;
+  inset: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Always-visible floating exit affordance shown only while fullscreen. */
+.room-fullscreen-exit {
+  display: none;
+}
+:fullscreen .room-fullscreen-exit {
+  display: inline-flex !important;
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 2147483647;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+:fullscreen:hover .room-fullscreen-exit,
+:fullscreen .room-fullscreen-exit:focus {
+  opacity: 1;
+}
