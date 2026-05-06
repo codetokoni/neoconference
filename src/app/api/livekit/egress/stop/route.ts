@@ -49,14 +49,16 @@ export async function POST(req: Request) {
           secretAccessKey: requiredEnv("S3_SECRET_KEY"),
         },
       });
+      // Cloudflare R2 does not understand the AWS flexible-checksums extension.
+      // Strip the middleware so x-amz-checksum-mode is never added.
+      try {
+        s3.middlewareStack.remove("flexibleChecksumsMiddleware");
+      } catch {}
       const cmd = new GetObjectCommand({
         Bucket: requiredEnv("S3_BUCKET"),
         Key: filepath,
       });
-      const signed = await getSignedUrl(s3, cmd, {
-        expiresIn: 60 * 60 * 24,
-        unhoistableHeaders: new Set(["x-amz-checksum-mode"]),
-      });
+      const signed = await getSignedUrl(s3, cmd, { expiresIn: 60 * 60 * 24 });
       const u = new URL(signed);
       u.searchParams.delete("x-amz-checksum-mode");
       u.searchParams.delete("x-id");
