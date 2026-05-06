@@ -27,8 +27,8 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en">
         <body className={inter.className}>
-          <header className="flex items-center justify-between px-6 py-4 border-b">
-            <Link href="/" className="font-semibold text-lg">
+          <header className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-black text-cyan-400">
+            <Link href="/" className="font-semibold text-lg text-cyan-400 hover:text-cyan-300">
               NeoConference
             </Link>
             <nav className="flex items-center gap-3">
