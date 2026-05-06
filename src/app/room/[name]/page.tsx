@@ -241,6 +241,7 @@ function RoomContainer({
         <ChatTranscriptDownloader roomName={roomName} />
         <InitialsOverlay />
         <RaiseHandButton />
+        <RecordingControls roomName={roomName} />
         <VideoConference />
         <RoomAudioRenderer />
         {showPeople && (
@@ -460,6 +461,265 @@ function RaiseHandButton() {
     >
       {raised ? "✋ Lower hand" : "✋ Raise hand"}
     </button>
+  );
+}
+
+/**
+ * Record button + REC indicator banner + presigned download URL toast.
+ *
+ * Anyone in the room can start/stop a recording. State is broadcast to all
+ * participants over the LiveKit data channel so everyone sees a red REC
+ * banner while it's running.
+ */
+function RecordingControls({ roomName }: { roomName: string }) {
+  const room = useRoomContext();
+  const { localParticipant } = useLocalParticipant();
+
+  // Local recording state (this client started/stopped)
+  const [egressId, setEgressId] = useState<string | null>(null);
+  const [filepath, setFilepath] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Globally observed recording state (any participant is recording)
+  const [remoteRecording, setRemoteRecording] = useState<{
+    by: string;
+  } | null>(null);
+
+  // Toast for download URL after stop
+  const [toast, setToast] = useState<{
+    message: string;
+    url?: string;
+  } | null>(null);
+
+  const isRecording = !!egressId || !!remoteRecording;
+
+  // Subscribe to recording state messages from other participants.
+  useEffect(() => {
+    if (!room) return;
+    const onData = (payload: Uint8Array, participant?: Participant) => {
+      try {
+        const msg = JSON.parse(new TextDecoder().decode(payload));
+        if (msg?.type === "recording") {
+          if (msg.active) {
+            setRemoteRecording({
+              by: msg.by || participant?.name || participant?.identity || "Someone",
+            });
+          } else {
+            setRemoteRecording(null);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+    room.on(RoomEvent.DataReceived, onData);
+    return () => {
+      room.off(RoomEvent.DataReceived, onData);
+    };
+  }, [room]);
+
+  const broadcast = async (active: boolean) => {
+    try {
+      const me =
+        localParticipant.name || localParticipant.identity || "Someone";
+      const payload = new TextEncoder().encode(
+        JSON.stringify({ type: "recording", active, by: me })
+      );
+      await localParticipant.publishData(payload, { reliable: true } as any);
+    } catch (e) {
+      console.error("publishData recording failed", e);
+    }
+  };
+
+  const start = async () => {
+    if (busy || isRecording) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/livekit/egress/start", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ room: roomName }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setEgressId(data.egressId);
+      setFilepath(data.filepath);
+      setRemoteRecording({
+        by: localParticipant.name || localParticipant.identity || "You",
+      });
+      await broadcast(true);
+      setToast({ message: "Recording started" });
+      setTimeout(() => setToast(null), 3000);
+    } catch (e: any) {
+      console.error("start recording failed", e);
+      setToast({ message: `Could not start recording: ${e?.message || e}` });
+      setTimeout(() => setToast(null), 5000);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const stop = async () => {
+    if (busy || !egressId) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/livekit/egress/stop", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ egressId, filepath }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setEgressId(null);
+      setFilepath(null);
+      setRemoteRecording(null);
+      await broadcast(false);
+      if (data.downloadUrl) {
+        setToast({
+          message: "Recording ready (link valid for 24h)",
+          url: data.downloadUrl,
+        });
+      } else {
+        setToast({ message: "Recording stopped (file uploading…)" });
+        setTimeout(() => setToast(null), 5000);
+      }
+    } catch (e: any) {
+      console.error("stop recording failed", e);
+      setToast({ message: `Could not stop recording: ${e?.message || e}` });
+      setTimeout(() => setToast(null), 5000);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      {/* REC banner shown to everyone while a recording is active */}
+      {isRecording && (
+        <div
+          style={{
+            position: "absolute",
+            top: 8,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 11,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "4px 10px",
+            borderRadius: 999,
+            background: "rgba(220, 38, 38, 0.95)",
+            color: "#fff",
+            fontSize: 12,
+            fontWeight: 700,
+            letterSpacing: 0.5,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+          }}
+        >
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: "#fff",
+              boxShadow: "0 0 6px #fff",
+              animation: "lk-rec-pulse 1.2s ease-in-out infinite",
+            }}
+          />
+          REC
+          {remoteRecording?.by ? (
+            <span style={{ fontWeight: 400, opacity: 0.9 }}>
+              · {remoteRecording.by}
+            </span>
+          ) : null}
+        </div>
+      )}
+
+      {/* Record button: bottom-right floating */}
+      <button
+        type="button"
+        onClick={egressId ? stop : start}
+        disabled={busy}
+        title={egressId ? "Stop recording" : "Start recording"}
+        style={{
+          position: "absolute",
+          right: 8,
+          bottom: 80,
+          zIndex: 10,
+          padding: "8px 14px",
+          borderRadius: 999,
+          border: "none",
+          background: egressId ? "#dc2626" : "rgba(255,255,255,0.92)",
+          color: egressId ? "#fff" : "#111",
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: busy ? "wait" : "pointer",
+          opacity: busy ? 0.6 : 1,
+          boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+        }}
+      >
+        {busy
+          ? "…"
+          : egressId
+          ? "■ Stop recording"
+          : "● Record"}
+      </button>
+
+      {/* Toast (e.g. download URL) */}
+      {toast && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 80,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 12,
+            maxWidth: 420,
+            padding: "10px 14px",
+            background: "rgba(17,17,24,0.95)",
+            color: "#fff",
+            borderRadius: 8,
+            fontSize: 13,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <span>{toast.message}</span>
+          {toast.url && (
+            <a
+              href={toast.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: "#60a5fa",
+                textDecoration: "underline",
+                fontWeight: 600,
+              }}
+            >
+              Download
+            </a>
+          )}
+          <button
+            onClick={() => setToast(null)}
+            style={{
+              marginLeft: 6,
+              background: "transparent",
+              border: "none",
+              color: "#fff",
+              cursor: "pointer",
+              opacity: 0.7,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Pulse keyframes */}
+      <style>{`@keyframes lk-rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
+    </>
   );
 }
 
