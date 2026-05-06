@@ -8,6 +8,7 @@ import {
 } from "livekit-server-sdk";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 function requiredEnv(name: string): string {
   const v = process.env[name];
@@ -17,7 +18,7 @@ function requiredEnv(name: string): string {
 
 export async function POST(req: Request) {
   try {
-    const { userId } = auth();
+    const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
