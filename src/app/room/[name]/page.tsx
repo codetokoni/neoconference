@@ -159,11 +159,34 @@ function RoomContainer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
+  const [hideSelf, setHideSelf] = useState(false);
 
   useEffect(() => {
     const onChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    const onDbl = (ev: MouseEvent) => {
+      const target = ev.target as HTMLElement | null;
+      const tile = target?.closest(".lk-participant-tile") as HTMLElement | null;
+      if (!tile) return;
+      ev.preventDefault();
+      try {
+        if (document.fullscreenElement === tile) {
+          document.exitFullscreen();
+        } else {
+          tile.requestFullscreen();
+        }
+      } catch (e) {
+        console.error("Tile fullscreen failed", e);
+      }
+    };
+    root.addEventListener("dblclick", onDbl);
+    return () => root.removeEventListener("dblclick", onDbl);
   }, []);
 
   const toggleFullscreen = async () => {
@@ -192,6 +215,7 @@ function RoomContainer({
     <div
       ref={containerRef}
       data-lk-theme="default"
+      data-hide-self={hideSelf ? "true" : "false"}
       style={{ height: "calc(100vh - 65px)", position: "relative" }}
     >
       <div
@@ -200,15 +224,24 @@ function RoomContainer({
         <button
           type="button"
           onClick={() => setShowPeople((v) => !v)}
-          className="px-3 py-1.5 text-xs rounded bg-white/90 hover:bg-white border shadow-sm"
+          className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
           title="Show participants"
         >
           People
         </button>
         <button
           type="button"
+          data-room-chrome="true"
+          onClick={() => setHideSelf((v) => !v)}
+          className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+          title="Hide your own video"
+        >
+          {hideSelf ? "Show me" : "Hide me"}
+        </button>
+        <button
+          type="button"
           onClick={copyLink}
-          className="px-3 py-1.5 text-xs rounded bg-white/90 hover:bg-white border shadow-sm"
+          className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
           title="Copy room link"
         >
           {copied ? "Link copied!" : "Copy link"}
@@ -216,7 +249,7 @@ function RoomContainer({
         <button
           type="button"
           onClick={toggleFullscreen}
-          className="px-3 py-1.5 text-xs rounded bg-white/90 hover:bg-white border shadow-sm"
+          className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
           title="Toggle fullscreen"
         >
           {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
@@ -446,8 +479,8 @@ function RaiseHandButton() {
         padding: "6px 12px",
         borderRadius: 999,
         border: "none",
-        background: raised ? "#fbbf24" : "rgba(255,255,255,0.92)",
-        color: raised ? "#000" : "#111",
+        background: raised ? "#fbbf24" : "#000",
+        color: raised ? "#000" : "#fff",
         fontSize: 12,
         fontWeight: 600,
         cursor: "pointer",
@@ -646,8 +679,8 @@ function RecordingControls({ roomName }: { roomName: string }) {
           padding: "8px 14px",
           borderRadius: 999,
           border: "none",
-          background: egressId ? "#dc2626" : "rgba(255,255,255,0.92)",
-          color: egressId ? "#fff" : "#111",
+          background: egressId ? "#dc2626" : "#000",
+          color: egressId ? "#fff" : "#fff",
           fontSize: 12,
           fontWeight: 600,
           cursor: busy ? "wait" : "pointer",
