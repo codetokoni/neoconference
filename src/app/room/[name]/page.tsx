@@ -218,8 +218,16 @@ function RoomContainer({
       data-hide-self={hideSelf ? "true" : "false"}
       style={{ height: "calc(100vh - 65px)", position: "relative" }}
     >
-      <div
-        data-room-chrome="true" style={{ position: "absolute", top: 8, right: 8, zIndex: 10, display: "flex", gap: 8 }}
+      <LiveKitRoom
+        serverUrl={wsUrl}
+        token={token}
+        connect={true}
+        audio={choices.audioEnabled}
+        video={choices.videoEnabled}
+        onDisconnected={onLeave}
+      >
+        <div
+        data-room-chrome="true" className="room-toolbar" style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", zIndex: 12, display: "flex", gap: 8, alignItems: "center" }}
       >
         <button
           type="button"
@@ -254,20 +262,11 @@ function RoomContainer({
         >
           {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
         </button>
-      </div>
-
-      <LiveKitRoom
-        serverUrl={wsUrl}
-        token={token}
-        connect={true}
-        audio={choices.audioEnabled}
-        video={choices.videoEnabled}
-        onDisconnected={onLeave}
-      >
-        <ChatTranscriptDownloader roomName={roomName} />
-        <InitialsOverlay />
         <RaiseHandButton />
         <RecordingControls roomName={roomName} />
+      </div>
+        <ChatTranscriptDownloader roomName={roomName} />
+        <InitialsOverlay />
         <VideoConference />
         <RoomAudioRenderer />
         {showPeople && (
@@ -472,10 +471,7 @@ function RaiseHandButton() {
       onClick={toggle}
       title={raised ? "Lower hand" : "Raise hand"}
       style={{
-        position: "absolute",
-        left: 8,
-        top: 8,
-        zIndex: 10,
+        position: "relative",
         padding: "6px 12px",
         borderRadius: 999,
         border: "none",
@@ -672,11 +668,8 @@ function RecordingControls({ roomName }: { roomName: string }) {
         disabled={busy}
         title={egressId ? "Stop recording" : "Start recording"}
         style={{
-          position: "absolute",
-          right: 8,
-          bottom: 80,
-          zIndex: 10,
-          padding: "8px 14px",
+          position: "relative",
+          padding: "6px 12px",
           borderRadius: 999,
           border: "none",
           background: egressId ? "#dc2626" : "#000",
