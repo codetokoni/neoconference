@@ -10,6 +10,7 @@ import {
   UserButton,
 } from "@clerk/nextjs";
 import Link from "next/link";
+import { getCurrentRole } from "@/lib/roles";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -18,11 +19,14 @@ export const metadata: Metadata = {
   description: "The next generation of virtual classrooms.",
 };
 
-export default function RootLayout({
+export const dynamic = "force-dynamic";
+
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const role = await getCurrentRole();
   return (
     <ClerkProvider>
       <html lang="en">
@@ -37,7 +41,8 @@ export default function RootLayout({
                 <SignUpButton mode="modal" />
               </SignedOut>
               <SignedIn>
-                <UserButton afterSignOutUrl="/" />
+                {role === "admin" && (<Link href="/admin" className="text-xs px-2 py-1 rounded bg-cyan-400 text-black font-semibold hover:bg-cyan-300">Admin</Link>)}
+              <UserButton afterSignOutUrl="/" />
               </SignedIn>
             </nav>
           </header>
