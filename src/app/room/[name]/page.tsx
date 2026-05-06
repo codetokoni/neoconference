@@ -195,14 +195,7 @@ function RoomContainer({
       style={{ height: "calc(100vh - 65px)", position: "relative" }}
     >
       <div
-        style={{
-          position: "absolute",
-          top: 8,
-          right: 8,
-          zIndex: 10,
-          display: "flex",
-          gap: 8,
-        }}
+        data-room-chrome="true" style={{ position: "absolute", top: 8, right: 8, zIndex: 10, display: "flex", gap: 8 }}
       >
         <button
           type="button"
@@ -316,6 +309,7 @@ function ParticipantsPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <aside
+      data-room-chrome="true"
       style={{
         position: "absolute",
         top: 48,
@@ -441,6 +435,7 @@ function RaiseHandButton() {
   return (
     <button
       type="button"
+      data-room-chrome="true"
       onClick={toggle}
       title={raised ? "Lower hand" : "Raise hand"}
       style={{
@@ -597,6 +592,7 @@ function RecordingControls({ roomName }: { roomName: string }) {
       {/* REC banner shown to everyone while a recording is active */}
       {isRecording && (
         <div
+          data-room-chrome="true"
           style={{
             position: "absolute",
             top: 8,
@@ -638,6 +634,7 @@ function RecordingControls({ roomName }: { roomName: string }) {
       {/* Record button: bottom-right floating */}
       <button
         type="button"
+        data-room-chrome="true"
         onClick={egressId ? stop : start}
         disabled={busy}
         title={egressId ? "Stop recording" : "Start recording"}
@@ -668,6 +665,7 @@ function RecordingControls({ roomName }: { roomName: string }) {
       {/* Toast (e.g. download URL) */}
       {toast && (
         <div
+          data-room-chrome="true"
           style={{
             position: "absolute",
             bottom: 80,
