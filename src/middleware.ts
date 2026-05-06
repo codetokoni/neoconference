@@ -16,6 +16,7 @@ export default clerkMiddleware(
   },
   {
     authorizedParties: [
+            "https://neoconference.vercel.app",
       "https://special-space-potato-5v6vj4v99r4h474p-3000.app.github.dev",
       "http://localhost:3000",
     ],
