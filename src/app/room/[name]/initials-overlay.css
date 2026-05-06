@@ -110,3 +110,35 @@
   height: 100% !important;
   object-fit: contain !important;
 }
+
+
+/* Single horizontal toolbar that auto-hides until cursor enters the room shell */
+.room-toolbar {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+[data-lk-theme]:hover .room-toolbar,
+.room-toolbar:hover,
+.room-toolbar:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* Override the generic :fullscreen [data-room-chrome] rule for the toolbar, so it can still appear on hover in fullscreen */
+:fullscreen .room-toolbar[data-room-chrome="true"] {
+  display: flex !important;
+  opacity: 0;
+  pointer-events: none;
+}
+:-webkit-full-screen .room-toolbar[data-room-chrome="true"] {
+  display: flex !important;
+  opacity: 0;
+  pointer-events: none;
+}
+:fullscreen:hover .room-toolbar,
+:fullscreen .room-toolbar:hover,
+:-webkit-full-screen:hover .room-toolbar,
+:-webkit-full-screen .room-toolbar:hover {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
