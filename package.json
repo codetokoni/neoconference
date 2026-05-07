@@ -15,15 +15,18 @@
     "@livekit/components-react": "^2.9.20",
     "@livekit/components-styles": "^1.2.0",
     "@prisma/client": "^7.8.0",
+    "@vercel/kv": "^3.0.0",
     "jose": "^5.9.6",
     "livekit-client": "^2.18.9",
     "livekit-server-sdk": "^2.15.2",
     "next": "14.2.35",
+    "qrcode": "^1.5.4",
     "react": "^18",
     "react-dom": "^18"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",
