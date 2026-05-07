@@ -207,7 +207,7 @@ export function RoomNameEntry({
           <form onSubmit={submit} className="w-full rounded-3xl border border-cyan-400/20 bg-zinc-950/60 backdrop-blur-xl shadow-[0_0_60px_rgba(34,211,238,0.15)] p-6 md:p-8">
             <div className="flex items-start justify-between gap-3 mb-6">
               <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-[0.35em] text-cyan-400/80">You\u2019re joining</div>
+                <div className="text-[10px] uppercase tracking-[0.35em] text-cyan-400/80">You’re joining</div>
                 <div className="text-2xl md:text-3xl font-bold text-white truncate mt-1">{roomName}</div>
               </div>
               <button type="button" onClick={onCopyLink} className="shrink-0 text-[11px] px-3 py-1.5 rounded-full border border-cyan-400/40 text-cyan-300 hover:bg-cyan-400/10 transition">
@@ -254,7 +254,7 @@ export function RoomNameEntry({
                   Joining...
                 </span>
               ) : (
-                <span className="inline-flex items-center justify-center gap-2">Join Room <span className="transition group-hover:translate-x-1">\u2192</span></span>
+                <span className="inline-flex items-center justify-center gap-2">Join Room <span className="transition group-hover:translate-x-1">→</span></span>
               )}
             </button>
 
