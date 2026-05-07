@@ -42,7 +42,7 @@ export default function Home() {
                 <span className="absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75 animate-ping" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-300" />
               </span>
-              Live · Real-time HD video for everyone
+              Live Â· Real-time HD video for everyone
             </div>
 
             <h1 className="mt-6 text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05]">
@@ -53,7 +53,7 @@ export default function Home() {
 
             <p className="mt-6 max-w-xl text-lg text-cyan-100/70 leading-relaxed">
               NeoConference is a next-generation video platform built for crystal-clear conversations,
-              effortless joining, and a beautifully immersive room experience — on any device.
+              effortless joining, and a beautifully immersive room experience â on any device.
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -65,6 +65,10 @@ export default function Home() {
                 <Link href="/dashboard/new" className="neo-btn-ghost text-base px-6 py-3.5 inline-flex items-center gap-2">
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>
                   Create event
+                </Link>
+                <Link href="/dashboard" className="neo-btn-ghost text-base px-6 py-3.5 inline-flex items-center gap-2">
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+                  View past replays
                 </Link>
                 <div className="flex w-full sm:w-auto items-stretch gap-2">
                   <input
@@ -82,7 +86,7 @@ export default function Home() {
               </SignedIn>
               <SignedOut>
                 <SignUpButton mode="modal">
-                  <button className="neo-btn text-base px-6 py-3.5">Get started — it&apos;s free</button>
+                  <button className="neo-btn text-base px-6 py-3.5">Get started â it&apos;s free</button>
                 </SignUpButton>
                 <SignInButton mode="modal">
                   <button className="neo-btn-ghost text-base px-6 py-3.5">Sign in</button>
@@ -91,9 +95,9 @@ export default function Home() {
             </div>
 
             <div className="mt-8 flex items-center gap-6 text-xs text-cyan-100/50">
-              <div className="flex items-center gap-2"><span className="text-cyan-300">✓</span> No downloads</div>
-              <div className="flex items-center gap-2"><span className="text-cyan-300">✓</span> End-to-end encrypted</div>
-              <div className="hidden sm:flex items-center gap-2"><span className="text-cyan-300">✓</span> HD recording</div>
+              <div className="flex items-center gap-2"><span className="text-cyan-300">â</span> No downloads</div>
+              <div className="flex items-center gap-2"><span className="text-cyan-300">â</span> End-to-end encrypted</div>
+              <div className="hidden sm:flex items-center gap-2"><span className="text-cyan-300">â</span> HD recording</div>
             </div>
           </div>
 
@@ -140,14 +144,38 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Showcase strip */}
+      <section className="relative mx-auto max-w-7xl px-6 pt-6 pb-12">
+        <div className="grid gap-5 sm:grid-cols-3">
+          <ShowcaseCard
+            badge="Replay"
+            title="Cinematic event replays"
+            desc="Auto-published HLS, transcripts and chapter markers at /e/<slug>/replay."
+            href="/dashboard"
+          />
+          <ShowcaseCard
+            badge="Live"
+            title="Multistream to anywhere"
+            desc="One Go-Live button: LiveKit + StreamLab Cloud + RTMP simulcast."
+            href="/dashboard/new"
+          />
+          <ShowcaseCard
+            badge="Smart"
+            title="QR + dynamic shortlinks"
+            desc="Print-once QR codes with HSMOH-backed waiting / live / replay routing."
+            href="/dashboard/new"
+          />
+        </div>
+      </section>
+
       {/* Features */}
       <section className="relative mx-auto max-w-7xl px-6 py-20">
         <div className="max-w-2xl">
           <h2 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight">Designed for the next decade of meetings.</h2>
-          <p className="mt-3 text-cyan-100/65">A futuristic interface, premium controls, and a focus on the only thing that matters — your conversation.</p>
+          <p className="mt-3 text-cyan-100/65">A futuristic interface, premium controls, and a focus on the only thing that matters â your conversation.</p>
         </div>
         <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          <Feature title="Instant rooms" desc="Spin up a secure room in one click. Share a link, your guests just join — no installs." icon={<IconBolt />} />
+          <Feature title="Instant rooms" desc="Spin up a secure room in one click. Share a link, your guests just join â no installs." icon={<IconBolt />} />
           <Feature title="Studio-grade audio" desc="Adaptive bitrate, echo cancellation and noise suppression keep voices crystal clear." icon={<IconWave />} />
           <Feature title="HD recording" desc="One-tap record. Files land in secure cloud storage with download anywhere." icon={<IconRec />} />
           <Feature title="Live participants" desc="Real-time roster with active speaker highlighting and presence dots." icon={<IconUsers />} />
@@ -180,9 +208,20 @@ export default function Home() {
       </section>
 
       <footer className="relative mx-auto max-w-7xl px-6 pb-10 text-center text-xs text-cyan-100/35">
-        © {new Date().getFullYear()} NeoConference — Crafted for premium real-time experiences.
+        Â© {new Date().getFullYear()} NeoConference â Crafted for premium real-time experiences.
       </footer>
     </div>
+  );
+}
+
+function ShowcaseCard({ badge, title, desc, href }: { badge: string; title: string; desc: string; href: string }) {
+  return (
+    <Link href={href} className="group relative neo-card neo-border-glow p-5 transition-transform duration-300 hover:-translate-y-1 block">
+      <div className="inline-flex items-center gap-2 rounded-full neo-glass px-2.5 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-200/90">{badge}</div>
+      <h3 className="mt-4 text-lg font-semibold text-white">{title}</h3>
+      <p className="mt-1.5 text-sm text-cyan-100/65 leading-relaxed">{desc}</p>
+      <div className="mt-4 inline-flex items-center gap-1.5 text-xs text-cyan-200/80 group-hover:text-cyan-100">Explore →</div>
+    </Link>
   );
 }
 
