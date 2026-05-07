@@ -8,6 +8,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { eventStore } from "@/lib/eventStore";
 import EndEventButton from "./EndEventButton";
+import InviteSpeakers from "./InviteSpeakers";
 
 export const dynamic = "force-dynamic";
 
@@ -212,8 +213,9 @@ export default async function EventAdminPage({
         ) : null}
 
         {/* Roles */}
-        <section className="space-y-3">
+        <section className="space-y-4">
           <h2 className="text-sm uppercase tracking-widest text-slate-400">Roles</h2>
+          <InviteSpeakers eventId={ev.id} />
           {(ev.roles || []).length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-800 bg-slate-900/20 p-6 text-sm text-slate-500">
               No roles assigned yet. Anyone with the link joins as a viewer.
