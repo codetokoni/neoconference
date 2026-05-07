@@ -13,6 +13,8 @@ const isPublicRoute = createRouteMatcher([
   '/api/livekit/token(.*)',
   '/api/auth/kingschat/(.*)',
   '/api/events/by-domain',
+  '/api/stripe/webhook',
+  '/api/events/(.*)/checkout',
 ]);
 
 // Hosts that ARE the canonical app (skip custom-domain rewrite for these).
