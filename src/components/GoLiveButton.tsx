@@ -18,8 +18,17 @@ type Resp = { ok: boolean; stream?: Stream; error?: string };
  * Floating in-room control. On click, calls /api/golive to provision a
  * StreamLab broadcast and reveals RTMP credentials + HLS URL in a glass
  * card so the host can route OBS/encoder to the broadcast.
+ *
+ * If the room was launched from a NeoEvent, pass eventSlug so the broadcast
+ * is persisted to KV and the event auto-flips to LIVE on first ingest.
  */
-export default function GoLiveButton({ roomName }: { roomName: string }) {
+export default function GoLiveButton({
+  roomName,
+  eventSlug,
+}: {
+  roomName: string;
+  eventSlug?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [stream, setStream] = useState<Stream | null>(null);
@@ -33,7 +42,7 @@ export default function GoLiveButton({ roomName }: { roomName: string }) {
       const res = await fetch('/api/golive', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ roomName, title: roomName }),
+        body: JSON.stringify({ roomName, title: roomName, eventSlug }),
       });
       const j: Resp = await res.json();
       if (!j.ok || !j.stream) {
@@ -59,15 +68,18 @@ export default function GoLiveButton({ roomName }: { roomName: string }) {
     <>
       <button
         onClick={() => setOpen((v) => !v)}
-        className={"inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-medium border transition shadow-[0_0_24px_-8px_rgba(244,63,94,0.6)] " + (stream ? "border-rose-400/50 bg-rose-500/15 text-rose-100" : "border-white/15 bg-black/40 text-white/80 hover:bg-white/10")}
+        className={'inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-medium border transition shadow-[0_0_24px_-8px_rgba(244,63,94,0.6)] ' + (stream ? 'border-rose-400/50 bg-rose-500/15 text-rose-100' : 'border-white/15 bg-black/40 text-white/80 hover:bg-white/10')}
         title="Provision RTMP livestream for this room"
       >
-        <span className={"inline-flex h-1.5 w-1.5 rounded-full " + (stream ? "bg-rose-400 animate-pulse" : "bg-cyan-300")} />
+        <span className={'inline-flex h-1.5 w-1.5 rounded-full ' + (stream ? 'bg-rose-400 animate-pulse' : 'bg-cyan-300')} />
         {stream ? 'LIVE' : 'Go Live'}
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)}>
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          onClick={() => setOpen(false)}
+        >
           <div
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#0b1020]/95 p-6 md:p-8 backdrop-blur-xl shadow-[0_0_80px_-20px_rgba(34,211,238,0.45)]"
@@ -79,6 +91,13 @@ export default function GoLiveButton({ roomName }: { roomName: string }) {
               </div>
               <button onClick={() => setOpen(false)} className="text-white/40 hover:text-white/80 transition text-sm">Close</button>
             </div>
+
+            {eventSlug && (
+              <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-cyan-200">
+                <span className="h-1 w-1 rounded-full bg-cyan-300" />
+                Linked to event · {eventSlug}
+              </div>
+            )}
 
             {!stream && (
               <>
@@ -110,7 +129,7 @@ export default function GoLiveButton({ roomName }: { roomName: string }) {
                   <Field label="HLS playback (share with viewers)" value={stream.hlsUrl} onCopy={() => copy(stream.hlsUrl!, 'hls')} copied={copied === 'hls'} mono />
                 )}
                 <p className="text-[11px] text-white/45 leading-relaxed pt-2">
-                  Open OBS → Settings → Stream. Service: <span className="text-white/70">Custom</span>. Server: paste RTMP ingest. Stream key: paste stream key. Hit "Start streaming".
+                  Open OBS → Settings → Stream. Service: <span className="text-white/70">Custom</span>. Server: paste RTMP ingest. Stream key: paste stream key. Hit &quot;Start streaming&quot;.
                 </p>
               </div>
             )}
@@ -137,7 +156,7 @@ function Field({
   secret?: boolean;
 }) {
   const [reveal, setReveal] = useState(false);
-  const display = secret && !reveal ? '•'.repeat(Math.min(value.length, 28)) : value;
+  const display = secret && !reveal ? '\u2022'.repeat(Math.min(value.length, 28)) : value;
   return (
     <div>
       <div className="text-[10px] uppercase tracking-[0.22em] text-white/45 mb-1">{label}</div>
