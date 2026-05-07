@@ -3,7 +3,7 @@
 // Single source of truth for the entire ecosystem:
 //   LiveKit room <-> StreamLab stream <-> HSMOH shortlink <-> QR code <-> replay.
 
-export type EventRole = 'host' | 'cohost' | 'speaker' | 'viewer';
+export type EventRole = 'host' | 'cohost' | 'speaker' | 'viewer' | 'ticket-holder';
 
 export type EventState =
   | 'scheduled' // created, not yet open
@@ -77,6 +77,25 @@ export interface Chapter {
   source: 'heuristic' | 'ai' | 'manual';
 }
 
+export interface TicketTier {
+  /** Stable id (slug-of-label or hash). */
+  id: string;
+  /** Human label, e.g. "General Admission". */
+  label: string;
+  /** Price in the smallest currency unit (e.g. cents for USD). */
+  priceCents: number;
+  /** ISO 4217, lowercased: "usd", "eur", etc. */
+  currency: string;
+  /** Optional ticket cap. When omitted, unlimited. */
+  capacity?: number;
+  /** Number sold so far (incremented by the Stripe webhook). */
+  sold?: number;
+  /** Optional 1-2 sentence description shown on /e/<slug>. */
+  description?: string;
+  /** When false, this tier is hidden from the public landing page. */
+  active: boolean;
+}
+
 export interface NeoEvent {
   /** Internal UUID. */
   id: string;
@@ -132,6 +151,9 @@ export interface NeoEvent {
   /** Auto-derived or AI-labeled chapter markers for the replay timeline. */
   chapters?: Chapter[];
 
+  /** Paid ticket tiers (Stripe). When set, attendees can buy access via Checkout. */
+  tickets?: TicketTier[];
+
   /** Lifecycle state. */
   state: EventState;
 
@@ -161,6 +183,7 @@ export interface PublicEventView {
   shortUrl?: string;
   recordings: RecordingArtifact[];
   chapters?: Chapter[];
+  tickets?: TicketTier[];
 }
 
 export function toPublicView(e: NeoEvent): PublicEventView {
@@ -181,5 +204,6 @@ export function toPublicView(e: NeoEvent): PublicEventView {
     shortUrl: e.hsmoh?.shortUrl,
     recordings: e.recordings,
     chapters: e.chapters,
+    tickets: (e.tickets || []).filter((t) => t.active),
   };
 }
