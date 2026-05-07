@@ -62,6 +62,21 @@ export interface RecordingArtifact {
   label?: string;
 }
 
+export interface Chapter {
+  /** Stable id (slug-of-label or hash). */
+  id: string;
+  /** Start of this chapter in seconds from beginning of recording. */
+  startSec: number;
+  /** Optional end. When omitted, chapter runs until next chapter or EOF. */
+  endSec?: number;
+  /** Short human label, e.g. "Welcome & Intros". */
+  label: string;
+  /** Optional 1-2 sentence summary. */
+  summary?: string;
+  /** Source: heuristic = derived from transcript silences/keywords, ai = LLM-labeled, manual = host-edited. */
+  source: 'heuristic' | 'ai' | 'manual';
+}
+
 export interface NeoEvent {
   /** Internal UUID. */
   id: string;
@@ -111,6 +126,9 @@ export interface NeoEvent {
   /** Persistent recording / replay artifacts. */
   recordings: RecordingArtifact[];
 
+  /** Auto-derived or AI-labeled chapter markers for the replay timeline. */
+  chapters?: Chapter[];
+
   /** Lifecycle state. */
   state: EventState;
 
@@ -138,6 +156,7 @@ export interface PublicEventView {
   hlsUrl?: string;
   shortUrl?: string;
   recordings: RecordingArtifact[];
+  chapters?: Chapter[];
 }
 
 export function toPublicView(e: NeoEvent): PublicEventView {
@@ -156,5 +175,6 @@ export function toPublicView(e: NeoEvent): PublicEventView {
     hlsUrl: e.streamlab?.hlsUrl,
     shortUrl: e.hsmoh?.shortUrl,
     recordings: e.recordings,
+    chapters: e.chapters,
   };
 }
