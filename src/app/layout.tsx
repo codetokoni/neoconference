@@ -7,10 +7,10 @@ import {
   SignedOut,
   SignInButton,
   SignUpButton,
-  UserButton,
 } from "@clerk/nextjs";
 import Link from "next/link";
 import { getCurrentRole } from "@/lib/roles";
+import HeaderUserMenu from "@/components/HeaderUserMenu";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -42,7 +42,7 @@ export default async function RootLayout({
               </SignedOut>
               <SignedIn>
                 {role === "admin" && (<Link href="/admin" className="text-xs px-2 py-1 rounded bg-cyan-400 text-black font-semibold hover:bg-cyan-300">Admin</Link>)}
-              <UserButton afterSignOutUrl="/" />
+              <HeaderUserMenu />
               </SignedIn>
             </nav>
           </header>
