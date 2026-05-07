@@ -42,7 +42,7 @@ export default function Home() {
                 <span className="absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75 animate-ping" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-300" />
               </span>
-              Live Â· Real-time HD video for everyone
+              Live · Real-time HD video for everyone
             </div>
 
             <h1 className="mt-6 text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05]">
@@ -208,7 +208,7 @@ export default function Home() {
       </section>
 
       <footer className="relative mx-auto max-w-7xl px-6 pb-10 text-center text-xs text-cyan-100/35">
-        Â© {new Date().getFullYear()} NeoConference â Crafted for premium real-time experiences.
+        © {new Date().getFullYear()} NeoConference â Crafted for premium real-time experiences.
       </footer>
     </div>
   );
