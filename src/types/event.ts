@@ -96,6 +96,27 @@ export interface TicketTier {
   active: boolean;
 }
 
+export interface InviteToken {
+  /** Random URL-safe token. */
+  token: string;
+  /** Event this invite grants access to. */
+  eventId: string;
+  /** Role granted on redeem: 'cohost' | 'speaker' | 'attendee' | 'ticket-holder'. */
+  role: string;
+  /** ISO timestamp at creation. */
+  createdAt: string;
+  /** Optional ISO expiry. When omitted, never expires. */
+  expiresAt?: string;
+  /** Max times the token can be redeemed (default 1). */
+  maxUses: number;
+  /** Number of times redeemed so far. */
+  uses: number;
+  /** userId of the owner who minted the token. */
+  createdBy: string;
+  /** Optional human label for the dashboard list. */
+  label?: string;
+}
+
 export interface ChatMessage {
   /** Stable id (uuid-like). */
   id: string;
@@ -222,4 +243,5 @@ export function toPublicView(e: NeoEvent): PublicEventView {
     tickets: (e.tickets || []).filter((t) => t.active),
   };
 }
+
 
