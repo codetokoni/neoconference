@@ -9,6 +9,8 @@ import Link from "next/link";
 import { eventStore } from "@/lib/eventStore";
 import EndEventButton from "./EndEventButton";
 import InviteSpeakers from "./InviteSpeakers";
+import EditMetadata from "./EditMetadata";
+import WaitingRoomPanel from "./WaitingRoomPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -105,6 +107,21 @@ export default async function EventAdminPage({
             ) : null}
           </div>
         </header>
+
+        {/* Edit metadata */}
+        <section>
+          <EditMetadata
+            eventId={ev.id}
+            initial={{
+              name: ev.name,
+              description: ev.description,
+              scheduledAt: ev.scheduledAt,
+              visibility: ev.visibility,
+              waitingRoomEnabled: ev.waitingRoomEnabled,
+            }}
+          />
+        </section>
+
         {/* Stat strip */}
         <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
@@ -238,24 +255,10 @@ export default async function EventAdminPage({
         </section>
 
         {/* Waiting room */}
-        {(ev.waitingRoom || []).length > 0 ? (
-          <section className="space-y-3">
-            <h2 className="text-sm uppercase tracking-widest text-slate-400">Waiting room</h2>
-            <ul className="grid gap-2">
-              {(ev.waitingRoom || []).map((w) => (
-                <li key={w.id} className="rounded-xl border border-slate-800 bg-slate-900/40 p-3 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm text-slate-200 truncate">{w.name}</div>
-                    <div className="text-xs text-slate-500 mt-0.5">{fmt(w.requestedAt)}</div>
-                  </div>
-                  <span className="text-xs px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-400/40 text-amber-200 uppercase tracking-wide shrink-0">
-                    {w.status}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+        <section className="space-y-3">
+          <h2 className="text-sm uppercase tracking-widest text-slate-400">Waiting room</h2>
+          <WaitingRoomPanel eventId={ev.id} initial={ev.waitingRoom || []} />
+        </section>
 
         <footer className="pt-6 border-t border-slate-900 text-xs text-slate-600">
           updated {fmt(ev.updatedAt)} · created {fmt(ev.createdAt)}
