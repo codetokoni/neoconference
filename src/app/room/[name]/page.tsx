@@ -19,6 +19,7 @@ import "./initials-overlay.css";
 import { RoomNameEntry } from "@/components/RoomNameEntry";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import RoomIdleController from "@/components/RoomIdleController";
+import GoLiveButton from "@/components/GoLiveButton";
 
 type TokenResponse = { token: string; wsUrl: string };
 
@@ -258,6 +259,7 @@ function RoomContainer({
         </button>
         <ParticipantCountBadge /><RaiseHandButton />
         <RecordingControls roomName={roomName} />
+        <GoLiveButton roomName={roomName} />
       </div>
         <ChatTranscriptDownloader roomName={roomName} />
         <InitialsOverlay />
