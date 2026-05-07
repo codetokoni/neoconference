@@ -30,10 +30,8 @@ export async function POST(
   if (!entryId || (action !== "admit" && action !== "deny")) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
-
   const next = await eventStore.update(ev.id, (prev) => {
-    co
-nst list = (prev.waitingRoom || []).map((e) =>
+    const list = (prev.waitingRoom || []).map((e) =>
       e.id === entryId ? { ...e, status: action === "admit" ? "admitted" : "denied" } : e
     ) as WaitingRoomEntry[];
     return { ...prev, waitingRoom: list, updatedAt: new Date().toISOString() };
