@@ -31,8 +31,7 @@ export async function GET(req: Request) {
   // Match role assignment: by Clerk user id, primary email, or any verified email.
   const u = await currentUser().catch(() => null);
   const emails = (u?.emailAddresses || []).map((e: { emailAddress: string }) => e.emailAddress.toLowerCase());
-  const roles = ev.role
-s || [];
+  const roles = ev.roles || [];
   const match = roles.find((r) => {
     const id = r.identifier.toLowerCase();
     return id === userId.toLowerCase() || emails.includes(id);
