@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const { id } = await ctx.params;
-  const ev = await eventStore.get(id);
+  const ev = await eventStore.byId(id);
   if (!ev) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (ev.ownerUserId !== userId) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
@@ -77,7 +77,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const { id } = await ctx.params;
-  const ev = await eventStore.get(id);
+  const ev = await eventStore.byId(id);
   if (!ev) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (ev.ownerUserId !== userId) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
