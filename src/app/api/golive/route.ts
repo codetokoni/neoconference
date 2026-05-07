@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { createStream, isStreamLabConfigured } from '@/lib/streamlab';
+import { eventStore } from '@/lib/eventStore';
 
 export const runtime = 'nodejs';
 
@@ -10,7 +11,12 @@ export const runtime = 'nodejs';
  * Provisions an ad-hoc StreamLab broadcast bound to a room.
  * Returns RTMP ingest credentials + HLS playback URL.
  *
- * Body: { roomName: string, title?: string }
+ * Body: {
+ *   roomName: string,
+ *   title?: string,
+ *   eventSlug?: string  // when provided, persists the broadcast
+ *                       // to the matching event and flips state to 'live'
+ * }
  */
 export async function POST(req: Request) {
   const { userId } = await auth();
@@ -25,7 +31,7 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: { roomName?: string; title?: string } = {};
+  let body: { roomName?: string; title?: string; eventSlug?: string } = {};
   try {
     body = await req.json();
   } catch {
@@ -38,9 +44,33 @@ export async function POST(req: Request) {
   }
 
   const name = (body.title || roomName).slice(0, 80);
+  const eventSlug = (body.eventSlug || '').trim() || null;
 
   try {
     const stream = await createStream({ name, mode: 'single', latency: 'hls' });
+
+    // Optional: link to an event if a slug was provided.
+    let linkedEvent: { id: string; slug: string } | null = null;
+    if (eventSlug) {
+      const ev = await eventStore.bySlug(eventSlug);
+      if (ev) {
+        const updated = await eventStore.update(ev.id, {
+          state: 'live',
+          startedAt: new Date().toISOString(),
+          streamlab: {
+            streamId: stream.id,
+            rtmpUrl: stream.rtmpUrl,
+            streamKey: stream.streamKey,
+            hlsUrl: stream.hlsUrl,
+            playbackId: stream.playbackId,
+          },
+        });
+        if (updated) {
+          linkedEvent = { id: updated.id, slug: updated.slug };
+        }
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       stream: {
@@ -50,10 +80,10 @@ export async function POST(req: Request) {
         hlsUrl: stream.hlsUrl,
         playbackId: stream.playbackId,
       },
+      linkedEvent,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ ok: false, error: msg }, { status: 502 });
   }
 }
-
