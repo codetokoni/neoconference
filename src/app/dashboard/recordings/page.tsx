@@ -18,6 +18,12 @@ type Resp = {
   hint?: string;
 };
 
+type TranscribeState =
+  | { status: 'idle' }
+  | { status: 'submitting' }
+  | { status: 'queued'; jobId: string; provider: string }
+  | { status: 'error'; error: string };
+
 function fmtBytes(n: number) {
   if (n < 1024) return n + ' B';
   if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
@@ -34,6 +40,7 @@ export default function RecordingsPage() {
   const [data, setData] = useState<Resp | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
+  const [tx, setTx] = useState<Record<string, TranscribeState>>({});
 
   async function load() {
     setLoading(true);
@@ -49,6 +56,30 @@ export default function RecordingsPage() {
   }
 
   useEffect(() => { load(); }, []);
+
+  async function transcribe(key: string) {
+    setTx((s) => ({ ...s, [key]: { status: 'submitting' } }));
+    try {
+      const res = await fetch('/api/transcribe', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ recordingKey: key }),
+      });
+      const j = await res.json();
+      if (!j.ok || !j.job) {
+        throw new Error(j.error || 'Could not queue transcription.');
+      }
+      setTx((s) => ({
+        ...s,
+        [key]: { status: 'queued', jobId: j.job.id, provider: j.provider || 'stub' },
+      }));
+    } catch (e: unknown) {
+      setTx((s) => ({
+        ...s,
+        [key]: { status: 'error', error: e instanceof Error ? e.message : 'transcribe failed' },
+      }));
+    }
+  }
 
   const recordings = (data?.recordings || []).filter((r) =>
     !filter ? true : r.key.toLowerCase().includes(filter.toLowerCase())
@@ -120,33 +151,55 @@ export default function RecordingsPage() {
 
           {recordings.length > 0 && (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[560px]">
+              <table className="w-full text-sm min-w-[680px]">
                 <thead className="bg-white/[0.02] border-b border-white/10">
                   <tr className="text-left text-[11px] uppercase tracking-[0.2em] text-white/45">
                     <th className="px-4 sm:px-5 py-3 font-normal">File</th>
                     <th className="px-4 sm:px-5 py-3 font-normal w-24 sm:w-32">Size</th>
                     <th className="px-4 sm:px-5 py-3 font-normal w-56 hidden md:table-cell">Recorded</th>
-                    <th className="px-4 sm:px-5 py-3 font-normal w-28 sm:w-32 text-right">Action</th>
+                    <th className="px-4 sm:px-5 py-3 font-normal w-44 sm:w-48 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {recordings.map((r) => (
-                    <tr key={r.key} className="border-b border-white/5 hover:bg-white/[0.02] transition">
-                      <td className="px-4 sm:px-5 py-3.5">
-                        <div className="font-mono text-white/90 truncate max-w-[200px] sm:max-w-[420px]" title={r.key}>{r.key}</div>
-                        <div className="md:hidden text-[10px] text-white/40 mt-0.5">{fmtDate(r.lastModified)}</div>
-                      </td>
-                      <td className="px-4 sm:px-5 py-3.5 text-white/65 text-xs sm:text-sm">{fmtBytes(r.size)}</td>
-                      <td className="px-4 sm:px-5 py-3.5 text-white/55 hidden md:table-cell">{fmtDate(r.lastModified)}</td>
-                      <td className="px-4 sm:px-5 py-3.5 text-right">
-                        <a
-                          href={r.downloadUrl}
-                          download
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 text-cyan-100 px-3 py-2 sm:py-1.5 text-xs hover:bg-cyan-400/20 transition"
-                        >Download</a>
-                      </td>
-                    </tr>
-                  ))}
+                  {recordings.map((r) => {
+                    const state = tx[r.key] || { status: 'idle' };
+                    return (
+                      <tr key={r.key} className="border-b border-white/5 hover:bg-white/[0.02] transition">
+                        <td className="px-4 sm:px-5 py-3.5">
+                          <div className="font-mono text-white/90 truncate max-w-[200px] sm:max-w-[420px]" title={r.key}>{r.key}</div>
+                          <div className="md:hidden text-[10px] text-white/40 mt-0.5">{fmtDate(r.lastModified)}</div>
+                          {state.status === 'queued' && (
+                            <div className="mt-1 inline-flex items-center gap-1.5 text-[10px] text-cyan-200/80">
+                              <span className="h-1 w-1 rounded-full bg-cyan-300 animate-pulse" />
+                              Transcript queued · {state.provider}
+                            </div>
+                          )}
+                          {state.status === 'error' && (
+                            <div className="mt-1 text-[10px] text-red-300">{state.error}</div>
+                          )}
+                        </td>
+                        <td className="px-4 sm:px-5 py-3.5 text-white/65 text-xs sm:text-sm">{fmtBytes(r.size)}</td>
+                        <td className="px-4 sm:px-5 py-3.5 text-white/55 hidden md:table-cell">{fmtDate(r.lastModified)}</td>
+                        <td className="px-4 sm:px-5 py-3.5 text-right">
+                          <div className="inline-flex items-center gap-2 justify-end">
+                            <button
+                              onClick={() => transcribe(r.key)}
+                              disabled={state.status === 'submitting' || state.status === 'queued'}
+                              title="Submit for AI transcription"
+                              className="inline-flex items-center gap-1 rounded-lg border border-fuchsia-400/30 bg-fuchsia-400/10 text-fuchsia-100 px-2.5 py-1.5 text-[11px] hover:bg-fuchsia-400/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {state.status === 'submitting' ? '…' : state.status === 'queued' ? '✓ Queued' : 'Transcribe'}
+                            </button>
+                            <a
+                              href={r.downloadUrl}
+                              download
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 text-cyan-100 px-3 py-1.5 text-xs hover:bg-cyan-400/20 transition"
+                            >Download</a>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
