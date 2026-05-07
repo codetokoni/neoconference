@@ -18,6 +18,7 @@ import "@livekit/components-styles";
 import "./initials-overlay.css";
 import { RoomNameEntry } from "@/components/RoomNameEntry";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
+import RoomIdleController from "@/components/RoomIdleController";
 
 type TokenResponse = { token: string; wsUrl: string };
 
@@ -260,7 +261,7 @@ function RoomContainer({
       </div>
         <ChatTranscriptDownloader roomName={roomName} />
         <InitialsOverlay />
-        <VideoConference />
+        <RoomIdleController /><VideoConference />
         <RoomAudioRenderer />
         {showPeople && (
           <ParticipantsPanel onClose={() => setShowPeople(false)} />
