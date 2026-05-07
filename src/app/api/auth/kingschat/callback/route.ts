@@ -7,76 +7,116 @@ export const dynamic = 'force-dynamic';
 // KingsChat OAuth callback.
 // KC posts user data directly to this URL (post_redirect=true flow).
 // Body may be application/x-www-form-urlencoded or application/json.
-// User fields may be flat or nested under 'user'. Field names vary, so we try multiple keys.
+// Field names vary, so we try multiple keys, walk nested objects, and case-insensitively match.
 
-function errorRedirect(req: Request, code: string) {
+function errorRedirect(req: Request, code: string, debug?: string) {
   const url = new URL('/sign-in', req.url);
   url.searchParams.set('kc_error', code);
+  if (debug) url.searchParams.set('kc_debug', debug.slice(0, 500));
   return NextResponse.redirect(url, { status: 303 });
 }
 
-function pick(data: Record<string, unknown>, keys: string[]): string {
+// Walk an arbitrarily nested object collecting every primitive leaf into a flat map keyed by leaf name (lowercased).
+function flatten(obj: unknown, out: Record<string, string> = {}, depth = 0): Record<string, string> {
+  if (depth > 4 || obj === null || obj === undefined) return out;
+  if (Array.isArray(obj)) {
+    obj.forEach(v => flatten(v, out, depth + 1));
+    return out;
+  }
+  if (typeof obj === 'object') {
+    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+      if (v !== null && typeof v === 'object') {
+        flatten(v, out, depth + 1);
+      } else if (v !== undefined && v !== null && String(v).length > 0) {
+        out[k.toLowerCase()] = String(v);
+      }
+    }
+  }
+  return out;
+}
+
+function pick(flat: Record<string, string>, keys: string[]): string {
   for (const k of keys) {
-    const v = data[k];
-    if (v !== undefined && v !== null && String(v).length > 0) return String(v);
+    const v = flat[k.toLowerCase()];
+    if (v) return v;
   }
   return '';
 }
 
-async function readBody(req: Request): Promise<Record<string, unknown>> {
+async function readBody(req: Request): Promise<{raw: string; data: Record<string, unknown>; ct: string}> {
   const ct = (req.headers.get('content-type') || '').toLowerCase();
+  const raw = await req.text();
+  let data: Record<string, unknown> = {};
   if (ct.includes('application/json')) {
-    try { return (await req.json()) || {}; } catch { return {}; }
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
+  } else if (ct.includes('application/x-www-form-urlencoded') || ct.includes('multipart/form-data') || raw.includes('=')) {
+    try {
+      const params = new URLSearchParams(raw);
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of params.entries()) {
+        // try to JSON-parse values that look like objects
+        if (v.startsWith('{') || v.startsWith('[')) {
+          try { out[k] = JSON.parse(v); continue; } catch { /* fallthrough */ }
+        }
+        out[k] = v;
+      }
+      data = out;
+    } catch { data = {}; }
+  } else {
+    // Try JSON as a last resort
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
   }
-  // default: form-urlencoded (also works for multipart-ish via formData)
-  try {
-    const fd = await req.formData();
-    const out: Record<string, unknown> = {};
-    fd.forEach((v, k) => { out[k] = typeof v === 'string' ? v : String(v); });
-    return out;
-  } catch {
-    return {};
-  }
+  return { raw, data, ct };
 }
 
 async function handle(req: Request) {
-  const raw = await readBody(req);
+  const { raw, data, ct } = await readBody(req);
 
-  // user data may be nested under 'user'
-  const userObj = (raw.user && typeof raw.user === 'object') ? raw.user as Record<string, unknown> : raw;
+  // Log to Vercel
+  try {
+    console.log('[kc-callback] method=' + req.method + ' content-type=' + ct + ' raw-length=' + raw.length);
+    console.log('[kc-callback] raw=' + raw.slice(0, 2000));
+    console.log('[kc-callback] parsed-keys=' + Object.keys(data).join(','));
+  } catch { /* ignore */ }
 
-  const kcId       = pick(userObj, ['id', 'userId', 'user_id', 'kingschatId', 'kingschat_id']);
-  const kcUsername = pick(userObj, ['username', 'userName', 'user_name', 'handle']);
-  const firstName  = pick(userObj, ['firstName', 'first_name', 'givenName']);
-  const lastName   = pick(userObj, ['lastName', 'last_name', 'familyName', 'surname']);
-  const email      = pick(userObj, ['email', 'emailAddress', 'email_address']);
+  // Flatten everything into one keyspace
+  const flat = flatten(data);
+
+  const kcId = pick(flat, [
+    'id', 'userid', 'user_id', 'kingschatid', 'kingschat_id',
+    'kcid', 'kc_id', 'sub', 'kingschatuserid', 'profileid'
+  ]);
+  const kcUsername = pick(flat, [
+    'username', 'user_name', 'handle', 'kc_username', 'kingschatusername', 'name'
+  ]);
+  const firstName = pick(flat, ['firstname', 'first_name', 'givenname', 'given_name']);
+  const lastName  = pick(flat, ['lastname', 'last_name', 'familyname', 'family_name', 'surname']);
+  const email     = pick(flat, ['email', 'emailaddress', 'email_address', 'mail']);
 
   if (!kcId) {
-    return errorRedirect(req, 'missing_kc_user');
+    // Build a debug string of available keys so we can iterate from the URL
+    const debug = 'ct=' + ct + '|keys=' + Object.keys(flat).slice(0, 20).join(',');
+    return errorRedirect(req, 'missing_kc_user', debug);
   }
 
   const externalId = 'kc:' + kcId;
   const cc = await clerkClient();
 
-  // 1) lookup by externalId
   let user = null as null | { id: string };
   try {
     const list = await cc.users.getUserList({ externalId: [externalId], limit: 1 });
     if (list.data && list.data.length > 0) user = list.data[0];
   } catch { /* continue */ }
 
-  // 2) fallback by email
   if (!user && email) {
     try {
       const list = await cc.users.getUserList({ emailAddress: [email], limit: 1 });
       if (list.data && list.data.length > 0) {
-        // Email already on a different account: block per policy C
         return errorRedirect(req, 'email_already_registered');
       }
     } catch { /* continue */ }
   }
 
-  // 3) create user if not found
   if (!user) {
     try {
       const created = await cc.users.createUser({
@@ -90,11 +130,10 @@ async function handle(req: Request) {
       } as any);
       user = { id: created.id };
     } catch (e) {
-      console.error('[kc] createUser failed', e);
+      console.error('[kc-callback] createUser failed', e);
       return errorRedirect(req, 'create_failed');
     }
   } else {
-    // refresh metadata for returning users
     try {
       await cc.users.updateUser(user.id, {
         publicMetadata: { kingschat: { id: kcId, username: kcUsername } },
@@ -102,7 +141,6 @@ async function handle(req: Request) {
     } catch { /* non-fatal */ }
   }
 
-  // 4) mint sign-in ticket
   let ticket = '';
   try {
     const res = await (cc as any).signInTokens.createSignInToken({
@@ -111,7 +149,7 @@ async function handle(req: Request) {
     });
     ticket = res?.token || '';
   } catch (e) {
-    console.error('[kc] signInToken failed', e);
+    console.error('[kc-callback] signInToken failed', e);
     return errorRedirect(req, 'ticket_failed');
   }
   if (!ticket) return errorRedirect(req, 'ticket_failed');
@@ -122,5 +160,5 @@ async function handle(req: Request) {
 }
 
 export async function POST(req: Request) { return handle(req); }
-// Some KC setups may GET; support both, just in case
 export async function GET(req: Request) { return handle(req); }
+
