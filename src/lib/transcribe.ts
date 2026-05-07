@@ -5,11 +5,15 @@
 // without touching call sites.
 //
 // Active providers:
-//   - 'stub'   : default, returns 'queued' forever. Useful for UI scaffolding.
-//   - 'openai' : OpenAI Whisper API. Set TRANSCRIBE_PROVIDER=openai +
-//                OPENAI_API_KEY in env. Synchronous - returns 'done' with
-//                full transcript text on the same call.
-// Future: 'livekit', 'deepgram', 'assemblyai' - shape preserved.
+//   - 'stub'       : default, returns 'queued' forever. Useful for UI scaffolding.
+//   - 'openai'     : OpenAI Whisper API. Set TRANSCRIBE_PROVIDER=openai +
+//                    OPENAI_API_KEY in env. Synchronous - returns 'done' with
+//                    full transcript text on the same call. 25 MB file cap.
+//   - 'assemblyai' : AssemblyAI long-form. Set TRANSCRIBE_PROVIDER=assemblyai +
+//                    ASSEMBLYAI_API_KEY in env. Ingests directly from R2 signed
+//                    URL (no upload). Polls until 'completed' / 'error'. Handles
+//                    multi-GB files for >25 MB recordings.
+// Future: 'livekit', 'deepgram' - shape preserved.
 //
 // Persistence: jobs are written to transcribeStore (KV-backed) so callers
 // can poll GET /api/transcribe?id=<jobId> after submit.
@@ -34,6 +38,8 @@ export type TranscribeJob = {
   text?: string;
   /** Provider-specific error message. */
   error?: string;
+  /** Provider-side job id, when the upstream API exposes one (e.g. AssemblyAI). */
+  externalId?: string;
   /** ISO timestamps. */
   createdAt: string;
   updatedAt: string;
@@ -55,7 +61,10 @@ export function getTranscribeProvider(): TranscribeProvider {
   if (v === 'openai') {
     return process.env.OPENAI_API_KEY ? 'openai' : 'stub';
   }
-  if (v === 'livekit' || v === 'deepgram' || v === 'assemblyai') {
+  if (v === 'assemblyai') {
+    return process.env.ASSEMBLYAI_API_KEY ? 'assemblyai' : 'stub';
+  }
+  if (v === 'livekit' || v === 'deepgram') {
     // Not implemented yet, fall through to stub.
     return 'stub';
   }
@@ -100,6 +109,12 @@ export async function submitTranscribeJob(input: {
     return finished;
   }
 
+  if (provider === 'assemblyai') {
+    const finished = await runAssemblyAI(baseJob);
+    await transcribeStore.put(finished);
+    return finished;
+  }
+
   // Stub or unimplemented provider - return queued placeholder.
   return baseJob;
 }
@@ -120,7 +135,7 @@ export async function getTranscribeJob(id: string): Promise<TranscribeJob | null
  * the Whisper API, and returns a 'done' job with the full transcript text.
  *
  * Limits: Whisper accepts files up to 25 MB. Larger recordings will fail
- * with a clear error message. We can add chunked upload in a follow-up.
+ * with a clear error message - use the AssemblyAI provider for long-form.
  */
 async function runOpenAIWhisper(job: TranscribeJob): Promise<TranscribeJob> {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -132,30 +147,25 @@ async function runOpenAIWhisper(job: TranscribeJob): Promise<TranscribeJob> {
   }
 
   try {
-    // 1. Get a short-lived signed URL for the R2 object.
     const signed = await signGetUrl(job.recordingKey, 600);
     if (!signed) {
       return { ...job, status: 'error', error: 'Could not sign R2 URL', updatedAt: new Date().toISOString() };
     }
-
-    // 2. Stream-fetch the recording.
     const fileRes = await fetch(signed);
     if (!fileRes.ok) {
       return { ...job, status: 'error', error: 'R2 fetch ' + fileRes.status, updatedAt: new Date().toISOString() };
     }
     const blob = await fileRes.blob();
 
-    // Whisper API has a 25 MB hard limit.
     if (blob.size > 25 * 1024 * 1024) {
       return {
         ...job,
         status: 'error',
-        error: 'File too large for Whisper (' + (blob.size / 1024 / 1024).toFixed(1) + ' MB > 25 MB)',
+        error: 'File too large for Whisper (' + (blob.size / 1024 / 1024).toFixed(1) + ' MB > 25 MB). Switch TRANSCRIBE_PROVIDER to assemblyai for long-form.',
         updatedAt: new Date().toISOString(),
       };
     }
 
-    // 3. POST to Whisper.
     const filename = job.recordingKey.split('/').pop() || 'recording.mp4';
     const fd = new FormData();
     fd.append('file', blob, filename);
@@ -194,7 +204,122 @@ async function runOpenAIWhisper(job: TranscribeJob): Promise<TranscribeJob> {
   }
 }
 
+/**
+ * AssemblyAI long-form provider. Hands the API a signed R2 URL and polls
+ * the resulting transcript id until it resolves to 'completed' or 'error'.
+ *
+ * Handles multi-GB recordings without buffering them through this lambda,
+ * so it's the right choice when Whisper's 25 MB cap is too small.
+ *
+ * Polling cap: ~90 seconds (30 attempts x 3s). For longer files we'd return
+ * a 'running' job with externalId so the caller can poll GET /api/transcribe
+ * later, but most <2h recordings finish well under that cap.
+ */
+async function runAssemblyAI(job: TranscribeJob): Promise<TranscribeJob> {
+  const apiKey = process.env.ASSEMBLYAI_API_KEY;
+  if (!apiKey) {
+    return { ...job, status: 'error', error: 'ASSEMBLYAI_API_KEY missing', updatedAt: new Date().toISOString() };
+  }
+  if (!isR2Configured()) {
+    return { ...job, status: 'error', error: 'R2 not configured - cannot sign URL', updatedAt: new Date().toISOString() };
+  }
+
+  try {
+    // 1. Sign a long-lived R2 URL (1h) so AssemblyAI's pipeline has time to ingest.
+    const signed = await signGetUrl(job.recordingKey, 60 * 60);
+    if (!signed) {
+      return { ...job, status: 'error', error: 'Could not sign R2 URL', updatedAt: new Date().toISOString() };
+    }
+
+    // 2. Submit transcription job by audio URL (no upload).
+    const submitRes = await fetch('https://api.assemblyai.com/v2/transcript', {
+      method: 'POST',
+      headers: {
+        Authorization: apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        audio_url: signed,
+        language_code: job.language || undefined,
+        speaker_labels: true,
+        punctuate: true,
+        format_text: true,
+      }),
+    });
+    if (!submitRes.ok) {
+      const errText = await submitRes.text().catch(() => '');
+      return {
+        ...job,
+        status: 'error',
+        error: 'AssemblyAI submit ' + submitRes.status + ': ' + errText.slice(0, 200),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    const submitJson = (await submitRes.json()) as { id?: string; error?: string };
+    const externalId = submitJson.id;
+    if (!externalId) {
+      return {
+        ...job,
+        status: 'error',
+        error: 'AssemblyAI returned no transcript id: ' + (submitJson.error || 'unknown'),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    // 3. Poll for completion. Bail after ~90s and return a 'running' job that
+    //    upstream callers can re-poll via GET /api/transcribe?id=...
+    const maxAttempts = 30;
+    for (let i = 0; i < maxAttempts; i++) {
+      await sleep(3000);
+      const pollRes = await fetch('https://api.assemblyai.com/v2/transcript/' + externalId, {
+        headers: { Authorization: apiKey },
+      });
+      if (!pollRes.ok) continue;
+      const j = (await pollRes.json()) as { status?: string; text?: string; error?: string };
+      if (j.status === 'completed') {
+        return {
+          ...job,
+          status: 'done',
+          text: j.text || '',
+          externalId,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      if (j.status === 'error') {
+        return {
+          ...job,
+          status: 'error',
+          externalId,
+          error: 'AssemblyAI: ' + (j.error || 'unknown'),
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      // queued / processing - continue polling
+    }
+
+    // Polling cap reached - return a 'running' job so the client can re-poll.
+    return {
+      ...job,
+      status: 'running',
+      externalId,
+      error: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+  } catch (e: unknown) {
+    return {
+      ...job,
+      status: 'error',
+      error: e instanceof Error ? e.message : 'Unknown AssemblyAI error',
+      updatedAt: new Date().toISOString(),
+    };
+  }
+}
+
 // ---------- helpers ----------
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function cryptoRandomId(): string {
   try {
