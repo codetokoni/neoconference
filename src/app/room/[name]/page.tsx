@@ -21,6 +21,7 @@ import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import RoomIdleController from "@/components/RoomIdleController";
 import GoLiveButton from "@/components/GoLiveButton";
 import LiveCaptions from "@/components/LiveCaptions";
+import ReactionsBar from "@/components/ReactionsBar";
 import SpeakerBadge from "@/components/SpeakerBadge";
 
 type TokenResponse = { token: string; wsUrl: string };
@@ -74,7 +75,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     }
   };
 
-  if (!isLoaded) return <div className="p-8">Loading…</div>;
+  if (!isLoaded) return <div className="p-8">Loadingâ¦</div>;
 
   if (!isSignedIn) {
     return (
@@ -95,7 +96,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
         </p>
         <p className="text-xs text-red-600 break-all">{error}</p>
         <a href="/" className="inline-block mt-6 underline text-sm">
-          ← Back to home
+          â Back to home
         </a>
       </div>
     );
@@ -128,7 +129,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     );
   }
 
-  if (!token || !wsUrl) return <div className="p-8">Connecting…</div>;
+  if (!token || !wsUrl) return <div className="p-8">Connectingâ¦</div>;
 
   return (
     <RoomContainer
@@ -273,6 +274,7 @@ function RoomContainer({
         <RoomIdleController /><VideoConference />
         <RoomAudioRenderer />
         <LiveCaptions />
+        <ReactionsBar />
               <SpeakerBadge />
         {showPeople && (
           <ParticipantsPanel onClose={() => setShowPeople(false)} />
@@ -437,12 +439,12 @@ function ParticipantsPanel({ onClose }: { onClose: () => void }) {
                 {display}
                 {p.isLocal ? " (you)" : ""}
               </span>
-              {handUp && <span title="Hand raised">✋</span>}
+              {handUp && <span title="Hand raised">â</span>}
               <span title={micOn ? "Mic on" : "Mic muted"}>
-                {micOn ? "🎤" : "🔇"}
+                {micOn ? "ð¤" : "ð"}
               </span>
               <span title={camOn ? "Camera on" : "Camera off"}>
-                {camOn ? "🎥" : "📷"}
+                {camOn ? "ð¥" : "ð·"}
               </span>
             </li>
           );
@@ -488,7 +490,7 @@ function RaiseHandButton() {
         boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
       }}
     >
-      {raised ? "✋ Lower hand" : "✋ Raise hand"}
+      {raised ? "â Lower hand" : "â Raise hand"}
     </button>
   );
 }
@@ -609,7 +611,7 @@ function RecordingControls({ roomName }: { roomName: string }) {
           url: data.downloadUrl,
         });
       } else {
-        setToast({ message: "Recording stopped (file uploading…)" });
+        setToast({ message: "Recording stopped (file uploadingâ¦)" });
         setTimeout(() => setToast(null), 5000);
       }
     } catch (e: any) {
@@ -659,7 +661,7 @@ function RecordingControls({ roomName }: { roomName: string }) {
           REC
           {remoteRecording?.by ? (
             <span style={{ fontWeight: 400, opacity: 0.9 }}>
-              · {remoteRecording.by}
+              Â· {remoteRecording.by}
             </span>
           ) : null}
         </div>
@@ -687,10 +689,10 @@ function RecordingControls({ roomName }: { roomName: string }) {
         }}
       >
         {busy
-          ? "…"
+          ? "â¦"
           : egressId
-          ? "■ Stop recording"
-          : "● Record"}
+          ? "â  Stop recording"
+          : "â Record"}
       </button>
 
       {/* Toast (e.g. download URL) */}
@@ -741,7 +743,7 @@ function RecordingControls({ roomName }: { roomName: string }) {
               opacity: 0.7,
             }}
           >
-            ✕
+            â
           </button>
         </div>
       )}
@@ -827,3 +829,4 @@ function downloadTranscript(
     a.remove();
   }, 100);
 }
+
