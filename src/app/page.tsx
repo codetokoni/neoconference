@@ -62,6 +62,10 @@ export default function Home() {
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h7A2.5 2.5 0 0 1 15 7.5v9A2.5 2.5 0 0 1 12.5 19h-7A2.5 2.5 0 0 1 3 16.5v-9Zm14 1.2 3.3-2a1 1 0 0 1 1.5.86v8.88a1 1 0 0 1-1.5.86L17 15.3V8.7Z"/></svg>
                   Start a meeting
                 </button>
+                <Link href="/dashboard/new" className="neo-btn-ghost text-base px-6 py-3.5 inline-flex items-center gap-2">
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>
+                  Create event
+                </Link>
                 <div className="flex w-full sm:w-auto items-stretch gap-2">
                   <input
                     value={join}
@@ -164,6 +168,7 @@ export default function Home() {
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
             <SignedIn>
               <button onClick={startNew} className="neo-btn px-7 py-3.5">Start a meeting</button>
+              <Link href="/dashboard/new" className="neo-btn-ghost px-7 py-3.5">Create event</Link>
               <Link href="#" onClick={(e) => { e.preventDefault(); document.getElementById("join-quick")?.focus(); }} className="neo-btn-ghost px-7 py-3.5">Join with code</Link>
             </SignedIn>
             <SignedOut>
