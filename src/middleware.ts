@@ -15,6 +15,8 @@ const isPublicRoute = createRouteMatcher([
   '/api/events/by-domain',
   '/api/stripe/webhook',
   '/api/events/(.*)/checkout',
+  '/api/invites/(.*)',
+  '/i/(.*)',
 ]);
 
 // Hosts that ARE the canonical app (skip custom-domain rewrite for these).
