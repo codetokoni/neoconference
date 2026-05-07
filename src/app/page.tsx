@@ -53,7 +53,7 @@ export default function Home() {
 
             <p className="mt-6 max-w-xl text-lg text-cyan-100/70 leading-relaxed">
               NeoConference is a next-generation video platform built for crystal-clear conversations,
-              effortless joining, and a beautifully immersive room experience â on any device.
+              effortless joining, and a beautifully immersive room experience — on any device.
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -86,7 +86,7 @@ export default function Home() {
               </SignedIn>
               <SignedOut>
                 <SignUpButton mode="modal">
-                  <button className="neo-btn text-base px-6 py-3.5">Get started â it&apos;s free</button>
+                  <button className="neo-btn text-base px-6 py-3.5">Get started — it&apos;s free</button>
                 </SignUpButton>
                 <SignInButton mode="modal">
                   <button className="neo-btn-ghost text-base px-6 py-3.5">Sign in</button>
@@ -172,10 +172,10 @@ export default function Home() {
       <section className="relative mx-auto max-w-7xl px-6 py-20">
         <div className="max-w-2xl">
           <h2 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight">Designed for the next decade of meetings.</h2>
-          <p className="mt-3 text-cyan-100/65">A futuristic interface, premium controls, and a focus on the only thing that matters â your conversation.</p>
+          <p className="mt-3 text-cyan-100/65">A futuristic interface, premium controls, and a focus on the only thing that matters — your conversation.</p>
         </div>
         <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          <Feature title="Instant rooms" desc="Spin up a secure room in one click. Share a link, your guests just join â no installs." icon={<IconBolt />} />
+          <Feature title="Instant rooms" desc="Spin up a secure room in one click. Share a link, your guests just join — no installs." icon={<IconBolt />} />
           <Feature title="Studio-grade audio" desc="Adaptive bitrate, echo cancellation and noise suppression keep voices crystal clear." icon={<IconWave />} />
           <Feature title="HD recording" desc="One-tap record. Files land in secure cloud storage with download anywhere." icon={<IconRec />} />
           <Feature title="Live participants" desc="Real-time roster with active speaker highlighting and presence dots." icon={<IconUsers />} />
@@ -208,7 +208,7 @@ export default function Home() {
       </section>
 
       <footer className="relative mx-auto max-w-7xl px-6 pb-10 text-center text-xs text-cyan-100/35">
-        © {new Date().getFullYear()} NeoConference â Crafted for premium real-time experiences.
+        © {new Date().getFullYear()} NeoConference — Crafted for premium real-time experiences.
       </footer>
     </div>
   );
