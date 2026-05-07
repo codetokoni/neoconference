@@ -12,6 +12,18 @@ import type { ChatMessage } from '@/types/event';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+
+async function findEvent(idOrSlugOrRoom: string) {
+  let ev = await eventStore.byId(idOrSlugOrRoom);
+  if (ev) return ev;
+  ev = await eventStore.bySlug(idOrSlugOrRoom);
+  if (ev) return ev;
+  try {
+    const all = await eventStore.listAll();
+    return all.find((e) => (e as any).livekitRoom === idOrSlugOrRoom) || null;
+  } catch { return null; }
+}
+
 function rid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 }
@@ -20,7 +32,7 @@ export async function GET(
   _req: Request,
   { params }: { params: { id: string } }
 ) {
-  const ev = await eventStore.byId(params.id);
+  const ev = await findEvent(params.id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
   const messages = await chatStore.list(ev.id);
   return NextResponse.json({ messages });
@@ -33,7 +45,7 @@ export async function POST(
   const { userId } = auth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const ev = await eventStore.byId(params.id);
+  const ev = await findEvent(params.id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   let body: any = {};
