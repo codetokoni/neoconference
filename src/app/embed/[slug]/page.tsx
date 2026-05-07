@@ -30,8 +30,7 @@ function fmt(iso?: string) {
 export default async function EmbedPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const ev = await eventStore.bySlug(slug);
-  if (!ev || ev.vi
-sibility === "private") notFound();
+  if (!ev || ev.visibility === "private") notFound();
 
   const hls = pickHls(ev as any);
   const isLive = ev.state === "live" && hls;
