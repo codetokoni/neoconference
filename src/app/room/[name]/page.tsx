@@ -7,7 +7,6 @@ import {
   LiveKitRoom,
   VideoConference,
   RoomAudioRenderer,
-  PreJoin,
   type LocalUserChoices,
   useRoomContext,
   useChat,
@@ -17,6 +16,7 @@ import {
 import { RoomEvent, Track, type Participant } from "livekit-client";
 import "@livekit/components-styles";
 import "./initials-overlay.css";
+import { RoomNameEntry } from "@/components/RoomNameEntry";
 
 type TokenResponse = { token: string; wsUrl: string };
 
@@ -115,15 +115,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
           </button>
         </div>
         <div data-lk-theme="default" className="w-full max-w-xl">
-          <PreJoin
-            defaults={{
-              username: defaultUsername,
-              videoEnabled: true,
-              audioEnabled: true,
-            }}
-            onSubmit={(values) => setChoices(values)}
-            onError={(err) => console.error("PreJoin error", err)}
-          />
+          <RoomNameEntry roomName={roomName} defaultName={defaultUsername} onSubmit={(values) => setChoices(values as LocalUserChoices)} onCopyLink={copyLink} copied={copied} />
         </div>
       </div>
     );
