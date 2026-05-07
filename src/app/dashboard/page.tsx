@@ -162,6 +162,9 @@ function EventCard({ ev }: { ev: NeoEvent }) {
         )}
 
         <div className="mt-4 flex items-center gap-2 text-xs">
+          <Link href={'/dashboard/e/' + ev.slug} className="flex-1 text-center rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 hover:bg-white/[0.08] transition">
+            Manage
+          </Link>
           <Link href={'/e/' + ev.slug + '/replay'} className="flex-1 text-center rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 hover:bg-white/[0.08] transition">
             Replay
           </Link>
