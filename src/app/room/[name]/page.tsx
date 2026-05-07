@@ -21,6 +21,7 @@ import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import RoomIdleController from "@/components/RoomIdleController";
 import GoLiveButton from "@/components/GoLiveButton";
 import LiveCaptions from "@/components/LiveCaptions";
+import SpeakerBadge from "@/components/SpeakerBadge";
 
 type TokenResponse = { token: string; wsUrl: string };
 
@@ -272,6 +273,7 @@ function RoomContainer({
         <RoomIdleController /><VideoConference />
         <RoomAudioRenderer />
         <LiveCaptions />
+              <SpeakerBadge />
         {showPeople && (
           <ParticipantsPanel onClose={() => setShowPeople(false)} />
         )}
