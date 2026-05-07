@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useUser, RedirectToSignIn } from "@clerk/nextjs";
 import {
   LiveKitRoom,
@@ -33,6 +33,8 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   const [copied, setCopied] = useState(false);
 
   const roomName = decodeURIComponent(params.name);
+  const searchParams = useSearchParams();
+  const eventSlug = searchParams?.get("event") || undefined;
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !choices) return;
@@ -131,6 +133,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
       token={token}
       wsUrl={wsUrl}
       roomName={roomName}
+      eventSlug={eventSlug}
       choices={choices}
       onLeave={() => router.push("/")}
     />
@@ -141,12 +144,14 @@ function RoomContainer({
   token,
   wsUrl,
   roomName,
+  eventSlug,
   choices,
   onLeave,
 }: {
   token: string;
   wsUrl: string;
   roomName: string;
+  eventSlug?: string;
   choices: LocalUserChoices;
   onLeave: () => void;
 }) {
@@ -259,7 +264,7 @@ function RoomContainer({
         </button>
         <ParticipantCountBadge /><RaiseHandButton />
         <RecordingControls roomName={roomName} />
-        <GoLiveButton roomName={roomName} />
+        <GoLiveButton roomName={roomName} eventSlug={eventSlug} />
       </div>
         <ChatTranscriptDownloader roomName={roomName} />
         <InitialsOverlay />
