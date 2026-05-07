@@ -22,6 +22,7 @@ import RoomIdleController from "@/components/RoomIdleController";
 import GoLiveButton from "@/components/GoLiveButton";
 import LiveCaptions from "@/components/LiveCaptions";
 import ReactionsBar from "@/components/ReactionsBar";
+import ChatPanel from "@/components/ChatPanel";
 import SpeakerBadge from "@/components/SpeakerBadge";
 
 type TokenResponse = { token: string; wsUrl: string };
@@ -75,7 +76,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     }
   };
 
-  if (!isLoaded) return <div className="p-8">Loadingâ¦</div>;
+  if (!isLoaded) return <div className="p-8">LoadingÃ¢ÂÂ¦</div>;
 
   if (!isSignedIn) {
     return (
@@ -96,7 +97,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
         </p>
         <p className="text-xs text-red-600 break-all">{error}</p>
         <a href="/" className="inline-block mt-6 underline text-sm">
-          â Back to home
+          Ã¢ÂÂ Back to home
         </a>
       </div>
     );
@@ -129,7 +130,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     );
   }
 
-  if (!token || !wsUrl) return <div className="p-8">Connectingâ¦</div>;
+  if (!token || !wsUrl) return <div className="p-8">ConnectingÃ¢ÂÂ¦</div>;
 
   return (
     <RoomContainer
@@ -162,6 +163,7 @@ function RoomContainer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [hideSelf, setHideSelf] = useState(false);
 
   useEffect(() => {
@@ -275,7 +277,18 @@ function RoomContainer({
         <RoomAudioRenderer />
         <LiveCaptions />
         <ReactionsBar />
+        <ChatPanel eventId={params.name} open={showChat} onClose={() => setShowChat(false)} />
               <SpeakerBadge />
+        {!showChat ? (
+          <button
+            type="button"
+            onClick={() => setShowChat(true)}
+            aria-label="Open chat"
+            style={{ position: "fixed", top: 14, right: 14, zIndex: 65, padding: "8px 12px", borderRadius: 10, background: "rgba(15,23,42,0.7)", border: "1px solid rgba(34,211,238,0.35)", color: "#67e8f9", fontSize: 12, fontWeight: 600, cursor: "pointer", backdropFilter: "blur(8px)" }}
+          >
+            Chat
+          </button>
+        ) : null}
         {showPeople && (
           <ParticipantsPanel onClose={() => setShowPeople(false)} />
         )}
@@ -439,12 +452,12 @@ function ParticipantsPanel({ onClose }: { onClose: () => void }) {
                 {display}
                 {p.isLocal ? " (you)" : ""}
               </span>
-              {handUp && <span title="Hand raised">â</span>}
+              {handUp && <span title="Hand raised">Ã¢ÂÂ</span>}
               <span title={micOn ? "Mic on" : "Mic muted"}>
-                {micOn ? "ð¤" : "ð"}
+                {micOn ? "Ã°ÂÂÂ¤" : "Ã°ÂÂÂ"}
               </span>
               <span title={camOn ? "Camera on" : "Camera off"}>
-                {camOn ? "ð¥" : "ð·"}
+                {camOn ? "Ã°ÂÂÂ¥" : "Ã°ÂÂÂ·"}
               </span>
             </li>
           );
@@ -490,7 +503,7 @@ function RaiseHandButton() {
         boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
       }}
     >
-      {raised ? "â Lower hand" : "â Raise hand"}
+      {raised ? "Ã¢ÂÂ Lower hand" : "Ã¢ÂÂ Raise hand"}
     </button>
   );
 }
@@ -611,7 +624,7 @@ function RecordingControls({ roomName }: { roomName: string }) {
           url: data.downloadUrl,
         });
       } else {
-        setToast({ message: "Recording stopped (file uploadingâ¦)" });
+        setToast({ message: "Recording stopped (file uploadingÃ¢ÂÂ¦)" });
         setTimeout(() => setToast(null), 5000);
       }
     } catch (e: any) {
@@ -661,7 +674,7 @@ function RecordingControls({ roomName }: { roomName: string }) {
           REC
           {remoteRecording?.by ? (
             <span style={{ fontWeight: 400, opacity: 0.9 }}>
-              Â· {remoteRecording.by}
+              ÃÂ· {remoteRecording.by}
             </span>
           ) : null}
         </div>
@@ -689,10 +702,10 @@ function RecordingControls({ roomName }: { roomName: string }) {
         }}
       >
         {busy
-          ? "â¦"
+          ? "Ã¢ÂÂ¦"
           : egressId
-          ? "â  Stop recording"
-          : "â Record"}
+          ? "Ã¢ÂÂ  Stop recording"
+          : "Ã¢ÂÂ Record"}
       </button>
 
       {/* Toast (e.g. download URL) */}
@@ -743,7 +756,7 @@ function RecordingControls({ roomName }: { roomName: string }) {
               opacity: 0.7,
             }}
           >
-            â
+            Ã¢ÂÂ
           </button>
         </div>
       )}
