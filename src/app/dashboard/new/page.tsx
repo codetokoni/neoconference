@@ -75,32 +75,32 @@ export default function NewEventPage() {
         <div className="absolute bottom-0 left-1/3 h-[400px] w-[400px] rounded-full bg-fuchsia-500/10 blur-[120px]" />
       </div>
 
-      <div className="relative mx-auto max-w-5xl px-6 py-12 md:py-20">
-        <div className="mb-10 flex items-center justify-between">
-          <Link href="/" className="text-sm text-white/60 hover:text-white transition">
-            ← Back to NeoConference
+      <div className="relative mx-auto max-w-5xl px-4 sm:px-6 py-10 md:py-20">
+        <div className="mb-8 sm:mb-10 flex items-center justify-between gap-4">
+          <Link href="/" className="text-xs sm:text-sm text-white/60 hover:text-white transition">
+            \u2190 Back to NeoConference
           </Link>
-          <span className="text-xs uppercase tracking-[0.3em] text-cyan-300/70">
+          <span className="text-[10px] sm:text-xs uppercase tracking-[0.3em] text-cyan-300/70">
             New Event
           </span>
         </div>
 
-        <h1 className="text-4xl md:text-6xl font-semibold tracking-tight">
+        <h1 className="text-3xl sm:text-4xl md:text-6xl font-semibold tracking-tight">
           Create your <span className="bg-gradient-to-r from-cyan-300 via-sky-300 to-indigo-300 bg-clip-text text-transparent">cinematic</span> event
         </h1>
-        <p className="mt-4 max-w-2xl text-white/60">
+        <p className="mt-3 sm:mt-4 max-w-2xl text-sm sm:text-base text-white/60">
           One action provisions everything: a smart link, a scannable QR, optional RTMP livestream, and an HLS replay-ready URL.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-10 grid gap-6 rounded-3xl border border-white/10 bg-white/[0.03] p-6 md:p-10 backdrop-blur-xl shadow-[0_0_60px_-20px_rgba(34,211,238,0.25)]">
+        <form onSubmit={handleSubmit} className="mt-8 sm:mt-10 grid gap-5 sm:gap-6 rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:p-6 md:p-10 backdrop-blur-xl shadow-[0_0_60px_-20px_rgba(34,211,238,0.25)]">
           <div className="grid gap-2">
             <label className="text-xs uppercase tracking-[0.2em] text-white/50">Title</label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Sunday Service · Q3 All-Hands · Launch Stream"
+              placeholder="Sunday Service \u00b7 Q3 All-Hands \u00b7 Launch Stream"
               required
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-base outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 transition"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm sm:text-base outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 transition"
             />
           </div>
 
@@ -111,18 +111,18 @@ export default function NewEventPage() {
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               placeholder="What is this event about?"
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-base outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 transition resize-none"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm sm:text-base outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 transition resize-none"
             />
           </div>
 
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-5 sm:gap-6 md:grid-cols-2">
             <div className="grid gap-2">
               <label className="text-xs uppercase tracking-[0.2em] text-white/50">Scheduled at</label>
               <input
                 type="datetime-local"
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-base outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 transition"
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm sm:text-base outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 transition"
               />
             </div>
             <div className="grid gap-2">
@@ -132,20 +132,20 @@ export default function NewEventPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Leave blank for open access"
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-base outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 transition"
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm sm:text-base outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 transition"
               />
             </div>
           </div>
 
           <div className="grid gap-3">
             <label className="text-xs uppercase tracking-[0.2em] text-white/50">Event type</label>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {(['meeting', 'webinar', 'livestream'] as const).map((t) => (
                 <button
                   type="button"
                   key={t}
                   onClick={() => setEventType(t)}
-                  className={`rounded-xl border px-4 py-3 text-sm capitalize transition ${
+                  className={`rounded-xl border px-2 sm:px-4 py-3 text-xs sm:text-sm capitalize transition ${
                     eventType === t
                       ? 'border-cyan-400/70 bg-cyan-400/10 text-cyan-100 shadow-[0_0_30px_-10px_rgba(34,211,238,0.6)]'
                       : 'border-white/10 bg-black/30 text-white/70 hover:border-white/20'
@@ -157,14 +157,14 @@ export default function NewEventPage() {
             </div>
           </div>
 
-          <label className="flex items-center gap-3 cursor-pointer select-none">
+          <label className="flex items-start sm:items-center gap-3 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={enableStream}
               onChange={(e) => setEnableStream(e.target.checked)}
-              className="h-5 w-5 rounded border-white/20 bg-black/40 text-cyan-400 focus:ring-cyan-400/40"
+              className="mt-0.5 sm:mt-0 h-5 w-5 rounded border-white/20 bg-black/40 text-cyan-400 focus:ring-cyan-400/40 shrink-0"
             />
-            <span className="text-sm text-white/80">
+            <span className="text-xs sm:text-sm text-white/80">
               Provision RTMP livestream + HLS replay (StreamLab Cloud)
             </span>
           </label>
@@ -172,24 +172,24 @@ export default function NewEventPage() {
           <button
             type="submit"
             disabled={submitting || !title.trim()}
-            className="mt-2 w-full rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-500 px-6 py-4 text-base font-semibold text-black shadow-[0_0_40px_-10px_rgba(34,211,238,0.7)] transition hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="mt-2 w-full rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-500 px-6 py-3.5 sm:py-4 text-sm sm:text-base font-semibold text-black shadow-[0_0_40px_-10px_rgba(34,211,238,0.7)] transition hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {submitting ? 'Provisioning…' : 'Create event'}
+            {submitting ? 'Provisioning\u2026' : 'Create event'}
           </button>
         </form>
 
         {result?.ok && result.event && (
-          <div className="mt-10 rounded-3xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/[0.07] to-indigo-500/[0.04] p-6 md:p-10 backdrop-blur-xl shadow-[0_0_80px_-20px_rgba(34,211,238,0.4)]">
+          <div className="mt-8 sm:mt-10 rounded-3xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/[0.07] to-indigo-500/[0.04] p-5 sm:p-6 md:p-10 backdrop-blur-xl shadow-[0_0_80px_-20px_rgba(34,211,238,0.4)]">
             <div className="flex items-center gap-3">
               <span className="inline-flex h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_12px_2px_rgba(103,232,249,0.9)]" />
-              <h2 className="text-2xl font-semibold">Event ready</h2>
+              <h2 className="text-xl sm:text-2xl font-semibold">Event ready</h2>
             </div>
-            <p className="mt-2 text-white/60 text-sm">
+            <p className="mt-2 text-white/60 text-xs sm:text-sm">
               Share these with your audience. Anyone with the link or QR can join according to your settings.
             </p>
 
-            <div className="mt-8 grid gap-6 md:grid-cols-[1fr_auto] items-start">
-              <div className="space-y-4">
+            <div className="mt-6 sm:mt-8 grid gap-6 md:grid-cols-[1fr_auto] items-start">
+              <div className="space-y-4 order-2 md:order-1">
                 <Field label="Event link" value={result.event.eventUrl} onCopy={() => copy(result.event!.eventUrl, 'event')} copied={copied === 'event'} />
                 {result.event.shortUrl && (
                   <Field label="Short link" value={result.event.shortUrl} onCopy={() => copy(result.event!.shortUrl!, 'short')} copied={copied === 'short'} />
@@ -204,13 +204,12 @@ export default function NewEventPage() {
                   <Field label="HLS playback" value={result.event.hlsUrl} onCopy={() => copy(result.event!.hlsUrl!, 'hls')} copied={copied === 'hls'} mono />
                 )}
               </div>
-
-              <div className="flex flex-col items-center gap-3">
+              <div className="flex flex-col items-center gap-3 order-1 md:order-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={result.event.qrUrl}
                   alt="Event QR code"
-                  className="h-44 w-44 rounded-2xl border border-white/15 bg-white p-3"
+                  className="h-36 w-36 sm:h-44 sm:w-44 rounded-2xl border border-white/15 bg-white p-3"
                 />
                 <a
                   href={result.event.qrUrl + '?format=svg&download=1'}
@@ -222,16 +221,18 @@ export default function NewEventPage() {
               </div>
             </div>
 
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-6 sm:mt-8 grid grid-cols-1 sm:flex sm:flex-wrap gap-3">
               <button
                 onClick={() => router.push(`/e/${result.event!.slug}`)}
-                className="rounded-xl bg-white text-black px-5 py-3 text-sm font-medium hover:bg-white/90 transition"
+                className="w-full sm:w-auto rounded-xl bg-white text-black px-5 py-3 text-sm font-medium hover:bg-white/90 transition"
               >
-                Open event page →
+                Open event page \u2192
               </button>
               <button
-                onClick={() => { setResult(null); setTitle(''); setDescription(''); setPassword(''); setScheduledAt(''); }}
-                className="rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm text-white/80 hover:bg-white/10 transition"
+                onClick={() => {
+                  setResult(null); setTitle(''); setDescription(''); setPassword(''); setScheduledAt('');
+                }}
+                className="w-full sm:w-auto rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm text-white/80 hover:bg-white/10 transition"
               >
                 Create another
               </button>
@@ -265,12 +266,12 @@ function Field({
   secret?: boolean;
 }) {
   const [reveal, setReveal] = useState(false);
-  const display = secret && !reveal ? '•'.repeat(Math.min(value.length, 28)) : value;
+  const display = secret && !reveal ? '\u2022'.repeat(Math.min(value.length, 28)) : value;
   return (
     <div>
       <div className="text-[11px] uppercase tracking-[0.22em] text-white/45 mb-1.5">{label}</div>
       <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2.5">
-        <code className={(mono ? 'font-mono ' : '') + 'flex-1 truncate text-sm text-white/85'}>{display}</code>
+        <code className={(mono ? 'font-mono ' : '') + 'flex-1 truncate text-xs sm:text-sm text-white/85'}>{display}</code>
         {secret && (
           <button onClick={() => setReveal((v) => !v)} className="text-[11px] text-white/50 hover:text-white/80 transition px-2">
             {reveal ? 'Hide' : 'Show'}
