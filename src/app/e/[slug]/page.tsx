@@ -10,14 +10,17 @@ import { eventStore } from '@/lib/eventStore';
 import { toPublicView } from '@/types/event';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import TicketsList from './TicketsList';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export default async function EventResolverPage({
   params,
+  searchParams,
 }: {
   params: { slug: string };
+  searchParams?: { ticket?: string };
 }) {
   const ev = await eventStore.bySlug(params.slug);
   if (!ev) return notFound();
@@ -93,6 +96,14 @@ export default async function EventResolverPage({
           </section>
         ) : null}
 
+        {searchParams?.ticket === 'success' ? (
+          <div className="neo-event-section" style={{ background: 'rgba(52,211,153,0.15)', border: '1px solid rgba(52,211,153,0.4)' }}>
+            <p style={{ color: '#6ee7b7' }}>Payment confirmed. You’re on the list — join when the host opens the room.</p>
+          </div>
+        ) : null}
+        {v.tickets && v.tickets.length > 0 && v.state !== 'ended' && v.state !== 'replay' ? (
+          <TicketsList eventId={ev.id} tickets={v.tickets} />
+        ) : null}
         <footer className="neo-event-footer">
           <img
             className="neo-event-qr"
