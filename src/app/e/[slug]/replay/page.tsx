@@ -68,6 +68,8 @@ function ReplayView({ view }: { view: PublicEventView }) {
               src={view.hlsUrl}
               controls
               playsInline
+              data-replay-player="1"
+              id="replay-video"
               className="w-full aspect-video bg-black"
             />
           </section>
@@ -94,6 +96,54 @@ function ReplayView({ view }: { view: PublicEventView }) {
           </section>
         )}
 
+        {/* Chapters (AI-derived or manual) */}
+        {Array.isArray(view.chapters) && view.chapters.length > 0 && (
+          <section className="mt-8 sm:mt-10 rounded-3xl border border-cyan-400/20 bg-gradient-to-br from-cyan-500/[0.06] via-white/[0.02] to-transparent p-5 sm:p-6 md:p-8">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_2px_rgba(34,211,238,0.7)]" />
+              <h2 className="text-lg sm:text-xl font-semibold">Chapters</h2>
+              <span className="ml-auto text-[10px] uppercase tracking-[0.22em] text-white/40">Tap to seek</span>
+            </div>
+            <p className="mt-1 text-white/55 text-xs">Auto-generated from the transcript. Click a chapter to jump in the player above.</p>
+            <ol className="mt-4 grid sm:grid-cols-2 gap-2">
+              {view.chapters.map((c, i) => {
+                const h = Math.floor(c.startSec / 3600);
+                const m = Math.floor((c.startSec % 3600) / 60);
+                const s = c.startSec % 60;
+                const pad = (n: number) => (n < 10 ? '0' + n : '' + n);
+                const ts = h > 0 ? h + ':' + pad(m) + ':' + pad(s) : m + ':' + pad(s);
+                const sourceLabel = c.source === 'ai' ? 'AI · gpt-4o-mini' : c.source === 'manual' ? 'Host edit' : 'Auto · heuristic';
+                return (
+                  <li key={c.id || ('ch-' + i)}>
+                    <a
+                      href={'#t=' + c.startSec}
+                      data-seek-sec={c.startSec}
+                      className="group block w-full text-left rounded-xl border border-white/5 bg-black/30 hover:bg-cyan-400/[0.06] hover:border-cyan-300/30 transition-colors p-3"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="shrink-0 mt-0.5 inline-flex items-center justify-center h-6 min-w-[3rem] px-2 rounded-md bg-cyan-400/10 text-cyan-200 text-[11px] font-mono tabular-nums tracking-tight border border-cyan-300/20 group-hover:bg-cyan-400/20">
+                          {ts}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-white/90 truncate">{c.label}</span>
+                          {c.summary && (
+                            <span className="block mt-0.5 text-[12px] text-white/55 line-clamp-2">{c.summary}</span>
+                          )}
+                          <span className="block mt-1 text-[10px] uppercase tracking-[0.18em] text-white/30">{sourceLabel}</span>
+                        </span>
+                      </div>
+                    </a>
+                  </li>
+                );
+              })}
+            </ol>
+            <script
+              dangerouslySetInnerHTML={{
+                __html: "(function(){function go(s){var v=document.getElementById('replay-video');if(v){v.currentTime=parseFloat(s)||0;v.play&&v.play().catch(function(){});window.scrollTo({top:v.getBoundingClientRect().top+window.scrollY-40,behavior:'smooth'});}}document.addEventListener('click',function(e){var t=e.target;while(t&&t!==document){if(t.dataset&&t.dataset.seekSec){e.preventDefault();go(t.dataset.seekSec);return;}t=t.parentNode;}});var h=location.hash;if(h&&h.indexOf('#t=')===0){go(h.slice(3));}})();"
+              }}
+            />
+          </section>
+        )}
         {/* Transcripts */}
         {transcripts.length > 0 && (
           <section className="mt-8 sm:mt-10 rounded-3xl border border-fuchsia-400/20 bg-gradient-to-br from-fuchsia-500/[0.05] to-transparent p-5 sm:p-6 md:p-8">
