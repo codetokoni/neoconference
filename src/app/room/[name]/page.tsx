@@ -17,6 +17,7 @@ import { RoomEvent, Track, type Participant } from "livekit-client";
 import "@livekit/components-styles";
 import "./initials-overlay.css";
 import { RoomNameEntry } from "@/components/RoomNameEntry";
+import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 
 type TokenResponse = { token: string; wsUrl: string };
 
@@ -254,7 +255,7 @@ function RoomContainer({
         >
           {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
         </button>
-        <RaiseHandButton />
+        <ParticipantCountBadge /><RaiseHandButton />
         <RecordingControls roomName={roomName} />
       </div>
         <ChatTranscriptDownloader roomName={roomName} />
