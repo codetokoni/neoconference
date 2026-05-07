@@ -5,13 +5,17 @@
 // without touching call sites.
 //
 // Active providers:
-//   - 'stub'    : default, returns 'queued' forever. Useful for UI scaffolding.
-//   - 'openai'  : OpenAI Whisper API. Set TRANSCRIBE_PROVIDER=openai +
-//                 OPENAI_API_KEY in env. Synchronous - returns 'done' with
-//                 full transcript text on the same call.
+//   - 'stub'   : default, returns 'queued' forever. Useful for UI scaffolding.
+//   - 'openai' : OpenAI Whisper API. Set TRANSCRIBE_PROVIDER=openai +
+//                OPENAI_API_KEY in env. Synchronous - returns 'done' with
+//                full transcript text on the same call.
 // Future: 'livekit', 'deepgram', 'assemblyai' - shape preserved.
+//
+// Persistence: jobs are written to transcribeStore (KV-backed) so callers
+// can poll GET /api/transcribe?id=<jobId> after submit.
 
 import { signGetUrl, isR2Configured } from '@/lib/r2';
+import { transcribeStore } from '@/lib/transcribeStore';
 
 export type TranscribeJob = {
   /** Unique job id (used for polling / cancellation). */
@@ -66,6 +70,9 @@ export function isTranscribeConfigured(): boolean {
  * Submit a transcription job. When provider is configured, the job runs
  * synchronously and the returned object has status='done' + .text. In
  * stub mode the job returns 'queued' and never advances.
+ *
+ * Every job is persisted to transcribeStore (queued, then again on done/error)
+ * so callers can poll GET /api/transcribe?id=<jobId>.
  */
 export async function submitTranscribeJob(input: {
   recordingKey: string;
@@ -84,9 +91,13 @@ export async function submitTranscribeJob(input: {
     createdAt: now,
     updatedAt: now,
   };
+  // Persist immediately so polling works even before provider returns.
+  await transcribeStore.put(baseJob);
 
   if (provider === 'openai') {
-    return runOpenAIWhisper(baseJob);
+    const finished = await runOpenAIWhisper(baseJob);
+    await transcribeStore.put(finished);
+    return finished;
   }
 
   // Stub or unimplemented provider - return queued placeholder.
@@ -94,12 +105,12 @@ export async function submitTranscribeJob(input: {
 }
 
 /**
- * Look up a job by id. Always returns null in stub mode (no persistence).
- * When KV-backed job persistence lands, this rehydrates from KV.
+ * Look up a job by id. Returns the persisted job from transcribeStore,
+ * or null if not found / KV not configured and the job has rotated out
+ * of the in-memory cache.
  */
-export async function getTranscribeJob(_id: string): Promise<TranscribeJob | null> {
-  // TODO(persistence): persist jobs in KV keyed by id and rehydrate here.
-  return null;
+export async function getTranscribeJob(id: string): Promise<TranscribeJob | null> {
+  return transcribeStore.get(id);
 }
 
 // ---------- providers ----------
@@ -130,7 +141,7 @@ async function runOpenAIWhisper(job: TranscribeJob): Promise<TranscribeJob> {
     // 2. Stream-fetch the recording.
     const fileRes = await fetch(signed);
     if (!fileRes.ok) {
-      return { ...job, status: 'error', error: `R2 fetch ${fileRes.status}`, updatedAt: new Date().toISOString() };
+      return { ...job, status: 'error', error: 'R2 fetch ' + fileRes.status, updatedAt: new Date().toISOString() };
     }
     const blob = await fileRes.blob();
 
@@ -139,7 +150,7 @@ async function runOpenAIWhisper(job: TranscribeJob): Promise<TranscribeJob> {
       return {
         ...job,
         status: 'error',
-        error: `File too large for Whisper (${(blob.size / 1024 / 1024).toFixed(1)} MB > 25 MB)`,
+        error: 'File too large for Whisper (' + (blob.size / 1024 / 1024).toFixed(1) + ' MB > 25 MB)',
         updatedAt: new Date().toISOString(),
       };
     }
@@ -157,17 +168,15 @@ async function runOpenAIWhisper(job: TranscribeJob): Promise<TranscribeJob> {
       headers: { Authorization: 'Bearer ' + apiKey },
       body: fd,
     });
-
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
       return {
         ...job,
         status: 'error',
-        error: `Whisper ${res.status}: ${errText.slice(0, 200)}`,
+        error: 'Whisper ' + res.status + ': ' + errText.slice(0, 200),
         updatedAt: new Date().toISOString(),
       };
     }
-
     const j = (await res.json()) as { text?: string };
     return {
       ...job,
