@@ -11,6 +11,8 @@ import EndEventButton from "./EndEventButton";
 import InviteSpeakers from "./InviteSpeakers";
 import EditMetadata from "./EditMetadata";
 import WaitingRoomPanel from "./WaitingRoomPanel";
+import ChaptersPanel from "./ChaptersPanel";
+import DomainPanel from "./DomainPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -258,6 +260,22 @@ export default async function EventAdminPage({
         <section className="space-y-3">
           <h2 className="text-sm uppercase tracking-widest text-slate-400">Waiting room</h2>
           <WaitingRoomPanel eventId={ev.id} initial={ev.waitingRoom || []} />
+        </section>
+
+        {/* Chapter markers */}
+        <section className="space-y-3">
+          <h2 className="text-sm uppercase tracking-widest text-slate-400">Chapter markers</h2>
+          <ChaptersPanel
+            eventId={ev.id}
+            initial={ev.chapters || []}
+            hasTranscript={(ev.recordings || []).some((r) => r.kind === 'transcript' && r.label)}
+          />
+        </section>
+
+        {/* Custom domain */}
+        <section className="space-y-3">
+          <h2 className="text-sm uppercase tracking-widest text-slate-400">Custom domain</h2>
+          <DomainPanel eventId={ev.id} slug={ev.slug} initial={ev.customDomain} />
         </section>
 
         <footer className="pt-6 border-t border-slate-900 text-xs text-slate-600">
