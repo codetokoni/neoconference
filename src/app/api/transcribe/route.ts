@@ -6,10 +6,12 @@
 // Submits an async transcription job. In stub mode (no provider env var
 // configured) the job stays 'queued' forever - useful for UI scaffolding.
 // Once TRANSCRIBE_PROVIDER + provider key are set, this dispatches to the
-// real provider and persists the job id for later polling.
+// real provider, persists the job in transcribeStore, and (when the job
+// resolves to 'done' with an eventSlug) appends a transcript artifact onto
+// the matching NeoEvent so the replay page can render it.
 //
 // GET /api/transcribe?id=<jobId>
-// Returns the current status of a previously submitted job.
+// Returns the current status of a previously submitted job (from transcribeStore).
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
@@ -19,6 +21,8 @@ import {
   getTranscribeProvider,
   isTranscribeConfigured,
 } from '@/lib/transcribe';
+import { eventStore } from '@/lib/eventStore';
+import type { NeoEvent, RecordingArtifact } from '@/types/event';
 
 export const runtime = 'nodejs';
 
@@ -59,6 +63,33 @@ export async function POST(req: NextRequest) {
       language: body.language,
     });
 
+    // If the provider returned a finished transcript and the job was tied
+    // to an event, persist the transcript onto the event so /e/<slug>/replay
+    // can render it without a separate poll.
+    if (job.status === 'done' && job.text && job.eventSlug) {
+      try {
+        const ev = await eventStore.bySlug(job.eventSlug);
+        if (ev) {
+          const artifact: RecordingArtifact = {
+            key: 'transcript:' + job.id,
+            kind: 'transcript',
+            label: job.text,
+            createdAt: job.updatedAt,
+            size: job.text.length,
+          };
+          await eventStore.update(ev.id, (prev: NeoEvent) => ({
+            ...prev,
+            recordings: [...(prev.recordings || []), artifact],
+            updatedAt: new Date().toISOString(),
+          }));
+        }
+      } catch (e) {
+        // Transcript persistence is best-effort; the job result is still returned.
+        // eslint-disable-next-line no-console
+        console.warn('[transcribe] failed to attach transcript to event', e);
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       configured: isTranscribeConfigured(),
@@ -97,12 +128,11 @@ export async function GET(req: NextRequest) {
         ok: false,
         configured: isTranscribeConfigured(),
         provider: getTranscribeProvider(),
-        error: 'Job not found (stub mode does not persist jobs)',
+        error: 'Job not found',
       },
       { status: 404 }
     );
   }
-
   return NextResponse.json({
     ok: true,
     configured: isTranscribeConfigured(),
