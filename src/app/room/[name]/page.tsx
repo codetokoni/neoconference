@@ -20,6 +20,7 @@ import { RoomNameEntry } from "@/components/RoomNameEntry";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import RoomIdleController from "@/components/RoomIdleController";
 import GoLiveButton from "@/components/GoLiveButton";
+import LiveCaptions from "@/components/LiveCaptions";
 
 type TokenResponse = { token: string; wsUrl: string };
 
@@ -270,6 +271,7 @@ function RoomContainer({
         <InitialsOverlay />
         <RoomIdleController /><VideoConference />
         <RoomAudioRenderer />
+        <LiveCaptions />
         {showPeople && (
           <ParticipantsPanel onClose={() => setShowPeople(false)} />
         )}
