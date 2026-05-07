@@ -96,6 +96,21 @@ export interface TicketTier {
   active: boolean;
 }
 
+export interface ChatMessage {
+  /** Stable id (uuid-like). */
+  id: string;
+  /** Author Clerk userId, or null for anonymous. */
+  userId: string | null;
+  /** Author display name as visible at send time. */
+  name: string;
+  /** Body. Trimmed and length-capped server-side. */
+  text: string;
+  /** ISO timestamp of send. */
+  ts: string;
+  /** Optional role badge: 'host' | 'cohost' | 'speaker' | 'attendee' | 'ticket-holder'. */
+  role?: string;
+}
+
 export interface NeoEvent {
   /** Internal UUID. */
   id: string;
@@ -207,3 +222,4 @@ export function toPublicView(e: NeoEvent): PublicEventView {
     tickets: (e.tickets || []).filter((t) => t.active),
   };
 }
+
