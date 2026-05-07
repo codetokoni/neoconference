@@ -61,31 +61,31 @@ export default function RecordingsPage() {
         <div className="absolute bottom-0 right-0 h-[420px] w-[420px] rounded-full bg-indigo-500/15 blur-[120px]" />
       </div>
 
-      <div className="relative mx-auto max-w-6xl px-6 py-12 md:py-16">
-        <div className="mb-8 flex items-center justify-between gap-4">
+      <div className="relative mx-auto max-w-6xl px-4 sm:px-6 py-10 md:py-16">
+        <div className="mb-6 sm:mb-8 flex items-center justify-between gap-4">
           <Link href="/" className="text-sm text-white/60 hover:text-white transition">← Back to NeoConference</Link>
-          <span className="text-xs uppercase tracking-[0.3em] text-cyan-300/70">Recordings</span>
+          <span className="text-[10px] sm:text-xs uppercase tracking-[0.3em] text-cyan-300/70">Recordings</span>
         </div>
 
-        <div className="flex items-end justify-between flex-wrap gap-4">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 md:gap-6">
           <div>
-            <h1 className="text-4xl md:text-5xl font-semibold tracking-tight">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight">
               Your <span className="bg-gradient-to-r from-cyan-300 to-indigo-300 bg-clip-text text-transparent">recordings</span>
             </h1>
-            <p className="mt-2 text-white/60 text-sm">
+            <p className="mt-2 text-white/60 text-xs sm:text-sm">
               Stored on Cloudflare R2. Download links expire after 1 hour — refresh this page for new ones.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full md:w-auto">
             <input
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Filter by room or filename"
-              className="rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm w-72 outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 transition"
+              className="flex-1 md:w-72 md:flex-initial rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 transition"
             />
             <button
               onClick={load}
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm hover:bg-white/10 transition"
+              className="shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm hover:bg-white/10 transition"
             >
               {loading ? 'Loading…' : 'Refresh'}
             </button>
@@ -105,7 +105,7 @@ export default function RecordingsPage() {
           </div>
         )}
 
-        <div className="mt-8 rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-xl overflow-hidden">
+        <div className="mt-6 sm:mt-8 rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur-xl overflow-hidden">
           {loading && !data && (
             <div className="p-10 text-center text-white/50 text-sm">Loading recordings…</div>
           )}
@@ -119,34 +119,37 @@ export default function RecordingsPage() {
           )}
 
           {recordings.length > 0 && (
-            <table className="w-full text-sm">
-              <thead className="bg-white/[0.02] border-b border-white/10">
-                <tr className="text-left text-[11px] uppercase tracking-[0.2em] text-white/45">
-                  <th className="px-5 py-3 font-normal">File</th>
-                  <th className="px-5 py-3 font-normal w-32">Size</th>
-                  <th className="px-5 py-3 font-normal w-56">Recorded</th>
-                  <th className="px-5 py-3 font-normal w-32 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recordings.map((r) => (
-                  <tr key={r.key} className="border-b border-white/5 hover:bg-white/[0.02] transition">
-                    <td className="px-5 py-3.5">
-                      <div className="font-mono text-white/90 truncate max-w-[420px]" title={r.key}>{r.key}</div>
-                    </td>
-                    <td className="px-5 py-3.5 text-white/65">{fmtBytes(r.size)}</td>
-                    <td className="px-5 py-3.5 text-white/55">{fmtDate(r.lastModified)}</td>
-                    <td className="px-5 py-3.5 text-right">
-                      <a
-                        href={r.downloadUrl}
-                        download
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 text-cyan-100 px-3 py-1.5 text-xs hover:bg-cyan-400/20 transition"
-                      >Download</a>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[560px]">
+                <thead className="bg-white/[0.02] border-b border-white/10">
+                  <tr className="text-left text-[11px] uppercase tracking-[0.2em] text-white/45">
+                    <th className="px-4 sm:px-5 py-3 font-normal">File</th>
+                    <th className="px-4 sm:px-5 py-3 font-normal w-24 sm:w-32">Size</th>
+                    <th className="px-4 sm:px-5 py-3 font-normal w-56 hidden md:table-cell">Recorded</th>
+                    <th className="px-4 sm:px-5 py-3 font-normal w-28 sm:w-32 text-right">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {recordings.map((r) => (
+                    <tr key={r.key} className="border-b border-white/5 hover:bg-white/[0.02] transition">
+                      <td className="px-4 sm:px-5 py-3.5">
+                        <div className="font-mono text-white/90 truncate max-w-[200px] sm:max-w-[420px]" title={r.key}>{r.key}</div>
+                        <div className="md:hidden text-[10px] text-white/40 mt-0.5">{fmtDate(r.lastModified)}</div>
+                      </td>
+                      <td className="px-4 sm:px-5 py-3.5 text-white/65 text-xs sm:text-sm">{fmtBytes(r.size)}</td>
+                      <td className="px-4 sm:px-5 py-3.5 text-white/55 hidden md:table-cell">{fmtDate(r.lastModified)}</td>
+                      <td className="px-4 sm:px-5 py-3.5 text-right">
+                        <a
+                          href={r.downloadUrl}
+                          download
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 text-cyan-100 px-3 py-2 sm:py-1.5 text-xs hover:bg-cyan-400/20 transition"
+                        >Download</a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 
