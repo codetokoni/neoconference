@@ -98,6 +98,9 @@ export interface NeoEvent {
   /** When true, every join request must be approved by host/cohost. */
   waitingRoomEnabled: boolean;
 
+  /** Custom domain (e.g. live.acme.com) routed to /e/<slug> by middleware. */
+  customDomain?: string;
+
   /** ISO timestamp for scheduled start. */
   scheduledAt?: string;
   /** ISO timestamp for when host actually went live. */
@@ -153,6 +156,7 @@ export interface PublicEventView {
   state: EventState;
   hasPassword: boolean;
   waitingRoomEnabled: boolean;
+  customDomain?: string;
   hlsUrl?: string;
   shortUrl?: string;
   recordings: RecordingArtifact[];
@@ -172,6 +176,7 @@ export function toPublicView(e: NeoEvent): PublicEventView {
     state: e.state,
     hasPassword: Boolean(e.password),
     waitingRoomEnabled: e.waitingRoomEnabled,
+    customDomain: e.customDomain,
     hlsUrl: e.streamlab?.hlsUrl,
     shortUrl: e.hsmoh?.shortUrl,
     recordings: e.recordings,
