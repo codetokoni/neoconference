@@ -262,7 +262,7 @@ body {
   z-index: 40;
   transition: opacity 320ms ease, transform 320ms ease;
 }
-.neo-room.idle .lk-control-bar {
+body.neo-room-idle .lk-control-bar {
   opacity: 0;
   transform: translate(-50%, 30px);
   pointer-events: none;
