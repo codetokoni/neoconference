@@ -122,7 +122,7 @@ async function handle(req: Request) {
     try {
       const list = await cc.users.getUserList({ emailAddress: [email], limit: 1 });
       if (list.data && list.data.length > 0) {
-        return errorRedirect(req, 'email_already_registered');
+        const existing = list.data[0]; try { await cc.users.updateUser(existing.id, { externalId, publicMetadata: { ...(existing.publicMetadata || {}), kingschat: { id: kcId, username: kcUsername, linkedAt: new Date().toISOString() } } } as any); user = { id: existing.id }; } catch (e: any) { console.error('[kc-callback] auto-link failed', e); const msg = (e && (e.errors?.[0]?.message || e.message)) || 'unknown'; return errorRedirect(req, 'link_failed', msg.slice(0, 200)); }
       }
     } catch {}
   }
