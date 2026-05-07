@@ -5,6 +5,10 @@ const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/room/(.*)',
+  '/explore',
+  '/e/(.*)',
+  '/embed/(.*)',
+  '/api/qr/(.*)',
   '/api/livekit/token(.*)',
   '/api/auth/kingschat/(.*)',
 ]);
