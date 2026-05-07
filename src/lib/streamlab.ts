@@ -1,57 +1,117 @@
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${KEY}`,
+// src/lib/streamlab.ts
+//
+// StreamLab Cloud REST client.
+// Base: https://streamlab.cloud/api/v1
+// Auth: Authorization: Bearer <STREAMLAB_API_KEY>
+// Limit: 300 req/min
+
+const BASE = (process.env.STREAMLAB_BASE_URL || 'https://streamlab.cloud/api/v1').replace(/\/+$/, '');
+const KEY = process.env.STREAMLAB_API_KEY || '';
+
+export interface StreamLabDestination {
+  id?: string;
+  platform: 'youtube' | 'facebook' | 'twitch' | 'rtmp';
+  rtmp_url?: string;
+  stream_key?: string;
+  label?: string;
+}
+
+export interface StreamLabStream {
+  id: string;
+  name?: string;
+  rtmpUrl?: string;
+  streamKey?: string;
+  hlsUrl?: string;
+  playbackId?: string;
+  status?: string;
+}
+
+export class StreamLabError extends Error {
+  constructor(public status: number, message: string, public body?: unknown) {
+    super(message);
+    this.name = 'StreamLabError';
+  }
+}
+
+export function isStreamLabConfigured(): boolean {
+  return KEY.length > 0;
+}
+
+async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (!KEY) throw new StreamLabError(0, 'STREAMLAB_API_KEY is not configured');
+  const url = BASE + path;
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + KEY,
       ...(init.headers || {}),
     },
-    cache: "no-store",
+    cache: 'no-store',
   });
   const text = await res.text();
   let body: unknown = undefined;
   try { body = text ? JSON.parse(text) : undefined; } catch { body = text; }
   if (!res.ok) {
-    const msg = (body && typeof body === "object" && "error" in body) ? String((body as { error: unknown }).error) : `StreamLab ${res.status}`;
+    const msg = (body && typeof body === 'object' && 'error' in body)
+      ? String((body as { error: unknown }).error)
+      : 'StreamLab ' + res.status;
     throw new StreamLabError(res.status, msg, body);
   }
   return body as T;
 }
 
-/** Create a new stream. Returns RTMP ingest + HLS playback URLs. */
-export function createStream(input: { name: string; mode?: "single" | "multistream"; latency?: "ultra" | "low" | "hls"; }) {
-  return call<{ stream: StreamLabStream }>("/streams/create", {
-    method: "POST",
-    body: JSON.stringify({
-      name: input.name,
-      mode: input.mode ?? "single",
-      latency: input.latency ?? "hls",
-    }),
-  });
+/**
+ * Create a new stream. Returns a flattened StreamLabStream.
+ * The remote response is { stream: {...} } and we unwrap to a flat object.
+ */
+export async function createStream(input: {
+  name: string;
+  mode?: 'single' | 'multistream';
+  latency?: 'ultra' | 'low' | 'hls';
+}): Promise<StreamLabStream> {
+  const r = await call<{ stream: StreamLabStream } | StreamLabStream>(
+    '/streams/create',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        name: input.name,
+        mode: input.mode ?? 'single',
+        latency: input.latency ?? 'hls',
+      }),
+    }
+  );
+  // Unwrap { stream } if wrapped.
+  return (r as { stream?: StreamLabStream }).stream ?? (r as StreamLabStream);
 }
 
-/** Get current status of a stream. */
-export function getStreamStatus(streamId: string) {
-  return call<{ stream: StreamLabStream }>(`/streams/status?id=${encodeURIComponent(streamId)}`);
+export async function getStreamStatus(streamId: string): Promise<StreamLabStream> {
+  const r = await call<{ stream: StreamLabStream } | StreamLabStream>(
+    '/streams/status?id=' + encodeURIComponent(streamId)
+  );
+  return (r as { stream?: StreamLabStream }).stream ?? (r as StreamLabStream);
 }
 
-/** Trigger a broadcast immediately. */
-export function fireBroadcastNow(input: { stream_id: string; title?: string; }) {
-  return call<{ ok: true; broadcast_id: string }>("/broadcasts/fire-now", {
-    method: "POST",
+export function fireBroadcastNow(input: { stream_id: string; title?: string }) {
+  return call<{ ok: true; broadcast_id: string }>('/broadcasts/fire-now', {
+    method: 'POST',
     body: JSON.stringify(input),
   });
-
 }
 
-/** Cancel a scheduled broadcast. */
 export function cancelBroadcast(input: { broadcast_id: string }) {
-  return call<{ ok: true }>("/broadcasts/cancel", {
-    method: "POST",
+  return call<{ ok: true }>('/broadcasts/cancel', {
+    method: 'POST',
     body: JSON.stringify(input),
   });
 }
 
-/** Add a multistream destination (YouTube, Facebook, Twitch, custom RTMP). */
-export function addDestination(input: { stream_id: string; destination: StreamLabDestination }) {
-  return call<{ destination: StreamLabDestination }>("/streams/destinations", {
-    method: "POST",
+export function addDestination(input: {
+  stream_id: string;
+  destination: StreamLabDestination;
+}) {
+  return call<{ destination: StreamLabDestination }>('/streams/destinations', {
+    method: 'POST',
     body: JSON.stringify(input),
   });
 }
