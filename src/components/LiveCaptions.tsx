@@ -22,6 +22,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRoomContext } from '@livekit/components-react';
 import { RoomEvent, type TranscriptionSegment, type Participant, type TrackPublication } from 'livekit-client';
+import { CAPTION_LOCALE_STORAGE_KEY } from '@/lib/locales';
 
 type CaptionLine = {
   id: string;
@@ -36,6 +37,19 @@ const FADE_AFTER_MS = 8000;
 
 export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) {
   const room = useRoomContext();
+  const [localeFilter, setLocaleFilter] = useState<string>('auto');
+  useEffect(() => {
+    try {
+      const v = window.localStorage.getItem(CAPTION_LOCALE_STORAGE_KEY);
+      if (v) setLocaleFilter(v);
+    } catch {}
+    const onChange = (e: Event) => {
+      const ce = e as CustomEvent<string>;
+      if (typeof ce.detail === 'string' && ce.detail) setLocaleFilter(ce.detail);
+    };
+    window.addEventListener('neo:captions-locale-changed', onChange as EventListener);
+    return () => window.removeEventListener('neo:captions-locale-changed', onChange as EventListener);
+  }, []);
   const [lines, setLines] = useState<CaptionLine[]>([]);
   const [hasEverReceived, setHasEverReceived] = useState(false);
   const cleanupTimer = useRef
@@ -58,6 +72,10 @@ export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) 
       setLines((prev) => {
         let next = [...prev];
         for (const seg of segments) {
+          if (localeFilter && localeFilter !== 'auto') {
+            const segLang = (seg as { language?: string }).language;
+            if (segLang && segLang !== localeFilter) continue;
+          }
           // LiveKit re-emits non-final segments with the same id while finalizing.
           const idx = next.findIndex((l) => l.id === seg.id);
           const entry: CaptionLine = {
@@ -91,7 +109,7 @@ export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) 
       if (cleanupTimer.current) clearInterval(cleanupTimer.current);
       cleanupTimer.current = null;
     };
-  }, [room, enabled]);
+  }, [room, enabled, localeFilter]);
 
   if (!enabled) return null;
   if (!hasEverReceived || lines.length === 0) return null;
@@ -106,7 +124,7 @@ export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) 
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-cyan-200/80">
           <span className="inline-flex h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_2px_rgba(34,211,238,0.7)] animate-pulse" />
           Live captions
-          <span className="text-white/30">…</span>
+          <span className="text-white/30">â¦</span>
         </div>
         <ul className="mt-2 space-y-1 text-sm sm:text-base text-white/90 leading-snug">
           {lines.map((l) => (
