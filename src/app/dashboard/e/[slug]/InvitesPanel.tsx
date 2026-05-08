@@ -31,6 +31,7 @@ export default function InvitesPanel({ eventId }: Props) {
   const [maxUses, setMaxUses] = useState(1);
   const [hours, setHours] = useState(168);
   const [label, setLabel] = useState("");
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,6 +49,8 @@ export default function InvitesPanel({ eventId }: Props) {
   }, [eventId]);
 
   useEffect(() => { load(); }, [load]);
+
+  const filteredInvites = invites.filter((inv) => !query || (inv.label || "").toLowerCase().includes(query.toLowerCase()) || inv.role.includes(query.toLowerCase()) || inv.token.toLowerCase().includes(query.toLowerCase()));
 
   const mint = async () => {
     setBusy(true);
@@ -120,10 +123,15 @@ export default function InvitesPanel({ eventId }: Props) {
 
       {err && <div className={"text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded px-3 py-2"}>{err}</div>}
 
+      <div className={"flex items-center gap-2"}>
+        <input type={"text"} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={"Filter by role, label, or token..."} className={"flex-1 bg-slate-950/60 border border-slate-700 rounded px-3 py-1.5 text-slate-200 text-xs"} />
+        {query && <button type={"button"} onClick={() => setQuery("")} className={"text-[11px] px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400"}>Clear</button>}
+      </div>
+
       <ul className={"space-y-2"}>
         {loading && <li className={"text-xs text-slate-500"}>Loading...</li>}
-        {!loading && invites.length === 0 && <li className={"text-xs text-slate-500"}>No active invites yet.</li>}
-        {invites.map((inv) => {
+        {!loading && filteredInvites.length === 0 && <li className={"text-xs text-slate-500"}>{query ? "No invites match." : "No active invites yet."}</li>}
+        {filteredInvites.map((inv) => {
           const url = `${typeof window !== "undefined" ? window.location.origin : ""}/i/${inv.token}`;
           const remaining = Math.max(0, inv.maxUses - inv.uses);
           const expired = inv.expiresAt && inv.expiresAt < Date.now();
