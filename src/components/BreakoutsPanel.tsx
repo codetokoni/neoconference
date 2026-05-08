@@ -18,7 +18,7 @@
 // Anyone who joins later will see whatever the host last broadcast,
 // because the host re-sends on RoomEvent.ParticipantConnected.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useRoomContext,
   useParticipants,
@@ -54,10 +54,13 @@ export default function BreakoutsPanel({
   open,
   onClose,
   isHost,
+  eventSlug,
 }: {
   open: boolean;
   onClose: () => void;
   isHost: boolean;
+  /** When provided, breakout state is persisted to /api/breakouts/<slug> */
+  eventSlug?: string;
 }) {
   const room = useRoomContext();
   const participants = useParticipants();
@@ -65,6 +68,11 @@ export default function BreakoutsPanel({
 
   const [state, setState] = useState<BreakoutState>(EMPTY_STATE);
   const [hostViewAll, setHostViewAll] = useState(false);
+  // Track whether we have hydrated from KV. Avoids overwriting a real saved
+  // state with our initial empty state on first render.
+  const hydratedRef = useRef(false);
+  // Debounce timer for host-side PUTs to /api/breakouts/<slug>.
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const broadcast = async (next: BreakoutState) => {
     if (!room || !localParticipant) return;
@@ -77,6 +85,53 @@ export default function BreakoutsPanel({
       console.error("[breakouts] publishData failed", e);
     }
   };
+
+  // ---- Hydrate from KV on mount (event-bound rooms only) ----
+  useEffect(() => {
+    if (!eventSlug) {
+      hydratedRef.current = true;
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/breakouts/" + encodeURIComponent(eventSlug), { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (cancelled) return;
+        if (j && j.state && typeof j.state === "object") {
+          setState(j.state as BreakoutState);
+          // If the saved state was active, re-broadcast so existing
+          // participants pick it up after a host refresh.
+          if (isHost && j.state.active) {
+            broadcast(j.state as BreakoutState);
+          }
+        }
+        hydratedRef.current = true;
+      })
+      .catch(() => {
+        hydratedRef.current = true;
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventSlug]);
+
+  // ---- Persist to KV on every host-driven change (debounced 500ms) ----
+  useEffect(() => {
+    if (!isHost || !eventSlug) return;
+    if (!hydratedRef.current) return;
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => {
+      fetch("/api/breakouts/" + encodeURIComponent(eventSlug), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(state),
+      }).catch((e) => console.error("[breakouts] PUT failed", e));
+    }, 500);
+    return () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    };
+  }, [state, isHost, eventSlug]);
 
   useEffect(() => {
     if (!room) return;
@@ -227,6 +282,12 @@ export default function BreakoutsPanel({
     const next = { ...state, active: false, ts: Date.now() };
     setState(next);
     broadcast(next);
+    // Also clear server-side state so a fresh host start gets a clean slate.
+    if (isHost && eventSlug) {
+      fetch("/api/breakouts/" + encodeURIComponent(eventSlug), {
+        method: "DELETE",
+      }).catch((e) => console.error("[breakouts] DELETE failed", e));
+    }
   };
 
   const reapply = () => broadcast({ ...state, ts: Date.now() });
