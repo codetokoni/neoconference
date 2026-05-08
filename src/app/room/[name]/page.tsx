@@ -41,6 +41,21 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   const roomName = decodeURIComponent(params.name);
   const searchParams = useSearchParams();
   const eventSlug = searchParams?.get("event") || undefined;
+  // Per-tab LiveKit identity suffix so the same Clerk user can join from
+  // multiple tabs/browsers without being kicked for duplicate identity.
+  // Stable across refresh in the same tab via sessionStorage; unique per tab.
+  const tabNonce = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const KEY = "nc:tabNonce";
+    let n = window.sessionStorage.getItem(KEY);
+    if (!n) {
+      n = (crypto.randomUUID?.() || Math.random().toString(36).slice(2))
+        .replace(/-/g, "")
+        .slice(0, 16);
+      window.sessionStorage.setItem(KEY, n);
+    }
+    return n;
+  }, []);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !choices) return;
@@ -48,7 +63,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     (async () => {
       try {
         const res = await fetch(
-          `/api/livekit/token?room=${encodeURIComponent(roomName)}${eventSlug ? `&event=${encodeURIComponent(eventSlug)}` : ""}`,
+          `/api/livekit/token?room=${encodeURIComponent(roomName)}${eventSlug ? `&event=${encodeURIComponent(eventSlug)}` : ""}${tabNonce ? `&nonce=${encodeURIComponent(tabNonce)}` : ""}`,
           { cache: "no-store" }
         );
         if (!res.ok) {
