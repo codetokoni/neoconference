@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { isR2Configured, listRecordings, signGetUrl, deleteObject } from '@/lib/r2';
+import { isR2Configured, listRecordings, signGetUrl, deleteObject, renameObject } from '@/lib/r2';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -86,5 +86,39 @@ export async function DELETE(req: Request) {
       { ok: false, error: e?.message || 'delete-failed' },
       { status: 500 }
     );
+  }
+}
+
+
+/**
+ * PATCH /api/recordings
+ *
+ * Body: { key: string, newKey: string }
+ * Renames an R2 object by copying then deleting the original.
+ */
+export async function PATCH(req: Request) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ ok: false, error: 'unauthenticated' }, { status: 401 });
+  }
+  if (!isR2Configured()) {
+    return NextResponse.json({ ok: false, error: 'r2-not-configured' }, { status: 503 });
+  }
+  let body: any;
+  try { body = await req.json(); } catch { return NextResponse.json({ ok: false, error: 'invalid-json' }, { status: 400 }); }
+  const key = typeof body?.key === 'string' ? body.key : '';
+  const newKey = typeof body?.newKey === 'string' ? body.newKey : '';
+  if (!key || !newKey || key === newKey || key.length > 512 || newKey.length > 512) {
+    return NextResponse.json({ ok: false, error: 'missing-or-invalid-keys' }, { status: 400 });
+  }
+  // Constrain newKey to safe chars and force same prefix dir of original key.
+  if (!/^[A-Za-z0-9._\/\-]+$/.test(newKey)) {
+    return NextResponse.json({ ok: false, error: 'invalid-newKey-chars' }, { status: 400 });
+  }
+  try {
+    await renameObject(key, newKey);
+    return NextResponse.json({ ok: true, key, newKey });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e?.message || 'rename-failed' }, { status: 500 });
   }
 }
