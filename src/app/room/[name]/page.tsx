@@ -388,7 +388,7 @@ function RoomContainer({
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
-        <WaitingRoomPanel open={true} onClose={() => {}} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          <BreakoutsPanel open={true} onClose={() => {}} isHost={roomRole === "host" || roomRole === "cohost"} />
+        <WaitingRoomPanel open={true} onClose={() => {}} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          <BreakoutsPanel open={true} onClose={() => {}} isHost={roomRole === "host" || roomRole === "cohost"} eventSlug={eventSlug} />
               <SpeakerBadge />
         {!showChat ? (
           <button
