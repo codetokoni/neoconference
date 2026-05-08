@@ -11,6 +11,8 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { eventStore } from '@/lib/eventStore';
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
+import ReplayShareBar from './ReplayShareBar';
 import { toPublicView, type PublicEventView } from '@/types/event';
 
 export const dynamic = 'force-dynamic';
@@ -51,11 +53,16 @@ export default async function ReplayPage({ params }: Props) {
   const event = await eventStore.bySlug(params.slug);
   if (!event) return notFound();
   const view = toPublicView(event);
+  const h = await headers();
+  const proto = h.get("x-forwarded-proto") || "https";
+  const host = h.get("x-forwarded-host") || h.get("host") || "neoconference.vercel.app";
+  const replayUrl = `${proto}://${host}/e/${view.slug}/replay`;
+  const replayShareTitle = (view.name || view.slug) + " replay";
 
-  return <ReplayView view={view} />;
+  return <ReplayView view={view} replayUrl={replayUrl} replayShareTitle={replayShareTitle} />;
 }
 
-function ReplayView({ view }: { view: PublicEventView }) {
+function ReplayView({ view, replayUrl, replayShareTitle }: { view: PublicEventView; replayUrl: string; replayShareTitle: string }) {
   const recordings = view.recordings || [];
   const transcripts = recordings.filter((r) => r.kind === 'transcript');
   const videos = recordings.filter((r) => r.kind === 'mp4' || r.kind === 'hls');
@@ -81,6 +88,10 @@ function ReplayView({ view }: { view: PublicEventView }) {
         {view.description && (
           <p className="mt-4 max-w-2xl text-white/70 text-sm sm:text-base whitespace-pre-line">{view.description}</p>
         )}
+
+        <div className="mt-4">
+          <ReplayShareBar url={replayUrl} title={replayShareTitle} />
+        </div>
 
         <div className="mt-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-white/45">
           {view.endedAt && <span>Ended {new Date(view.endedAt).toLocaleString()}</span>}
@@ -215,4 +226,5 @@ function ReplayView({ view }: { view: PublicEventView }) {
     </main>
   );
 }
+
 
