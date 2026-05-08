@@ -182,7 +182,7 @@ body {
 
 
 /* ============================================================
-   LiveKit room overrides — premium glass dock, floating tiles,
+   LiveKit room overrides â premium glass dock, floating tiles,
    active-speaker glow, auto-hide controls.
    ============================================================ */
 
@@ -342,4 +342,42 @@ body.neo-room-idle .lk-control-bar {
   }
   .lk-control-bar .lk-button { padding: 8px 10px !important; }
   .lk-participant-tile { border-radius: 14px !important; }
+}
+
+/* Mobile polish - Round 10 */
+@media (max-width: 640px) {
+  [data-room-chrome="true"] {
+    transform-origin: bottom center;
+  }
+  .neo-spotlight,
+  [data-room-chrome="true"] {
+    z-index: 50;
+  }
+  button[data-room-chrome="true"],
+  .neo-tap-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  section.rounded-2xl > * + * {
+    margin-top: 0.5rem;
+  }
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  select,
+  textarea {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .neo-spotlight-chip {
+    max-width: calc(100vw - 24px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@supports (padding: max(0px)) {
+  .lk-control-bar {
+    padding-bottom: max(8px, env(safe-area-inset-bottom)) !important;
+  }
 }
