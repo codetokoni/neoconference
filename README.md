@@ -24,13 +24,13 @@ Live at: https://neoconference.vercel.app
 - Shareable event pages with QR codes and short links
 - Public sharing pages for transcripts, recordings and event highlights
 - Stripe-based paid event tickets and per-owner email digests (cron)
+- Collaborative whiteboard with pen, eraser, colors and live multi-user sync
+- Live polls with vote tallies (2-6 options, end-poll, real-time updates)
 - Admin dashboard, role-based access, mobile-polished room UI
 
 ## Roadmap
 
-- Interactive whiteboard
 - Breakout rooms
-- Live polls and quizzes
 - Waiting room and host approval flow
 
 ## Status
