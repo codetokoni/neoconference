@@ -30,6 +30,7 @@ export default function RecordingsPanel({ prefix }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [stats, setStats] = useState<Record<string, { views: number; downloads: number; shares: number }>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,6 +49,17 @@ export default function RecordingsPanel({ prefix }: Props) {
   }, [prefix]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!items.length) { setStats({}); return; }
+    const keys = items.map((r) => r.key).slice(0, 200);
+    const ctrl = new AbortController();
+    fetch("/api/recordings/analytics?keys=" + encodeURIComponent(keys.join(",")), { cache: "no-store", signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j && j.stats) setStats(j.stats); })
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [items]);
 
   const filtered = items.filter((rec) => !query || rec.key.toLowerCase().includes(query.toLowerCase()));
 
@@ -141,6 +153,13 @@ export default function RecordingsPanel({ prefix }: Props) {
               <div className={"text-[10px] text-slate-500 mt-0.5"}>
                 {fmtBytes(rec.size)}{rec.lastModified ? " . " + new Date(rec.lastModified).toLocaleString() : ""}
               </div>
+              {(() => { const st = stats[rec.key]; if (!st) return null; return (
+                <div className={"mt-0.5 flex items-center gap-2 text-[10px] text-slate-400 font-mono tabular-nums"}>
+                  <span title={"Views"}>👁 {st.views || 0}</span>
+                  <span title={"Downloads"}>⬇ {st.downloads || 0}</span>
+                  <span title={"Shares"}>🔗 {st.shares || 0}</span>
+                </div>
+              ); })()}
             </div>
             <div className={"flex items-center gap-2 shrink-0"}>
               <a href={rec.downloadUrl} target={"_blank"} rel={"noopener noreferrer"} className={"px-3 py-1.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/30 text-cyan-200 text-xs"}>Download</a>
