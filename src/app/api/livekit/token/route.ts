@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
       userId;
 
     const at = new AccessToken(apiKey, apiSecret, {
-      identity: userId,
+      identity: ((): string => { const n = req.nextUrl.searchParams.get("nonce") || ""; return /^[A-Za-z0-9_-]{1,32}$/.test(n) ? `${userId}#${n}` : userId; })(),
       name: displayName,
       ttl: "1h",
     });
