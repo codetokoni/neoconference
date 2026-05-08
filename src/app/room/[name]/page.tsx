@@ -281,10 +281,12 @@ function RoomContainer({
         >
           {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
         </button>
-        <ParticipantCountBadge /><RaiseHandButton isHost={roomRole === "host" || roomRole === "cohost"} /><SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
+        <ParticipantCountBadge />
         <RecordingControls roomName={roomName} />
         <GoLiveButton roomName={roomName} eventSlug={eventSlug} />
       </div>
+      <RaiseHandButton isHost={roomRole === "host" || roomRole === "cohost"} />
+      <SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
         <ChatTranscriptDownloader roomName={roomName} />
         <InitialsOverlay />
         <RoomIdleController /><VideoConference />
