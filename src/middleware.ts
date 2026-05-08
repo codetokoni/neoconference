@@ -9,6 +9,8 @@ const isPublicRoute = createRouteMatcher([
   '/explore',
   '/e/(.*)',
   '/embed/(.*)',
+  '/share/(.*)',
+  '/replay/(.*)',
   '/api/qr/(.*)',
   '/api/livekit/token(.*)',
   '/api/auth/kingschat/(.*)',
@@ -92,3 +94,4 @@ export const config = {
     '/(api(?!/auth/kingschat)|trpc)(.*)',
   ],
 };
+
