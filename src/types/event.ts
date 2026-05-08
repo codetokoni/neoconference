@@ -198,6 +198,8 @@ export interface NeoEvent {
   updatedAt: string;
   /** Recent invite redemptions, capped at 50 newest, oldest pruned. */
   recentRedemptions?: Array<{ token: string; identifier: string; role: string; ts: number }>;
+  /** AI-generated meeting summary (host-triggered). */
+  summary?: { text: string; model: string; generatedAt: number };
 }
 
 /**
