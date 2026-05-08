@@ -51,6 +51,24 @@ export default function RecordingsPanel({ prefix }: Props) {
 
   const filtered = items.filter((rec) => !query || rec.key.toLowerCase().includes(query.toLowerCase()));
 
+  const rename = async (key: string) => {
+    const cur = key.split("/").pop() || key;
+    const next = window.prompt("Rename recording (filename only, safe chars only):", cur);
+    if (!next || next === cur) return;
+    if (!/^[A-Za-z0-9._\-]+$/.test(next)) { alert("Invalid characters in new name. Use letters, numbers, dots, underscores, dashes."); return; }
+    const dir = key.includes("/") ? key.slice(0, key.lastIndexOf("/") + 1) : "";
+    const newKey = dir + next;
+    setErr(null);
+    try {
+      const r = await fetch("/api/recordings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, newKey }) });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error || "Failed to rename");
+      await load();
+    } catch (e: any) {
+      setErr(e?.message || "Failed to rename");
+    }
+  };
+
   const remove = async (key: string) => {
     if (!confirm("Permanently delete this recording? This cannot be undone.")) return;
     setDeleting(key);
@@ -103,6 +121,7 @@ export default function RecordingsPanel({ prefix }: Props) {
             </div>
             <div className={"flex items-center gap-2 shrink-0"}>
               <a href={rec.downloadUrl} target={"_blank"} rel={"noopener noreferrer"} className={"px-3 py-1.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/30 text-cyan-200 text-xs"}>Download</a>
+              <button type={"button"} onClick={() => rename(rec.key)} className={"px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs"}>Rename</button>
               <button type={"button"} onClick={() => remove(rec.key)} disabled={deleting === rec.key} className={"px-3 py-1.5 rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs disabled:opacity-50"}>
                 {deleting === rec.key ? "Deleting..." : "Delete"}
               </button>
