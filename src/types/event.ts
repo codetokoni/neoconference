@@ -196,6 +196,8 @@ export interface NeoEvent {
   /** ISO created / updated timestamps. */
   createdAt: string;
   updatedAt: string;
+  /** Recent invite redemptions, capped at 50 newest, oldest pruned. */
+  recentRedemptions?: Array<{ token: string; identifier: string; role: string; ts: number }>;
 }
 
 /**
