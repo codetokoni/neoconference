@@ -47,6 +47,9 @@ export default async function EventResolverPage({
             <p className="neo-event-when">
               Starts {new Date(v.scheduledAt).toLocaleString()}
             </p>
+            <a className="neo-event-cta neo-event-cta--ghost" href={`/api/events/${ev.slug}/ics`} download>
+              Add to calendar
+            </a>
           </section>
         ) : null}
 
@@ -98,7 +101,7 @@ export default async function EventResolverPage({
 
         {searchParams?.ticket === 'success' ? (
           <div className="neo-event-section" style={{ background: 'rgba(52,211,153,0.15)', border: '1px solid rgba(52,211,153,0.4)' }}>
-            <p style={{ color: '#6ee7b7' }}>Payment confirmed. You’re on the list — join when the host opens the room.</p>
+            <p style={{ color: '#6ee7b7' }}>Payment confirmed. Youâre on the list â join when the host opens the room.</p>
           </div>
         ) : null}
         {v.tickets && v.tickets.length > 0 && v.state !== 'ended' && v.state !== 'replay' ? (
