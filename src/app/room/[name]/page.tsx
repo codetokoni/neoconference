@@ -167,12 +167,24 @@ function RoomContainer({
   const [showPeople, setShowPeople] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [hideSelf, setHideSelf] = useState(false);
+  const [roomRole, setRoomRole] = useState<string>("guest");
 
   useEffect(() => {
     const onChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
+
+  // Fetch event role (host/cohost/speaker/attendee/viewer/guest) for chrome decisions.
+  useEffect(() => {
+    if (!eventSlug) return;
+    let cancelled = false;
+    fetch("/api/events/role?slug=" + encodeURIComponent(eventSlug), { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => { if (!cancelled && j && typeof j.role === "string") setRoomRole(j.role); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [eventSlug]);
 
   useEffect(() => {
     const root = containerRef.current;
@@ -269,7 +281,7 @@ function RoomContainer({
         >
           {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
         </button>
-        <ParticipantCountBadge /><RaiseHandButton /><SpotlightOverlay isHost />
+        <ParticipantCountBadge /><RaiseHandButton isHost={roomRole === "host" || roomRole === "cohost"} /><SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
         <RecordingControls roomName={roomName} />
         <GoLiveButton roomName={roomName} eventSlug={eventSlug} />
       </div>
