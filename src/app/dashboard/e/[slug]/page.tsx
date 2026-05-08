@@ -16,6 +16,7 @@ import DomainPanel from "./DomainPanel";
 import TicketsPanel from "./TicketsPanel";
 import InvitesPanel from "./InvitesPanel";
 import RecordingsPanel from "./RecordingsPanel";
+import SummaryPanel from "./SummaryPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -282,6 +283,7 @@ export default async function EventAdminPage({
         <TicketsPanel eventId={ev.id} initial={ev.tickets} />
         <InvitesPanel eventId={ev.id} />
         <RecordingsPanel prefix={ev.slug} />
+        <SummaryPanel eventId={ev.id} initial={ev.summary || null} />
         </section>
 
         <footer className="pt-6 border-t border-slate-900 text-xs text-slate-600">
