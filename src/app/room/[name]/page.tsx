@@ -24,6 +24,7 @@ import LiveCaptions from "@/components/LiveCaptions";
 import ReactionsBar from "@/components/ReactionsBar";
 import ChatPanel from "@/components/ChatPanel";
 import RaiseHandButton from "@/components/RaiseHandButton";
+import SpotlightOverlay from "@/components/SpotlightOverlay";
 import SpeakerBadge from "@/components/SpeakerBadge";
 
 type TokenResponse = { token: string; wsUrl: string };
@@ -77,7 +78,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     }
   };
 
-  if (!isLoaded) return <div className="p-8">LoadingÃÂ¢ÃÂÃÂ¦</div>;
+  if (!isLoaded) return <div className="p-8">LoadingÃÂÃÂ¢ÃÂÃÂÃÂÃÂ¦</div>;
 
   if (!isSignedIn) {
     return (
@@ -98,7 +99,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
         </p>
         <p className="text-xs text-red-600 break-all">{error}</p>
         <a href="/" className="inline-block mt-6 underline text-sm">
-          ÃÂ¢ÃÂÃÂ Back to home
+          ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ Back to home
         </a>
       </div>
     );
@@ -131,7 +132,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     );
   }
 
-  if (!token || !wsUrl) return <div className="p-8">ConnectingÃÂ¢ÃÂÃÂ¦</div>;
+  if (!token || !wsUrl) return <div className="p-8">ConnectingÃÂÃÂ¢ÃÂÃÂÃÂÃÂ¦</div>;
 
   return (
     <RoomContainer
@@ -268,7 +269,7 @@ function RoomContainer({
         >
           {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
         </button>
-        <ParticipantCountBadge /><RaiseHandButton />
+        <ParticipantCountBadge /><RaiseHandButton /><SpotlightOverlay isHost />
         <RecordingControls roomName={roomName} />
         <GoLiveButton roomName={roomName} eventSlug={eventSlug} />
       </div>
@@ -453,59 +454,18 @@ function ParticipantsPanel({ onClose }: { onClose: () => void }) {
                 {display}
                 {p.isLocal ? " (you)" : ""}
               </span>
-              {handUp && <span title="Hand raised">ÃÂ¢ÃÂÃÂ</span>}
+              {handUp && <span title="Hand raised">ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ</span>}
               <span title={micOn ? "Mic on" : "Mic muted"}>
-                {micOn ? "ÃÂ°ÃÂÃÂÃÂ¤" : "ÃÂ°ÃÂÃÂÃÂ"}
+                {micOn ? "ÃÂÃÂ°ÃÂÃÂÃÂÃÂÃÂÃÂ¤" : "ÃÂÃÂ°ÃÂÃÂÃÂÃÂÃÂÃÂ"}
               </span>
               <span title={camOn ? "Camera on" : "Camera off"}>
-                {camOn ? "ÃÂ°ÃÂÃÂÃÂ¥" : "ÃÂ°ÃÂÃÂÃÂ·"}
+                {camOn ? "ÃÂÃÂ°ÃÂÃÂÃÂÃÂÃÂÃÂ¥" : "ÃÂÃÂ°ÃÂÃÂÃÂÃÂÃÂÃÂ·"}
               </span>
             </li>
           );
         })}
       </ul>
     </aside>
-  );
-}
-
-function RaiseHandButton() {
-  const { localParticipant } = useLocalParticipant();
-  const [raised, setRaised] = useState(false);
-
-  const toggle = async () => {
-    const next = !raised;
-    setRaised(next);
-    try {
-      const payload = new TextEncoder().encode(
-        JSON.stringify({ type: "hand", raised: next })
-      );
-      await localParticipant.publishData(payload, { reliable: true } as any);
-    } catch (e) {
-      console.error("publishData hand failed", e);
-    }
-  };
-
-  return (
-    <button
-      type="button"
-      data-room-chrome="true"
-      onClick={toggle}
-      title={raised ? "Lower hand" : "Raise hand"}
-      style={{
-        position: "relative",
-        padding: "6px 12px",
-        borderRadius: 999,
-        border: "none",
-        background: raised ? "#fbbf24" : "#000",
-        color: raised ? "#000" : "#fff",
-        fontSize: 12,
-        fontWeight: 600,
-        cursor: "pointer",
-        boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
-      }}
-    >
-      {raised ? "ÃÂ¢ÃÂÃÂ Lower hand" : "ÃÂ¢ÃÂÃÂ Raise hand"}
-    </button>
   );
 }
 
@@ -625,7 +585,7 @@ function RecordingControls({ roomName }: { roomName: string }) {
           url: data.downloadUrl,
         });
       } else {
-        setToast({ message: "Recording stopped (file uploadingÃÂ¢ÃÂÃÂ¦)" });
+        setToast({ message: "Recording stopped (file uploadingÃÂÃÂ¢ÃÂÃÂÃÂÃÂ¦)" });
         setTimeout(() => setToast(null), 5000);
       }
     } catch (e: any) {
@@ -675,7 +635,7 @@ function RecordingControls({ roomName }: { roomName: string }) {
           REC
           {remoteRecording?.by ? (
             <span style={{ fontWeight: 400, opacity: 0.9 }}>
-              ÃÂÃÂ· {remoteRecording.by}
+              ÃÂÃÂÃÂÃÂ· {remoteRecording.by}
             </span>
           ) : null}
         </div>
@@ -703,10 +663,10 @@ function RecordingControls({ roomName }: { roomName: string }) {
         }}
       >
         {busy
-          ? "ÃÂ¢ÃÂÃÂ¦"
+          ? "ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ¦"
           : egressId
-          ? "ÃÂ¢ÃÂÃÂ  Stop recording"
-          : "ÃÂ¢ÃÂÃÂ Record"}
+          ? "ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ  Stop recording"
+          : "ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ Record"}
       </button>
 
       {/* Toast (e.g. download URL) */}
@@ -757,7 +717,7 @@ function RecordingControls({ roomName }: { roomName: string }) {
               opacity: 0.7,
             }}
           >
-            ÃÂ¢ÃÂÃÂ
+            ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ
           </button>
         </div>
       )}
@@ -843,5 +803,6 @@ function downloadTranscript(
     a.remove();
   }, 100);
 }
+
 
 
