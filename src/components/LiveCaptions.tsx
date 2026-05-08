@@ -124,7 +124,7 @@ export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) 
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-cyan-200/80">
           <span className="inline-flex h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_2px_rgba(34,211,238,0.7)] animate-pulse" />
           Live captions
-          <span className="text-white/30">â¦</span>
+          <span className="text-white/30">\u2026</span>
         </div>
         <ul className="mt-2 space-y-1 text-sm sm:text-base text-white/90 leading-snug">
           {lines.map((l) => (
