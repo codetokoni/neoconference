@@ -82,7 +82,7 @@ export default function RecordingsPage() {
   }
 
   const recordings = (data?.recordings || []).filter((r) =>
-    !filter ? true : r.key.toLowerCase().includes(filter.toLowerCase())
+    (/\.mp4$/i.test(r.key)) && (!filter || r.key.toLowerCase().includes(filter.toLowerCase()))
   );
 
   return (
