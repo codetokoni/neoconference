@@ -4,7 +4,12 @@
   display: none !important;
 }
 
-.lk-participant-tile[data-lk-video-muted="true"]::after {
+/* The initials circle ONLY paints when:
+   - video is muted (camera off)
+   - data-initials is set and not empty
+   - data-initials-ready="true" (gate set by JS after connect settles)
+   This is belt + suspenders + airbag against the "GU" flash. */
+.lk-participant-tile[data-lk-video-muted="true"][data-initials][data-initials-ready="true"]:not([data-initials=""])::after {
   content: attr(data-initials);
   position: absolute;
   top: 50%;
@@ -28,6 +33,17 @@
 
 .lk-participant-tile {
   position: relative;
+}
+
+/* Solid black tile while we're waiting for the real name. This is what
+   the user sees during the connect window instead of any avatar / GU. */
+.lk-participant-tile[data-lk-video-muted="true"]:not([data-initials-ready="true"])::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #0a0a0f;
+  z-index: 0;
+  pointer-events: none;
 }
 
 

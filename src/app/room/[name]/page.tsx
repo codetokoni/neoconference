@@ -110,7 +110,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
       user?.fullName ||
       user?.username ||
       user?.primaryEmailAddress?.emailAddress ||
-      "Guest";
+      "";
 
     return (
       <div className="min-h-[calc(100vh-65px)] flex flex-col items-center justify-center p-4 gap-4">
@@ -317,9 +317,37 @@ function RoomContainer({
  * when the camera is off. Re-runs whenever participants change.
  */
 function InitialsOverlay() {
+  // NUCLEAR: read names from useParticipants() (JWT source of truth) and
+  // refuse to mark a tile "ready" until the real name has been present
+  // for at least 600ms. Prevents any "GU"/"Guest User" placeholder flash.
   const participants = useParticipants();
+  const firstSeenRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
+    const PLACEHOLDERS = new Set(["", "guest", "guest user", "unknown", "?"]);
+    const READY_DELAY_MS = 600;
+
+    const seen = firstSeenRef.current;
+    const now = Date.now();
+    const liveIdentities = new Set<string>();
+    for (const p of participants) {
+      liveIdentities.add(p.identity);
+      if (!seen.has(p.identity)) seen.set(p.identity, now);
+    }
+    for (const id of [...seen.keys()]) {
+      if (!liveIdentities.has(id)) seen.delete(id);
+    }
+
+    const realNames = new Set<string>();
+    for (const p of participants) {
+      const n = (p.name || "").trim();
+      if (n && !PLACEHOLDERS.has(n.toLowerCase())) realNames.add(n);
+    }
+
+    const seenValues = [...seen.values()];
+    const earliestSeen = seenValues.length ? Math.min(...seenValues) : now;
+    const enoughTimeElapsed = now - earliestSeen >= READY_DELAY_MS;
+
     const apply = () => {
       const tiles = document.querySelectorAll<HTMLElement>(
         ".lk-participant-tile"
@@ -328,14 +356,57 @@ function InitialsOverlay() {
         const nameEl = tile.querySelector<HTMLElement>(
           ".lk-participant-name"
         );
-        const display = (nameEl?.textContent || "").trim() || "Guest";
-        tile.setAttribute("data-initials", getInitials(display));
-        tile.style.setProperty("--lk-initials-bg", stringToColor(display));
+        const raw = (nameEl?.textContent || "").trim();
+        const lower = raw.toLowerCase();
+
+        const nameIsReal =
+          raw.length > 0 &&
+          !PLACEHOLDERS.has(lower) &&
+          realNames.has(raw);
+
+        if (!nameIsReal) {
+          tile.removeAttribute("data-initials");
+          tile.removeAttribute("data-initials-ready");
+          tile.style.removeProperty("--lk-initials-bg");
+          return;
+        }
+
+        tile.setAttribute("data-initials", getInitials(raw));
+        tile.style.setProperty("--lk-initials-bg", stringToColor(raw));
+
+        if (enoughTimeElapsed) {
+          tile.setAttribute("data-initials-ready", "true");
+        } else {
+          tile.removeAttribute("data-initials-ready");
+        }
       });
     };
+
     apply();
-    const id = window.setInterval(apply, 1500);
-    return () => window.clearInterval(id);
+    const timeoutId = window.setTimeout(apply, READY_DELAY_MS + 50);
+
+    const root = document.querySelector<HTMLElement>("[data-lk-theme]");
+    if (!root) {
+      const intervalId = window.setInterval(apply, 100);
+      return () => {
+        window.clearInterval(intervalId);
+        window.clearTimeout(timeoutId);
+      };
+    }
+
+    const observer = new MutationObserver(apply);
+    observer.observe(root, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["data-lk-video-muted"],
+    });
+
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(timeoutId);
+    };
   }, [participants]);
 
   return null;
