@@ -25,7 +25,7 @@ import ReactionsBar from "@/components/ReactionsBar";
 import ChatPanel from "@/components/ChatPanel";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
-import SpeakerBadge from "@/components/SpeakerBadge";import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel"; import WaitingRoomPanel from "@/components/WaitingRoomPanel";
+import SpeakerBadge from "@/components/SpeakerBadge";import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel"; import WaitingRoomPanel from "@/components/WaitingRoomPanel";import BreakoutsPanel from "@/components/BreakoutsPanel";
 
 type TokenResponse = { token: string; wsUrl: string };
 
@@ -373,7 +373,7 @@ function RoomContainer({
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
-        <WaitingRoomPanel open={true} onClose={() => {}} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          
+        <WaitingRoomPanel open={true} onClose={() => {}} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          <BreakoutsPanel open={true} onClose={() => {}} isHost={roomRole === "host" || roomRole === "cohost"} />
               <SpeakerBadge />
         {!showChat ? (
           <button
