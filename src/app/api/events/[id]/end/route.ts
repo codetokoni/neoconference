@@ -43,6 +43,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         headers: { "content-type": "application/json", cookie },
         body: JSON.stringify({ trigger: "event-end" }),
       }).catch(() => {});
+      // Also kick off chapter derivation (best-effort)
+      const chaptersUrl = `${proto}://${host}/api/events/${ev.id}/chapters`;
+      fetch(chaptersUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+      }).catch(() => {});
     }
   } catch {
     // Ignore: summary is best-effort.
@@ -50,4 +56,5 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   return NextResponse.json({ ok: true, event: next });
 }
+
 
