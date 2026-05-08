@@ -25,7 +25,7 @@ import ReactionsBar from "@/components/ReactionsBar";
 import ChatPanel from "@/components/ChatPanel";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
-import SpeakerBadge from "@/components/SpeakerBadge";import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel";
+import SpeakerBadge from "@/components/SpeakerBadge";import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel"; import WaitingRoomPanel from "@/components/WaitingRoomPanel";
 
 type TokenResponse = { token: string; wsUrl: string };
 
@@ -34,7 +34,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   const { isLoaded, isSignedIn, user } = useUser();
   const [token, setToken] = useState<string | null>(null);
   const [wsUrl, setWsUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null); const [waitingState, setWaitingState] = useState<"pending" | "denied" | null>(null);
   const [choices, setChoices] = useState<LocalUserChoices | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -48,12 +48,25 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     (async () => {
       try {
         const res = await fetch(
-          `/api/livekit/token?room=${encodeURIComponent(roomName)}`,
+          `/api/livekit/token?room=${encodeURIComponent(roomName)}${eventSlug ? `&event=${encodeURIComponent(eventSlug)}` : ""}`,
           { cache: "no-store" }
         );
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
-          throw new Error(body.error || `HTTP ${res.status}`);
+          if (res.status === 403 && body?.error === "waiting_room") {
+            if (!cancelled) {
+              setWaitingState(body.status === "denied" ? "denied" : "pending");
+            }
+            try {
+              await fetch("/api/waiting-room", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ op: "knock", slug: eventSlug }),
+              });
+            } catch {}
+            return;
+          }
+          throw new Error(body.error || ("HTTP " + res.status));
         }
         const data = (await res.json()) as TokenResponse;
         if (cancelled) return;
@@ -66,7 +79,36 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, roomName, choices]);
+  }, [isLoaded, isSignedIn, roomName, choices, eventSlug, waitingState]);
+
+  // While waiting in the queue, re-knock every 4s. When the host admits us
+  // the response flips to "admitted" and we clear waitingState which causes
+  // the token-fetch effect above to re-run and pull a real LiveKit token.
+  useEffect(() => {
+    if (!eventSlug || waitingState !== "pending") return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const res = await fetch("/api/waiting-room", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ op: "knock", slug: eventSlug }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.status === "admitted") {
+          setWaitingState(null);
+        } else if (data.status === "denied") {
+          setWaitingState("denied");
+        }
+      } catch {
+        // ignore - try again next tick
+      }
+    };
+    const id = setInterval(tick, 4000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [eventSlug, waitingState]);
 
   const copyLink = async () => {
     try {
@@ -132,6 +174,23 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     );
   }
 
+  if (waitingState) {
+    return (
+      <div className="min-h-[calc(100vh-65px)] flex flex-col items-center justify-center p-8 gap-3 text-center">
+        <h1 className="text-xl font-semibold">
+          {waitingState === "denied" ? "Entry denied" : "Waiting for the host…"}
+        </h1>
+        <p className="text-sm opacity-70 max-w-md">
+          {waitingState === "denied"
+            ? "The host did not let you in. Reach out to them if this looks wrong."
+            : "We let the host know you’re here. You’ll join automatically once they admit you."}
+        </p>
+        <a href="/" className="mt-6 underline text-sm">
+          ← Back to home
+        </a>
+      </div>
+    );
+  }
   if (!token || !wsUrl) return <div className="p-8">Connecting\u2026</div>;
 
   return (
@@ -165,7 +224,7 @@ function RoomContainer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
-  const [showChat, setShowChat] = useState(false); const [showWhiteboard, setShowWhiteboard] = useState(false); const [showPolls, setShowPolls] = useState(false);
+  const [showChat, setShowChat] = useState(false); const [showWhiteboard, setShowWhiteboard] = useState(false); const [showPolls, setShowPolls] = useState(false); const [showWaitingRoom, setShowWaitingRoom] = useState(false);
   const [hideSelf, setHideSelf] = useState(false);
   const [roomRole, setRoomRole] = useState<string>("guest");
 
@@ -314,6 +373,7 @@ function RoomContainer({
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
+        <WaitingRoomPanel open={true} onClose={() => {}} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          
               <SpeakerBadge />
         {!showChat ? (
           <button
