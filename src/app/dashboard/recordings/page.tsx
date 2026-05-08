@@ -194,7 +194,7 @@ export default function RecordingsPage() {
                               href={r.downloadUrl}
                               download
                               className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 text-cyan-100 px-3 py-1.5 text-xs hover:bg-cyan-400/20 transition"
-                            >Download</a>
+                            >Download</a><button onClick={async () => { if (!confirm('Delete this recording permanently? This cannot be undone.')) return; const res2 = await fetch('/api/recordings?key=' + encodeURIComponent(r.key), { method: 'DELETE' }); const j2 = await res2.json(); if (j2.ok) load(); else alert(j2.error || 'Delete failed'); }} className="inline-flex items-center gap-1 rounded-lg border border-red-400/30 bg-red-400/10 text-red-200 px-2.5 py-1.5 text-[11px] hover:bg-red-400/20 transition">Delete</button>
                           </div>
                         </td>
                       </tr>
