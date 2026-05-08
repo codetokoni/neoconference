@@ -69,6 +69,29 @@ export default function RecordingsPanel({ prefix }: Props) {
     }
   };
 
+  const share = async (key: string) => {
+    const label = window.prompt("Optional label for this share link (visible to recipient):", key.split("/").pop() || "");
+    if (label === null) return;
+    try {
+      const r = await fetch("/api/recordings/share", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ key, label }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || "failed");
+      const url = `${window.location.origin}/share/${j.share.token}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        window.alert("Share link copied to clipboard:" + "\n\n" + url);
+      } catch {
+        window.prompt("Share link (copy manually):", url);
+      }
+    } catch (e: any) {
+      window.alert("Failed to mint share link: " + (e?.message || "unknown"));
+    }
+  };
+
   const remove = async (key: string) => {
     if (!confirm("Permanently delete this recording? This cannot be undone.")) return;
     setDeleting(key);
@@ -121,7 +144,8 @@ export default function RecordingsPanel({ prefix }: Props) {
             </div>
             <div className={"flex items-center gap-2 shrink-0"}>
               <a href={rec.downloadUrl} target={"_blank"} rel={"noopener noreferrer"} className={"px-3 py-1.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/30 text-cyan-200 text-xs"}>Download</a>
-              <button type={"button"} onClick={() => rename(rec.key)} className={"px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs"}>Rename</button>
+              <button type={"button"} onClick={() => share(rec.key)} className={"px-3 py-1.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/30 text-cyan-200 text-xs"}>Share</button>
+                            <button type={"button"} onClick={() => rename(rec.key)} className={"px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs"}>Rename</button>
               <button type={"button"} onClick={() => remove(rec.key)} disabled={deleting === rec.key} className={"px-3 py-1.5 rounded bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-200 text-xs disabled:opacity-50"}>
                 {deleting === rec.key ? "Deleting..." : "Delete"}
               </button>
@@ -132,3 +156,4 @@ export default function RecordingsPanel({ prefix }: Props) {
     </section>
   );
 }
+
