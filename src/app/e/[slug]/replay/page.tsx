@@ -10,11 +10,42 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { eventStore } from '@/lib/eventStore';
+import type { Metadata } from 'next';
 import { toPublicView, type PublicEventView } from '@/types/event';
 
 export const dynamic = 'force-dynamic';
 
 type Props = { params: { slug: string } };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = params;
+  const ev = await eventStore.bySlug(slug);
+  if (!ev) {
+    return {
+      title: 'Replay not found / NeoConference',
+    };
+  }
+  const title = (ev.name || ev.slug) + ' / NeoConference replay';
+  const description = ev.description
+    ? ev.description.slice(0, 200)
+    : 'Watch the recording, AI summary, chapters and transcript on NeoConference.';
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: 'video.other',
+      siteName: 'NeoConference',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+    },
+    robots: { index: true, follow: true },
+  };
+}
 
 export default async function ReplayPage({ params }: Props) {
   const event = await eventStore.bySlug(params.slug);
@@ -184,3 +215,4 @@ function ReplayView({ view }: { view: PublicEventView }) {
     </main>
   );
 }
+
