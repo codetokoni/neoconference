@@ -25,7 +25,7 @@ import ReactionsBar from "@/components/ReactionsBar";
 import ChatPanel from "@/components/ChatPanel";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
-import SpeakerBadge from "@/components/SpeakerBadge";
+import SpeakerBadge from "@/components/SpeakerBadge";import Whiteboard from "@/components/Whiteboard";
 
 type TokenResponse = { token: string; wsUrl: string };
 
@@ -165,7 +165,7 @@ function RoomContainer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
-  const [showChat, setShowChat] = useState(false);
+  const [showChat, setShowChat] = useState(false); const [showWhiteboard, setShowWhiteboard] = useState(false);
   const [hideSelf, setHideSelf] = useState(false);
   const [roomRole, setRoomRole] = useState<string>("guest");
 
@@ -265,6 +265,15 @@ function RoomContainer({
         >
           {hideSelf ? "Show me" : "Hide me"}
         </button>
+          <button
+            type="button"
+            data-room-chrome="true"
+            onClick={() => setShowWhiteboard((v) => !v)}
+            className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+            title="Toggle whiteboard"
+          >
+            {showWhiteboard ? "Close whiteboard" : "Whiteboard"}
+          </button>
         <button
           type="button"
           onClick={copyLink}
@@ -294,6 +303,7 @@ function RoomContainer({
         <LiveCaptions />
         <ReactionsBar />
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} />
+        <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
               <SpeakerBadge />
         {!showChat ? (
           <button
