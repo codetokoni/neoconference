@@ -17,11 +17,12 @@ type Invite = {
   label?: string;
 };
 
-type Props = { eventId: string };
+type RecentRedemption = { token: string; identifier: string; role: string; ts: number };
+type Props = { eventId: string; initialRedemptions?: RecentRedemption[] };
 
 const ROLES: Array<Invite["role"]> = ["cohost", "speaker", "attendee", "ticket-holder"];
 
-export default function InvitesPanel({ eventId }: Props) {
+export default function InvitesPanel({ eventId, initialRedemptions = [] }: Props) {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -155,7 +156,24 @@ export default function InvitesPanel({ eventId }: Props) {
           );
         })}
       </ul>
+      {initialRedemptions.length > 0 && (
+        <div className="mt-6 pt-4 border-t border-slate-700/40">
+          <h4 className="text-xs uppercase tracking-wider text-slate-400 mb-2">Recent activity</h4>
+          <ul className="space-y-1.5 text-xs">
+            {[...initialRedemptions].sort((a, b) => b.ts - a.ts).slice(0, 8).map((r, i) => (
+              <li key={r.token + "_" + i} className="flex items-center justify-between gap-3 text-slate-300">
+                <span className="truncate">{r.identifier}</span>
+                <span className="flex items-center gap-2 shrink-0">
+                  <span className="px-1.5 py-0.5 rounded bg-cyan-400/10 text-cyan-300 border border-cyan-400/20">{r.role}</span>
+                  <span className="text-slate-500">{new Date(r.ts).toLocaleString()}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }
+
 
