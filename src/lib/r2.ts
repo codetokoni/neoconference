@@ -1,4 +1,4 @@
-import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 /**
@@ -97,4 +97,14 @@ export async function signGetUrl(key: string, expiresIn = 3600): Promise<string>
   u.searchParams.delete('x-amz-checksum-mode');
   u.searchParams.delete('x-id');
   return u.toString();
+}
+export async function deleteObject(key: string): Promise<void> {
+  if (!isR2Configured()) throw new Error('R2 not configured');
+  const s3 = r2Client();
+  await s3.send(
+    new DeleteObjectCommand({
+      Bucket: requiredEnv('S3_BUCKET'),
+      Key: key,
+    })
+  );
 }
