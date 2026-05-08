@@ -9,6 +9,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { shareStore } from "@/lib/shareStore";
 import { isR2Configured, signGetUrl } from "@/lib/r2";
+import { recordingAnalytics } from "@/lib/analytics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,6 +49,8 @@ export async function GET(req: NextRequest) {
   }
   try {
     const downloadUrl = await signGetUrl(rec.key, 300);
+    // Best-effort: count this share resolution.
+    recordingAnalytics.bump("shares", rec.key).catch(() => {});
     return NextResponse.json({
       ok: true,
       downloadUrl,
@@ -76,3 +79,4 @@ export async function DELETE(req: NextRequest) {
   await shareStore.revoke(token);
   return NextResponse.json({ ok: true });
 }
+
