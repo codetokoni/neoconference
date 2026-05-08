@@ -7,7 +7,7 @@
 // Each participant tracks their own state; hosts see all currently-raised hands.
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useRoomContext } from '@livekit/components-react';
+import { useRoomContext, useParticipants } from '@livekit/components-react';
 import { RoomEvent } from 'livekit-client';
 
 const TOPIC = 'neo-hand';
@@ -18,6 +18,7 @@ type Props = { isHost?: boolean };
 
 export default function RaiseHandButton({ isHost = false }: Props) {
   const room = useRoomContext();
+  const participants = useParticipants();
   const [raised, setRaised] = useState(false);
   const [hands, setHands] = useState<Map<string, Hand>>(new Map());
   const [showRoster, setShowRoster] = useState(false);
@@ -63,10 +64,40 @@ export default function RaiseHandButton({ isHost = false }: Props) {
     } catch {}
   }, [raised, room]);
 
+  // Paint data-hand-raised on participant tiles whose identity is in `hands`. Visible to ALL.
+  useEffect(() => {
+    const apply = () => {
+      const raisedNames = new Set<string>();
+      for (const p of participants) {
+        if (hands.has(p.identity)) {
+          const n = (p.name || "").trim();
+          if (n) raisedNames.add(n);
+        }
+      }
+      const tiles = document.querySelectorAll<HTMLElement>(".lk-participant-tile");
+      tiles.forEach((tile) => {
+        const nameEl = tile.querySelector<HTMLElement>(".lk-participant-name");
+        const raw = (nameEl?.textContent || "").trim();
+        if (raw && raisedNames.has(raw)) tile.setAttribute("data-hand-raised", "true");
+        else tile.removeAttribute("data-hand-raised");
+      });
+    };
+    apply();
+    const root = document.querySelector<HTMLElement>("[data-lk-theme]");
+    if (!root) {
+      const id = window.setInterval(apply, 250);
+      return () => window.clearInterval(id);
+    }
+    const observer = new MutationObserver(apply);
+    observer.observe(root, { subtree: true, childList: true, characterData: true });
+    return () => observer.disconnect();
+  }, [hands, participants]);
+
   const handCount = hands.size;
 
   return (
     <>
+      <style>{`.lk-participant-tile[data-hand-raised="true"]::after { content: "\u270B"; position: absolute; top: 8px; left: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 20px; background: #fbbf24; color: #0e1530; border-radius: 50%; z-index: 5; pointer-events: none; box-shadow: 0 0 16px rgba(251,191,36,0.7); animation: neo-hand-pulse 1.6s ease-in-out infinite; } @keyframes neo-hand-pulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 12px rgba(251,191,36,0.55); } 50% { transform: scale(1.08); box-shadow: 0 0 22px rgba(251,191,36,0.95); } }`}</style>
       <button
         type="button"
         onClick={toggle}
