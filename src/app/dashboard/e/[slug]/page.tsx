@@ -281,7 +281,7 @@ export default async function EventAdminPage({
           <h2 className="text-sm uppercase tracking-widest text-slate-400">Custom domain</h2>
           <DomainPanel eventId={ev.id} slug={ev.slug} initial={ev.customDomain} />
         <TicketsPanel eventId={ev.id} initial={ev.tickets} />
-        <InvitesPanel eventId={ev.id} />
+        <InvitesPanel eventId={ev.id} initialRedemptions={ev.recentRedemptions || []} />
         <RecordingsPanel prefix={ev.slug} />
         <SummaryPanel eventId={ev.id} initial={ev.summary || null} />
         </section>
