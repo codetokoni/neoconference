@@ -79,7 +79,10 @@ export async function POST(
   } else {
     roles.push({ identifier: userId, role: inv.role as any, preApproved: true, label });
   }
-  await eventStore.update(ev.id, { roles });
+  // Track this redemption (newest 50, prune oldest).
+  const redemption = { token: params.token, identifier: userId, role: inv.role, ts: Date.now() };
+  const recentRedemptions = [redemption, ...((ev.recentRedemptions || []) as any[])].slice(0, 50);
+  await eventStore.update(ev.id, { roles, recentRedemptions });
 
   return NextResponse.json({ ok: true, eventSlug: ev.slug, role: inv.role });
 }
