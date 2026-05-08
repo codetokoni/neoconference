@@ -1,4 +1,4 @@
-import { S3Client, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 /**
@@ -105,6 +105,26 @@ export async function deleteObject(key: string): Promise<void> {
     new DeleteObjectCommand({
       Bucket: requiredEnv('S3_BUCKET'),
       Key: key,
+    })
+  );
+}
+
+export async function renameObject(oldKey: string, newKey: string): Promise<void> {
+  if (!isR2Configured()) throw new Error('R2 not configured');
+  if (!oldKey || !newKey || oldKey === newKey) throw new Error('invalid keys');
+  const s3 = r2Client();
+  const Bucket = requiredEnv('S3_BUCKET');
+  await s3.send(
+    new CopyObjectCommand({
+      Bucket,
+      CopySource: encodeURIComponent(Bucket + '/' + oldKey),
+      Key: newKey,
+    })
+  );
+  await s3.send(
+    new DeleteObjectCommand({
+      Bucket,
+      Key: oldKey,
     })
   );
 }
