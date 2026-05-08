@@ -49,7 +49,7 @@ export async function POST(
   _req: Request,
   { params }: { params: { token: string } }
 ) {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const inv = await inviteStore.get(params.token);

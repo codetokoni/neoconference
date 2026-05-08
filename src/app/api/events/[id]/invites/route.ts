@@ -18,7 +18,7 @@ export async function GET(
   _req: Request,
   { params }: { params: { id: string } }
 ) {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const ev = await eventStore.byId(params.id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -33,7 +33,7 @@ export async function POST(
   req: Request,
   { params }: { params: { id: string } }
 ) {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const ev = await eventStore.byId(params.id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -69,7 +69,7 @@ export async function DELETE(
   req: Request,
   { params }: { params: { id: string } }
 ) {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const ev = await eventStore.byId(params.id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });

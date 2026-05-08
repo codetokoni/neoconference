@@ -33,7 +33,7 @@ function originFrom(req: NextRequest): string {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   }
