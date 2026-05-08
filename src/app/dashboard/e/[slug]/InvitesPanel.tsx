@@ -46,18 +46,7 @@ export default function InvitesPanel({ eventId, initialRedemptions = [] }: Props
     es.onerror = () => {
       // Auto-reconnect handled by browser; nothing to do.
     };
-    return (
-    <>
-      {toast && (
-        <div className="fixed bottom-4 right-4 z-50 max-w-xs rounded-xl border border-cyan-400/40 bg-slate-900/90 backdrop-blur-xl px-4 py-3 shadow-2xl shadow-cyan-500/20 text-sm text-slate-100 animate-in fade-in slide-in-from-bottom-4">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-cyan-300 mb-1">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-            New invite redeemed
-          </div>
-          <div className="truncate font-medium">{toast.identifier}</div>
-          <div className="text-xs text-slate-400">{toast.role}</div>
-        </div>
-      )}) => { es.close(); };
+    return () => { es.close(); };
   }, [eventId]);
 
   const [invites, setInvites] = useState<Invite[]>([]);
@@ -209,8 +198,17 @@ export default function InvitesPanel({ eventId, initialRedemptions = [] }: Props
           </ul>
         </div>
       )}
+      {toast && (
+        <div className={"fixed bottom-4 right-4 z-50 max-w-xs rounded-xl border border-cyan-400/40 bg-slate-900/90 backdrop-blur-xl px-4 py-3 shadow-2xl shadow-cyan-500/20 text-sm text-slate-100 animate-in fade-in slide-in-from-bottom-4"}>
+          <div className={"flex items-center gap-2 text-xs uppercase tracking-wider text-cyan-300 mb-1"}>
+            <span className={"inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"}></span>
+            New invite redeemed
+          </div>
+          <div className={"truncate font-medium"}>{toast.identifier}</div>
+          <div className={"text-xs text-slate-400"}>{toast.role}</div>
+        </div>
+      )}
     </section>
-    </>
   );
 }
 
