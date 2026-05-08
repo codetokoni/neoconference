@@ -87,7 +87,7 @@ export default function SpotlightOverlay({ isHost = false }: Props) {
       const tile = target.closest<HTMLElement>("[data-lk-participant-identity]");
       if (!tile) return;
       // Avoid hijacking control buttons inside the tile.
-      if (target.closest("button, [role="button"], a, input, select")) return;
+      if (target.closest('button, [role=button], a, input, select')) return;
       const id = tile.getAttribute("data-lk-participant-identity");
       if (!id) return;
       e.preventDefault();
