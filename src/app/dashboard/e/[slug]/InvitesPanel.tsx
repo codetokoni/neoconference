@@ -23,6 +23,43 @@ type Props = { eventId: string; initialRedemptions?: RecentRedemption[] };
 const ROLES: Array<Invite["role"]> = ["cohost", "speaker", "attendee", "ticket-holder"];
 
 export default function InvitesPanel({ eventId, initialRedemptions = [] }: Props) {
+  const [liveRedemptions, setLiveRedemptions] = useState<RecentRedemption[]>(initialRedemptions);
+  const [toast, setToast] = useState<RecentRedemption | null>(null);
+
+  useEffect(() => {
+    if (typeof EventSource === "undefined") return;
+    const es = new EventSource(`/api/events/${eventId}/redemptions/stream`);
+    es.onmessage = (msg) => {
+      try {
+        const data = JSON.parse(msg.data);
+        if (data && data.redemption) {
+          const r = data.redemption as RecentRedemption;
+          setLiveRedemptions((prev) => {
+            if (prev.some((p) => p.token === r.token && p.identifier === r.identifier && p.ts === r.ts)) return prev;
+            return [r, ...prev].slice(0, 50);
+          });
+          setToast(r);
+          setTimeout(() => setToast((cur) => (cur === r ? null : cur)), 6000);
+        }
+      } catch {}
+    };
+    es.onerror = () => {
+      // Auto-reconnect handled by browser; nothing to do.
+    };
+    return (
+    <>
+      {toast && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-xs rounded-xl border border-cyan-400/40 bg-slate-900/90 backdrop-blur-xl px-4 py-3 shadow-2xl shadow-cyan-500/20 text-sm text-slate-100 animate-in fade-in slide-in-from-bottom-4">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-cyan-300 mb-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+            New invite redeemed
+          </div>
+          <div className="truncate font-medium">{toast.identifier}</div>
+          <div className="text-xs text-slate-400">{toast.role}</div>
+        </div>
+      )}) => { es.close(); };
+  }, [eventId]);
+
   const [invites, setInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -156,11 +193,11 @@ export default function InvitesPanel({ eventId, initialRedemptions = [] }: Props
           );
         })}
       </ul>
-      {initialRedemptions.length > 0 && (
+      {liveRedemptions.length > 0 && (
         <div className="mt-6 pt-4 border-t border-slate-700/40">
           <h4 className="text-xs uppercase tracking-wider text-slate-400 mb-2">Recent activity</h4>
           <ul className="space-y-1.5 text-xs">
-            {[...initialRedemptions].sort((a, b) => b.ts - a.ts).slice(0, 8).map((r, i) => (
+            {[...liveRedemptions].sort((a, b) => b.ts - a.ts).slice(0, 8).map((r, i) => (
               <li key={r.token + "_" + i} className="flex items-center justify-between gap-3 text-slate-300">
                 <span className="truncate">{r.identifier}</span>
                 <span className="flex items-center gap-2 shrink-0">
@@ -173,7 +210,9 @@ export default function InvitesPanel({ eventId, initialRedemptions = [] }: Props
         </div>
       )}
     </section>
+    </>
   );
 }
+
 
 
