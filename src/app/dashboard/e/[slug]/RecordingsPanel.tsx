@@ -29,6 +29,7 @@ export default function RecordingsPanel({ prefix }: Props) {
   const [configured, setConfigured] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,6 +48,8 @@ export default function RecordingsPanel({ prefix }: Props) {
   }, [prefix]);
 
   useEffect(() => { load(); }, [load]);
+
+  const filtered = items.filter((rec) => !query || rec.key.toLowerCase().includes(query.toLowerCase()));
 
   const remove = async (key: string) => {
     if (!confirm("Permanently delete this recording? This cannot be undone.")) return;
@@ -82,10 +85,15 @@ export default function RecordingsPanel({ prefix }: Props) {
 
       {err && <div className={"text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded px-3 py-2"}>{err}</div>}
 
+      <div className={"flex items-center gap-2"}>
+        <input type={"text"} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={"Filter recordings by name..."} className={"flex-1 bg-slate-950/60 border border-slate-700 rounded px-3 py-1.5 text-slate-200 text-xs"} />
+        {query && <button type={"button"} onClick={() => setQuery("")} className={"text-[11px] px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400"}>Clear</button>}
+      </div>
+
       <ul className={"space-y-2"}>
         {loading && <li className={"text-xs text-slate-500"}>Loading...</li>}
-        {!loading && items.length === 0 && configured && <li className={"text-xs text-slate-500"}>No recordings yet for this room.</li>}
-        {items.map((rec) => (
+        {!loading && filtered.length === 0 && configured && <li className={"text-xs text-slate-500"}>{query ? "No recordings match." : "No recordings yet for this room."}</li>}
+        {filtered.map((rec) => (
           <li key={rec.key} className={"flex flex-col md:flex-row md:items-center gap-2 px-3 py-2 rounded-lg bg-slate-950/50 border border-slate-800"}>
             <div className={"flex-1 min-w-0"}>
               <div className={"text-xs text-slate-200 font-mono truncate"} title={rec.key}>{rec.key.split("/").pop()}</div>
