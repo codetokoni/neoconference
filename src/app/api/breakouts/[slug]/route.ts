@@ -106,13 +106,14 @@ export async function PUT(
   try {
     body = await req.json();
   } catch {
-feat(breakouts): REST API for breakout state (GET/PUT/DELETE per slug)  }
+    return NextResponse.json({ error: "bad_json" }, { status: 400 });
+  }
   if (!validState(body)) {
     return NextResponse.json({ error: "bad_state" }, { status: 400 });
   }
   const saved = await breakoutsStore.set(slug, body);
   return NextResponse.json({ state: saved });
-}New /api/breakouts/[slug] route. GET is open to any authed user; PUT and DELETE require event ownership or a host/cohost role assignment, mirroring the auth pattern in /api/waiting-room. PUT validates the BreakoutState shape before writing. Backed by the breakoutsStore added in d59eb66. Wiring from BreakoutsPanel follows in the next commit.
+}
 
 // ---------- DELETE ----------
 export async function DELETE(
