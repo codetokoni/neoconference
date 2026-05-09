@@ -873,14 +873,14 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       try {
         const msg = JSON.parse(new TextDecoder().decode(payload));
         if (msg?.type === "recording") {
-          if (msg.active) {
-            setRemoteRecording({
-              by: msg.by || participant?.name || participant?.identity || "Someone",
-            });
-          } else {
-            setRemoteRecording(null);
-          }
-          if (msg?.type === "record_request") {
+            if (msg.active) {
+              setRemoteRecording({
+                by: msg.by || participant?.name || participant?.identity || "Someone",
+              });
+            } else {
+              setRemoteRecording(null);
+            }
+          } else if (msg?.type === "record_request") {
             if (roomRole === "host" || roomRole === "cohost") {
               setRecordApproval({
                 fromIdentity: String(msg.from || participant?.identity || ""),
@@ -899,17 +899,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
                 setTimeout(() => setToast(null), 4000);
               }
             }
-          }
-        }
-      } catch {
-        // ignore
-      }
-    };
-    room.on(RoomEvent.DataReceived, onData);
-    return () => {
-      room.off(RoomEvent.DataReceived, onData);
-    };
-  }, [room, roomRole]);
+          }}, [room, roomRole]);
 
   // Expose record toggle to MobileControlBar so it can trigger this directly
   // instead of proxying a .click() to the (CSS-hidden) top-toolbar button.
