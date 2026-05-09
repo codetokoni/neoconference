@@ -259,10 +259,38 @@ function RoomContainer({
   useEffect(() => {
     if (!eventSlug) return;
     let cancelled = false;
-    fetch("/api/events/role?slug=" + encodeURIComponent(eventSlug), { cache: "no-store" })
-      .then((r) => r.ok ? r.json() : null)
-      .then((j) => { if (!cancelled && j && typeof j.role === "string") setRoomRole(j.role); })
-      .catch(() => {});
+    // Retry on viewer/guest a few times — handles Clerk session hydration race
+    // and KV eventual-consistency right after instant-meeting creation, so the
+    // owner reliably resolves to "host" instead of being stuck on the first
+    // unauthenticated/empty response.
+    const delays = [0, 400, 900, 1800, 3500];
+    let attempt = 0;
+    const tick = () => {
+      if (cancelled) return;
+      fetch("/api/events/role?slug=" + encodeURIComponent(eventSlug), { cache: "no-store" })
+        .then((r) => r.ok ? r.json() : null)
+        .then((j) => {
+          if (cancelled) return;
+          if (j && typeof j.role === "string") {
+            setRoomRole(j.role);
+            const isElevated = j.role === "host" || j.role === "cohost" || j.role === "speaker";
+            if (!isElevated && attempt < delays.length - 1) {
+              attempt += 1;
+              setTimeout(tick, delays[attempt]);
+            }
+          } else if (attempt < delays.length - 1) {
+            attempt += 1;
+            setTimeout(tick, delays[attempt]);
+          }
+        })
+        .catch(() => {
+          if (!cancelled && attempt < delays.length - 1) {
+            attempt += 1;
+            setTimeout(tick, delays[attempt]);
+          }
+        });
+    };
+    tick();
     return () => { cancelled = true; };
   }, [eventSlug]);
 
