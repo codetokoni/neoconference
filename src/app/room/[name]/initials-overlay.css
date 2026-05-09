@@ -253,6 +253,40 @@
     width: 100% !important;
     height: 100% !important;
   }
+
+  /* FORCE clean 2x2 square grid on phone regardless of participant count.
+     Override LiveKit responsive auto-grid that turns 2 tiles into 2 tall strips. */
+  .lk-grid-layout,
+  .lk-grid-layout-wrapper > .lk-grid-layout {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    grid-template-rows: 1fr 1fr !important;
+    grid-auto-rows: 1fr !important;
+    gap: 6px !important;
+    padding: 6px !important;
+    width: calc(100% - 56px) !important;
+    max-width: calc(100% - 56px) !important;
+    margin-right: 56px !important;
+    height: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .lk-grid-layout .lk-participant-tile {
+    aspect-ratio: 1 / 1 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    align-self: center !important;
+    justify-self: center !important;
+    border-radius: 12px !important;
+    overflow: hidden !important;
+  }
+  .lk-participant-tile video,
+  .lk-participant-media-video {
+    object-fit: cover !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
 }
 
 /* On tablets/desktop, hide the mobile-only More button + popover */
