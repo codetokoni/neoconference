@@ -8,13 +8,14 @@
 //
 // Place inside <LiveKitRoom> tree. Hidden by default; toggle via prop.
 
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { useRoomContext } from '@livekit/components-react';
+import { useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from 'react';
+import { useRoomContext, useParticipants, useLocalParticipant } from '@livekit/components-react';
 import { RoomEvent } from 'livekit-client';
 import type { ChatMessage } from '@/types/event';
 
 const TOPIC = 'neo-chat';
 const TYPING_TOPIC = 'neo-typing';
+const MENTION_EVERYONE = 'everyone';
 
 type Props = {
   eventId: string;
@@ -47,6 +48,35 @@ function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+function renderMessageText(text: string, knownNames: Map<string,string>, meIdentity: string, meName: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  let lastIdx = 0;
+  let key = 0;
+  const re = /@([\w.\-]+)/g;
+  let match: RegExpExecArray | null;
+  const meNameLow = (meName||'').toLowerCase();
+  while ((match = re.exec(text)) !== null) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (start > lastIdx) out.push(text.slice(lastIdx, start));
+    const tag = match[1];
+    const tagLow = tag.toLowerCase();
+    const isEveryone = tagLow === 'everyone';
+    const isKnown = isEveryone || knownNames.has(tagLow);
+    const isMe = isEveryone || tagLow === meNameLow || tagLow === (meIdentity||'').toLowerCase();
+    if (isKnown) {
+      out.push(
+        <span key={'m'+(key++)} style={{ color: isMe ? '#fbbf24' : '#22d3ee', fontWeight: 600, background: isMe ? 'rgba(251,191,36,0.12)' : 'rgba(34,211,238,0.10)', padding: '0 3px', borderRadius: 3 }}>@{tag}</span>
+      );
+    } else {
+      out.push(match[0]);
+    }
+    lastIdx = end;
+  }
+  if (lastIdx < text.length) out.push(text.slice(lastIdx));
+  return out;
+}
+
 export default function ChatPanel({ eventId, open, onClose }: Props) {
   const room = useRoomContext();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -60,6 +90,49 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
   const stickToBottomRef = useRef(true);
   const [typers, setTypers] = useState<Map<string, { name: string; ts: number }>>(new Map());
   const lastTypingSentRef = useRef(0);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionAt, setMentionAt] = useState<number>(-1);
+  const mentionsRef = useRef<Set<string>>(new Set());
+  const participants = useParticipants();
+  const { localParticipant } = useLocalParticipant();
+
+  const knownNamesByLow = useMemo(() => {
+    const m = new Map<string, string>();
+    const meId = localParticipant?.identity;
+    const meName = (localParticipant?.name || meId || '').trim();
+    if (meName) m.set(meName.toLowerCase(), meId || meName);
+    if (meId) m.set(meId.toLowerCase(), meId);
+    for (const p of participants) {
+      if (!p?.identity) continue;
+      const nm = (p.name || p.identity).trim();
+      if (nm) m.set(nm.toLowerCase(), p.identity);
+      m.set(p.identity.toLowerCase(), p.identity);
+    }
+    return m;
+  }, [participants, localParticipant]);
+
+  const mentionCandidates = useMemo(() => {
+    const me = localParticipant?.identity;
+    const list: { id: string; label: string; sub?: string }[] = [];
+    list.push({ id: MENTION_EVERYONE, label: 'everyone', sub: 'Notify all in chat' });
+    const seen = new Set<string>();
+    for (const p of participants) {
+      if (!p?.identity) continue;
+      if (p.identity === me) continue;
+      if (seen.has(p.identity)) continue;
+      seen.add(p.identity);
+      const nm = (p.name || p.identity).trim();
+      list.push({ id: p.identity, label: nm });
+    }
+    return list;
+  }, [participants, localParticipant]);
+
+  const filteredMentions = useMemo(() => {
+    if (mentionQuery == null) return [] as typeof mentionCandidates;
+    const q = mentionQuery.toLowerCase();
+    if (!q) return mentionCandidates.slice(0, 6);
+    return mentionCandidates.filter((c) => c.label.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)).slice(0, 6);
+  }, [mentionCandidates, mentionQuery]);
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 640px)');
@@ -180,7 +253,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
       const res = await fetch(`/api/events/${eventId}/chat`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text, ...(replyingTo ? { replyTo: { id: replyingTo.id, name: replyingTo.name, snippet: replyingTo.text.slice(0, 140) } } : {}) }),
+        body: JSON.stringify({ text, ...(replyingTo ? { replyTo: { id: replyingTo.id, name: replyingTo.name, snippet: replyingTo.text.slice(0, 140) } } : {}), ...(mentionsRef.current.size > 0 ? { mentions: Array.from(mentionsRef.current) } : {}) }),
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
@@ -188,6 +261,8 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
       setMessages((arr) => (arr.some((m) => m.id === saved.id) ? arr : [...arr, saved]));
       setDraft('');
       setReplyingTo(null);
+      mentionsRef.current = new Set();
+      setMentionQuery(null); setMentionAt(-1);
       stickToBottomRef.current = true;
       setUnread(0);
       try {
@@ -306,7 +381,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
                   <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.replyTo.snippet}</div>
                 </div>
               ) : null}
-              <div style={{ color: '#e2e8f0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
+              <div style={{ color: '#e2e8f0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{renderMessageText(m.text, knownNamesByLow, localParticipant?.identity || '', localParticipant?.name || '')}</div>
               <button
                 type='button'
                 onClick={() => setReplyingTo(m)}
@@ -372,6 +447,66 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
           >✕</button>
         </div>
       ) : null}
+      {mentionQuery !== null && filteredMentions.length > 0 ? (
+        <div
+          role='listbox'
+          aria-label='Mention suggestions'
+          style={{
+            margin: '0 12px',
+            background: 'rgba(15,23,42,0.96)',
+            border: '1px solid rgba(34,211,238,0.3)',
+            borderRadius: 8,
+            overflow: 'hidden',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            maxHeight: 240,
+            overflowY: 'auto',
+          }}
+        >
+          {filteredMentions.map((c) => (
+            <button
+              key={c.id}
+              type='button'
+              onMouseDown={(e) => { e.preventDefault(); }}
+              onClick={() => {
+                if (mentionAt < 0) return;
+                const before = draft.slice(0, mentionAt);
+                const afterStart = mentionAt + 1 + (mentionQuery?.length || 0);
+                const after = draft.slice(afterStart);
+                const insertLabel = c.id === MENTION_EVERYONE ? 'everyone' : c.label.replace(/\s+/g, '');
+                const next = before + '@' + insertLabel + ' ' + after;
+                mentionsRef.current.add(c.id);
+                setDraft(next);
+                setMentionQuery(null);
+                setMentionAt(-1);
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                width: '100%', textAlign: 'left',
+                background: 'transparent', border: 'none', color: '#e2e8f0',
+                padding: '10px 12px', cursor: 'pointer',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                fontSize: 13,
+              }}
+            >
+              <span
+                style={{
+                  width: 24, height: 24, borderRadius: '50%',
+                  background: c.id === MENTION_EVERYONE ? 'linear-gradient(135deg,#22d3ee,#0ea5e9)' : avatarColor(c.label),
+                  color: '#001018', fontSize: 11, fontWeight: 700,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                {c.id === MENTION_EVERYONE ? '@' : initials(c.label)}
+              </span>
+              <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                <span style={{ fontWeight: 600, color: '#67e8f9' }}>@{c.id === MENTION_EVERYONE ? 'everyone' : c.label}</span>
+                {c.sub ? <span style={{ fontSize: 11, color: '#64748b' }}>{c.sub}</span> : null}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <form
         onSubmit={(e) => { e.preventDefault(); send(); }}
         style={{
@@ -383,7 +518,20 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
       >
         <textarea
           value={draft}
-          onChange={(e) => { setDraft(e.target.value); notifyTyping(); }}
+          onChange={(e) => {
+            const v = e.target.value;
+            const ta = e.target as HTMLTextAreaElement;
+            const cursor = ta.selectionStart ?? v.length;
+            const upto = v.slice(0, cursor);
+            const atIdx = upto.lastIndexOf('@');
+            const beforeAt = atIdx > 0 ? upto[atIdx - 1] : ' ';
+            const okBoundary = atIdx >= 0 && (atIdx === 0 || /\s/.test(beforeAt));
+            const tail = atIdx >= 0 ? upto.slice(atIdx + 1) : '';
+            const tailOk = okBoundary && !/\s/.test(tail) && tail.length <= 30;
+            if (tailOk) { setMentionQuery(tail); setMentionAt(atIdx); }
+            else { if (mentionQuery !== null) { setMentionQuery(null); setMentionAt(-1); } }
+            setDraft(v); notifyTyping();
+          }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
           placeholder='Send a message'
           rows={2}
