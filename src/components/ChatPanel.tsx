@@ -14,6 +14,7 @@ import { RoomEvent } from 'livekit-client';
 import type { ChatMessage } from '@/types/event';
 
 const TOPIC = 'neo-chat';
+const TYPING_TOPIC = 'neo-typing';
 
 type Props = {
   eventId: string;
@@ -56,6 +57,8 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
   const [isMobile, setIsMobile] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
+  const [typers, setTypers] = useState<Map<string, { name: string; ts: number }>>(new Map());
+  const lastTypingSentRef = useRef(0);
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 640px)');
@@ -79,6 +82,19 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
     if (!room) return;
     const dec = new TextDecoder();
     const handler = (payload: Uint8Array, _p: any, _k: any, topic?: string) => {
+      if (topic === TYPING_TOPIC) {
+        try {
+          const obj = JSON.parse(dec.decode(payload));
+          if (obj && typeof obj.userId === 'string' && typeof obj.name === 'string') {
+            setTypers((m) => {
+              const next = new Map(m);
+              next.set(obj.userId, { name: obj.name, ts: Date.now() });
+              return next;
+            });
+          }
+        } catch {}
+        return;
+      }
       if (topic && topic !== TOPIC) return;
       try {
         const obj = JSON.parse(dec.decode(payload));
@@ -87,11 +103,45 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
             if (arr.some((m) => m.id === obj.id)) return arr;
             return [...arr, obj as ChatMessage].slice(-500);
           });
+          if (typeof obj.userId === 'string') {
+            setTypers((m) => {
+              if (!m.has(obj.userId)) return m;
+              const next = new Map(m); next.delete(obj.userId); return next;
+            });
+          }
         }
       } catch {}
     };
     room.on(RoomEvent.DataReceived, handler as any);
     return () => { room.off(RoomEvent.DataReceived, handler as any); };
+  }, [room]);
+
+  // Typing-indicator sweep: drop typers older than 4s
+  useEffect(() => {
+    if (!open) return;
+    const id = setInterval(() => {
+      setTypers((m) => {
+        const cutoff = Date.now() - 4000;
+        let changed = false;
+        const next = new Map(m);
+        for (const [k, v] of next) { if (v.ts < cutoff) { next.delete(k); changed = true; } }
+        return changed ? next : m;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [open]);
+
+  const notifyTyping = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTypingSentRef.current < 1500) return;
+    lastTypingSentRef.current = now;
+    try {
+      const lp = room?.localParticipant;
+      if (!lp) return;
+      const enc = new TextEncoder();
+      const payload = JSON.stringify({ userId: lp.identity, name: lp.name || lp.identity });
+      lp.publishData(enc.encode(payload), { reliable: false, topic: TYPING_TOPIC });
+    } catch {}
   }, [room]);
 
   const onListScroll = useCallback(() => {
@@ -207,7 +257,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
             fontSize: 20, lineHeight: 1,
           }}
         >
-          ✕
+          â
         </button>
       </header>
       <div
@@ -260,9 +310,22 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
             boxShadow: '0 6px 20px rgba(14,165,233,0.5)',
           }}
         >
-          {unread} new ↓
+          {unread} new â
         </button>
       )}
+      {(() => {
+        const names = Array.from(typers.values()).map((t) => t.name).filter(Boolean);
+        if (names.length === 0) return null;
+        const text = names.length === 1 ? `${names[0]} is typing\u2026`
+          : names.length === 2 ? `${names[0]} and ${names[1]} are typing\u2026`
+          : 'Several people are typing\u2026';
+        return (
+          <div style={{
+            padding: '4px 16px', fontSize: 11, color: '#67e8f9', fontStyle: 'italic',
+            opacity: 0.85,
+          }}>{text}</div>
+        );
+      })()}
       <form
         onSubmit={(e) => { e.preventDefault(); send(); }}
         style={{
@@ -274,7 +337,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
       >
         <textarea
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => { setDraft(e.target.value); notifyTyping(); }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
           placeholder='Send a message'
           rows={2}
@@ -290,7 +353,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
         />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: '#475569' }}>
-            {isMobile ? 'Tap send' : 'Enter to send · Shift+Enter for newline'}
+            {isMobile ? 'Tap send' : 'Enter to send Â· Shift+Enter for newline'}
           </span>
           <button
             type='submit'
@@ -305,7 +368,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
               minWidth: isMobile ? 80 : 60, minHeight: isMobile ? 40 : 28,
             }}
           >
-            {sending ? '…' : 'Send'}
+            {sending ? 'â¦' : 'Send'}
           </button>
         </div>
         {err ? <p style={{ color: '#fda4af', fontSize: 11, margin: 0 }}>{err}</p> : null}
