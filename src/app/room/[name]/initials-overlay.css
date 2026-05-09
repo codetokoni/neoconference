@@ -163,7 +163,7 @@
    Mobile (<= 640px) layout for the in-room view.
 
    Goals (per user):
-   - At most 4 participant tiles visible (2 x 2 grid).
+   - Up to 16 participant tiles visible (4 x 4 grid).
    - The custom top toolbar (.room-toolbar with People, Hide me,
      Whiteboard, Polls, Copy link, Fullscreen, Record, Go Live, etc.)
      collapses into the bottom More overflow menu.
@@ -189,8 +189,9 @@
   /* Tighter grid: 2 columns, 2 rows max visible */
   .lk-grid-layout,
   .lk-grid-layout-wrapper > .lk-grid-layout {
-    --lk-grid-max-columns: 2 !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    --lk-grid-max-columns: 4 !important;
+    --lk-grid-max-rows: 4 !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
     grid-auto-rows: 1fr !important;
     gap: 6px !important;
     padding: 6px !important;
