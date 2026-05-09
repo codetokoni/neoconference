@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ParticipantTile,
   useTracks,
@@ -13,16 +13,8 @@ import { Track } from 'livekit-client';
 /**
  * MobileVideoConference
  *
- * Renders a custom 2x2 grid (4 tiles per page) at phone widths (<= 640px).
- * On larger screens, renders the stock <VideoConference /> unchanged.
- *
- * Why: LiveKit's default GridLayout picks 1x2 (2 tiles per page) on portrait
- * phones. Users want to see 4 at once.
- *
- * NOTE: We deliberately do NOT render <ControlBar /> or <RoomAudioRenderer />
- * here. The parent room page already renders its own audio renderer and the
- * existing room-toolbar / MobileMoreMenu provide the controls. This avoids
- * needing LayoutContextProvider and prevents duplicate audio output.
+ * Phone (<= 640px): custom 2x2 grid (4 tiles per page) with horizontal swipe to
+ * paginate. Desktop: stock <VideoConference /> unchanged.
  */
 export default function MobileVideoConference() {
   const [isMobile, setIsMobile] = useState(false);
@@ -37,7 +29,6 @@ export default function MobileVideoConference() {
     return () => mq.removeEventListener('change', update);
   }, []);
 
-  // SSR / first paint: render stock VideoConference so we don't flash empty UI
   if (!mounted || !isMobile) {
     return <VideoConference />;
   }
@@ -46,6 +37,7 @@ export default function MobileVideoConference() {
 }
 
 const PAGE_SIZE = 4;
+const SWIPE_THRESHOLD = 50; // px
 
 function MobileGridImpl() {
   const tracks: TrackReferenceOrPlaceholder[] = useTracks(
@@ -62,14 +54,42 @@ function MobileGridImpl() {
   const start = safePage * PAGE_SIZE;
   const pageTracks = tracks.slice(start, start + PAGE_SIZE);
 
+  // Touch swipe handlers
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    touchStartX.current = t.clientX;
+    touchStartY.current = t.clientY;
+  };
+
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current == null || touchStartY.current == null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStartX.current;
+    const dy = t.clientY - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+    // Ignore mostly-vertical drags so we don't hijack scrolls
+    if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dy) > Math.abs(dx)) return;
+    if (dx < 0 && safePage < totalPages - 1) setPage(safePage + 1);
+    else if (dx > 0 && safePage > 0) setPage(safePage - 1);
+  };
+
   return (
     <div
       className="lk-video-conference nc-mobile-vc"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
       style={{
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
         width: '100%',
+        position: 'absolute',
+        inset: 0,
+        touchAction: 'pan-y',
       }}
     >
       <div
