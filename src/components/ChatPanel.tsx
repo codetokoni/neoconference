@@ -400,7 +400,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
                   <span style={{ color: '#67e8f9', fontWeight: 600 }}>{m.name}</span>
                   {m.toUserId ? (
                     <span style={{ color: '#a78bfa', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: 'rgba(168,85,247,0.18)', border: '1px solid rgba(168,85,247,0.4)', letterSpacing: 0.5 }}>
-                      {m.userId === (localParticipant?.identity || '') ? `\u{1F512} DM \u2192 ${(participants.find(p=>p.identity===m.toUserId)?.name) || m.toUserId}` : '\u{1F512} DM'}
+                      {m.userId === (localParticipant?.identity || '') ? `\uD83D\uDD12 DM \u2192 ${(participants.find(p=>p.identity===m.toUserId)?.name) || m.toUserId}` : '\uD83D\uDD12 DM'}
                     </span>
                   ) : null}
                   <span style={{ color: '#64748b', fontSize: 11 }}>{fmtTime(m.ts)}</span>
@@ -474,7 +474,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
             cursor: 'pointer',
           }}
         >
-          {dmTo ? `\u{1F512} DM \u00B7 ${dmTo.name}` : 'To: Everyone'}
+          {dmTo ? `\uD83D\uDD12 DM \u00B7 ${dmTo.name}` : 'To: Everyone'}
           <span aria-hidden style={{ opacity: 0.7 }}>\u25BE</span>
         </button>
         {dmTo ? (
@@ -536,7 +536,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
             >
               <span style={{ width: 24, height: 24, borderRadius: '50%', background: avatarColor(c.label), color: '#001018', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials(c.label)}</span>
               <span style={{ fontWeight: 600 }}>{c.label}</span>
-              <span style={{ marginLeft: 'auto', fontSize: 11, color: '#a78bfa' }}>\u{1F512} DM</span>
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: '#a78bfa' }}>\uD83D\uDD12 DM</span>
             </button>
           ))}
         </div>
