@@ -413,16 +413,6 @@ function RoomContainer({
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
         <WaitingRoomPanel open={showWaitingRoom} onClose={() => setShowWaitingRoom(false)} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          <BreakoutsPanel open={showBreakouts} onClose={() => setShowBreakouts(false)} isHost={roomRole === "host" || roomRole === "cohost"} eventSlug={eventSlug} />
               <SpeakerBadge />
-        {!showChat ? (
-          <button
-            type="button"
-            onClick={() => setShowChat(true)}
-            aria-label="Open chat"
-            style={{ position: "fixed", top: 14, right: 14, zIndex: 65, padding: "8px 12px", borderRadius: 10, background: "rgba(15,23,42,0.7)", border: "1px solid rgba(34,211,238,0.35)", color: "#67e8f9", fontSize: 12, fontWeight: 600, cursor: "pointer", backdropFilter: "blur(8px)" }}
-          >
-            Chat
-          </button>
-        ) : null}
         {showPeople && (
           <ParticipantsPanel onClose={() => setShowPeople(false)} />
         )}
