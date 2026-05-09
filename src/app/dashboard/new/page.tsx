@@ -23,6 +23,8 @@ type CreateResult = {
 export default function NewEventPage() {
   const router = useRouter();
   const [title, setTitle] = useState('');
+  const [instantLoading, setInstantLoading] = useState(false);
+  const [instantError, setInstantError] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [password, setPassword] = useState('');
@@ -31,6 +33,28 @@ export default function NewEventPage() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CreateResult | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+
+  async function startInstant() {
+    setInstantLoading(true);
+    setInstantError(null);
+    try {
+      const res = await fetch('/api/events/instant', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok || !j.roomUrl) {
+        setInstantError(j.error || 'Could not start instant meeting.');
+        setInstantLoading(false);
+        return;
+      }
+      router.push(j.roomUrl);
+    } catch (e: unknown) {
+      setInstantError(e instanceof Error ? e.message : 'Network error');
+      setInstantLoading(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -96,6 +120,38 @@ export default function NewEventPage() {
         <p className="mt-3 sm:mt-4 max-w-2xl text-sm sm:text-base text-white/60">
           One action provisions everything: a smart link, a scannable QR, optional RTMP livestream, and an HLS replay-ready URL.
         </p>
+
+        <section className="mt-8 sm:mt-10 rounded-3xl border border-cyan-300/25 bg-gradient-to-br from-cyan-400/[0.07] via-sky-500/[0.04] to-transparent p-5 sm:p-6 md:p-8 backdrop-blur-xl">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.2em] text-cyan-200">
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+                Instant meeting
+              </div>
+              <h2 className="mt-2 text-xl sm:text-2xl font-semibold text-white">Start a meeting right now</h2>
+              <p className="mt-1 text-sm text-white/60">Skip the form. Spin up a live room with one tap and share the link.</p>
+            </div>
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <button
+                type="button"
+                onClick={startInstant}
+                disabled={instantLoading}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-sky-500 px-6 py-3 text-sm font-semibold text-slate-900 shadow-[0_0_30px_-8px_rgba(34,211,238,0.6)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {instantLoading ? 'Starting…' : 'Start instant meeting →'}
+              </button>
+              {instantError ? (
+                <p className="text-xs text-rose-300">{instantError}</p>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
+        <div className="mt-8 sm:mt-10 flex items-center gap-4 text-[10px] uppercase tracking-[0.22em] text-white/35">
+          <span className="h-px flex-1 bg-white/10" />
+          <span>or schedule for later</span>
+          <span className="h-px flex-1 bg-white/10" />
+        </div>
 
         <form onSubmit={handleSubmit} className="mt-8 sm:mt-10 grid gap-5 sm:gap-6 rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:p-6 md:p-10 backdrop-blur-xl shadow-[0_0_60px_-20px_rgba(34,211,238,0.25)]">
           <div className="grid gap-2">
