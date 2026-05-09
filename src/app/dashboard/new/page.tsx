@@ -50,8 +50,13 @@ export default function NewEventPage() {
           type: eventType,
         }),
       });
-      const json = await res.json();
-      setResult(json);
+      const json = await res.json().catch(() => ({} as Record<string, unknown>));
+      if (!res.ok) {
+        const msg = (typeof json === 'object' && json && 'error' in json && typeof (json as Record<string, unknown>).error === 'string') ? (json as Record<string, string>).error : `create_failed_${res.status}`;
+        setResult({ ok: false, error: msg });
+      } else {
+        setResult({ ok: true, event: json as CreateResult['event'] });
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setResult({ ok: false, error: msg });
