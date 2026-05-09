@@ -146,6 +146,8 @@ export interface NeoEvent {
   ownerUserId: string;
   /** Optional human display name for the owner (snapshot at create time). */
   ownerName?: string;
+  /** Optional primary email of the owner (snapshot at create time). Used as a stable fallback for owner checks if Clerk userId changes. */
+  ownerEmail?: string;
 
   visibility: EventVisibility;
   /** When set, attendees must enter this password before joining. */
