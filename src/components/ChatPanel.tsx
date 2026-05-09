@@ -16,11 +16,13 @@ import type { ChatMessage } from '@/types/event';
 const TOPIC = 'neo-chat';
 const TYPING_TOPIC = 'neo-typing';
 const MENTION_EVERYONE = 'everyone';
+const MOD_TOPIC = 'neo-mod';
 
 type Props = {
   eventId: string;
   open: boolean;
   onClose: () => void;
+  isHost?: boolean;
 };
 
 function fmtTime(iso: string): string {
@@ -77,7 +79,7 @@ function renderMessageText(text: string, knownNames: Map<string,string>, meIdent
   return out;
 }
 
-export default function ChatPanel({ eventId, open, onClose }: Props) {
+export default function ChatPanel({ eventId, open, onClose, isHost = false }: Props) {
   const room = useRoomContext();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -85,6 +87,8 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
   const [err, setErr] = useState<string | null>(null);
   const [unread, setUnread] = useState(0);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [mutedUserIds, setMutedUserIds] = useState<Set<string>>(() => new Set());
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
@@ -158,6 +162,17 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
     if (!room) return;
     const dec = new TextDecoder();
     const handler = (payload: Uint8Array, _p: any, _k: any, topic?: string) => {
+      if (topic === MOD_TOPIC) {
+        try {
+          const obj = JSON.parse(dec.decode(payload));
+          if (obj && obj.action === 'delete' && typeof obj.messageId === 'string') {
+            setMessages((arr) => arr.filter((mm) => mm.id !== obj.messageId));
+          } else if (obj && obj.action === 'mute' && typeof obj.userId === 'string') {
+            setMutedUserIds((s) => { const next = new Set(s); next.add(obj.userId); return next; });
+          }
+        } catch {}
+        return;
+      }
       if (topic === TYPING_TOPIC) {
         try {
           const obj = JSON.parse(dec.decode(payload));
@@ -219,6 +234,28 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
       lp.publishData(enc.encode(payload), { reliable: false, topic: TYPING_TOPIC });
     } catch {}
   }, [room]);
+
+  const broadcastMod = useCallback(async (action: 'delete' | 'mute', payload: Record<string, string>) => {
+    try {
+      const lp = room?.localParticipant;
+      if (!lp) return;
+      const enc = new TextEncoder();
+      const data = enc.encode(JSON.stringify({ action, ...payload }));
+      await lp.publishData(data, { reliable: true, topic: MOD_TOPIC });
+    } catch {}
+  }, [room]);
+
+  const deleteMessage = useCallback((id: string) => {
+    setMessages((arr) => arr.filter((mm) => mm.id !== id));
+    broadcastMod('delete', { messageId: id });
+    setOpenMenuId(null);
+  }, [broadcastMod]);
+
+  const muteUser = useCallback((userId: string) => {
+    setMutedUserIds((s) => { const next = new Set(s); next.add(userId); return next; });
+    broadcastMod('mute', { userId });
+    setOpenMenuId(null);
+  }, [broadcastMod]);
 
   const onListScroll = useCallback(() => {
     const el = listRef.current;
@@ -314,14 +351,15 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
   }, []);
 
   const grouped = useMemo(() => {
-    return messages.map((m, i) => {
-      const prev = i > 0 ? messages[i - 1] : null;
+    const visible = messages.filter((mm) => !(mm.userId && mutedUserIds.has(mm.userId)));
+    return visible.map((m, i) => {
+      const prev = i > 0 ? visible[i - 1] : null;
       const sameSender = prev && prev.name === m.name;
       const dt = prev ? new Date(m.ts).getTime() - new Date(prev.ts).getTime() : Infinity;
       const grp = sameSender && dt < 120000;
       return { m, grouped: grp };
     });
-  }, [messages]);
+  }, [messages, mutedUserIds]);
 
   if (!open) return null;
 
@@ -416,18 +454,91 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
                 </div>
               ) : null}
               <div style={{ color: '#e2e8f0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', ...(m.toUserId ? { background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)', borderRadius: 8, padding: '6px 10px' } : {}) }}>{renderMessageText(m.text, knownNamesByLow, localParticipant?.identity || '', localParticipant?.name || '')}</div>
-              <button
-                type='button'
-                onClick={() => setReplyingTo(m)}
-                aria-label='Reply'
-                style={{
-                  background: 'transparent', border: 'none', color: '#67e8f9',
-                  cursor: 'pointer', fontSize: 11, padding: '2px 0', marginTop: 2,
-                  alignSelf: 'flex-start', opacity: 0.7,
-                }}
-              >
-                ↩ Reply
-              </button>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 2, position: 'relative' }}>
+                <button
+                  type='button'
+                  onClick={() => setReplyingTo(m)}
+                  aria-label='Reply'
+                  style={{
+                    background: 'transparent', border: 'none', color: '#67e8f9',
+                    cursor: 'pointer', fontSize: 11, padding: '2px 0',
+                    opacity: 0.7,
+                  }}
+                >
+                  ↩ Reply
+                </button>
+                {isHost && !m.toUserId ? (
+                  <button
+                    type='button'
+                    onClick={() => setOpenMenuId((v) => v === m.id ? null : m.id)}
+                    aria-label='Moderate message'
+                    aria-haspopup='menu'
+                    aria-expanded={openMenuId === m.id}
+                    style={{
+                      background: 'transparent', border: 'none', color: '#94a3b8',
+                      cursor: 'pointer', fontSize: 14, padding: '0 4px', lineHeight: 1,
+                      opacity: 0.7,
+                    }}
+                  >
+                    ⋯
+                  </button>
+                ) : null}
+                {isHost && openMenuId === m.id ? (
+                  <div
+                    role='menu'
+                    aria-label='Moderation actions'
+                    style={{
+                      position: 'absolute', top: '100%', left: 40, zIndex: 5,
+                      background: 'rgba(15,23,42,0.98)',
+                      border: '1px solid rgba(239,68,68,0.35)',
+                      borderRadius: 8, padding: 4, minWidth: 180,
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                    }}
+                  >
+                    <button
+                      type='button'
+                      role='menuitem'
+                      onClick={() => deleteMessage(m.id)}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        background: 'transparent', border: 'none',
+                        color: '#fca5a5', cursor: 'pointer',
+                        padding: '8px 10px', fontSize: 12, borderRadius: 6,
+                      }}
+                    >
+                      Delete message
+                    </button>
+                    {m.userId ? (
+                      <button
+                        type='button'
+                        role='menuitem'
+                        onClick={() => muteUser(m.userId as string)}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          background: 'transparent', border: 'none',
+                          color: '#fca5a5', cursor: 'pointer',
+                          padding: '8px 10px', fontSize: 12, borderRadius: 6,
+                        }}
+                      >
+                        Mute {m.name} in chat
+                      </button>
+                    ) : null}
+                    <button
+                      type='button'
+                      role='menuitem'
+                      onClick={() => setOpenMenuId(null)}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        background: 'transparent', border: 'none',
+                        color: '#94a3b8', cursor: 'pointer',
+                        padding: '8px 10px', fontSize: 12, borderRadius: 6,
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         ))}
