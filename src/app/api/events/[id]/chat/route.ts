@@ -52,6 +52,28 @@ export async function POST(
   try { body = await req.json(); } catch {}
   const text = String(body?.text || "").trim();
   if (!text) return NextResponse.json({ error: "empty" }, { status: 400 });
+  // Optional reply context
+  let replyTo: { id: string; name: string; snippet: string } | undefined;
+  if (body?.replyTo && typeof body.replyTo === 'object') {
+    const rid = String(body.replyTo.id || '').slice(0, 64);
+    const rname = String(body.replyTo.name || '').slice(0, 80);
+    const rsnip = String(body.replyTo.snippet || '').slice(0, 140);
+    if (rid && rname) replyTo = { id: rid, name: rname, snippet: rsnip };
+  }
+  // Optional mentions list
+  let mentions: string[] | undefined;
+  if (Array.isArray(body?.mentions)) {
+    const cleaned = body.mentions
+      .map((x: any) => String(x || '').toLowerCase().slice(0, 80))
+      .filter((x: string) => x.length > 0)
+      .slice(0, 25);
+    if (cleaned.length > 0) mentions = cleaned;
+  }
+  // Optional DM target (private message)
+  let toUserId: string | undefined;
+  if (typeof body?.toUserId === 'string' && body.toUserId.trim()) {
+    toUserId = body.toUserId.slice(0, 80);
+  }
 
   const u = await currentUser();
   const name = u?.firstName || u?.username || (u?.emailAddresses?.[0]?.emailAddress?.split("@")[0]) || "Guest";
@@ -62,6 +84,9 @@ export async function POST(
     name: String(name).slice(0, 80),
     text,
     ts: new Date().toISOString(),
+    ...(replyTo ? { replyTo } : {}),
+    ...(mentions ? { mentions } : {}),
+    ...(toUserId ? { toUserId } : {}),
   };
 
   try {
