@@ -89,10 +89,19 @@ export async function GET(req: NextRequest) {
             if (apiKey2 && apiSecret2 && wsUrl2) {
               const httpUrl = wsUrl2.replace(/^wss?:\/\//, "https://");
               const svc = new RoomServiceClient(httpUrl, apiKey2, apiSecret2);
+              const hostIds2 = new Set<string>();
+              if (ev2.ownerUserId) hostIds2.add(ev2.ownerUserId.toLowerCase());
+              (ev2.roles || []).forEach((r: { role: string; identifier: string }) => {
+                if ((r.role === "host" || r.role === "cohost") && r.identifier) {
+                  hostIds2.add(r.identifier.toLowerCase());
+                }
+              });
               let hostPresent = false;
               try {
                 const parts = await svc.listParticipants(room);
                 hostPresent = parts.some((p) => {
+                  const raw = (p.identity || "").split("#")[0].toLowerCase();
+                  if (raw && hostIds2.has(raw)) return true;
                   try {
                     const md = p.metadata ? JSON.parse(p.metadata) : null;
                     return md?.role === "host" || md?.role === "cohost";
@@ -101,7 +110,7 @@ export async function GET(req: NextRequest) {
                   }
                 });
               } catch (listErr) {
-                // If the room does not exist yet, listParticipants throws — treat as no host present.
+                // If the room does not exist yet, listParticipants throws â treat as no host present.
                 hostPresent = false;
               }
               if (!hostPresent) {
