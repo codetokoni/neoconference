@@ -1,6 +1,6 @@
 "use client";
 
-// SpeakerBadge - in-room pill that surfaces the userâs effective role.
+// SpeakerBadge - in-room pill that surfaces the userÃ¢ÂÂs effective role.
 // Reads `event` query param from current URL, calls /api/events/role, and renders
 // a small floating badge in the top-right when the user is host/cohost/speaker.
 // Renders nothing for viewers/guests to keep the UI quiet.
@@ -40,7 +40,7 @@ export default function SpeakerBadge() {
     }
     if (!slug) return;
     let abort = false;
-    // Retry on viewer/guest a few times â handles Clerk session hydration race
+    // Retry on viewer/guest a few times Ã¢ÂÂ handles Clerk session hydration race
     // and KV eventual-consistency right after instant-meeting creation.
     const delays = [0, 400, 900, 1800, 3500];
     let attempt = 0;
@@ -80,7 +80,7 @@ export default function SpeakerBadge() {
   if (!role || role === "viewer" || role === "guest") return null;
 
   return (
-    <div className="fixed top-4 right-4 z-40 flex items-center gap-1.5 pointer-events-none">
+    <div className="fixed top-4 right-16 sm:right-4 sm:top-4 z-40 flex items-center gap-1.5 pointer-events-none">
       <span
         className={
           "px-2.5 py-1 rounded-full border text-[11px] font-medium uppercase tracking-wider " +
