@@ -753,6 +753,22 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
     };
   }, [room, roomRole]);
 
+  // Expose record toggle to MobileControlBar so it can trigger this directly
+  // instead of proxying a .click() to the (CSS-hidden) top-toolbar button.
+  useEffect(() => {
+    (window as any).__ncRecordToggle = () => {
+      if (busy) return;
+      if (egressId) {
+        stop();
+      } else {
+        start();
+      }
+    };
+    return () => {
+      try { delete (window as any).__ncRecordToggle; } catch {}
+    };
+  });
+
   const broadcast = async (active: boolean) => {
     try {
       const me =
