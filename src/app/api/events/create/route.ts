@@ -3,7 +3,7 @@
 // stream, optional HSMOH shortlink, and persists the NeoEvent to KV.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { eventStore, generateId, generateSlug, generateQrSeed } from '@/lib/eventStore';
 import { streamlab } from '@/lib/streamlab';
 import { hsmoh } from '@/lib/hsmoh';
@@ -37,6 +37,16 @@ export async function POST(req: NextRequest) {
   if (!userId) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   }
+
+  // Snapshot owner email so re-logins (or future Clerk userId churn) still resolve as owner.
+  let ownerEmail: string | undefined;
+  try {
+    const u0 = await currentUser();
+    ownerEmail = u0?.emailAddresses?.find((e) => e.id === u0.primaryEmailAddressId)?.emailAddress
+      || u0?.emailAddresses?.[0]?.emailAddress
+      || undefined;
+    if (ownerEmail) ownerEmail = ownerEmail.toLowerCase();
+  } catch { /* non-fatal */ }
 
   let body: CreateBody;
   try {
@@ -96,6 +106,7 @@ export async function POST(req: NextRequest) {
     name,
     description: body.description,
     ownerUserId: userId,
+    ownerEmail,
     visibility: body.visibility ?? 'unlisted',
     password: body.password,
     waitingRoomEnabled: Boolean(body.waitingRoomEnabled),
