@@ -77,7 +77,7 @@ export default function HostMenuOverlay({
         }
 
         return createPortal(
-          <HostTileMenu identity={identity} name={tileName || identity} slug={slug} />,
+          <HostTileMenu participantIdentity={identity} participantName={tileName || identity} isHost={true} slug={slug} />,
           tile,
           'host-tile-menu-' + i + '-' + identity,
         );
