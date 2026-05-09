@@ -271,13 +271,13 @@
     box-sizing: border-box !important;
   }
   .lk-grid-layout .lk-participant-tile {
-    aspect-ratio: 1 / 1 !important;
+    aspect-ratio: auto !important;
     width: 100% !important;
-    height: auto !important;
+    height: 100% !important;
     min-height: 0 !important;
     max-height: 100% !important;
-    align-self: center !important;
-    justify-self: center !important;
+    align-self: stretch !important;
+    justify-self: stretch !important;
     border-radius: 12px !important;
     overflow: hidden !important;
   }
