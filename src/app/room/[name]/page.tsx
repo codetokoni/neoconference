@@ -13,6 +13,7 @@ import {
   useParticipants,
   useLocalParticipant,
 } from "@livekit/components-react";
+import MobileVideoConference from "@/components/MobileVideoConference";
 import { RoomEvent, Track, type Participant } from "livekit-client";
 import "@livekit/components-styles";
 import "./initials-overlay.css";
@@ -408,7 +409,7 @@ function RoomContainer({
       <SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
         <ChatTranscriptDownloader roomName={roomName} />
         <InitialsOverlay />
-        <RoomIdleController /><VideoConference />
+        <RoomIdleController /><MobileVideoConference />
         <RoomAudioRenderer />
         <LiveCaptions />
         <ReactionsBar />
