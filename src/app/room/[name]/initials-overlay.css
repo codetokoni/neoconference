@@ -159,62 +159,87 @@
   pointer-events: auto !important;
 }
 
-
 /* ===========================================================
-   Mobile (<= 640px): force a 2-column participant grid so we
-   show at most 4 visible tiles at once. LiveKit's built-in
-   pagination keeps the rest accessible via the focus/PiP queue.
+   Mobile (<= 640px) layout for the in-room view.
 
-   We ALSO collapse secondary control bar buttons into a "More"
-   overflow menu rendered by <MobileMoreMenu /> in page.tsx.
+   Goals (per user):
+   - At most 4 participant tiles visible (2 x 2 grid).
+   - The custom top toolbar (.room-toolbar with People, Hide me,
+     Whiteboard, Polls, Copy link, Fullscreen, Record, Go Live, etc.)
+     collapses into the bottom More overflow menu.
+   - The bottom LiveKit ControlBar shows only mic/cam/leave + More.
+   - The grid takes the full available height beneath.
    =========================================================== */
+
 @media (max-width: 640px) {
+  /* Hide ALL the buttons in the custom top toolbar — they live in More now.
+     We keep the toolbar element itself displayed only so JS can read children
+     and re-trigger their clicks; we collapse it visually to zero size. */
+  .room-toolbar {
+    pointer-events: none !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+    top: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
   /* Tighter grid: 2 columns, 2 rows max visible */
-  .lk-grid-layout {
+  .lk-grid-layout,
+  .lk-grid-layout-wrapper > .lk-grid-layout {
     --lk-grid-max-columns: 2 !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     grid-auto-rows: 1fr !important;
     gap: 6px !important;
     padding: 6px !important;
+    height: 100% !important;
   }
   .lk-grid-layout .lk-participant-tile {
-    aspect-ratio: 4 / 3;
+    aspect-ratio: auto !important;
+    min-height: 0 !important;
   }
 
-  /* Compact control bar: smaller buttons, no labels, single line */
+  /* Compact bottom ControlBar */
   .lk-control-bar {
     flex-wrap: nowrap !important;
     justify-content: center !important;
     gap: 6px !important;
     padding: 8px 10px !important;
+    overflow-x: auto !important;
   }
   .lk-control-bar .lk-button {
     padding: 8px 10px !important;
     min-width: 0 !important;
+    white-space: nowrap !important;
   }
   .lk-control-bar .lk-button > span:not(.lk-icon) {
-    /* Hide text labels on phone — keep just the icons */
     display: none !important;
   }
-
-  /* Hide secondary controls on phone — they live inside More menu */
+  /* Hide secondary controls — they live inside More menu */
   .lk-control-bar [data-lk-source="screen_share"],
   .lk-control-bar .lk-chat-toggle,
   .lk-control-bar .lk-settings-toggle {
     display: none !important;
   }
 
-  /* Make sure the More menu button (added by MobileMoreMenu) lays out
-     as a peer in the LiveKit ControlBar */
+  /* Show the More button on phone */
   .nc-mobile-more-btn {
     display: inline-flex !important;
   }
+
+  /* Hide our right-rail reactions emoji bar on phone — too cramped */
+  .nc-reactions-rail {
+    display: none !important;
+  }
 }
 
-/* On tablets/desktop, hide the mobile-only More button */
+/* On tablets/desktop, hide the mobile-only More button + popover */
 @media (min-width: 641px) {
   .nc-mobile-more-btn,
-  .nc-mobile-more-popover {
+  .nc-mobile-more-popover,
+  .nc-mobile-more-backdrop {
     display: none !important;
   }
 }
