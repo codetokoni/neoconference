@@ -2,17 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useRoomContext } from '@livekit/components-react';
+import { useParticipants, useLocalParticipant } from '@livekit/components-react';
 import { HostTileMenu } from './HostTileMenu';
 
 /**
  * HostMenuOverlay
  *
- * Mounted once inside <LiveKitRoom>. When the local user is host, it scans
- * the DOM for .lk-participant-tile elements and matches each one to a
- * remote LiveKit Participant via its data-lk-participant-name. It then
- * portals a <HostTileMenu /> into every remote tile so the host can mute
- * mic/cam or remove that participant.
+ * For host/cohost only. Iterates remote LiveKit participants and portals
+ * a <HostTileMenu /> into each one's tile DOM (.lk-participant-tile).
+ * Tiles are matched to participants via data-lk-participant-name.
  */
 export default function HostMenuOverlay({
   isHost,
@@ -21,65 +19,59 @@ export default function HostMenuOverlay({
   isHost: boolean;
   slug: string;
 }) {
-  const room = useRoomContext();
+  const participants = useParticipants();
+  const { localParticipant } = useLocalParticipant();
   const [tick, setTick] = useState(0);
-  const [tiles, setTiles] = useState<HTMLElement[]>([]);
 
-  // Re-render whenever participants join/leave so the tile list is fresh.
-  useEffect(() => {
-    if (!room) return;
-    const bump = () => setTick((t) => t + 1);
-    const events = ['participantConnected','participantDisconnected','trackPublished','trackUnpublished','trackMuted','trackUnmuted'];
-    for (const e of events) (room as any).on?.(e, bump);
-    return () => { for (const e of events) (room as any).off?.(e, bump); };
-  }, [room]);
-
+  // Re-scan tiles whenever the DOM mutates (tiles get added/removed/paginated).
   useEffect(() => {
     if (!isHost) return;
-    const collect = () => {
-      const list = Array.from(
-        document.querySelectorAll<HTMLElement>('.lk-participant-tile'),
-      );
-      setTiles(list);
-    };
-    collect();
+    let raf = 0;
     const obs = new MutationObserver(() => {
-      requestAnimationFrame(collect);
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setTick((t) => t + 1));
     });
     obs.observe(document.body, { childList: true, subtree: true });
-    return () => obs.disconnect();
-  }, [isHost, tick]);
+    return () => { obs.disconnect(); cancelAnimationFrame(raf); };
+  }, [isHost]);
 
-  if (!isHost || !room) return null;
+  if (!isHost) return null;
 
-  // Build a name -> identity map from current remote participants.
-  const remotes = Array.from((room as any).remoteParticipants?.values?.() ?? []);
-  const localIdentity = (room as any).localParticipant?.identity ?? '';
+  const localIdentity = localParticipant?.identity || '';
+  // Snapshot tiles (read at render time; tick triggers re-render).
+  void tick;
+  const tiles = typeof document !== 'undefined'
+    ? Array.from(document.querySelectorAll<HTMLElement>('.lk-participant-tile'))
+    : [];
 
   return (
     <>
-      {tiles.map((tile, i) => {
-        const nameEl = tile.querySelector('[data-lk-participant-name]') as HTMLElement | null;
-        const tileName = nameEl?.getAttribute('data-lk-participant-name')?.trim() || '';
-        const isLocalTile = tile.getAttribute('data-lk-local-participant') === 'true' || tile.querySelector('[data-lk-local-participant="true"]') !== null;
-
-        // Skip the local participant's own tile -- host shouldn't moderate themselves here.
-        if (isLocalTile) return null;
-
-        // Match this tile to a remote participant by name; fall back to identity match.
-        const match = (remotes as any[]).find((p) => (p.name || p.identity) === tileName) || (remotes as any[]).find((p) => p.identity === tileName);
-        const identity = match?.identity || tileName;
-        if (!identity || identity === localIdentity) return null;
-
-        // Ensure the tile can host an absolutely-positioned overlay.
+      {participants.map((p) => {
+        if (!p || p.identity === localIdentity) return null;
+        const displayName = (p.name || p.identity || '').trim();
+        // Find the FIRST tile in DOM whose name matches AND isn't already mounted.
+        // Multiple tiles may share the same name in test setups; that's fine -- we mount per identity.
+        const tile = tiles.find((el) => {
+          const nameEl = el.querySelector('[data-lk-participant-name]') as HTMLElement | null;
+          const tileName = nameEl?.getAttribute('data-lk-participant-name')?.trim() || '';
+          if (tileName !== displayName) return false;
+          const isLocalTile = el.querySelector('[data-lk-local-participant="true"]') !== null;
+          return !isLocalTile;
+        });
+        if (!tile) return null;
         if (getComputedStyle(tile).position === 'static') {
           tile.style.position = 'relative';
         }
-
         return createPortal(
-          <HostTileMenu participantIdentity={identity} participantName={tileName || identity} isHost={true} slug={slug} />,
+          <HostTileMenu
+            key={p.identity}
+            participantIdentity={p.identity}
+            participantName={displayName}
+            isHost={true}
+            slug={slug}
+          />,
           tile,
-          'host-tile-menu-' + i + '-' + identity,
+          'host-tile-menu-' + p.identity,
         );
       })}
     </>
