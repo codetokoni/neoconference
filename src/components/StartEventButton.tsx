@@ -35,18 +35,27 @@ export default function StartEventButton({ eventId }: { eventId: string }) {
   }
 
   return (
-    <div className="neo-event-host-actions" style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+    <div className="flex flex-col gap-2">
       <button
         onClick={start}
         disabled={loading}
-        className="neo-event-cta"
-        style={{ opacity: loading ? 0.6 : 1 }}
+        className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-sky-500 px-5 py-2.5 text-sm font-semibold text-slate-900 shadow-[0_0_30px_-8px_rgba(34,211,238,0.6)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {loading ? 'Starting…' : 'Start event now'}
+        {loading ? (
+          <>
+            <span className="h-1.5 w-1.5 rounded-full bg-slate-900/70 animate-pulse" />
+            Starting…
+          </>
+        ) : (
+          <>
+            <span className="h-1.5 w-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_2px_rgba(244,63,94,0.6)]" />
+            Start now
+          </>
+        )}
       </button>
-      {error && (
-        <p style={{ color: '#fca5a5', fontSize: 12, margin: 0 }}>{error}</p>
-      )}
+      {error ? (
+        <p className="text-xs text-rose-300">{error}</p>
+      ) : null}
     </div>
   );
 }
