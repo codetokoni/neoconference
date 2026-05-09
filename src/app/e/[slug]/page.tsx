@@ -11,6 +11,8 @@ import { toPublicView } from '@/types/event';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import TicketsList from './TicketsList';
+import { auth } from '@clerk/nextjs/server';
+import StartEventButton from '@/components/StartEventButton';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +26,8 @@ export default async function EventResolverPage({
 }) {
   const ev = await eventStore.bySlug(params.slug);
   if (!ev) return notFound();
+  const { userId } = await auth();
+  const isOwner = !!userId && userId === ev.ownerUserId;
   const v = toPublicView(ev);
 
   return (
@@ -50,6 +54,7 @@ export default async function EventResolverPage({
             <a className="neo-event-cta neo-event-cta--ghost" href={`/api/events/${ev.slug}/ics`} download>
               Add to calendar
             </a>
+            {isOwner ? <StartEventButton eventId={ev.id} /> : null}
           </section>
         ) : null}
 
