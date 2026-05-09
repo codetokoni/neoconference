@@ -79,7 +79,7 @@ export async function POST(req: Request) {
   // ---- LiveKit server creds ----
   const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
-  const wsUrl = process.env.LIVEKIT_WS_URL;
+  const wsUrl = process.env.LIVEKIT_WS_URL || process.env.NEXT_PUBLIC_LIVEKIT_URL;
   if (!apiKey || !apiSecret || !wsUrl) {
     return NextResponse.json({ error: "livekit_misconfigured" }, { status: 500 });
   }
