@@ -15,6 +15,7 @@ import {
 } from "@livekit/components-react";
 import MobileVideoConference from "@/components/MobileVideoConference";
 import HostMenuOverlay from "@/components/HostMenuOverlay";
+import MediaRequestPrompt from "@/components/MediaRequestPrompt";
 import { RoomEvent, Track, type Participant } from "livekit-client";
 import "@livekit/components-styles";
 import "./initials-overlay.css";
@@ -403,7 +404,7 @@ function RoomContainer({
           {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
         </button>
         <ParticipantCountBadge />
-        <RecordingControls roomName={roomName} />
+        <RecordingControls roomName={roomName} roomRole={roomRole} />
         <GoLiveButton roomName={roomName} eventSlug={eventSlug} />
       </div>
       <RaiseHandButton isHost={roomRole === "host" || roomRole === "cohost"} />
@@ -412,6 +413,7 @@ function RoomContainer({
         <InitialsOverlay />
         <RoomIdleController /><MobileVideoConference />
         <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} slug={eventSlug} />
+        <MediaRequestPrompt />
         <RoomAudioRenderer />
         <LiveCaptions />
         <ReactionsBar />
@@ -676,7 +678,7 @@ function ParticipantsPanel({ onClose }: { onClose: () => void }) {
  * participants over the LiveKit data channel so everyone sees a red REC
  * banner while it's running.
  */
-function RecordingControls({ roomName }: { roomName: string }) {
+function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole: string | null }) {
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
 
@@ -696,6 +698,14 @@ function RecordingControls({ roomName }: { roomName: string }) {
     url?: string;
   } | null>(null);
 
+  // Recording approval state: when a non-host clicks Record, they wait on host's response.
+  const [recordPending, setRecordPending] = useState<"asking" | null>(null);
+  // When a non-host requests recording, hosts see this approval prompt.
+  const [recordApproval, setRecordApproval] = useState<{
+    fromIdentity: string;
+    fromName: string;
+  } | null>(null);
+
   const isRecording = !!egressId || !!remoteRecording;
 
   // Subscribe to recording state messages from other participants.
@@ -711,6 +721,26 @@ function RecordingControls({ roomName }: { roomName: string }) {
             });
           } else {
             setRemoteRecording(null);
+          }
+          if (msg?.type === "record_request") {
+            if (roomRole === "host" || roomRole === "cohost") {
+              setRecordApproval({
+                fromIdentity: String(msg.from || participant?.identity || ""),
+                fromName: String(msg.fromName || participant?.name || participant?.identity || "Someone"),
+              });
+            }
+          } else if (msg?.type === "record_request_response") {
+            const myIdentity = (room as any).localParticipant?.identity;
+            if (msg.to && msg.to === myIdentity) {
+              if (msg.ok) {
+                setRecordPending(null);
+                doStart();
+              } else {
+                setRecordPending(null);
+                setToast({ message: "Recording denied by host" });
+                setTimeout(() => setToast(null), 4000);
+              }
+            }
           }
         }
       } catch {
@@ -736,7 +766,7 @@ function RecordingControls({ roomName }: { roomName: string }) {
     }
   };
 
-  const start = async () => {
+  const doStart = async () => {
     if (busy || isRecording) return;
     setBusy(true);
     try {
@@ -761,6 +791,67 @@ function RecordingControls({ roomName }: { roomName: string }) {
       setTimeout(() => setToast(null), 5000);
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Send a record_request to all hosts and wait for a record_request_response.
+  const requestRecord = async () => {
+    if (busy || isRecording) return;
+    try {
+      const me =
+        localParticipant.name || localParticipant.identity || "Someone";
+      const payload = new TextEncoder().encode(
+        JSON.stringify({
+          type: "record_request",
+          from: localParticipant.identity,
+          fromName: me,
+        }),
+      );
+      await localParticipant.publishData(payload, { reliable: true } as any);
+      setRecordPending("asking");
+      setToast({ message: "Waiting for host approval\u2026" });
+      // Auto-clear pending state after 30s if no response
+      setTimeout(() => {
+        setRecordPending((p) => {
+          if (p === "asking") {
+            setToast({ message: "No response from host" });
+            setTimeout(() => setToast(null), 4000);
+            return null;
+          }
+          return p;
+        });
+      }, 30000);
+    } catch (e) {
+      console.error("requestRecord failed", e);
+    }
+  };
+
+  // Host/cohost decision: respond Allow / Deny to a pending record_request.
+  const respondRecord = async (ok: boolean) => {
+    const target = recordApproval;
+    if (!target) return;
+    try {
+      const payload = new TextEncoder().encode(
+        JSON.stringify({
+          type: "record_request_response",
+          to: target.fromIdentity,
+          ok,
+        }),
+      );
+      await localParticipant.publishData(payload, { reliable: true } as any);
+    } catch (e) {
+      console.error("respondRecord failed", e);
+    } finally {
+      setRecordApproval(null);
+    }
+  };
+
+  // Public start(): hosts and cohosts start immediately; everyone else has to ask.
+  const start = async () => {
+    if (roomRole === "host" || roomRole === "cohost") {
+      await doStart();
+    } else {
+      await requestRecord();
     }
   };
 
@@ -841,13 +932,57 @@ function RecordingControls({ roomName }: { roomName: string }) {
         </div>
       )}
 
-      {/* Record button: bottom-right floating */}
+      {/* Recording approval modal (host/cohost view) */}
+      {recordApproval && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9998,
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: "100%", maxWidth: 360, background: "#111", color: "#fff",
+              borderRadius: 14, padding: 16, boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+            }}
+          >
+            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
+              {recordApproval.fromName} wants to record this meeting
+            </div>
+            <div style={{ fontSize: 13, color: "#bbb", marginBottom: 16 }}>
+              Allow to start recording. Deny to block this request.
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => respondRecord(false)}
+                style={{
+                  padding: "10px 14px", borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.18)", background: "transparent",
+                  color: "#fff", fontWeight: 600, cursor: "pointer",
+                }}
+              >Deny</button>
+              <button
+                type="button"
+                onClick={() => respondRecord(true)}
+                style={{
+                  padding: "10px 14px", borderRadius: 10, border: "none",
+                  background: "#22c55e", color: "#0a0a0a", fontWeight: 700, cursor: "pointer",
+                }}
+              >Allow</button>
+            </div>
+          </div>
+        </div>
+      )}
+            {/* Record button: bottom-right floating */}
       <button
         type="button"
         data-room-chrome="true"
         onClick={egressId ? stop : start}
-        disabled={busy}
-        title={egressId ? "Stop recording" : "Start recording"}
+        disabled={busy || recordPending === "asking"}
+        title={egressId ? "Stop recording" : recordPending === "asking" ? "Waiting for host approval\u2026" : "Start recording"}
         style={{
           position: "relative",
           padding: "6px 12px",
