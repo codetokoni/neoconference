@@ -17,7 +17,7 @@ import { eventStore } from "@/lib/eventStore";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Action = "muteAudio" | "muteVideo" | "kick";
+type Action = "muteAudio" | "muteVideo" | "kick" | "requestUnmuteAudio" | "requestCameraOn";
 
 export async function POST(req: Request) {
   let body: { slug?: string; action?: string; participantIdentity?: string };
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
   if (!slug || !action || !identity) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
   }
-  if (action !== "muteAudio" && action !== "muteVideo" && action !== "kick") {
+  if (action !== "muteAudio" && action !== "muteVideo" && action !== "kick" && action !== "requestUnmuteAudio" && action !== "requestCameraOn") {
     return NextResponse.json({ error: "invalid_action" }, { status: 400 });
   }
 
@@ -92,7 +92,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, action: "kick" });
     }
 
-    // Mute: look up the participant\'s tracks to find the right sid for the
+    // Request unmute mic / turn on camera: send a data message to the participant
+    // who must approve it client-side before their track is enabled.
+    if (action === "requestUnmuteAudio" || action === "requestCameraOn") {
+      const me = await currentUser().catch(() => null);
+      const fromName = me?.firstName || me?.username || (me?.emailAddresses?.[0]?.emailAddress) || "Host";
+      const payload = new TextEncoder().encode(
+        JSON.stringify({
+          type: "media_request",
+          kind: action === "requestUnmuteAudio" ? "audio" : "video",
+          to: identity,
+          fromName,
+          ts: Date.now(),
+        }),
+      );
+      try {
+        await (svc as any).sendData(slug, payload, 0, { destinationIdentities: [identity] });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return NextResponse.json({ error: "send_failed", message: msg }, { status: 500 });
+      }
+      return NextResponse.json({ ok: true, action });
+    }
+
+        // Mute: look up the participant\'s tracks to find the right sid for the
     // requested source (audio = microphone, video = camera).
     const participant = await svc.getParticipant(slug, identity);
     const wantSource = action === "muteAudio" ? "MICROPHONE" : "CAMERA";
