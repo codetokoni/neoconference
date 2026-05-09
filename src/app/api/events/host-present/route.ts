@@ -28,19 +28,29 @@ export async function GET(req: NextRequest) {
     const apiSecret = process.env.LIVEKIT_API_SECRET;
     const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
     if (!apiKey || !apiSecret || !wsUrl) {
-      // If env is missing the gate is effectively bypassed by the token route, so report present.
       return NextResponse.json({ hostPresent: true, participantCount: 0 });
     }
 
     const httpUrl = wsUrl.replace(/^wss?:\/\//, "https://");
+    const roomName = slug;
     const svc = new RoomServiceClient(httpUrl, apiKey, apiSecret);
+
+    const hostIds = new Set<string>();
+    if (ev.ownerUserId) hostIds.add(ev.ownerUserId.toLowerCase());
+    (ev.roles || []).forEach((r: { role: string; identifier: string }) => {
+      if ((r.role === "host" || r.role === "cohost") && r.identifier) {
+        hostIds.add(r.identifier.toLowerCase());
+      }
+    });
 
     let hostPresent = false;
     let participantCount = 0;
     try {
-      const parts = await svc.listParticipants(ev.livekitRoom);
+      const parts = await svc.listParticipants(roomName);
       participantCount = parts.length;
       hostPresent = parts.some((p) => {
+        const raw = (p.identity || "").split("#")[0].toLowerCase();
+        if (raw && hostIds.has(raw)) return true;
         try {
           const md = p.metadata ? JSON.parse(p.metadata) : null;
           return md?.role === "host" || md?.role === "cohost";
@@ -49,7 +59,6 @@ export async function GET(req: NextRequest) {
         }
       });
     } catch {
-      // Room does not exist yet → no host present.
       hostPresent = false;
       participantCount = 0;
     }
