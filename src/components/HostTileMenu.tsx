@@ -37,7 +37,7 @@ export function HostTileMenu({
   const isSelf = localParticipant?.identity === participantIdentity;
 
   const call = useCallback(
-    async (action: 'muteAudio' | 'muteVideo' | 'kick') => {
+    async (action: 'muteAudio' | 'muteVideo' | 'kick' | 'requestUnmuteAudio' | 'requestCameraOn') => {
       setError(null);
       setPending(action);
       try {
@@ -143,6 +143,20 @@ export function HostTileMenu({
             disabled={pending !== null}
             onClick={() => call('muteVideo')}
             pending={pending === 'muteVideo'}
+          />
+          <MenuItem
+            label="Ask to unmute mic"
+            icon="·M"
+            disabled={pending !== null}
+            onClick={() => call('requestUnmuteAudio')}
+            pending={pending === 'requestUnmuteAudio'}
+          />
+          <MenuItem
+            label="Ask to turn on camera"
+            icon="·V"
+            disabled={pending !== null}
+            onClick={() => call('requestCameraOn')}
+            pending={pending === 'requestCameraOn'}
           />
 
           {!confirmKick ? (
