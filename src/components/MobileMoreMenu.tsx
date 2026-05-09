@@ -3,21 +3,27 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * MobileMoreMenu — phone-only "More" overflow for the in-room ControlBar.
+ * MobileMoreMenu — phone-only "More" overflow.
  *
- * Renders nothing on tablets/desktop (CSS hides .nc-mobile-more-btn above 640px).
- * On phone, mounts a "More" button into the LiveKit ControlBar via a portal-like
- * append at runtime, and toggles a popover containing Chat / Screen-share / Settings.
+ * On screens <= 640px:
+ *  - Mounts a "More" button into the LiveKit ControlBar at the bottom.
+ *  - On tap, opens a popover listing every button currently in the
+ *    custom .room-toolbar PLUS the LiveKit chat / share / settings
+ *    buttons (which are CSS-hidden on phone).
+ *  - Tapping an item proxies the click to the original (hidden) button,
+ *    so all behaviour stays in sync with the rest of the app.
  *
- * We do NOT replace VideoConference's ControlBar — we just add one more peer
- * button and let CSS hide the originals on phone (see initials-overlay.css).
+ * The popover items are scanned at OPEN time so we always reflect the
+ * current toolbar state (e.g. "Record" vs "Stop", host-only buttons).
  */
 export default function MobileMoreMenu() {
   const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<MoreEntry[]>([]);
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const mountedRef = useRef(false);
 
-  // Move our button into the LiveKit ControlBar so it sits inline with mic/cam/leave.
+  // Move our "More" button into the LiveKit ControlBar so it sits inline
+  // with mic/cam/leave.
   useEffect(() => {
     if (mountedRef.current) return;
     const btn = btnRef.current;
@@ -38,10 +44,50 @@ export default function MobileMoreMenu() {
     return () => window.clearInterval(id);
   }, []);
 
-  // Click triggers on the hidden originals — keeps LiveKit state in sync.
-  const triggerHidden = (selector: string) => {
-    const el = document.querySelector(selector) as HTMLElement | null;
-    if (el) el.click();
+  // Scan the toolbar(s) and build the menu list when opening.
+  const scan = (): MoreEntry[] => {
+    const list: MoreEntry[] = [];
+    // 1) Buttons in the custom top toolbar
+    const topBtns = document.querySelectorAll<HTMLElement>(
+      ".room-toolbar > button"
+    );
+    topBtns.forEach((b) => {
+      const label = (b.textContent || "").trim();
+      if (!label) return;
+      list.push({ label, target: b });
+    });
+    // 2) LiveKit chat toggle (it's a button too)
+    const chat = document.querySelector<HTMLElement>(".lk-chat-toggle");
+    if (chat) list.push({ label: "Chat", target: chat });
+    // 3) Screen share button inside the LiveKit ControlBar
+    const share = document.querySelector<HTMLElement>(
+      '.lk-control-bar [data-lk-source="screen_share"]'
+    );
+    if (share) list.push({ label: "Share screen", target: share });
+    // 4) Settings toggle
+    const settings = document.querySelector<HTMLElement>(".lk-settings-toggle");
+    if (settings) list.push({ label: "Settings", target: settings });
+    // De-dupe by label (keep first occurrence)
+    const seen = new Set<string>();
+    return list.filter((it) => {
+      const key = it.label.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  const handleToggle = () => {
+    if (!open) setItems(scan());
+    setOpen((v) => !v);
+  };
+
+  const handlePick = (entry: MoreEntry) => {
+    try {
+      entry.target.click();
+    } catch {
+      // ignore
+    }
     setOpen(false);
   };
 
@@ -53,7 +99,7 @@ export default function MobileMoreMenu() {
         className="lk-button nc-mobile-more-btn"
         aria-label="More options"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleToggle}
         style={{ display: "none" }}
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -63,58 +109,57 @@ export default function MobileMoreMenu() {
         </svg>
       </button>
       {open && (
-        <div
-          className="nc-mobile-more-popover"
-          role="menu"
-          style={{
-            position: "fixed",
-            bottom: 80,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 50,
-            background: "rgba(15, 23, 42, 0.96)",
-            border: "1px solid rgba(255,255,255,0.1)",
-            borderRadius: 12,
-            padding: 8,
-            minWidth: 200,
-            boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <MoreItem
-            label="Chat"
-            onClick={() => triggerHidden(".lk-chat-toggle")}
+        <>
+          <div
+            aria-hidden
+            className="nc-mobile-more-backdrop"
+            onClick={() => setOpen(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 49,
+              background: "rgba(0,0,0,0.35)",
+            }}
           />
-          <MoreItem
-            label="Share screen"
-            onClick={() =>
-              triggerHidden('.lk-control-bar [data-lk-source="screen_share"]')
-            }
-          />
-          <MoreItem
-            label="Settings"
-            onClick={() => triggerHidden(".lk-settings-toggle")}
-          />
-        </div>
-      )}
-      {open && (
-        <div
-          aria-hidden
-          onClick={() => setOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 49,
-            background: "transparent",
-          }}
-        />
+          <div
+            className="nc-mobile-more-popover"
+            role="menu"
+            style={{
+              position: "fixed",
+              bottom: 80,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 50,
+              background: "rgba(15, 23, 42, 0.98)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 14,
+              padding: 8,
+              minWidth: 220,
+              maxHeight: "60vh",
+              overflowY: "auto",
+              boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {items.length === 0 && (
+              <div style={{ color: "rgba(255,255,255,0.6)", padding: 12, fontSize: 13 }}>
+                No additional actions available.
+              </div>
+            )}
+            {items.map((it, i) => (
+              <MoreItem key={i + ":" + it.label} label={it.label} onClick={() => handlePick(it)} />
+            ))}
+          </div>
+        </>
       )}
     </>
   );
 }
+
+type MoreEntry = { label: string; target: HTMLElement };
 
 function MoreItem({ label, onClick }: { label: string; onClick: () => void }) {
   return (
@@ -127,16 +172,17 @@ function MoreItem({ label, onClick }: { label: string; onClick: () => void }) {
         border: "none",
         color: "#fff",
         textAlign: "left",
-        padding: "10px 12px",
-        borderRadius: 8,
-        fontSize: 14,
+        padding: "12px 14px",
+        borderRadius: 10,
+        fontSize: 15,
         cursor: "pointer",
+        WebkitTapHighlightColor: "transparent",
       }}
-      onMouseEnter={(e) => {
+      onTouchStart={(e) => {
         (e.currentTarget as HTMLButtonElement).style.background =
-          "rgba(255,255,255,0.08)";
+          "rgba(255,255,255,0.10)";
       }}
-      onMouseLeave={(e) => {
+      onTouchEnd={(e) => {
         (e.currentTarget as HTMLButtonElement).style.background = "transparent";
       }}
     >
