@@ -234,6 +234,25 @@
   .nc-reactions-rail {
     display: none !important;
   }
+
+  /* Per-user mobile layout fix: leave a right gutter for the floating
+     reactions/raise-hand bar so it never overlaps participant tiles. */
+  .lk-grid-layout-wrapper,
+  .lk-grid-layout {
+    width: calc(100% - 56px) !important;
+    max-width: calc(100% - 56px) !important;
+    margin-right: 56px !important;
+    box-sizing: border-box !important;
+  }
+  .lk-participant-tile {
+    min-height: 0 !important;
+  }
+  .lk-participant-tile video,
+  .lk-participant-media-video {
+    object-fit: cover !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
 }
 
 /* On tablets/desktop, hide the mobile-only More button + popover */
