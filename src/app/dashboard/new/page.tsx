@@ -42,7 +42,7 @@ export default function NewEventPage() {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          title: title.trim(),
+          name: title.trim(),
           description: description.trim() || undefined,
           scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
           password: password || undefined,
