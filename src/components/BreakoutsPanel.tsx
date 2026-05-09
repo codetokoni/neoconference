@@ -36,6 +36,8 @@ export interface BreakoutState {
   groups: BreakoutGroup[];
   /** identity -> groupId */
   assignments: Record<string, string>;
+  /** Identity of the host who broadcast this state. Used so guests keep the host's tile visible regardless of group assignment. */
+  host?: string;
   ts: number;
 }
 
@@ -77,8 +79,12 @@ export default function BreakoutsPanel({
   const broadcast = async (next: BreakoutState) => {
     if (!room || !localParticipant) return;
     try {
+      const stamped: BreakoutState = {
+        ...next,
+        host: next.host || localParticipant.identity,
+      };
       const payload = new TextEncoder().encode(
-        JSON.stringify({ type: "breakout", payload: next })
+        JSON.stringify({ type: "breakout", payload: stamped })
       );
       await localParticipant.publishData(payload, { reliable: true } as any);
     } catch (e) {
@@ -186,6 +192,7 @@ export default function BreakoutsPanel({
     }
 
     const apply = () => {
+      const hostIdentity = state.host;
       const identityToGroup = state.assignments;
       const tiles = document.querySelectorAll<HTMLElement>(
         ".lk-participant-tile"
@@ -197,9 +204,13 @@ export default function BreakoutsPanel({
             "data-lk-participant-identity"
           );
         if (!identity) return;
+        if (hostIdentity && identity === hostIdentity) {
+          tile.setAttribute("data-breakout-group", "__host__");
+          return;
+        }
         const g = identityToGroup[identity];
         if (g) tile.setAttribute("data-breakout-group", g);
-        else tile.removeAttribute("data-breakout-group");
+        else tile.setAttribute("data-breakout-group", "__none__");
       });
     };
 
@@ -225,7 +236,7 @@ export default function BreakoutsPanel({
       style.textContent = "";
     } else {
       style.textContent = `
-        .lk-participant-tile[data-breakout-group]:not([data-breakout-group="${myGroupId}"]) {
+        .lk-participant-tile[data-breakout-group]:not([data-breakout-group="${myGroupId}"]):not([data-breakout-group="__host__"]) {
           display: none !important;
         }
       `;
