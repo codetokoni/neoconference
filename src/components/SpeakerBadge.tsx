@@ -1,6 +1,6 @@
 "use client";
 
-// SpeakerBadge - in-room pill that surfaces the user’s effective role.
+// SpeakerBadge - in-room pill that surfaces the userâs effective role.
 // Reads `event` query param from current URL, calls /api/events/role, and renders
 // a small floating badge in the top-right when the user is host/cohost/speaker.
 // Renders nothing for viewers/guests to keep the UI quiet.
@@ -31,10 +31,16 @@ export default function SpeakerBadge() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const slug = new URLSearchParams(window.location.search).get("event");
+    // Prefer ?event= query param; fall back to /room/<slug> path so renamed
+    // instant meetings (no query) still resolve a host badge.
+    let slug = new URLSearchParams(window.location.search).get("event");
+    if (!slug) {
+      const m = window.location.pathname.match(/\/room\/([^/?#]+)/);
+      if (m && m[1]) slug = decodeURIComponent(m[1]);
+    }
     if (!slug) return;
     let abort = false;
-    // Retry on viewer/guest a few times — handles Clerk session hydration race
+    // Retry on viewer/guest a few times â handles Clerk session hydration race
     // and KV eventual-consistency right after instant-meeting creation.
     const delays = [0, 400, 900, 1800, 3500];
     let attempt = 0;
