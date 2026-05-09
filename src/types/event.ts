@@ -137,6 +137,8 @@ export interface NeoEvent {
   id: string;
   /** URL-safe public slug, e.g. friday-keynote-x4f. */
   slug: string;
+  /** Previous slugs that should still resolve to this event (for renames). */
+  aliasSlugs?: string[];
   /** Human title, e.g. "Friday Keynote". */
   name: string;
   /** Optional rich description / agenda (markdown). */
