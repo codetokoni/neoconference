@@ -54,6 +54,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [unread, setUnread] = useState(0);
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
@@ -179,13 +180,14 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
       const res = await fetch(`/api/events/${eventId}/chat`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, ...(replyingTo ? { replyTo: { id: replyingTo.id, name: replyingTo.name, snippet: replyingTo.text.slice(0, 140) } } : {}) }),
       });
       if (!res.ok) throw new Error(await res.text());
       const json = await res.json();
       const saved: ChatMessage = json.message;
       setMessages((arr) => (arr.some((m) => m.id === saved.id) ? arr : [...arr, saved]));
       setDraft('');
+      setReplyingTo(null);
       stickToBottomRef.current = true;
       setUnread(0);
       try {
@@ -197,7 +199,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
     } finally {
       setSending(false);
     }
-  }, [draft, sending, eventId, room]);
+  }, [draft, sending, eventId, room, replyingTo]);
 
   const jumpToBottom = useCallback(() => {
     const el = listRef.current;
@@ -257,7 +259,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
             fontSize: 20, lineHeight: 1,
           }}
         >
-          â
+          Ã¢ÂÂ
         </button>
       </header>
       <div
@@ -294,7 +296,28 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
                   <span style={{ color: '#64748b', fontSize: 11 }}>{fmtTime(m.ts)}</span>
                 </div>
               )}
+              {m.replyTo ? (
+                <div style={{
+                  borderLeft: '3px solid rgba(34,211,238,0.5)', paddingLeft: 8, marginBottom: 4,
+                  fontSize: 11, color: '#94a3b8',
+                }}>
+                  <div style={{ color: '#67e8f9', fontWeight: 600 }}>{m.replyTo.name}</div>
+                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.replyTo.snippet}</div>
+                </div>
+              ) : null}
               <div style={{ color: '#e2e8f0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
+              <button
+                type='button'
+                onClick={() => setReplyingTo(m)}
+                aria-label='Reply'
+                style={{
+                  background: 'transparent', border: 'none', color: '#67e8f9',
+                  cursor: 'pointer', fontSize: 11, padding: '2px 0', marginTop: 2,
+                  alignSelf: 'flex-start', opacity: 0.7,
+                }}
+              >
+                ↩ Reply
+              </button>
             </div>
           </div>
         ))}
@@ -310,7 +333,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
             boxShadow: '0 6px 20px rgba(14,165,233,0.5)',
           }}
         >
-          {unread} new â
+          {unread} new Ã¢ÂÂ
         </button>
       )}
       {(() => {
@@ -326,6 +349,28 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
           }}>{text}</div>
         );
       })()}
+      {replyingTo ? (
+        <div style={{
+          margin: '0 12px 4px', padding: '6px 10px',
+          background: 'rgba(34,211,238,0.08)', borderLeft: '3px solid #22d3ee',
+          borderRadius: 6, fontSize: 11, color: '#94a3b8',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+        }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ color: '#67e8f9' }}>Replying to {replyingTo.name}</div>
+            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{replyingTo.text}</div>
+          </div>
+          <button
+            type='button'
+            onClick={() => setReplyingTo(null)}
+            aria-label='Cancel reply'
+            style={{
+              background: 'transparent', border: 'none', color: '#94a3b8',
+              cursor: 'pointer', padding: 4, fontSize: 14, lineHeight: 1,
+            }}
+          >✕</button>
+        </div>
+      ) : null}
       <form
         onSubmit={(e) => { e.preventDefault(); send(); }}
         style={{
@@ -353,7 +398,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
         />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: '#475569' }}>
-            {isMobile ? 'Tap send' : 'Enter to send Â· Shift+Enter for newline'}
+            {isMobile ? 'Tap send' : 'Enter to send ÃÂ· Shift+Enter for newline'}
           </span>
           <button
             type='submit'
@@ -368,7 +413,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
               minWidth: isMobile ? 80 : 60, minHeight: isMobile ? 40 : 28,
             }}
           >
-            {sending ? 'â¦' : 'Send'}
+            {sending ? 'Ã¢ÂÂ¦' : 'Send'}
           </button>
         </div>
         {err ? <p style={{ color: '#fda4af', fontSize: 11, margin: 0 }}>{err}</p> : null}
