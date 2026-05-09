@@ -430,6 +430,14 @@ function RoomContainer({
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
+
+  // Auto-open Polls panel when a peer dispatches the neo-open-polls event
+  // (fired from the new-poll notification toast inside PollsPanel).
+  useEffect(() => {
+    const onOpen = () => setShowPolls(true);
+    window.addEventListener('neo-open-polls', onOpen as EventListener);
+    return () => window.removeEventListener('neo-open-polls', onOpen as EventListener);
+  }, []);
   // Fetch event role (host/cohost/speaker/attendee/viewer/guest) for chrome decisions.
   useEffect(() => {
     if (!eventSlug) return;
