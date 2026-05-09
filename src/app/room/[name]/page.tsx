@@ -31,7 +31,7 @@ import ChatPanel from "@/components/ChatPanel";
 import FloatingVideoButton from "@/components/FloatingVideoButton";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
-import SpeakerBadge from "@/components/SpeakerBadge";import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel"; import WaitingRoomPanel from "@/components/WaitingRoomPanel";import BreakoutsPanel from "@/components/BreakoutsPanel";
+import SpeakerBadge from "@/components/SpeakerBadge";import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel";import ParticipantsPanel from "@/components/ParticipantsPanel"; import WaitingRoomPanel from "@/components/WaitingRoomPanel";import BreakoutsPanel from "@/components/BreakoutsPanel";
 
 type TokenResponse = { token: string; wsUrl: string };
 
@@ -419,7 +419,7 @@ function RoomContainer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
-  const [showChat, setShowChat] = useState(false); const [showWhiteboard, setShowWhiteboard] = useState(false); const [showPolls, setShowPolls] = useState(false); const [showWaitingRoom, setShowWaitingRoom] = useState(false);
+  const [showChat, setShowChat] = useState(false); const [showWhiteboard, setShowWhiteboard] = useState(false); const [showPolls, setShowPolls] = useState(false); const [showParticipants, setShowParticipants] = useState(false); const [showWaitingRoom, setShowWaitingRoom] = useState(false);
   const [showBreakouts, setShowBreakouts] = useState(false);
   const [hideSelf, setHideSelf] = useState(false);
   const [roomRole, setRoomRole] = useState<string>("guest");
@@ -589,6 +589,17 @@ function RoomContainer({
             <button
               type="button"
               data-room-chrome="true"
+              onClick={() => setShowParticipants((v) => !v)}
+              className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+              title="Manage participants"
+            >
+              Manage
+            </button>
+          )}
+          {(roomRole === "host" || roomRole === "cohost") && (
+            <button
+              type="button"
+              data-room-chrome="true"
               onClick={() => setShowWaitingRoom((v) => !v)}
               className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
               title="Toggle waiting room"
@@ -641,6 +652,7 @@ function RoomContainer({
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} isHost={roomRole === 'host' || roomRole === 'cohost'} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
+        <ParticipantsPanel open={showParticipants} onClose={() => setShowParticipants(false)} isHost={roomRole === "host" || roomRole === "cohost"} slug={eventSlug} />
         <WaitingRoomPanel open={showWaitingRoom} onClose={() => setShowWaitingRoom(false)} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          <BreakoutsPanel open={showBreakouts} onClose={() => setShowBreakouts(false)} isHost={roomRole === "host" || roomRole === "cohost"} eventSlug={eventSlug} />
               <SpeakerBadge />
         <RenameRedirectListener />
