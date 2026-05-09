@@ -34,14 +34,37 @@ export default function SpeakerBadge() {
     const slug = new URLSearchParams(window.location.search).get("event");
     if (!slug) return;
     let abort = false;
-    fetch("/api/events/role?slug=" + encodeURIComponent(slug))
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (abort || !j) return;
-        setRole(j.role as Role);
-        setPreApproved(Boolean(j.preApproved));
-      })
-      .catch(() => {});
+    // Retry on viewer/guest a few times — handles Clerk session hydration race
+    // and KV eventual-consistency right after instant-meeting creation.
+    const delays = [0, 400, 900, 1800, 3500];
+    let attempt = 0;
+    const tick = () => {
+      if (abort) return;
+      fetch("/api/events/role?slug=" + encodeURIComponent(slug), { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (abort) return;
+          if (j && typeof j.role === "string") {
+            setRole(j.role as Role);
+            setPreApproved(Boolean(j.preApproved));
+            const isElevated = j.role === "host" || j.role === "cohost" || j.role === "speaker";
+            if (!isElevated && attempt < delays.length - 1) {
+              attempt += 1;
+              setTimeout(tick, delays[attempt]);
+            }
+          } else if (attempt < delays.length - 1) {
+            attempt += 1;
+            setTimeout(tick, delays[attempt]);
+          }
+        })
+        .catch(() => {
+          if (!abort && attempt < delays.length - 1) {
+            attempt += 1;
+            setTimeout(tick, delays[attempt]);
+          }
+        });
+    };
+    tick();
     return () => {
       abort = true;
     };
