@@ -33,6 +33,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   }
 
+  // Snapshot owner email so re-logins (or future Clerk userId churn) still resolve as owner.
+  let ownerEmail: string | undefined;
+  try {
+    const u0 = await currentUser();
+    ownerEmail = u0?.emailAddresses?.find((e) => e.id === u0.primaryEmailAddressId)?.emailAddress
+      || u0?.emailAddresses?.[0]?.emailAddress
+      || undefined;
+    if (ownerEmail) ownerEmail = ownerEmail.toLowerCase();
+  } catch { /* non-fatal */ }
+
   let body: { name?: string } = {};
   try { body = (await req.json()) as { name?: string }; } catch { /* empty body OK */ }
 
@@ -74,6 +84,7 @@ export async function POST(req: NextRequest) {
     slug,
     name,
     ownerUserId: userId,
+    ownerEmail,
     visibility: 'unlisted',
     waitingRoomEnabled: false,
     livekitRoom,
