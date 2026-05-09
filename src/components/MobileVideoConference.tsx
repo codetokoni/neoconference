@@ -3,8 +3,6 @@
 import { useEffect, useState } from 'react';
 import {
   ParticipantTile,
-  RoomAudioRenderer,
-  ControlBar,
   useTracks,
   VideoConference,
   TrackLoop,
@@ -20,11 +18,18 @@ import { Track } from 'livekit-client';
  *
  * Why: LiveKit's default GridLayout picks 1x2 (2 tiles per page) on portrait
  * phones. Users want to see 4 at once.
+ *
+ * NOTE: We deliberately do NOT render <ControlBar /> or <RoomAudioRenderer />
+ * here. The parent room page already renders its own audio renderer and the
+ * existing room-toolbar / MobileMoreMenu provide the controls. This avoids
+ * needing LayoutContextProvider and prevents duplicate audio output.
  */
 export default function MobileVideoConference() {
   const [isMobile, setIsMobile] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const mq = window.matchMedia('(max-width: 640px)');
     const update = () => setIsMobile(mq.matches);
     update();
@@ -32,7 +37,8 @@ export default function MobileVideoConference() {
     return () => mq.removeEventListener('change', update);
   }, []);
 
-  if (!isMobile) {
+  // SSR / first paint: render stock VideoConference so we don't flash empty UI
+  if (!mounted || !isMobile) {
     return <VideoConference />;
   }
 
@@ -76,7 +82,7 @@ function MobileGridImpl() {
           gridTemplateRows: '1fr 1fr',
           gap: 6,
           padding: 6,
-          paddingRight: 62, // reserve gutter for reactions/raise-hand bar
+          paddingRight: 62,
           boxSizing: 'border-box',
           width: '100%',
         }}
@@ -121,11 +127,6 @@ function MobileGridImpl() {
           ))}
         </div>
       )}
-
-      <ControlBar
-        controls={{ microphone: true, camera: true, screenShare: false, chat: true, leave: true }}
-      />
-      <RoomAudioRenderer />
     </div>
   );
 }
