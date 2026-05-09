@@ -6,6 +6,8 @@ import {
   useTracks,
   VideoConference,
   TrackLoop,
+  useLocalParticipant,
+  useRoomContext,
   type TrackReferenceOrPlaceholder,
 } from '@livekit/components-react';
 import { Track } from 'livekit-client';
@@ -14,7 +16,8 @@ import { Track } from 'livekit-client';
  * MobileVideoConference
  *
  * Phone (<= 640px): custom 2x2 grid (4 tiles per page) with horizontal swipe to
- * paginate. Desktop: stock <VideoConference /> unchanged.
+ * paginate, plus a fixed bottom control bar (mic / camera / more / leave).
+ * Desktop: stock <VideoConference /> unchanged.
  */
 export default function MobileVideoConference() {
   const [isMobile, setIsMobile] = useState(false);
@@ -38,6 +41,7 @@ export default function MobileVideoConference() {
 
 const PAGE_SIZE = 4;
 const SWIPE_THRESHOLD = 50; // px
+const BAR_HEIGHT = 64; // px reserved for bottom control bar
 
 function MobileGridImpl() {
   const tracks: TrackReferenceOrPlaceholder[] = useTracks(
@@ -71,7 +75,6 @@ function MobileGridImpl() {
     const dy = t.clientY - touchStartY.current;
     touchStartX.current = null;
     touchStartY.current = null;
-    // Ignore mostly-vertical drags so we don't hijack scrolls
     if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dy) > Math.abs(dx)) return;
     if (dx < 0 && safePage < totalPages - 1) setPage(safePage + 1);
     else if (dx > 0 && safePage > 0) setPage(safePage - 1);
@@ -79,7 +82,7 @@ function MobileGridImpl() {
 
   return (
     <div
-      className="lk-video-conference nc-mobile-vc"
+      className='lk-video-conference nc-mobile-vc'
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
       style={{
@@ -93,7 +96,7 @@ function MobileGridImpl() {
       }}
     >
       <div
-        className="nc-mobile-grid"
+        className='nc-mobile-grid'
         style={{
           flex: 1,
           minHeight: 0,
@@ -103,6 +106,7 @@ function MobileGridImpl() {
           gap: 6,
           padding: 6,
           paddingRight: 62,
+          paddingBottom: BAR_HEIGHT + 6,
           boxSizing: 'border-box',
           width: '100%',
         }}
@@ -127,6 +131,10 @@ function MobileGridImpl() {
             gap: 6,
             justifyContent: 'center',
             padding: '6px 0',
+            position: 'absolute',
+            bottom: BAR_HEIGHT,
+            left: 0,
+            right: 0,
           }}
         >
           {Array.from({ length: totalPages }).map((_, i) => (
@@ -147,6 +155,173 @@ function MobileGridImpl() {
           ))}
         </div>
       )}
+
+      <MobileControlBar />
     </div>
+  );
+}
+
+// ---------- Bottom control bar ----------
+
+type ToolbarItem = { label: string; el: HTMLButtonElement };
+
+function MobileControlBar() {
+  const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
+  const room = useRoomContext();
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [items, setItems] = useState<ToolbarItem[]>([]);
+
+  // Scan the existing top room toolbar buttons (People / Whiteboard / etc) when the
+  // sheet opens, so the More menu mirrors whatever is currently available.
+  const refreshItems = () => {
+    const list: ToolbarItem[] = [];
+    const btns = document.querySelectorAll<HTMLButtonElement>('.room-toolbar > button');
+    btns.forEach((b) => {
+      const label = (b.textContent || '').trim();
+      if (!label) return;
+      list.push({ label, el: b });
+    });
+    // De-dupe by label
+    const seen = new Set<string>();
+    setItems(list.filter((it) => {
+      const k = it.label.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }));
+  };
+
+  const toggleMic = () => {
+    if (!localParticipant) return;
+    localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled).catch(() => {});
+  };
+  const toggleCam = () => {
+    if (!localParticipant) return;
+    localParticipant.setCameraEnabled(!isCameraEnabled).catch(() => {});
+  };
+  const leave = () => {
+    try { room?.disconnect(); } catch {}
+    if (typeof window !== 'undefined') window.location.href = '/';
+  };
+  const openMore = () => { refreshItems(); setMoreOpen(true); };
+  const closeMore = () => setMoreOpen(false);
+  const fire = (it: ToolbarItem) => { try { it.el.click(); } catch {} closeMore(); };
+
+  const btnStyle: React.CSSProperties = {
+    flex: 1,
+    height: 48,
+    border: 'none',
+    borderRadius: 12,
+    background: 'rgba(255,255,255,0.08)',
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  };
+  const dangerStyle: React.CSSProperties = { ...btnStyle, background: '#dc2626' };
+  const offStyle: React.CSSProperties = { ...btnStyle, background: '#dc2626' };
+
+  return (
+    <>
+      <div
+        data-nc-mobile-bar='true'
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: BAR_HEIGHT,
+          padding: '8px 8px calc(env(safe-area-inset-bottom, 0px) + 8px)',
+          display: 'flex',
+          gap: 8,
+          alignItems: 'stretch',
+          background: 'linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.55))',
+          zIndex: 20,
+          boxSizing: 'border-box',
+        }}
+      >
+        <button type='button' onClick={toggleMic} aria-label={isMicrophoneEnabled ? 'Mute microphone' : 'Unmute microphone'} style={isMicrophoneEnabled ? btnStyle : offStyle}>
+          <span aria-hidden='true' style={{ fontSize: 18 }}>{isMicrophoneEnabled ? 'Mic' : 'Mic⊘'}</span>
+        </button>
+        <button type='button' onClick={toggleCam} aria-label={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'} style={isCameraEnabled ? btnStyle : offStyle}>
+          <span aria-hidden='true' style={{ fontSize: 18 }}>{isCameraEnabled ? 'Cam' : 'Cam⊘'}</span>
+        </button>
+        <button type='button' onClick={openMore} aria-label='More' style={btnStyle}>
+          <span aria-hidden='true' style={{ fontSize: 18 }}>More</span>
+        </button>
+        <button type='button' onClick={leave} aria-label='Leave room' style={dangerStyle}>
+          <span aria-hidden='true' style={{ fontSize: 18 }}>Leave</span>
+        </button>
+      </div>
+
+      {moreOpen && (
+        <div
+          onClick={closeMore}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(0,0,0,0.55)',
+            zIndex: 30,
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: 480,
+              background: '#111',
+              borderTopLeftRadius: 16,
+              borderTopRightRadius: 16,
+              padding: 12,
+              paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+              maxHeight: '60vh',
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 6px 10px' }}>
+              <div style={{ color: '#fff', fontSize: 14, fontWeight: 600 }}>More</div>
+              <button type='button' onClick={closeMore} style={{ color: '#bbb', background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer' }}>
+                Close
+              </button>
+            </div>
+            {items.length === 0 && (
+              <div style={{ color: '#888', fontSize: 13, padding: 12, textAlign: 'center' }}>
+                No extra actions available right now.
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {items.map((it, i) => (
+                <button
+                  key={i}
+                  type='button'
+                  onClick={() => fire(it)}
+                  style={{
+                    height: 48,
+                    borderRadius: 10,
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    background: '#1c1c1e',
+                    color: '#fff',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    padding: '0 10px',
+                  }}
+                >
+                  {it.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
