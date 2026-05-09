@@ -39,7 +39,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   const { isLoaded, isSignedIn, user } = useUser();
   const [token, setToken] = useState<string | null>(null);
   const [wsUrl, setWsUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null); const [waitingState, setWaitingState] = useState<"pending" | "denied" | null>(null);
+  const [error, setError] = useState<string | null>(null); const [waitingState, setWaitingState] = useState<"pending" | "denied" | null>(null); const [waitForHost, setWaitForHost] = useState<boolean>(false);
   const [choices, setChoices] = useState<LocalUserChoices | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -89,6 +89,12 @@ export default function RoomPage({ params }: { params: { name: string } }) {
             } catch {}
             return;
           }
+          if (res.status === 403 && body?.error === "wait_for_host") {
+            if (!cancelled) {
+              setWaitForHost(true);
+            }
+            return;
+          }
           throw new Error(body.error || ("HTTP " + res.status));
         }
         const data = (await res.json()) as TokenResponse;
@@ -102,7 +108,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, roomName, choices, eventSlug, waitingState]);
+  }, [isLoaded, isSignedIn, roomName, choices, eventSlug, waitingState, waitForHost]);
 
   // While waiting in the queue, re-knock every 4s. When the host admits us
   // the response flips to "admitted" and we clear waitingState which causes
@@ -132,6 +138,32 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     const id = setInterval(tick, 4000);
     return () => { cancelled = true; clearInterval(id); };
   }, [eventSlug, waitingState]);
+
+  // While waiting for host, poll /api/events/host-present every 3s. When the host arrives,
+  // clear waitForHost which causes the token-fetch effect above to re-run.
+  useEffect(() => {
+    if (!waitForHost || !eventSlug) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const res = await fetch(
+          `/api/events/host-present?slug=${encodeURIComponent(eventSlug)}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.hostPresent) {
+          setWaitForHost(false);
+        }
+      } catch {
+        // ignore - try again next tick
+      }
+    };
+    tick();
+    const id = setInterval(tick, 3000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [eventSlug, waitForHost]);
 
   const copyLink = async () => {
     try {
@@ -197,19 +229,33 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     );
   }
 
+  if (waitForHost) {
+    return (
+      <div className="min-h-[calc(100vh-65px)] flex flex-col items-center justify-center p-8 gap-4 text-center">
+        <div className="text-3xl">⏳</div>
+        <h1 className="text-xl font-semibold">Waiting for the host to start the meeting</h1>
+        <p className="text-sm opacity-70 max-w-md">
+          The meeting hasn’t started yet. You’ll join automatically as soon as the host arrives.
+        </p>
+        <div className="text-xs opacity-50">Checking every few seconds…</div>
+        <a href="/" className="mt-6 underline text-sm">← Back to home</a>
+      </div>
+    );
+  }
+
   if (waitingState) {
     return (
       <div className="min-h-[calc(100vh-65px)] flex flex-col items-center justify-center p-8 gap-3 text-center">
         <h1 className="text-xl font-semibold">
-          {waitingState === "denied" ? "Entry denied" : "Waiting for the hostÃ¢ÂÂ¦"}
+          {waitingState === "denied" ? "Entry denied" : "Waiting for the hostÃÂ¢ÃÂÃÂ¦"}
         </h1>
         <p className="text-sm opacity-70 max-w-md">
           {waitingState === "denied"
             ? "The host did not let you in. Reach out to them if this looks wrong."
-            : "We let the host know youÃ¢ÂÂre here. YouÃ¢ÂÂll join automatically once they admit you."}
+            : "We let the host know youÃÂ¢ÃÂÃÂre here. YouÃÂ¢ÃÂÃÂll join automatically once they admit you."}
         </p>
         <a href="/" className="mt-6 underline text-sm">
-          Ã¢ÂÂ Back to home
+          ÃÂ¢ÃÂÃÂ Back to home
         </a>
       </div>
     );
@@ -344,7 +390,7 @@ function RenameUrlButton({
               className="px-3 py-1 rounded bg-cyan-500/80 hover:bg-cyan-500 text-[12px] text-white"
               disabled={busy || !next.trim()}
             >
-              {busy ? "RenamingÃ¢ÂÂ¦" : "Rename"}
+              {busy ? "RenamingÃÂ¢ÃÂÃÂ¦" : "Rename"}
             </button>
           </div>
         </div>
@@ -387,7 +433,7 @@ function RoomContainer({
   useEffect(() => {
     if (!eventSlug) return;
     let cancelled = false;
-    // Retry on viewer/guest a few times Ã¢ÂÂ handles Clerk session hydration race
+    // Retry on viewer/guest a few times ÃÂ¢ÃÂÃÂ handles Clerk session hydration race
     // and KV eventual-consistency right after instant-meeting creation, so the
     // owner reliably resolves to "host" instead of being stuck on the first
     // unauthenticated/empty response.
