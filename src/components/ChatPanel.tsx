@@ -93,6 +93,8 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionAt, setMentionAt] = useState<number>(-1);
   const mentionsRef = useRef<Set<string>>(new Set());
+  const [dmTo, setDmTo] = useState<{ id: string; name: string } | null>(null);
+  const [dmPickerOpen, setDmPickerOpen] = useState(false);
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
 
@@ -250,31 +252,58 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
     if (!text || sending) return;
     setSending(true); setErr(null);
     try {
-      const res = await fetch(`/api/events/${eventId}/chat`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text, ...(replyingTo ? { replyTo: { id: replyingTo.id, name: replyingTo.name, snippet: replyingTo.text.slice(0, 140) } } : {}), ...(mentionsRef.current.size > 0 ? { mentions: Array.from(mentionsRef.current) } : {}) }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const json = await res.json();
-      const saved: ChatMessage = json.message;
-      setMessages((arr) => (arr.some((m) => m.id === saved.id) ? arr : [...arr, saved]));
-      setDraft('');
-      setReplyingTo(null);
-      mentionsRef.current = new Set();
-      setMentionQuery(null); setMentionAt(-1);
-      stickToBottomRef.current = true;
-      setUnread(0);
-      try {
-        const enc = new TextEncoder();
-        await room?.localParticipant?.publishData(enc.encode(JSON.stringify(saved)), { reliable: true, topic: TOPIC });
-      } catch {}
+      const lp = room?.localParticipant;
+      const senderName = (lp?.name || lp?.identity || 'You').trim();
+      const senderId = lp?.identity || 'unknown';
+      if (dmTo) {
+        const dmMsg: ChatMessage = {
+          id: 'dm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+          ts: new Date().toISOString(),
+          userId: senderId,
+          name: senderName,
+          text,
+          toUserId: dmTo.id,
+          ...(replyingTo ? { replyTo: { id: replyingTo.id, name: replyingTo.name, snippet: replyingTo.text.slice(0, 140) } } : {}),
+          ...(mentionsRef.current.size > 0 ? { mentions: Array.from(mentionsRef.current) } : {}),
+        } as ChatMessage;
+        setMessages((arr) => (arr.some((m) => m.id === dmMsg.id) ? arr : [...arr, dmMsg]));
+        try {
+          const enc = new TextEncoder();
+          await lp?.publishData(enc.encode(JSON.stringify(dmMsg)), { reliable: true, topic: TOPIC, destinationIdentities: [dmTo.id] });
+        } catch {}
+        setDraft('');
+        setReplyingTo(null);
+        mentionsRef.current = new Set();
+        setMentionQuery(null); setMentionAt(-1);
+        stickToBottomRef.current = true;
+        setUnread(0);
+      } else {
+        const res = await fetch(`/api/events/${eventId}/chat`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text, ...(replyingTo ? { replyTo: { id: replyingTo.id, name: replyingTo.name, snippet: replyingTo.text.slice(0, 140) } } : {}), ...(mentionsRef.current.size > 0 ? { mentions: Array.from(mentionsRef.current) } : {}) }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const json = await res.json();
+        const saved: ChatMessage = json.message;
+        setMessages((arr) => (arr.some((m) => m.id === saved.id) ? arr : [...arr, saved]));
+        setDraft('');
+        setReplyingTo(null);
+        mentionsRef.current = new Set();
+        setMentionQuery(null); setMentionAt(-1);
+        stickToBottomRef.current = true;
+        setUnread(0);
+        try {
+          const enc = new TextEncoder();
+          await lp?.publishData(enc.encode(JSON.stringify(saved)), { reliable: true, topic: TOPIC });
+        } catch {}
+      }
     } catch (e: any) {
       setErr(e?.message || 'Send failed');
     } finally {
       setSending(false);
     }
-  }, [draft, sending, eventId, room, replyingTo]);
+  }, [draft, sending, eventId, room, replyingTo, dmTo]);
 
   const jumpToBottom = useCallback(() => {
     const el = listRef.current;
@@ -369,6 +398,11 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
               {!g && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
                   <span style={{ color: '#67e8f9', fontWeight: 600 }}>{m.name}</span>
+                  {m.toUserId ? (
+                    <span style={{ color: '#a78bfa', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: 'rgba(168,85,247,0.18)', border: '1px solid rgba(168,85,247,0.4)', letterSpacing: 0.5 }}>
+                      {m.userId === (localParticipant?.identity || '') ? `\u{1F512} DM \u2192 ${(participants.find(p=>p.identity===m.toUserId)?.name) || m.toUserId}` : '\u{1F512} DM'}
+                    </span>
+                  ) : null}
                   <span style={{ color: '#64748b', fontSize: 11 }}>{fmtTime(m.ts)}</span>
                 </div>
               )}
@@ -381,7 +415,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
                   <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.replyTo.snippet}</div>
                 </div>
               ) : null}
-              <div style={{ color: '#e2e8f0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{renderMessageText(m.text, knownNamesByLow, localParticipant?.identity || '', localParticipant?.name || '')}</div>
+              <div style={{ color: '#e2e8f0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', ...(m.toUserId ? { background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)', borderRadius: 8, padding: '6px 10px' } : {}) }}>{renderMessageText(m.text, knownNamesByLow, localParticipant?.identity || '', localParticipant?.name || '')}</div>
               <button
                 type='button'
                 onClick={() => setReplyingTo(m)}
@@ -425,6 +459,88 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
           }}>{text}</div>
         );
       })()}
+      <div style={{ padding: '0 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button
+          type='button'
+          onClick={() => setDmPickerOpen((v) => !v)}
+          aria-label='Choose recipient'
+          aria-expanded={dmPickerOpen}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            background: dmTo ? 'rgba(168,85,247,0.18)' : 'rgba(255,255,255,0.04)',
+            border: dmTo ? '1px solid rgba(168,85,247,0.45)' : '1px solid rgba(255,255,255,0.12)',
+            color: dmTo ? '#e9d5ff' : '#94a3b8',
+            borderRadius: 999, padding: '4px 10px', fontSize: 11, fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          {dmTo ? `\u{1F512} DM \u00B7 ${dmTo.name}` : 'To: Everyone'}
+          <span aria-hidden style={{ opacity: 0.7 }}>\u25BE</span>
+        </button>
+        {dmTo ? (
+          <button
+            type='button'
+            onClick={() => { setDmTo(null); setDmPickerOpen(false); }}
+            aria-label='Clear DM recipient'
+            style={{ background: 'transparent', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: 14, padding: '2px 6px' }}
+          >\u2715</button>
+        ) : null}
+      </div>
+      {dmPickerOpen ? (
+        <div
+          role='listbox'
+          aria-label='DM recipient picker'
+          style={{
+            margin: '0 12px',
+            background: 'rgba(15,23,42,0.96)',
+            border: '1px solid rgba(168,85,247,0.35)',
+            borderRadius: 8,
+            overflow: 'hidden',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            maxHeight: 240,
+            overflowY: 'auto',
+          }}
+        >
+          <button
+            type='button'
+            onClick={() => { setDmTo(null); setDmPickerOpen(false); }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              width: '100%', textAlign: 'left',
+              background: 'transparent', border: 'none', color: '#e2e8f0',
+              padding: '10px 12px', cursor: 'pointer',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              fontSize: 13,
+            }}
+          >
+            <span style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg,#22d3ee,#0ea5e9)', color: '#001018', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>#</span>
+            <span style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontWeight: 600 }}>Everyone</span>
+              <span style={{ fontSize: 11, color: '#64748b' }}>Public message to the whole room</span>
+            </span>
+          </button>
+          {mentionCandidates.filter((c) => c.id !== MENTION_EVERYONE).map((c) => (
+            <button
+              key={c.id}
+              type='button'
+              onClick={() => { setDmTo({ id: c.id, name: c.label }); setDmPickerOpen(false); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                width: '100%', textAlign: 'left',
+                background: dmTo?.id === c.id ? 'rgba(168,85,247,0.10)' : 'transparent',
+                border: 'none', color: '#e2e8f0',
+                padding: '10px 12px', cursor: 'pointer',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                fontSize: 13,
+              }}
+            >
+              <span style={{ width: 24, height: 24, borderRadius: '50%', background: avatarColor(c.label), color: '#001018', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials(c.label)}</span>
+              <span style={{ fontWeight: 600 }}>{c.label}</span>
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: '#a78bfa' }}>\u{1F512} DM</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       {replyingTo ? (
         <div style={{
           margin: '0 12px 4px', padding: '6px 10px',
