@@ -23,14 +23,20 @@ export async function GET(req: Request) {
     return NextResponse.json({ role: "guest", preApproved: false, isOwner: false });
   }
 
-  const isOwner = ev.ownerUserId === userId;
+  // Pre-fetch the current Clerk user once so we can match by stable email if userId churned.
+  const u = await currentUser().catch(() => null);
+  const userEmails = (u?.emailAddresses || []).map((e: { emailAddress: string }) => e.emailAddress.toLowerCase());
+  const primaryEmail = (u?.emailAddresses?.find((e: { id: string; emailAddress: string }) => e.id === u?.primaryEmailAddressId)?.emailAddress || u?.emailAddresses?.[0]?.emailAddress || "").toLowerCase();
+
+  const ownerEmail = (ev.ownerEmail || "").toLowerCase();
+  const isOwner = ev.ownerUserId === userId
+    || (ownerEmail !== "" && userEmails.includes(ownerEmail));
   if (isOwner) {
     return NextResponse.json({ role: "host", preApproved: true, isOwner: true });
   }
 
   // Match role assignment: by Clerk user id, primary email, or any verified email.
-  const u = await currentUser().catch(() => null);
-  const emails = (u?.emailAddresses || []).map((e: { emailAddress: string }) => e.emailAddress.toLowerCase());
+  const emails = userEmails;
   const roles = ev.roles || [];
   const match = roles.find((r) => {
     const id = r.identifier.toLowerCase();
