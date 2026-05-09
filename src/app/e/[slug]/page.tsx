@@ -73,7 +73,7 @@ export default async function EventResolverPage({
               >
                 Add to calendar
               </a>
-              {isOwner ? <StartEventButton eventId={ev.id} /> : null}
+              {isOwner ? <StartEventButton eventId={ev.id} slug={ev.slug} livekitRoom={ev.livekitRoom} /> : null}
             </div>
             {isOwner ? (
               <p className="mt-3 text-[11px] text-white/40">
@@ -89,7 +89,7 @@ export default async function EventResolverPage({
             <p className="text-sm text-white/75">The host is preparing to start. You’ll be admitted shortly.</p>
             <Link
               className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-sky-500 px-6 py-3 text-sm font-semibold text-slate-900 shadow-[0_0_30px_-8px_rgba(34,211,238,0.6)] transition hover:brightness-110"
-              href={'/room/' + ev.livekitRoom}
+              href={'/room/' + ev.livekitRoom + '?event=' + ev.slug}
             >
               Join waiting room →
             </Link>
@@ -112,7 +112,7 @@ export default async function EventResolverPage({
                 <p className="text-sm text-white/75">The room is open. Join when you’re ready.</p>
                 <Link
                   className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-sky-500 px-6 py-3 text-sm font-semibold text-slate-900 shadow-[0_0_30px_-8px_rgba(34,211,238,0.6)] transition hover:brightness-110"
-                  href={'/room/' + ev.livekitRoom}
+                  href={'/room/' + ev.livekitRoom + '?event=' + ev.slug}
                 >
                   Join live room →
                 </Link>
