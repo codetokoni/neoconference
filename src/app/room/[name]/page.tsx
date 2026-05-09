@@ -751,7 +751,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
     return () => {
       room.off(RoomEvent.DataReceived, onData);
     };
-  }, [room]);
+  }, [room, roomRole]);
 
   const broadcast = async (active: boolean) => {
     try {
