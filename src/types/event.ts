@@ -157,6 +157,9 @@ export interface NeoEvent {
   /** When true, every join request must be approved by host/cohost. */
   waitingRoomEnabled: boolean;
 
+  /** When true, non-host attendees are blocked from joining the LiveKit room until a host or co-host is present. Default true. */
+  waitForHost?: boolean;
+
   /** Custom domain (e.g. live.acme.com) routed to /e/<slug> by middleware. */
   customDomain?: string;
 
@@ -222,6 +225,9 @@ export interface PublicEventView {
   state: EventState;
   hasPassword: boolean;
   waitingRoomEnabled: boolean;
+
+  /** When true, non-host attendees are blocked from joining the LiveKit room until a host or co-host is present. Default true. */
+  waitForHost?: boolean;
   customDomain?: string;
   hlsUrl?: string;
   shortUrl?: string;
@@ -243,6 +249,7 @@ export function toPublicView(e: NeoEvent): PublicEventView {
     state: e.state,
     hasPassword: Boolean(e.password),
     waitingRoomEnabled: e.waitingRoomEnabled,
+    waitForHost: e.waitForHost !== false,
     customDomain: e.customDomain,
     hlsUrl: e.streamlab?.hlsUrl,
     shortUrl: e.hsmoh?.shortUrl,
