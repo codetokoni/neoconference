@@ -2,20 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useRoomContext } from '@livekit/components-react';
 import { HostTileMenu } from './HostTileMenu';
 
 /**
  * HostMenuOverlay
  *
- * Mounted once inside <LiveKitRoom>. When the local user is host, scans the
- * DOM for .lk-participant-tile elements and injects a <HostTileMenu /> into
- * each one (excluding the local participant's own tile). Uses MutationObserver
- * so newly-added tiles (e.g. when participants join, or when paginating) get
- * their menu attached automatically.
- *
- * This works for BOTH the desktop <VideoConference /> layout and the custom
- * <MobileVideoConference /> grid since both use LiveKit's <ParticipantTile />
- * which carries `data-lk-participant-identity`.
+ * Mounted once inside <LiveKitRoom>. When the local user is host, it scans
+ * the DOM for .lk-participant-tile elements and matches each one to a
+ * remote LiveKit Participant via its data-lk-participant-name. It then
+ * portals a <HostTileMenu /> into every remote tile so the host can mute
+ * mic/cam or remove that participant.
  */
 export default function HostMenuOverlay({
   isHost,
@@ -24,11 +21,21 @@ export default function HostMenuOverlay({
   isHost: boolean;
   slug: string;
 }) {
+  const room = useRoomContext();
+  const [tick, setTick] = useState(0);
   const [tiles, setTiles] = useState<HTMLElement[]>([]);
+
+  // Re-render whenever participants join/leave so the tile list is fresh.
+  useEffect(() => {
+    if (!room) return;
+    const bump = () => setTick((t) => t + 1);
+    const events = ['participantConnected','participantDisconnected','trackPublished','trackUnpublished','trackMuted','trackUnmuted'];
+    for (const e of events) (room as any).on?.(e, bump);
+    return () => { for (const e of events) (room as any).off?.(e, bump); };
+  }, [room]);
 
   useEffect(() => {
     if (!isHost) return;
-
     const collect = () => {
       const list = Array.from(
         document.querySelectorAll<HTMLElement>('.lk-participant-tile'),
@@ -36,52 +43,43 @@ export default function HostMenuOverlay({
       setTiles(list);
     };
     collect();
-
     const obs = new MutationObserver(() => {
-      // Coalesce updates with rAF to avoid thrashing.
       requestAnimationFrame(collect);
     });
     obs.observe(document.body, { childList: true, subtree: true });
-
     return () => obs.disconnect();
-  }, [isHost]);
+  }, [isHost, tick]);
 
-  if (!isHost) return null;
+  if (!isHost || !room) return null;
+
+  // Build a name -> identity map from current remote participants.
+  const remotes = Array.from((room as any).remoteParticipants?.values?.() ?? []);
+  const localIdentity = (room as any).localParticipant?.identity ?? '';
 
   return (
     <>
       {tiles.map((tile, i) => {
-        // LiveKit puts the participant identity on a child element with a
-        // `data-lk-participant-identity` attribute, OR on the tile itself.
-        const idEl = tile.querySelector('[data-lk-participant-identity]') as
-          | HTMLElement
-          | null;
-        const identity =
-          idEl?.getAttribute('data-lk-participant-identity') ||
-          tile.getAttribute('data-lk-participant-identity') ||
-          '';
-        if (!identity) return null;
+        const nameEl = tile.querySelector('[data-lk-participant-name]') as HTMLElement | null;
+        const tileName = nameEl?.getAttribute('data-lk-participant-name')?.trim() || '';
+        const isLocalTile = tile.getAttribute('data-lk-local-participant') === 'true' || tile.querySelector('[data-lk-local-participant="true"]') !== null;
 
-        // Try to read a friendly display name from a name span.
-        const nameEl = tile.querySelector('.lk-participant-name') as
-          | HTMLElement
-          | null;
-        const name = nameEl?.textContent?.trim() || identity;
+        // Skip the local participant's own tile -- host shouldn't moderate themselves here.
+        if (isLocalTile) return null;
 
-        // Ensure tile can host an absolutely-positioned overlay.
+        // Match this tile to a remote participant by name; fall back to identity match.
+        const match = (remotes as any[]).find((p) => (p.name || p.identity) === tileName) || (remotes as any[]).find((p) => p.identity === tileName);
+        const identity = match?.identity || tileName;
+        if (!identity || identity === localIdentity) return null;
+
+        // Ensure the tile can host an absolutely-positioned overlay.
         if (getComputedStyle(tile).position === 'static') {
           tile.style.position = 'relative';
         }
 
         return createPortal(
-          <HostTileMenu
-            key={identity + ':' + i}
-            participantIdentity={identity}
-            participantName={name}
-            isHost={isHost}
-            slug={slug}
-          />,
+          <HostTileMenu identity={identity} name={tileName || identity} slug={slug} />,
           tile,
+          'host-tile-menu-' + i + '-' + identity,
         );
       })}
     </>
