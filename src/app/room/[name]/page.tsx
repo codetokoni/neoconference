@@ -240,6 +240,7 @@ function RoomContainer({
   const [copied, setCopied] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
   const [showChat, setShowChat] = useState(false); const [showWhiteboard, setShowWhiteboard] = useState(false); const [showPolls, setShowPolls] = useState(false); const [showWaitingRoom, setShowWaitingRoom] = useState(false);
+  const [showBreakouts, setShowBreakouts] = useState(false);
   const [hideSelf, setHideSelf] = useState(false);
   const [roomRole, setRoomRole] = useState<string>("guest");
 
@@ -355,7 +356,29 @@ function RoomContainer({
             className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
             title="Toggle polls"
           >
-            {showPolls ? "Close polls" : "Polls"}
+        
+          {(roomRole === "host" || roomRole === "cohost") && (
+            <button
+              type="button"
+              data-room-chrome="true"
+              onClick={() => setShowWaitingRoom((v) => !v)}
+              className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+              title="Toggle waiting room"
+            >
+              {showWaitingRoom ? "Close waiting" : "Waiting"}
+            </button>
+          )}
+          {(roomRole === "host" || roomRole === "cohost") && (
+            <button
+              type="button"
+              data-room-chrome="true"
+              onClick={() => setShowBreakouts((v) => !v)}
+              className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+              title="Toggle breakouts"
+            >
+              {showBreakouts ? "Close breakouts" : "Breakouts"}
+            </button>
+          )}    {showPolls ? "Close polls" : "Polls"}
           </button>
         <button
           type="button"
@@ -388,7 +411,7 @@ function RoomContainer({
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
-        <WaitingRoomPanel open={true} onClose={() => {}} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          <BreakoutsPanel open={true} onClose={() => {}} isHost={roomRole === "host" || roomRole === "cohost"} eventSlug={eventSlug} />
+        <WaitingRoomPanel open={showWaitingRoom} onClose={() => setShowWaitingRoom(false)} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          <BreakoutsPanel open={showBreakouts} onClose={() => setShowBreakouts(false)} isHost={roomRole === "host" || roomRole === "cohost"} eventSlug={eventSlug} />
               <SpeakerBadge />
         {!showChat ? (
           <button
