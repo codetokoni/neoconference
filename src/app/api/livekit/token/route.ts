@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { AccessToken } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,6 +63,58 @@ export async function GET(req: NextRequest) {
         }
       } catch (gateErr) {
         console.error("[livekit/token] waiting-room gate error:", gateErr);
+        // fall through and issue token rather than block on gate failure
+      }
+
+      // ----- Wait-for-host gate (default on; non-host attendees must wait until a host/cohost is in the LiveKit room) -----
+      try {
+        const { eventStore: es2 } = await import("@/lib/eventStore");
+        const ev2 = await es2.bySlug(eventSlug);
+        if (ev2 && ev2.waitForHost !== false) {
+          const u2 = await currentUser().catch(() => null);
+          const emails2 = (u2?.emailAddresses || []).map(
+            (e: { emailAddress: string }) => e.emailAddress.toLowerCase()
+          );
+          const isOwner2 = ev2.ownerUserId === userId;
+          const role2 = (ev2.roles || []).find((r) => {
+            const id = r.identifier.toLowerCase();
+            return id === userId.toLowerCase() || emails2.includes(id);
+          });
+          const isHostlike2 =
+            isOwner2 || role2?.role === "host" || role2?.role === "cohost";
+          if (!isHostlike2) {
+            const apiKey2 = process.env.LIVEKIT_API_KEY;
+            const apiSecret2 = process.env.LIVEKIT_API_SECRET;
+            const wsUrl2 = process.env.NEXT_PUBLIC_LIVEKIT_URL;
+            if (apiKey2 && apiSecret2 && wsUrl2) {
+              const httpUrl = wsUrl2.replace(/^wss?:\/\//, "https://");
+              const svc = new RoomServiceClient(httpUrl, apiKey2, apiSecret2);
+              let hostPresent = false;
+              try {
+                const parts = await svc.listParticipants(room);
+                hostPresent = parts.some((p) => {
+                  try {
+                    const md = p.metadata ? JSON.parse(p.metadata) : null;
+                    return md?.role === "host" || md?.role === "cohost";
+                  } catch {
+                    return false;
+                  }
+                });
+              } catch (listErr) {
+                // If the room does not exist yet, listParticipants throws — treat as no host present.
+                hostPresent = false;
+              }
+              if (!hostPresent) {
+                return NextResponse.json(
+                  { error: "wait_for_host" },
+                  { status: 403 }
+                );
+              }
+            }
+          }
+        }
+      } catch (whErr) {
+        console.error("[livekit/token] wait-for-host gate error:", whErr);
         // fall through and issue token rather than block on gate failure
       }
     }
