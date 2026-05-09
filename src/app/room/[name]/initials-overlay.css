@@ -297,3 +297,8 @@
     display: none !important;
   }
 }
+
+/* Hide LiveKit's built-in chat toggle button - we use our own ChatPanel via the room toolbar Chat button. */
+.lk-chat-toggle {
+  display: none !important;
+}
