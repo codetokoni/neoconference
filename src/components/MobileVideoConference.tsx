@@ -205,7 +205,23 @@ function MobileControlBar() {
   };
   const openMore = () => { refreshItems(); setMoreOpen(true); };
   const closeMore = () => setMoreOpen(false);
-  const fire = (it: ToolbarItem) => { try { it.el.click(); } catch {} closeMore(); };
+    const fire = (it: ToolbarItem) => {
+      try {
+        const lbl = (it.label || "").toLowerCase();
+        // Recording button is rendered inside .room-toolbar but the toolbar has
+        // pointer-events: none on phones, and proxying a programmatic .click()
+        // through React onClick can be unreliable in this stack. RecordingControls
+        // exposes window.__ncRecordToggle so we trigger it directly.
+        const isRec = lbl.includes("record") || lbl.includes("waiting for host");
+        const toggle = (window as any).__ncRecordToggle;
+        if (isRec && typeof toggle === "function") {
+          toggle();
+        } else {
+          it.el.click();
+        }
+      } catch {}
+      closeMore();
+    };
 
   const btnStyle: React.CSSProperties = {
     flex: 1,
