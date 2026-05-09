@@ -18,6 +18,7 @@ interface CreateBody {
   visibility?: 'public' | 'unlisted' | 'private';
   password?: string;
   waitingRoomEnabled?: boolean;
+  waitForHost?: boolean;
   scheduledAt?: string;
   roles?: RoleAssignment[];
   enableStream?: boolean;
@@ -110,6 +111,7 @@ export async function POST(req: NextRequest) {
     visibility: body.visibility ?? 'unlisted',
     password: body.password,
     waitingRoomEnabled: Boolean(body.waitingRoomEnabled),
+    waitForHost: body.waitForHost === false ? false : true,
     scheduledAt: body.scheduledAt,
     livekitRoom,
     streamlab: streamlabBinding,
