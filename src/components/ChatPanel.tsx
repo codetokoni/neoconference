@@ -253,13 +253,14 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
           onClick={onClose}
           aria-label='Close chat'
           style={{
-            background: 'transparent', border: 'none', color: '#94a3b8',
-            cursor: 'pointer', padding: isMobile ? 8 : 4,
-            minWidth: isMobile ? 44 : 28, minHeight: isMobile ? 44 : 28,
-            fontSize: 20, lineHeight: 1,
+            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(34,211,238,0.25)', color: '#e2e8f0', borderRadius: 8,
+            cursor: 'pointer', padding: isMobile ? 8 : 6,
+            minWidth: isMobile ? 44 : 32, minHeight: isMobile ? 44 : 32,
+            fontSize: isMobile ? 20 : 16, lineHeight: 1, fontWeight: 600,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
-          Ã¢ÂÂ
+          ✕
         </button>
       </header>
       <div
@@ -333,7 +334,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
             boxShadow: '0 6px 20px rgba(14,165,233,0.5)',
           }}
         >
-          {unread} new Ã¢ÂÂ
+          {unread} new ↓
         </button>
       )}
       {(() => {
@@ -398,7 +399,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
         />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 11, color: '#475569' }}>
-            {isMobile ? 'Tap send' : 'Enter to send ÃÂ· Shift+Enter for newline'}
+            {isMobile ? 'Tap send' : 'Enter to send · Shift+Enter for newline'}
           </span>
           <button
             type='submit'
@@ -413,7 +414,7 @@ export default function ChatPanel({ eventId, open, onClose }: Props) {
               minWidth: isMobile ? 80 : 60, minHeight: isMobile ? 40 : 28,
             }}
           >
-            {sending ? 'Ã¢ÂÂ¦' : 'Send'}
+            {sending ? '…' : 'Send'}
           </button>
         </div>
         {err ? <p style={{ color: '#fda4af', fontSize: 11, margin: 0 }}>{err}</p> : null}
