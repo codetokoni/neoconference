@@ -130,6 +130,12 @@ export interface ChatMessage {
   ts: string;
   /** Optional role badge: 'host' | 'cohost' | 'speaker' | 'attendee' | 'ticket-holder'. */
   role?: string;
+  /** Optional reply context: which message this is a reply to. */
+  replyTo?: { id: string; name: string; snippet: string };
+  /** Optional list of @mention identifiers (lowercased userId or special token 'everyone'). */
+  mentions?: string[];
+  /** Optional private-DM target. If set, message was visible only to sender + target. */
+  toUserId?: string | null;
 }
 
 export interface NeoEvent {
