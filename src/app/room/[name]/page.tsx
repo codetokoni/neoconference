@@ -584,6 +584,8 @@ function RoomContainer({
             className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
             title="Toggle polls"
           >
+            {showPolls ? "Close polls" : "Polls"}
+          </button>
         
           {(roomRole === "host" || roomRole === "cohost") && (
             <button
@@ -617,8 +619,7 @@ function RoomContainer({
             >
               {showBreakouts ? "Close breakouts" : "Breakouts"}
             </button>
-          )}    {showPolls ? "Close polls" : "Polls"}
-          </button>
+          )}
         <button
           type="button"
           onClick={copyLink}
