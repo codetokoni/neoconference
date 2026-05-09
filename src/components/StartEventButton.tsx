@@ -2,13 +2,22 @@
 
 // StartEventButton
 // Host-only CTA shown on /e/<slug> while the event is still 'scheduled'.
-// Calls POST /api/events/<id>/start to flip the event to 'live', then
-// refreshes the page so the existing 'Join live room' CTA renders.
+// On click: POST /api/events/<id>/start to flip the event to 'live', then
+// route the host straight into the room with ?event=<slug> so they're
+// recognized as host (skip the extra 'Join live room' step).
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-export default function StartEventButton({ eventId }: { eventId: string }) {
+export default function StartEventButton({
+  eventId,
+  slug,
+  livekitRoom,
+}: {
+  eventId: string;
+  slug: string;
+  livekitRoom: string;
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,12 +33,14 @@ export default function StartEventButton({ eventId }: { eventId: string }) {
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         setError(j.error || 'Could not start the event.');
+        setLoading(false);
         return;
       }
-      router.refresh();
+      // Send the host straight into the room. ?event=<slug> tells the room
+      // page to fetch /api/events/role and treat them as host/cohost.
+      router.push('/room/' + encodeURIComponent(livekitRoom) + '?event=' + encodeURIComponent(slug));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Network error');
-    } finally {
       setLoading(false);
     }
   }
