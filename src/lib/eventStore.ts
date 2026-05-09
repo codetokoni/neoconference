@@ -140,17 +140,61 @@ export const eventStore = {
     return events.filter((x): x is NeoEvent => Boolean(x));
   },
 
+  async rename(
+    id: string,
+    newSlug: string
+  ): Promise<{ ok: true; event: NeoEvent } | { ok: false; error: string }> {
+    const prev = await this.byId(id);
+    if (!prev) return { ok: false, error: 'not_found' };
+    if (prev.slug === newSlug) return { ok: true, event: prev };
+    // Reject if newSlug already maps to a different event.
+    if (!isKvConfigured()) {
+      const existingId = memSlug.get(newSlug);
+      if (existingId && existingId !== id) {
+        return { ok: false, error: 'slug_taken' };
+      }
+    } else {
+      const existingId = await kv.get<string>(SLUG + newSlug);
+      if (existingId && existingId !== id) {
+        return { ok: false, error: 'slug_taken' };
+      }
+    }
+    const aliasSlugs = Array.from(
+      new Set([...(prev.aliasSlugs || []), prev.slug].filter((s) => s !== newSlug))
+    );
+    const next: NeoEvent = {
+      ...prev,
+      slug: newSlug,
+      livekitRoom: newSlug,
+      aliasSlugs,
+      updatedAt: new Date().toISOString(),
+    };
+    if (!isKvConfigured()) {
+      memEvents.set(id, next);
+      // Keep the old slug pointing at the same id so old links still resolve.
+      memSlug.set(prev.slug, id);
+      memSlug.set(newSlug, id);
+      return { ok: true, event: next };
+    }
+    await kv.set(PREFIX + id, next);
+    await kv.set(SLUG + newSlug, id);
+    // Intentionally do NOT delete SLUG + prev.slug — old links keep working as aliases.
+    await kv.set(SLUG + prev.slug, id);
+    return { ok: true, event: next };
+  },
+
   async delete(id: string): Promise<boolean> {
     const prev = await this.byId(id);
     if (!prev) return false;
+    const allSlugs = [prev.slug, ...((prev.aliasSlugs || []) as string[])];
     if (!isKvConfigured()) {
       memEvents.delete(id);
-      memSlug.delete(prev.slug);
+      for (const s of allSlugs) memSlug.delete(s);
       memOwner.get(prev.ownerUserId)?.delete(id);
       return true;
     }
     await kv.del(PREFIX + id);
-    await kv.del(SLUG + prev.slug);
+    for (const s of allSlugs) await kv.del(SLUG + s);
     await kv.srem(OWNER + prev.ownerUserId, id);
     await kv.srem(ALL, id);
     return true;
