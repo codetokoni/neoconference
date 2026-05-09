@@ -45,7 +45,10 @@ export default function RoomPage({ params }: { params: { name: string } }) {
 
   const roomName = decodeURIComponent(params.name);
   const searchParams = useSearchParams();
-  const eventSlug = searchParams?.get("event") || undefined;
+  // Fall back to using the path slug as the event slug when ?event= is missing.
+  // This makes URLs like /room/<slug> (no query) still resolve owner+role correctly,
+  // and lets users type a renamed URL without remembering the query string.
+  const eventSlug = searchParams?.get("event") || roomName || undefined;
   // Per-tab LiveKit identity suffix so the same Clerk user can join from
   // multiple tabs/browsers without being kicked for duplicate identity.
   // Stable across refresh in the same tab via sessionStorage; unique per tab.
@@ -222,6 +225,131 @@ export default function RoomPage({ params }: { params: { name: string } }) {
       choices={choices}
       onLeave={() => router.push("/")}
     />
+  );
+}
+
+/**
+ * RenameRedirectListener
+ *
+ * Listens for an "event_renamed" data packet from the rename API and hard-
+ * redirects everyone in the old LiveKit room to the new URL. Must be rendered
+ * INSIDE <LiveKitRoom> so useRoomContext() resolves.
+ */
+function RenameRedirectListener() {
+  const room = useRoomContext();
+  useEffect(() => {
+    if (!room) return;
+    const onData = (payload: Uint8Array) => {
+      try {
+        const txt = new TextDecoder().decode(payload);
+        const msg = JSON.parse(txt) as { type?: string; roomUrl?: string };
+        if (msg && msg.type === "event_renamed" && typeof msg.roomUrl === "string") {
+          window.location.href = msg.roomUrl;
+        }
+      } catch {
+        /* ignore non-JSON packets */
+      }
+    };
+    room.on(RoomEvent.DataReceived, onData);
+    return () => {
+      room.off(RoomEvent.DataReceived, onData);
+    };
+  }, [room]);
+  return null;
+}
+
+/**
+ * RenameUrlButton
+ *
+ * Host-only floating chip that lets the host rename the meeting URL/slug.
+ * Old links keep working as aliases. Calling the API broadcasts an
+ * event_renamed packet so all current participants redirect to the new URL.
+ */
+function RenameUrlButton({
+  roomRole,
+  eventSlug,
+}: {
+  roomRole: string;
+  eventSlug?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [next, setNext] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (roomRole !== "host" || !eventSlug) return null;
+  const submit = async () => {
+    const cleaned = (next || "").trim().toLowerCase();
+    if (!cleaned) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/events/rename", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug: eventSlug, newSlug: cleaned }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; roomUrl?: string };
+      if (!res.ok || !j.ok || !j.roomUrl) {
+        setErr(j.error || "rename_failed");
+        setBusy(false);
+        return;
+      }
+      window.location.href = j.roomUrl;
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "network_error");
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="fixed top-14 right-4 z-40 flex flex-col items-end gap-2">
+      <button
+        type="button"
+        onClick={() => setOpen((x) => !x)}
+        className="px-2.5 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/15 text-cyan-100 text-[11px] uppercase tracking-wider hover:bg-cyan-500/25 transition pointer-events-auto"
+        title="Rename this meeting's URL"
+      >
+        Rename URL
+      </button>
+      {open && (
+        <div className="rounded-xl border border-white/15 bg-zinc-900/95 backdrop-blur p-3 w-72 shadow-xl pointer-events-auto">
+          <div className="text-[11px] uppercase tracking-wider text-white/60 mb-1">
+            New slug
+          </div>
+          <input
+            type="text"
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+            placeholder="my-meeting"
+            className="w-full px-2 py-1.5 rounded bg-black/40 border border-white/10 text-sm text-white outline-none focus:border-cyan-300/50"
+            autoFocus
+          />
+          <div className="text-[10px] text-white/50 mt-1">
+            Lowercase letters, numbers, and dashes. Old link will keep working.
+          </div>
+          {err && (
+            <div className="text-[11px] text-rose-300 mt-2">{err}</div>
+          )}
+          <div className="flex justify-end gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="px-2 py-1 rounded text-[12px] text-white/70 hover:text-white"
+              disabled={busy}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              className="px-3 py-1 rounded bg-cyan-500/80 hover:bg-cyan-500 text-[12px] text-white"
+              disabled={busy || !next.trim()}
+            >
+              {busy ? "Renaming…" : "Rename"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -450,6 +578,8 @@ function RoomContainer({
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
         <WaitingRoomPanel open={showWaitingRoom} onClose={() => setShowWaitingRoom(false)} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          <BreakoutsPanel open={showBreakouts} onClose={() => setShowBreakouts(false)} isHost={roomRole === "host" || roomRole === "cohost"} eventSlug={eventSlug} />
               <SpeakerBadge />
+        <RenameRedirectListener />
+        <RenameUrlButton roomRole={roomRole} eventSlug={eventSlug} />
         {showPeople && (
           <ParticipantsPanel onClose={() => setShowPeople(false)} />
         )}
