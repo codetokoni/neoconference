@@ -47,6 +47,8 @@ export default function PollsPanel({
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState<string[]>(["", ""]);
   const pollsRef = useRef<Poll[]>([]);
+  const [pollNotice, setPollNotice] = useState<{ id: string; question: string; createdByName: string } | null>(null);
+  const seenPollIdsRef = useRef<Set<string>>(new Set());
 
   // Keep ref in sync so the data handler reads the latest list.
   useEffect(() => {
@@ -81,6 +83,19 @@ export default function PollsPanel({
           if (prev.find((p) => p.id === msg.poll.id)) return prev;
           return [...prev, msg.poll];
         });
+        try {
+          const meIdent = localParticipant?.identity;
+          const fromSelf = msg.poll.createdBy === meIdent;
+          const alreadySeen = seenPollIdsRef.current.has(msg.poll.id);
+          if (!fromSelf && !alreadySeen) {
+            seenPollIdsRef.current.add(msg.poll.id);
+            setPollNotice({
+              id: msg.poll.id,
+              question: msg.poll.question,
+              createdByName: msg.poll.createdByName,
+            });
+          }
+        } catch {}
       } else if (msg.op === "vote") {
         setPolls((prev) =>
           prev.map((p) => {
@@ -112,6 +127,13 @@ export default function PollsPanel({
       room.off(RoomEvent.DataReceived, onData);
     };
   }, [room, send]);
+
+  // Auto-dismiss the new-poll notification after 10 seconds.
+  useEffect(() => {
+    if (!pollNotice) return;
+    const id = setTimeout(() => setPollNotice(null), 10000);
+    return () => clearTimeout(id);
+  }, [pollNotice]);
 
   // On open, ask peers for a snapshot in case we missed a poll while closed.
   useEffect(() => {
@@ -188,7 +210,76 @@ export default function PollsPanel({
     send({ type: "poll", op: "end", id: pollId });
   };
 
-  if (!open) return null;
+  // Floating notification toast (renders even when panel is closed).
+  const noticeNode = pollNotice ? (
+    <div
+      role='status'
+      aria-live='polite'
+      data-room-chrome="true"
+      style={{
+        position: 'fixed',
+        left: '50%',
+        bottom: 96,
+        transform: 'translateX(-50%)',
+        zIndex: 90,
+        background: 'rgba(8,12,24,0.96)',
+        border: '1px solid rgba(34,211,238,0.45)',
+        borderRadius: 12,
+        padding: '10px 14px',
+        color: '#e2e8f0',
+        fontSize: 12,
+        boxShadow: '0 12px 30px rgba(0,0,0,0.55)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        maxWidth: '92vw',
+      }}
+    >
+      <span style={{ fontSize: 16 }} aria-hidden>\uD83D\uDCCA</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ color: '#67e8f9', fontWeight: 600, fontSize: 11, letterSpacing: 0.3 }}>
+          New poll from {pollNotice.createdByName}
+        </div>
+        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {pollNotice.question}
+        </div>
+      </div>
+      <button
+        type='button'
+        onClick={() => {
+          setPollNotice(null);
+          try { window.dispatchEvent(new CustomEvent('neo-open-polls')); } catch {}
+        }}
+        style={{
+          padding: '6px 12px',
+          borderRadius: 999,
+          border: '1px solid rgba(34,211,238,0.45)',
+          background: 'rgba(34,211,238,0.15)',
+          color: '#67e8f9',
+          fontWeight: 600,
+          fontSize: 11,
+          cursor: 'pointer',
+        }}
+      >
+        View
+      </button>
+      <button
+        type='button'
+        onClick={() => setPollNotice(null)}
+        aria-label='Dismiss notification'
+        style={{
+          background: 'transparent',
+          border: 'none',
+          color: 'rgba(255,255,255,0.5)',
+          cursor: 'pointer',
+          fontSize: 14,
+          padding: '0 4px',
+        }}
+      >\u2715</button>
+    </div>
+  ) : null;
+
+  if (!open) return <>{noticeNode}</>;
 
   const me = localParticipant.identity;
 
@@ -474,7 +565,7 @@ export default function PollsPanel({
                   const count = voteCounts[i];
                   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
                   const picked = myVote === i;
-                  const showResults = p.ended || myVote !== undefined;
+                  const showResults = true;
                   return (
                     <button
                       key={i}
