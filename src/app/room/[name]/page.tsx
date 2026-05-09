@@ -201,15 +201,15 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     return (
       <div className="min-h-[calc(100vh-65px)] flex flex-col items-center justify-center p-8 gap-3 text-center">
         <h1 className="text-xl font-semibold">
-          {waitingState === "denied" ? "Entry denied" : "Waiting for the hostâ¦"}
+          {waitingState === "denied" ? "Entry denied" : "Waiting for the hostÃ¢ÂÂ¦"}
         </h1>
         <p className="text-sm opacity-70 max-w-md">
           {waitingState === "denied"
             ? "The host did not let you in. Reach out to them if this looks wrong."
-            : "We let the host know youâre here. Youâll join automatically once they admit you."}
+            : "We let the host know youÃ¢ÂÂre here. YouÃ¢ÂÂll join automatically once they admit you."}
         </p>
         <a href="/" className="mt-6 underline text-sm">
-          â Back to home
+          Ã¢ÂÂ Back to home
         </a>
       </div>
     );
@@ -344,7 +344,7 @@ function RenameUrlButton({
               className="px-3 py-1 rounded bg-cyan-500/80 hover:bg-cyan-500 text-[12px] text-white"
               disabled={busy || !next.trim()}
             >
-              {busy ? "Renamingâ¦" : "Rename"}
+              {busy ? "RenamingÃ¢ÂÂ¦" : "Rename"}
             </button>
           </div>
         </div>
@@ -387,7 +387,7 @@ function RoomContainer({
   useEffect(() => {
     if (!eventSlug) return;
     let cancelled = false;
-    // Retry on viewer/guest a few times â handles Clerk session hydration race
+    // Retry on viewer/guest a few times Ã¢ÂÂ handles Clerk session hydration race
     // and KV eventual-consistency right after instant-meeting creation, so the
     // owner reliably resolves to "host" instead of being stuck on the first
     // unauthenticated/empty response.
@@ -900,7 +900,6 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
               }
             }
           }
-        }
       } catch {
         // ignore
       }
