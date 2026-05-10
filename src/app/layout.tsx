@@ -5,8 +5,6 @@ import {
   ClerkProvider,
   SignedIn,
   SignedOut,
-  SignInButton,
-  SignUpButton,
 } from "@clerk/nextjs";
 import Link from "next/link";
 import { getCurrentRole } from "@/lib/roles";
@@ -54,12 +52,8 @@ export default async function RootLayout({
                   Pricing
                 </Link>
                 <SignedOut>
-                  <SignInButton mode="modal">
-                    <button className="hidden sm:inline-flex neo-btn-ghost text-sm">Sign in</button>
-                  </SignInButton>
-                  <SignUpButton mode="modal">
-                    <button className="neo-btn text-sm">Get started</button>
-                  </SignUpButton>
+                  <Link href="/sign-in" className="hidden sm:inline-flex neo-btn-ghost text-sm">Sign in</Link>
+                  <Link href="/sign-up" className="neo-btn text-sm">Get started</Link>
                 </SignedOut>
                 <SignedIn>
                   {role === "admin" && (
@@ -79,8 +73,7 @@ export default async function RootLayout({
           <main className="min-h-[calc(100vh-65px)]">{children}</main>
           <SpeedInsights />
         </body>
-    </html>
+      </html>
     </ClerkProvider>
   );
 }
-
