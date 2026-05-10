@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import Link from "next/link";
+import TierCheckoutButton from "@/components/TierCheckoutButton";
 
 export const metadata = {
   title: "Pricing — NeoConference",
@@ -167,17 +168,27 @@ export default async function PricingPage() {
                   </p>
                 )}
 
-                <Link
-                  href={tier.ctaHref}
-                  className={
-                    "mt-6 inline-flex w-full justify-center items-center text-sm font-semibold px-5 py-3 rounded-xl transition " +
-                    (tier.highlight
-                      ? "neo-btn"
-                      : "neo-btn-ghost")
-                  }
-                >
-                  {tier.cta}
-                </Link>
+                {tier.id === "free" ? (
+                  <Link
+                    href={tier.ctaHref}
+                    className={
+                      "mt-8 inline-flex w-full items-center justify-center rounded-xl px-5 py-3 text-sm font-semibold transition " +
+                      (tier.highlight
+                        ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                        : "bg-white/10 text-white ring-1 ring-white/20 hover:bg-white/15")
+                    }
+                  >
+                    {tier.cta}
+                  </Link>
+                ) : (
+                  <div className="mt-8">
+                    <TierCheckoutButton
+                      plan={tier.id as "pro" | "business"}
+                      label={tier.cta}
+                      highlight={tier.highlight}
+                    />
+                  </div>
+                )}
 
                 <ul className="mt-6 space-y-2.5">
                   {tier.features.map((f, i) => (
