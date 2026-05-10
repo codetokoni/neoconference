@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { SignedIn, SignedOut } from "@clerk/nextjs";
+import { SignedIn, SignedOut, ClerkLoading, ClerkLoaded } from "@clerk/nextjs";
 
 function randomRoomName() {
   const adj = ["nova", "lumen", "orbit", "nimbus", "pulse", "vortex", "atlas", "aurora", "echo", "zenith"];
@@ -57,6 +57,18 @@ export default function Home() {
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center">
+              <ClerkLoading>
+              <div className="neo-btn text-base px-6 py-3.5 opacity-50 pointer-events-none" aria-hidden>
+                <span className="inline-block h-5 w-32 rounded bg-white/10 animate-pulse" />
+              </div>
+              <div className="neo-btn-ghost text-base px-6 py-3.5 inline-flex items-center gap-2 opacity-50 pointer-events-none" aria-hidden>
+                <span className="inline-block h-5 w-24 rounded bg-white/10 animate-pulse" />
+              </div>
+              <div className="neo-btn-ghost text-base px-6 py-3.5 inline-flex items-center gap-2 opacity-50 pointer-events-none" aria-hidden>
+                <span className="inline-block h-5 w-28 rounded bg-white/10 animate-pulse" />
+              </div>
+            </ClerkLoading>
+            <ClerkLoaded>
               <SignedIn>
                 <button onClick={startNew} className="neo-btn text-base px-6 py-3.5">
                   <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h7A2.5 2.5 0 0 1 15 7.5v9A2.5 2.5 0 0 1 12.5 19h-7A2.5 2.5 0 0 1 3 16.5v-9Zm14 1.2 3.3-2a1 1 0 0 1 1.5.86v8.88a1 1 0 0 1-1.5.86L17 15.3V8.7Z"/></svg>
@@ -88,6 +100,7 @@ export default function Home() {
                 <Link href="/sign-up" className="neo-btn text-base px-6 py-3.5">Get started — it&apos;s free</Link>
                 <Link href="/sign-in" className="neo-btn-ghost text-base px-6 py-3.5">Sign in</Link>
               </SignedOut>
+            </ClerkLoaded>
             </div>
 
             <div className="mt-8 flex items-center gap-6 text-xs text-cyan-100/50">
@@ -190,6 +203,18 @@ export default function Home() {
           <h3 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight">Your next meeting is one click away.</h3>
           <p className="mt-3 text-cyan-100/70">Create a room, share the link, and bring everyone into a beautifully designed space.</p>
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+            <ClerkLoading>
+            <div className="neo-btn px-7 py-3.5 opacity-50 pointer-events-none" aria-hidden>
+              <span className="inline-block h-5 w-32 rounded bg-white/10 animate-pulse" />
+            </div>
+            <div className="neo-btn-ghost px-7 py-3.5 opacity-50 pointer-events-none" aria-hidden>
+              <span className="inline-block h-5 w-24 rounded bg-white/10 animate-pulse" />
+            </div>
+            <div className="neo-btn-ghost px-7 py-3.5 opacity-50 pointer-events-none" aria-hidden>
+              <span className="inline-block h-5 w-28 rounded bg-white/10 animate-pulse" />
+            </div>
+          </ClerkLoading>
+          <ClerkLoaded>
             <SignedIn>
               <button onClick={startNew} className="neo-btn px-7 py-3.5">Start a meeting</button>
               <Link href="/dashboard/new" className="neo-btn-ghost px-7 py-3.5">Create event</Link>
@@ -199,6 +224,7 @@ export default function Home() {
               <Link href="/sign-up" className="neo-btn px-7 py-3.5">Create free account</Link>
               <Link href="/sign-in" className="neo-btn-ghost px-7 py-3.5">Sign in</Link>
             </SignedOut>
+          </ClerkLoaded>
           </div>
         </div>
       </section>
