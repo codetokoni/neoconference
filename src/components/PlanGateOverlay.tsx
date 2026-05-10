@@ -95,8 +95,7 @@ export default function PlanGateOverlay() {
     if (!limits.recording) {
       rules.push('[data-feature="recording"], [data-recording-control] { display: none !important; }');
     }
-    style.textContent = rules.join("
-");
+    style.textContent = rules.join("\n");
   }, [limits]);
 
   if (!limits) return null;
