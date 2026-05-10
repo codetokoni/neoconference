@@ -11,6 +11,7 @@ import {
 import Link from "next/link";
 import { getCurrentRole } from "@/lib/roles";
 import HeaderUserMenu from "@/components/HeaderUserMenu";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
@@ -76,8 +77,9 @@ export default async function RootLayout({
           </header>
 
           <main className="min-h-[calc(100vh-65px)]">{children}</main>
+          <SpeedInsights />
         </body>
-      </html>
+    </html>
     </ClerkProvider>
   );
 }
