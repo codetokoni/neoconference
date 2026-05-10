@@ -11,6 +11,7 @@ import { redirect } from 'next/navigation';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
 import type { NeoEvent } from '@/types/event';
+import UpgradeBanner from "@/components/UpgradeBanner";
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +43,7 @@ export default async function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-[#05070d] text-white relative overflow-hidden">
+        <UpgradeBanner />
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 opacity-60">
         <div className="absolute -top-40 -left-40 h-[480px] w-[480px] rounded-full bg-cyan-500/15 blur-[120px]" />
         <div className="absolute bottom-0 right-0 h-[420px] w-[420px] rounded-full bg-fuchsia-500/10 blur-[120px]" />
