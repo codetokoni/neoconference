@@ -11,8 +11,8 @@ Live: https://neoconference.vercel.app
 - **App framework:** Next.js (App Router) deployed on Vercel.
 - **Auth:** Clerk (email + Google SSO) plus a custom KingsChat OAuth flow at `/api/auth/kingschat/start` and `/api/auth/kingschat/callback`. KingsChat does **not** use Clerk SSO connections.
 - **Realtime media:** LiveKit Cloud (rooms, recording/egress).
-- **Object storage:** S3-compatible bucket (R2) for recordings and assets.
-- **KV / cache:** Upstash Redis (rate limiting, ephemeral state).
+- **Object storage:** S3-compatible bucket (Cloudflare R2 / AWS S3) for recordings and assets.
+- **KV / cache:** Vercel KV / Upstash Redis (sessions, rate limiting, ephemeral state).
 - **Payments / redemption:** ESPEES integration + a Vercel Cron at 14:00 UTC daily (see `vercel.json`).
 - **Observability:** `/api/health`, Vercel Speed Insights (`<SpeedInsights />` in `src/app/layout.tsx`).
 
@@ -22,13 +22,13 @@ See `.env.local.example` for the canonical list. Set these in Vercel **Project S
 
 Groups:
 
-- **Clerk:** `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, sign-in/sign-up URLs.
+- **Clerk:** `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, plus optional `NEXT_PUBLIC_CLERK_SIGN_IN_URL` / `SIGN_UP_URL` / `AFTER_SIGN_IN_URL` / `AFTER_SIGN_UP_URL`.
 - **LiveKit:** `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `NEXT_PUBLIC_LIVEKIT_URL`.
-- **S3 / R2:** `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_PUBLIC_BASE_URL`.
-- **Upstash Redis:** `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
-- **KingsChat:** `KINGSCHAT_CLIENT_ID`, `KINGSCHAT_CLIENT_SECRET`, `KINGSCHAT_REDIRECT_URI`.
-- **ESPEES:** `ESPEES_API_KEY`, `ESPEES_API_BASE_URL`, plus webhook secret if applicable.
-- **Bootstrap:** `BOOTSTRAP_ADMIN_EMAILS` (comma-separated list seeded at first sign-in).
+- **S3 / R2:** `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`.
+- **Vercel KV / Upstash Redis:** `KV_REST_API_URL`, `KV_REST_API_TOKEN`, plus `KV_URL` / `REDIS_URL` / `KV_REST_API_READ_ONLY_TOKEN` (auto-injected by the Vercel KV integration).
+- **KingsChat:** `KINGSCHAT_CLIENT_ID`, `KINGSCHAT_REDIRECT_URI`, `KINGSCHAT_STATE_SECRET` (long random string used to sign OAuth state).
+- **ESPEES:** `ESPEES_MERCHANT_WALLET` (plus any future webhook secret).
+- **Bootstrap:** `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_BUSINESS_EMAIL` (seeded on first deploy).
 
 ## 3. Going from Clerk Development → Production
 
@@ -45,7 +45,7 @@ Clerk is currently on the **Development** instance. Cutover steps:
 ## 4. KingsChat production cutover
 
 1. In the KingsChat developer portal, ensure the redirect URI matches production exactly: `https://neoconference.vercel.app/api/auth/kingschat/callback` (and any custom domain).
-2. Confirm `KINGSCHAT_CLIENT_ID`, `KINGSCHAT_CLIENT_SECRET`, and `KINGSCHAT_REDIRECT_URI` in Vercel match the portal.
+2. Confirm `KINGSCHAT_CLIENT_ID`, `KINGSCHAT_REDIRECT_URI`, and `KINGSCHAT_STATE_SECRET` are set in Vercel for the Production environment.
 3. The OAuth scope is hardcoded as `send_chat_message` in `src/app/api/auth/kingschat/start/route.ts`. Add more scopes there if/when needed.
 4. Smoke test: hit `/api/auth/kingschat/start`, complete the flow, confirm a Clerk user is minted on callback.
 
@@ -60,7 +60,7 @@ Clerk is currently on the **Development** instance. Cutover steps:
 
 - Use a dedicated production bucket. Enable lifecycle rules for old recordings if cost is a concern.
 - CORS: allow `https://neoconference.vercel.app` for `GET`, `PUT`, and `HEAD` if the client uploads directly.
-- Confirm `S3_PUBLIC_BASE_URL` is the public CDN/base URL, not the API endpoint.
+- Confirm `S3_ENDPOINT` is the API endpoint (e.g. `https://<accountid>.r2.cloudflarestorage.com`) and that `S3_BUCKET` / `S3_REGION` match the bucket you created.
 
 ## 7. Vercel project hygiene
 
@@ -73,19 +73,19 @@ Clerk is currently on the **Development** instance. Cutover steps:
 
 After every production deploy, verify:
 
-1. `GET https://neoconference.vercel.app/api/health` → `{ "status": "ok", ... }` with all services reporting `configured: true`.
+1. `GET https://neoconference.vercel.app/api/health` → `{ "status": "ok", ... }` with `services.clerk`, `services.livekit`, `services.storage`, and `services.kv` all reporting `"ok"`.
 2. Sign in with email (Clerk) succeeds.
 3. Sign in with Google (Clerk SSO) succeeds.
 4. Sign in with KingsChat succeeds and lands the user signed-in.
 5. Create a room, join from a second browser, confirm media flows.
 6. Start and stop a recording; confirm the egress completes and the artifact appears in the S3 bucket.
-7. Check `/admin` (or equivalent) loads for an email in `BOOTSTRAP_ADMIN_EMAILS`.
+7. Check `/admin` (or equivalent) loads for the email in `BOOTSTRAP_ADMIN_EMAIL`.
 
 ## 9. Rollback
 
 - In Vercel → Deployments, find the last known-good production deployment and click **Promote to Production**.
 - Env var changes are versioned per environment; revert by editing the variable and redeploying.
-- Database / KV state is not rolled back automatically — be cautious with destructive migrations.
+- KV / storage state is not rolled back automatically — be cautious with destructive migrations.
 
 ## 10. Incident playbook (quick)
 
