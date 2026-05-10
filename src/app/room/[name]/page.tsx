@@ -177,7 +177,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     }
   };
 
-  if (!isLoaded) return <div className="p-8">Loading\u2026</div>;
+  if (!isLoaded) return <div className="p-8">Loading…</div>;
 
   if (!isSignedIn) {
     return (
@@ -198,7 +198,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
         </p>
         <p className="text-xs text-red-600 break-all">{error}</p>
         <a href="/" className="inline-block mt-6 underline text-sm">
-          \u2190 Back to home
+          ← Back to home
         </a>
       </div>
     );
@@ -249,20 +249,20 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     return (
       <div className="min-h-[calc(100vh-65px)] flex flex-col items-center justify-center p-8 gap-3 text-center">
         <h1 className="text-xl font-semibold">
-          {waitingState === "denied" ? "Entry denied" : "Waiting for the hostÃÂ¢ÃÂÃÂ¦"}
+          {waitingState === "denied" ? "Entry denied" : "Waiting for the host…"}
         </h1>
         <p className="text-sm opacity-70 max-w-md">
           {waitingState === "denied"
             ? "The host did not let you in. Reach out to them if this looks wrong."
-            : "We let the host know youÃÂ¢ÃÂÃÂre here. YouÃÂ¢ÃÂÃÂll join automatically once they admit you."}
+            : "We let the host know you’re here. You’ll join automatically once they admit you."}
         </p>
         <a href="/" className="mt-6 underline text-sm">
-          ÃÂ¢ÃÂÃÂ Back to home
+          ← Back to home
         </a>
       </div>
     );
   }
-  if (!token || !wsUrl) return <div className="p-8">Connecting\u2026</div>;
+  if (!token || !wsUrl) return <div className="p-8">Connecting…</div>;
 
   return (
     <RoomContainer
@@ -392,7 +392,7 @@ function RenameUrlButton({
               className="px-3 py-1 rounded bg-cyan-500/80 hover:bg-cyan-500 text-[12px] text-white"
               disabled={busy || !next.trim()}
             >
-              {busy ? "RenamingÃÂ¢ÃÂÃÂ¦" : "Rename"}
+              {busy ? "Renaming…" : "Rename"}
             </button>
           </div>
         </div>
@@ -443,7 +443,7 @@ function RoomContainer({
   useEffect(() => {
     if (!eventSlug) return;
     let cancelled = false;
-    // Retry on viewer/guest a few times ÃÂ¢ÃÂÃÂ handles Clerk session hydration race
+    // Retry on viewer/guest a few times — handles Clerk session hydration race
     // and KV eventual-consistency right after instant-meeting creation, so the
     // owner reliably resolves to "host" instead of being stuck on the first
     // unauthenticated/empty response.
@@ -893,7 +893,7 @@ function ParticipantsPanel({ onClose }: { onClose: () => void }) {
                 {display}
                 {p.isLocal ? " (you)" : ""}
               </span>
-                {handUp && <span title="Hand raised">\u270B</span>}
+                {handUp && <span title="Hand raised">✋</span>}
               <span title={micOn ? "Mic on" : "Mic muted"}>
                 {micOn ? "Mic on" : "Mic muted"}
               </span>
@@ -1061,7 +1061,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       );
       await localParticipant.publishData(payload, { reliable: true } as any);
       setRecordPending("asking");
-      setToast({ message: "Waiting for host approval\u2026" });
+      setToast({ message: "Waiting for host approval…" });
       // Auto-clear pending state after 30s if no response
       setTimeout(() => {
         setRecordPending((p) => {
@@ -1128,7 +1128,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
           url: data.downloadUrl,
         });
       } else {
-        setToast({ message: "Recording stopped (file uploading\u2026)" });
+        setToast({ message: "Recording stopped (file uploading…)" });
         setTimeout(() => setToast(null), 5000);
       }
     } catch (e: any) {
@@ -1178,7 +1178,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
           REC
           {remoteRecording?.by ? (
             <span style={{ fontWeight: 400, opacity: 0.9 }}>
-              \u00B7 {remoteRecording.by}
+              · {remoteRecording.by}
             </span>
           ) : null}
         </div>
@@ -1234,7 +1234,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
         data-room-chrome="true"
         onClick={egressId ? stop : start}
         disabled={busy || recordPending === "asking"}
-        title={egressId ? "Stop recording" : recordPending === "asking" ? "Waiting for host approval\u2026" : "Start recording"}
+        title={egressId ? "Stop recording" : recordPending === "asking" ? "Waiting for host approval…" : "Start recording"}
         style={{
           position: "relative",
           padding: "6px 12px",
@@ -1250,10 +1250,10 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
         }}
       >
         {busy
-          ? "\u2026"
+          ? "…"
           : egressId
-          ? "\u25A0 Stop recording"
-          : "\u25CF Record"}
+          ? "■ Stop recording"
+          : "● Record"}
       </button>
 
       {/* Toast (e.g. download URL) */}
@@ -1304,7 +1304,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
               opacity: 0.7,
             }}
           >
-            \u25CF
+            ●
           </button>
         </div>
       )}
