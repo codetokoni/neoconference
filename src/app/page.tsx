@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { SignedIn, SignedOut, SignInButton, SignUpButton } from "@clerk/nextjs";
+import { SignedIn, SignedOut } from "@clerk/nextjs";
 
 function randomRoomName() {
   const adj = ["nova", "lumen", "orbit", "nimbus", "pulse", "vortex", "atlas", "aurora", "echo", "zenith"];
@@ -85,12 +85,8 @@ export default function Home() {
                 </div>
               </SignedIn>
               <SignedOut>
-                <SignUpButton mode="modal">
-                  <button className="neo-btn text-base px-6 py-3.5">Get started — it&apos;s free</button>
-                </SignUpButton>
-                <SignInButton mode="modal">
-                  <button className="neo-btn-ghost text-base px-6 py-3.5">Sign in</button>
-                </SignInButton>
+                <Link href="/sign-up" className="neo-btn text-base px-6 py-3.5">Get started — it&apos;s free</Link>
+                <Link href="/sign-in" className="neo-btn-ghost text-base px-6 py-3.5">Sign in</Link>
               </SignedOut>
             </div>
 
@@ -200,8 +196,8 @@ export default function Home() {
               <Link href="#" onClick={(e) => { e.preventDefault(); document.getElementById("join-quick")?.focus(); }} className="neo-btn-ghost px-7 py-3.5">Join with code</Link>
             </SignedIn>
             <SignedOut>
-              <SignUpButton mode="modal"><button className="neo-btn px-7 py-3.5">Create free account</button></SignUpButton>
-              <SignInButton mode="modal"><button className="neo-btn-ghost px-7 py-3.5">Sign in</button></SignInButton>
+              <Link href="/sign-up" className="neo-btn px-7 py-3.5">Create free account</Link>
+              <Link href="/sign-in" className="neo-btn-ghost px-7 py-3.5">Sign in</Link>
             </SignedOut>
           </div>
         </div>
