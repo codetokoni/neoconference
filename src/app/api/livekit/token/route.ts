@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
+import { getPlanForUserId, getPlanLimits, type Plan } from "@/lib/plan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -150,6 +151,50 @@ export async function GET(req: NextRequest) {
       user?.primaryEmailAddress?.emailAddress ||
       userId;
 
+    // ---- Plan-based gates: determine the host's plan, then enforce participant cap and emit limits in metadata ----
+    let hostPlan: Plan = "free";
+    try {
+      let hostUserId: string | undefined;
+      if (eventSlug) {
+        try {
+          const { eventStore: __es } = await import("@/lib/eventStore");
+          const __ev = await __es.bySlug(eventSlug);
+          if (__ev?.ownerUserId) hostUserId = __ev.ownerUserId;
+        } catch {}
+      }
+      if (!hostUserId) hostUserId = userId;
+      hostPlan = await getPlanForUserId(hostUserId);
+    } catch (planErr) {
+      console.error("[livekit/token] plan lookup failed:", planErr);
+    }
+    const planLimits = getPlanLimits(hostPlan);
+
+    if (planLimits.maxParticipants > 0) {
+      try {
+        const svc = new RoomServiceClient(wsUrl, apiKey, apiSecret);
+        const parts = await svc.listParticipants(room).catch(() => []);
+        const alreadyIn = parts.some((p) => p.identity === userId);
+        if (!alreadyIn && parts.length >= planLimits.maxParticipants) {
+          return NextResponse.json(
+            {
+              error: "room_full",
+              hostPlan,
+              limit: planLimits.maxParticipants,
+              message:
+                hostPlan === "free"
+                  ? "This room is full. The host is on the Free plan (max " +
+                    planLimits.maxParticipants +
+                    " participants). Ask the host to upgrade."
+                  : "Room is at capacity (" + planLimits.maxParticipants + " participants).",
+            },
+            { status: 403 }
+          );
+        }
+      } catch (capErr) {
+        console.error("[livekit/token] participant cap check failed:", capErr);
+      }
+    }
+
     const at = new AccessToken(apiKey, apiSecret, {
       identity: ((): string => { const n = req.nextUrl.searchParams.get("nonce") || ""; return /^[A-Za-z0-9_-]{1,32}$/.test(n) ? `${userId}#${n}` : userId; })(),
       name: displayName,
@@ -162,6 +207,7 @@ export async function GET(req: NextRequest) {
       canSubscribe: true,
       canPublishData: true,
     });
+    at.metadata = JSON.stringify({ planLimits, hostPlan });
 
     const token = await at.toJwt();
     return NextResponse.json({ token, wsUrl });
