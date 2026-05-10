@@ -91,9 +91,9 @@ export default function Home() {
             </div>
 
             <div className="mt-8 flex items-center gap-6 text-xs text-cyan-100/50">
-              <div className="flex items-center gap-2"><span className="text-cyan-300">â</span> No downloads</div>
-              <div className="flex items-center gap-2"><span className="text-cyan-300">â</span> End-to-end encrypted</div>
-              <div className="hidden sm:flex items-center gap-2"><span className="text-cyan-300">â</span> HD recording</div>
+              <div className="flex items-center gap-2"><span className="text-cyan-300">✓</span> No downloads</div>
+              <div className="flex items-center gap-2"><span className="text-cyan-300">✓</span> End-to-end encrypted</div>
+              <div className="hidden sm:flex items-center gap-2"><span className="text-cyan-300">✓</span> HD recording</div>
             </div>
           </div>
 
