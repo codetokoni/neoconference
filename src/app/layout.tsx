@@ -1,14 +1,10 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import {
-  ClerkProvider,
-  SignedIn,
-  SignedOut,
-} from "@clerk/nextjs";
+import { ClerkProvider } from "@clerk/nextjs";
 import Link from "next/link";
 import { getCurrentRole } from "@/lib/roles";
-import HeaderUserMenu from "@/components/HeaderUserMenu";
+import HeaderNav from "@/components/HeaderNav";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -44,29 +40,7 @@ export default async function RootLayout({
                 </span>
               </Link>
 
-              <nav className="flex items-center gap-2 sm:gap-3">
-                <Link
-                  href="/pricing"
-                  className="hidden sm:inline-flex text-xs font-medium px-3 py-1.5 rounded-lg text-cyan-100/80 hover:text-white hover:bg-white/5 transition"
-                >
-                  Pricing
-                </Link>
-                <SignedOut>
-                  <Link href="/sign-in" className="hidden sm:inline-flex neo-btn-ghost text-sm">Sign in</Link>
-                  <Link href="/sign-up" className="neo-btn text-sm">Get started</Link>
-                </SignedOut>
-                <SignedIn>
-                  {role === "admin" && (
-                    <Link
-                      href="/admin"
-                      className="hidden sm:inline-flex text-xs font-semibold px-3 py-1.5 rounded-lg bg-cyan-400/10 text-cyan-200 border border-cyan-300/30 hover:bg-cyan-400/20 transition"
-                    >
-                      Admin
-                    </Link>
-                  )}
-                  <HeaderUserMenu />
-                </SignedIn>
-              </nav>
+              <HeaderNav role={role} />
             </div>
           </header>
 
