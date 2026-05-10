@@ -1,27 +1,11 @@
-"use client";
-
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { SignedIn, SignedOut, ClerkLoading, ClerkLoaded } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
+import HomeHeroCTAs from "./HomeHeroCTAs";
+import HomeFinalCTAs from "./HomeFinalCTAs";
 
-function randomRoomName() {
-  const adj = ["nova", "lumen", "orbit", "nimbus", "pulse", "vortex", "atlas", "aurora", "echo", "zenith"];
-  const a = adj[Math.floor(Math.random() * adj.length)];
-  const n = Math.random().toString(36).slice(2, 6);
-  return a + "-" + n;
-}
-
-export default function Home() {
-  const router = useRouter();
-  const [join, setJoin] = useState("");
-
-  const startNew = () => router.push("/room/" + randomRoomName());
-  const joinNamed = () => {
-    const v = join.trim();
-    if (!v) return;
-    router.push("/room/" + encodeURIComponent(v));
-  };
+export default async function Home() {
+  const { userId } = await auth();
+  const signedIn = !!userId;
 
   return (
     <div className="relative overflow-hidden">
@@ -57,50 +41,7 @@ export default function Home() {
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center">
-              <ClerkLoading>
-              <div className="neo-btn text-base px-6 py-3.5 opacity-50 pointer-events-none" aria-hidden>
-                <span className="inline-block h-5 w-32 rounded bg-white/10 animate-pulse" />
-              </div>
-              <div className="neo-btn-ghost text-base px-6 py-3.5 inline-flex items-center gap-2 opacity-50 pointer-events-none" aria-hidden>
-                <span className="inline-block h-5 w-24 rounded bg-white/10 animate-pulse" />
-              </div>
-              <div className="neo-btn-ghost text-base px-6 py-3.5 inline-flex items-center gap-2 opacity-50 pointer-events-none" aria-hidden>
-                <span className="inline-block h-5 w-28 rounded bg-white/10 animate-pulse" />
-              </div>
-            </ClerkLoading>
-            <ClerkLoaded>
-              <SignedIn>
-                <button onClick={startNew} className="neo-btn text-base px-6 py-3.5">
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h7A2.5 2.5 0 0 1 15 7.5v9A2.5 2.5 0 0 1 12.5 19h-7A2.5 2.5 0 0 1 3 16.5v-9Zm14 1.2 3.3-2a1 1 0 0 1 1.5.86v8.88a1 1 0 0 1-1.5.86L17 15.3V8.7Z"/></svg>
-                  Start a meeting
-                </button>
-                <Link href="/dashboard/new" className="neo-btn-ghost text-base px-6 py-3.5 inline-flex items-center gap-2">
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8M12 8v8"/></svg>
-                  Create event
-                </Link>
-                <Link href="/dashboard" className="neo-btn-ghost text-base px-6 py-3.5 inline-flex items-center gap-2">
-                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-                  View past replays
-                </Link>
-                <div className="flex w-full sm:w-auto items-stretch gap-2">
-                  <input
-                    value={join}
-                    onChange={(e) => setJoin(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") joinNamed(); }}
-                    placeholder="Enter room code"
-                    className="neo-input min-w-0 sm:w-64"
-                    aria-label="Room code"
-                  />
-                  <button onClick={joinNamed} disabled={!join.trim()} className="neo-btn-ghost px-5 disabled:opacity-50">
-                    Join
-                  </button>
-                </div>
-              </SignedIn>
-              <SignedOut>
-                <Link href="/sign-up" className="neo-btn text-base px-6 py-3.5">Get started — it&apos;s free</Link>
-                <Link href="/sign-in" className="neo-btn-ghost text-base px-6 py-3.5">Sign in</Link>
-              </SignedOut>
-            </ClerkLoaded>
+              <HomeHeroCTAs signedIn={signedIn} />
             </div>
 
             <div className="mt-8 flex items-center gap-6 text-xs text-cyan-100/50">
@@ -203,28 +144,7 @@ export default function Home() {
           <h3 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight">Your next meeting is one click away.</h3>
           <p className="mt-3 text-cyan-100/70">Create a room, share the link, and bring everyone into a beautifully designed space.</p>
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-            <ClerkLoading>
-            <div className="neo-btn px-7 py-3.5 opacity-50 pointer-events-none" aria-hidden>
-              <span className="inline-block h-5 w-32 rounded bg-white/10 animate-pulse" />
-            </div>
-            <div className="neo-btn-ghost px-7 py-3.5 opacity-50 pointer-events-none" aria-hidden>
-              <span className="inline-block h-5 w-24 rounded bg-white/10 animate-pulse" />
-            </div>
-            <div className="neo-btn-ghost px-7 py-3.5 opacity-50 pointer-events-none" aria-hidden>
-              <span className="inline-block h-5 w-28 rounded bg-white/10 animate-pulse" />
-            </div>
-          </ClerkLoading>
-          <ClerkLoaded>
-            <SignedIn>
-              <button onClick={startNew} className="neo-btn px-7 py-3.5">Start a meeting</button>
-              <Link href="/dashboard/new" className="neo-btn-ghost px-7 py-3.5">Create event</Link>
-              <Link href="#" onClick={(e) => { e.preventDefault(); document.getElementById("join-quick")?.focus(); }} className="neo-btn-ghost px-7 py-3.5">Join with code</Link>
-            </SignedIn>
-            <SignedOut>
-              <Link href="/sign-up" className="neo-btn px-7 py-3.5">Create free account</Link>
-              <Link href="/sign-in" className="neo-btn-ghost px-7 py-3.5">Sign in</Link>
-            </SignedOut>
-          </ClerkLoaded>
+            <HomeFinalCTAs signedIn={signedIn} />
           </div>
         </div>
       </section>
@@ -282,4 +202,3 @@ function IconRec(){return(<svg viewBox="0 0 24 24" className="h-5 w-5" fill="cur
 function IconUsers(){return(<svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><path d="M16 11a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm-8 0a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3 0-8 1.5-8 4.5V20h10v-2.5c0-1.1.4-2 1-2.7C9.5 13.3 8.7 13 8 13Zm8 0c-.7 0-1.5.3-2.4.7.6.7 1 1.6 1 2.7V20h9v-2.5C23.6 14.5 18.6 13 16 13Z"/></svg>);}
 function IconPhone(){return(<svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg>);}
 function IconSpark(){return(<svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><path d="M12 2 14 9l7 2-7 2-2 7-2-7-7-2 7-2 2-7Z"/></svg>);}
-
