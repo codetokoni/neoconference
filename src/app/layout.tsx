@@ -46,6 +46,12 @@ export default async function RootLayout({
               </Link>
 
               <nav className="flex items-center gap-2 sm:gap-3">
+                <Link
+                  href="/pricing"
+                  className="hidden sm:inline-flex text-xs font-medium px-3 py-1.5 rounded-lg text-cyan-100/80 hover:text-white hover:bg-white/5 transition"
+                >
+                  Pricing
+                </Link>
                 <SignedOut>
                   <SignInButton mode="modal">
                     <button className="hidden sm:inline-flex neo-btn-ghost text-sm">Sign in</button>
