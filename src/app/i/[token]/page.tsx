@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useUser, SignInButton } from '@clerk/nextjs';
+import { useUser } from '@clerk/nextjs';
 import Link from 'next/link';
 
 type Preview = {
@@ -80,9 +80,12 @@ export default function InvitePage() {
               <p style={{ marginTop: 16, opacity: 0.6 }}>…</p>
             ) : !isSignedIn ? (
               <div style={{ marginTop: 18 }}>
-                <SignInButton mode="modal" forceRedirectUrl={typeof window !== "undefined" ? window.location.pathname : "/"}>
-                  <button type="button" style={{ width: "100%", padding: "12px 16px", borderRadius: 12, border: "none", background: "#22d3ee", color: "#022c22", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Sign in to accept</button>
-                </SignInButton>
+                <Link
+                  href={`/sign-in?redirect_url=${encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "/")}`}
+                  style={{ display: "block", textAlign: "center", width: "100%", padding: "12px 16px", borderRadius: 12, background: "#22d3ee", color: "#022c22", fontWeight: 700, fontSize: 14, textDecoration: "none" }}
+                >
+                  Sign in to accept
+                </Link>
               </div>
             ) : (
               <button
