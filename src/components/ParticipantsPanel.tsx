@@ -13,15 +13,46 @@ import { useParticipants, useLocalParticipant } from '@livekit/components-react'
  *
  * Calls /api/livekit/moderate which already exists.
  */
+function RoleBadge({ role }: { role: 'host' | 'cohost' | null }) {
+  if (!role) return null;
+  const isHost = role === 'host';
+  const label = isHost ? 'host' : 'co-host';
+  const bg = isHost ? 'rgba(80,140,220,0.18)' : 'rgba(120,200,140,0.18)';
+  const border = isHost ? 'rgba(80,140,220,0.55)' : 'rgba(120,200,140,0.55)';
+  const fg = isHost ? '#cfe1ff' : '#cdeacd';
+  return (
+    <span
+      data-role-badge={role}
+      style={{
+        display: 'inline-block',
+        marginLeft: 6,
+        padding: '1px 6px',
+        fontSize: 10,
+        fontWeight: 600,
+        lineHeight: '14px',
+        borderRadius: 999,
+        background: bg,
+        border: '1px solid ' + border,
+        color: fg,
+        verticalAlign: 'middle',
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
 export default function ParticipantsPanel({
   open,
   onClose,
   isHost,
+  ownerUserId,
   slug,
 }: {
   open: boolean;
   onClose: () => void;
   isHost: boolean;
+  ownerUserId?: string | null;
   slug: string;
 }) {
   const participants = useParticipants();
@@ -63,6 +94,18 @@ export default function ParticipantsPanel({
   if (!open) return null;
 
   const localIdentity = localParticipant?.identity || '';
+
+  function roleOf(p: { identity?: string; metadata?: string } | null | undefined): 'host' | 'cohost' | null {
+    if (!p) return null;
+    if (ownerUserId && p.identity === ownerUserId) return 'host';
+    const md = p.metadata;
+    if (!md) return null;
+    try {
+      const j = JSON.parse(md);
+      if (j && (j.role === 'host' || j.role === 'cohost')) return j.role;
+    } catch {}
+    return null;
+  }
   const remote = participants.filter((p) => p && p.identity !== localIdentity);
   const q = filter.trim().toLowerCase();
   const filtered = q
@@ -120,7 +163,7 @@ export default function ParticipantsPanel({
         <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {(localParticipant?.name || localParticipant?.identity || 'You')} <span style={{ opacity: 0.6, fontWeight: 400 }}>(you)</span>
+              {(localParticipant?.name || localParticipant?.identity || 'You')} <span style={{ opacity: 0.6, fontWeight: 400 }}>(you)</span><RoleBadge role={roleOf(localParticipant)} />
             </div>
           </div>
         </div>
@@ -139,7 +182,7 @@ export default function ParticipantsPanel({
             <div key={id} style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isHost ? 8 : 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0 }}>
-                  {display}
+                  {display}<RoleBadge role={roleOf(p)} />
                 </div>
               </div>
 
