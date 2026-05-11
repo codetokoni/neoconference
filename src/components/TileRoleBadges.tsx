@@ -11,9 +11,14 @@ import { useParticipants } from '@livekit/components-react';
  * participant's LiveKit video tile. Works for local + remote participants
  * and updates live on metadata changes.
  *
- * Identity resolution: LiveKit React does not stamp the identity on the tile
- * root, but it renders a child .lk-participant-name whose text equals the
- * participant identity. We use that to map tile -> identity.
+ * Identity model in this app:
+ *  - participant.identity is '<clerkUserId>#<random>' (so two devices for the
+ *    same user don't collide).
+ *  - participant.name is the human-readable username (matches the text inside
+ *    the tile's .lk-participant-name element).
+ *  - The room owner is identified by ownerUserId (a clerk user_xxx string).
+ *
+ * We map tiles -> participants by the displayed name (== participant.name).
  */
 export default function TileRoleBadges({ ownerUserId }: { ownerUserId: string | null }) {
   const participants = useParticipants();
@@ -23,23 +28,25 @@ export default function TileRoleBadges({ ownerUserId }: { ownerUserId: string | 
     return () => clearInterval(id);
   }, []);
 
-  const roleByIdentity = new Map<string, 'host' | 'cohost'>();
+  // Build name -> role map.
+  const roleByName = new Map<string, 'host' | 'cohost'>();
   for (const p of participants) {
-    if (!p || !p.identity) continue;
-    if (ownerUserId && p.identity === ownerUserId) {
-      roleByIdentity.set(p.identity, 'host');
-      continue;
-    }
-    if (p.metadata) {
+    if (!p) continue;
+    const key = (p.name && p.name.length > 0 ? p.name : p.identity) || '';
+    if (!key) continue;
+    let role: 'host' | 'cohost' | null = null;
+    // Host detection: identity is '<ownerUserId>#<suffix>' OR equals ownerUserId.
+    if (ownerUserId && p.identity && (p.identity === ownerUserId || p.identity.startsWith(ownerUserId + '#'))) {
+      role = 'host';
+    } else if (p.metadata) {
       try {
         const j = JSON.parse(p.metadata);
-        if (j && (j.role === 'host' || j.role === 'cohost')) {
-          roleByIdentity.set(p.identity, j.role);
-        }
+        if (j && (j.role === 'host' || j.role === 'cohost')) role = j.role;
       } catch {
-        // not JSON — ignore
+        // not JSON
       }
     }
+    if (role) roleByName.set(key, role);
   }
 
   const items: Array<{ key: string; role: 'host' | 'cohost'; target: Element }> = [];
@@ -47,11 +54,11 @@ export default function TileRoleBadges({ ownerUserId }: { ownerUserId: string | 
     const tiles = document.querySelectorAll<HTMLElement>('.lk-participant-tile');
     tiles.forEach((tile, idx) => {
       const nameEl = tile.querySelector('.lk-participant-name, [data-lk-participant-name]');
-      const identity = nameEl ? (nameEl.textContent || '').trim() : '';
-      if (!identity) return;
-      const role = roleByIdentity.get(identity);
+      const displayed = nameEl ? (nameEl.textContent || '').trim() : '';
+      if (!displayed) return;
+      const role = roleByName.get(displayed);
       if (!role) return;
-      items.push({ key: identity + ':' + idx, role, target: tile });
+      items.push({ key: displayed + ':' + idx, role, target: tile });
     });
   }
 
