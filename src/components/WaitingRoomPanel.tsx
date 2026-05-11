@@ -33,6 +33,15 @@ export default function WaitingRoomPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 640px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   // Poll the queue while open.
   useEffect(() => {
@@ -107,13 +116,22 @@ export default function WaitingRoomPanel({
   if (!isHost) return null;
   if (!eventSlug) return null;
 
-  const pending = entries.filter((e) => e.status === "pending");
-  const decided = entries.filter((e) => e.status !== "pending").slice(-10);
-
-  return (
-    <aside
-      data-room-chrome="true"
-      style={{
+  const panelStyle: React.CSSProperties = isMobile
+    ? {
+        position: "fixed",
+        inset: 0,
+        width: "100vw",
+        height: "100vh",
+        zIndex: 80,
+        background: "rgba(17, 17, 24, 0.98)",
+        color: "#fff",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))",
+        boxSizing: "border-box",
+      }
+    : {
         position: "absolute",
         top: 48,
         left: 8,
@@ -128,7 +146,15 @@ export default function WaitingRoomPanel({
         flexDirection: "column",
         overflow: "hidden",
         border: "1px solid rgba(255,255,255,0.08)",
-      }}
+      };
+
+  const pending = entries.filter((e) => e.status === "pending");
+  const decided = entries.filter((e) => e.status !== "pending").slice(-10);
+
+  return (
+    <aside
+      data-room-chrome="true"
+      style={panelStyle}
     >
       <div
         style={{
