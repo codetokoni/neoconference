@@ -879,6 +879,29 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
 
   const isRecording = !!egressId || !!remoteRecording;
 
+  // Recording duration tracking (PR #24): wall-clock since the local
+  // start, or since first observing a remote recording flip on.
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
+  const [recordingNow, setRecordingNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    if (isRecording) {
+      setRecordingStartedAt((prev) => prev ?? Date.now());
+      const t = setInterval(() => setRecordingNow(Date.now()), 1000);
+      return () => clearInterval(t);
+    } else {
+      setRecordingStartedAt(null);
+    }
+  }, [isRecording]);
+  const recordingElapsed = (() => {
+    if (!isRecording || !recordingStartedAt) return null;
+    const total = Math.max(0, Math.floor((recordingNow - recordingStartedAt) / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  })();
+
   // Subscribe to recording state messages from other participants.
   useEffect(() => {
     if (!room) return;
@@ -1109,7 +1132,12 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
               animation: "lk-rec-pulse 1.2s ease-in-out infinite",
             }}
           />
-          REC
+          REC          {recordingElapsed ? (
+            <span style={{ fontWeight: 600, opacity: 0.95, marginLeft: 4 }}>
+              {recordingElapsed}
+            </span>
+          ) : null}
+
           {remoteRecording?.by ? (
             <span style={{ fontWeight: 400, opacity: 0.9 }}>
               · {remoteRecording.by}
@@ -1185,6 +1213,8 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       >
         {busy
           ? "…"
+          : recordPending === "asking"
+          ? "⏳ Waiting…"
           : egressId
           ? "■ Stop recording"
           : "● Record"}
