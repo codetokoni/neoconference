@@ -320,7 +320,14 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ text, ...(replyingTo ? { replyTo: { id: replyingTo.id, name: replyingTo.name, snippet: replyingTo.text.slice(0, 140) } } : {}), ...(mentionsRef.current.size > 0 ? { mentions: Array.from(mentionsRef.current) } : {}) }),
         });
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) {
+          let msg = "Couldn’t send — try again.";
+          if (res.status === 404) msg = "Chat unavailable for this room.";
+          else if (res.status === 429) msg = "Too fast — slow down a bit.";
+          else if (res.status === 401 || res.status === 403) msg = "You don’t have permission to send here.";
+          else if (res.status >= 500) msg = "Server hiccup — try again in a moment.";
+          throw new Error(msg);
+        }
         const json = await res.json();
         const saved: ChatMessage = json.message;
         setMessages((arr) => (arr.some((m) => m.id === saved.id) ? arr : [...arr, saved]));
@@ -586,7 +593,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
           }}
         >
           {dmTo ? `\uD83D\uDD12 DM \u00B7 ${dmTo.name}` : 'To: Everyone'}
-          <span aria-hidden style={{ opacity: 0.7 }}>\u25BE</span>
+          <span aria-hidden style={{ opacity: 0.7 }}>{'\u25BE'}</span>
         </button>
         {dmTo ? (
           <button
@@ -594,7 +601,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
             onClick={() => { setDmTo(null); setDmPickerOpen(false); }}
             aria-label='Clear DM recipient'
             style={{ background: 'transparent', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: 14, padding: '2px 6px' }}
-          >\u2715</button>
+          >{'\u2715'}</button>
         ) : null}
       </div>
       {dmPickerOpen ? (
@@ -647,7 +654,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
             >
               <span style={{ width: 24, height: 24, borderRadius: '50%', background: avatarColor(c.label), color: '#001018', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{initials(c.label)}</span>
               <span style={{ fontWeight: 600 }}>{c.label}</span>
-              <span style={{ marginLeft: 'auto', fontSize: 11, color: '#a78bfa' }}>\uD83D\uDD12 DM</span>
+              <span style={{ marginLeft: 'auto', fontSize: 11, color: '#a78bfa' }}>{'\uD83D\uDD12'} DM</span>
             </button>
           ))}
         </div>
