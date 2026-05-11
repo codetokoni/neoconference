@@ -33,6 +33,30 @@ export default function WaitingRoomPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deniedIds, setDeniedIds] = useState<Set<string>>(new Set());
+  const [admitAllBusy, setAdmitAllBusy] = useState(false);
+  // Hydrate denied set from sessionStorage (per-room key) so denied attendees
+  // stay suppressed for the rest of this tab session.
+  useEffect(() => {
+    if (typeof window === "undefined" || !eventSlug) return;
+    try {
+      const raw = sessionStorage.getItem(`nc:waiting:denied:${eventSlug}`);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) setDeniedIds(new Set(arr));
+      }
+    } catch {}
+  }, [eventSlug]);
+  // Persist whenever it changes.
+  useEffect(() => {
+    if (typeof window === "undefined" || !eventSlug) return;
+    try {
+      sessionStorage.setItem(
+        `nc:waiting:denied:${eventSlug}`,
+        JSON.stringify(Array.from(deniedIds))
+      );
+    } catch {}
+  }, [deniedIds, eventSlug]);
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -98,6 +122,13 @@ export default function WaitingRoomPanel({
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${res.status}`);
       }
+      if (decision === "deny") {
+        setDeniedIds((prev) => {
+          const next = new Set(prev);
+          next.add(entryId);
+          return next;
+        });
+      }
       setEntries((prev) =>
         prev.map((e) =>
           e.id === entryId
@@ -112,6 +143,41 @@ export default function WaitingRoomPanel({
     }
   };
 
+
+  const admitAll = async () => {
+    if (!eventSlug || admitAllBusy) return;
+    const queue = entries.filter(
+      (e) => e.status === "pending" && !deniedIds.has(e.id)
+    );
+    if (queue.length === 0) return;
+    setAdmitAllBusy(true);
+    try {
+      for (const e of queue) {
+        try {
+          const res = await fetch("/api/waiting-room", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              op: "decide",
+              slug: eventSlug,
+              entryId: e.id,
+              decision: "admit",
+            }),
+          });
+          if (res.ok) {
+            setEntries((prev) =>
+              prev.map((x) =>
+                x.id === e.id ? { ...x, status: "admitted" } : x
+              )
+            );
+          }
+        } catch {}
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    } finally {
+      setAdmitAllBusy(false);
+    }
+  };
   if (!open) return null;
   if (!isHost) return null;
   if (!eventSlug) return null;
@@ -148,7 +214,9 @@ export default function WaitingRoomPanel({
         border: "1px solid rgba(255,255,255,0.08)",
       };
 
-  const pending = entries.filter((e) => e.status === "pending");
+  const pending = entries.filter(
+    (e) => e.status === "pending" && !deniedIds.has(e.id)
+  );
   const decided = entries.filter((e) => e.status !== "pending").slice(-10);
 
   return (
@@ -167,7 +235,26 @@ export default function WaitingRoomPanel({
         }}
       >
         <strong>Waiting room ({pending.length})</strong>
-        <button
+
+        {pending.length >= 2 ? (
+          <button
+            disabled={admitAllBusy}
+            onClick={admitAll}
+            style={{
+              background: "rgba(34, 197, 94, 0.18)",
+              color: "#86efac",
+              border: "1px solid rgba(34, 197, 94, 0.5)",
+              borderRadius: 6,
+              padding: "4px 10px",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: admitAllBusy ? "wait" : "pointer",
+              marginLeft: 8,
+            }}
+          >
+            {admitAllBusy ? "Admitting…" : `Admit all (${pending.length})`}
+          </button>
+        ) : null}        <button
           onClick={onClose}
           style={{
             background: "transparent",
