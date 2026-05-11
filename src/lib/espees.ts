@@ -64,8 +64,12 @@ export async function initiatePayment(input: InitiateInput): Promise<InitiateRes
   const product = ESPEES_PRODUCTS[input.plan];
   if (!product) return { ok: false, error: "Unknown plan: " + input.plan };
 
+  const skuEnvVar = input.plan === "pro" ? "ESPEES_PRO_SKU" : "ESPEES_BUSINESS_SKU";
+  const sku = process.env[skuEnvVar];
+  if (!sku) return { ok: false, error: skuEnvVar + " not configured" };
+
   const body = {
-    product_sku: product.sku,
+    product_sku: sku,
     narration: product.narration,
     price: product.priceEsp,
     merchant_wallet: wallet,
