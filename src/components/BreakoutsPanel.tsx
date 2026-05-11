@@ -70,6 +70,15 @@ export default function BreakoutsPanel({
 
   const [state, setState] = useState<BreakoutState>(EMPTY_STATE);
   const [hostViewAll, setHostViewAll] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 640px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
   // Track whether we have hydrated from KV. Avoids overwriting a real saved
   // state with our initial empty state on first render.
   const hydratedRef = useRef(false);
@@ -349,10 +358,22 @@ export default function BreakoutsPanel({
     );
   }
 
-  return (
-    <aside
-      data-room-chrome="true"
-      style={{
+    const panelStyle: React.CSSProperties = isMobile
+    ? {
+        position: "fixed",
+        inset: 0,
+        width: "100vw",
+        height: "100vh",
+        zIndex: 80,
+        background: "rgba(17,17,24,0.98)",
+        color: "#fff",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))",
+        boxSizing: "border-box",
+      }
+    : {
         position: "absolute",
         top: 48,
         right: 8,
@@ -367,7 +388,12 @@ export default function BreakoutsPanel({
         flexDirection: "column",
         overflow: "hidden",
         border: "1px solid rgba(255,255,255,0.08)",
-      }}
+      };
+
+  return (
+    <aside
+      data-room-chrome="true"
+      style={panelStyle}
     >
       <div
         style={{
