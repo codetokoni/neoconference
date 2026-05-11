@@ -48,6 +48,15 @@ export default function PollsPanel({
   const [options, setOptions] = useState<string[]>(["", ""]);
   const pollsRef = useRef<Poll[]>([]);
   const [pollNotice, setPollNotice] = useState<{ id: string; question: string; createdByName: string } | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 640px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
   const seenPollIdsRef = useRef<Set<string>>(new Set());
 
   // Keep ref in sync so the data handler reads the latest list.
@@ -281,12 +290,23 @@ export default function PollsPanel({
 
   if (!open) return <>{noticeNode}</>;
 
-  const me = localParticipant.identity;
-
-  return (
-    <aside
-      data-room-chrome="true"
-      style={{
+  const panelStyle: React.CSSProperties = isMobile
+    ? {
+        position: "fixed",
+        inset: 0,
+        width: "100vw",
+        height: "100vh",
+        zIndex: 80,
+        background: "rgba(8, 12, 24, 0.98)",
+        backdropFilter: "blur(12px)",
+        color: "#fff",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))",
+        boxSizing: "border-box",
+      }
+    : {
         position: "absolute",
         top: 48,
         right: 8,
@@ -301,7 +321,14 @@ export default function PollsPanel({
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
-      }}
+      };
+
+  const me = localParticipant.identity;
+
+  return (
+    <aside
+      data-room-chrome="true"
+      style={panelStyle}
     >
       <div
         style={{

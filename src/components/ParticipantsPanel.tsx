@@ -61,6 +61,15 @@ export default function ParticipantsPanel({
   const [confirmKick, setConfirmKick] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 640px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   useEffect(() => { if (!open) { setError(null); setConfirmKick(null); } }, [open]);
 
@@ -91,6 +100,34 @@ export default function ParticipantsPanel({
     [slug],
   );
 
+  const panelStyle: React.CSSProperties = isMobile
+    ? {
+        position: "fixed",
+        inset: 0,
+        width: "100vw",
+        height: "100vh",
+        background: "rgba(10,10,12,0.98)",
+        color: "white",
+        zIndex: 80,
+        display: "flex",
+        flexDirection: "column",
+        paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))",
+        boxSizing: "border-box",
+      }
+    : {
+        position: "fixed",
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: "min(380px, 100vw)",
+        background: "rgba(10,10,12,0.97)",
+        color: "white",
+        zIndex: 60,
+        borderLeft: "1px solid rgba(255,255,255,0.1)",
+        display: "flex",
+        flexDirection: "column",
+      };
+
   if (!open) return null;
 
   const localIdentity = localParticipant?.identity || '';
@@ -116,19 +153,7 @@ export default function ParticipantsPanel({
     <div
       role="dialog"
       aria-label="Participants"
-      style={{
-        position: 'fixed',
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: 'min(380px, 100vw)',
-        background: 'rgba(10,10,12,0.97)',
-        color: 'white',
-        zIndex: 60,
-        borderLeft: '1px solid rgba(255,255,255,0.1)',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
+      style={panelStyle}
       data-room-chrome="true"
     >
       <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
