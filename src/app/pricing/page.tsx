@@ -1,4 +1,3 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import TierCheckoutButton from "@/components/TierCheckoutButton";
 
@@ -7,23 +6,12 @@ export const metadata = {
   description: "Simple, host-based pricing. Free forever for casual calls. Upgrade for unlimited length, recording, breakouts, and branding.",
 };
 
-// Auto-detect currency from x-vercel-ip-country (set by Vercel edge).
-// Default to USD; show NGN for visitors from Nigeria.
-async function detectCurrency(): Promise<"USD" | "NGN"> {
-  try {
-    const h = await headers();
-    const country = h.get("x-vercel-ip-country") || "";
-    return country.toUpperCase() === "NG" ? "NGN" : "USD";
-  } catch {
-    return "USD";
-  }
-}
 
 type Tier = {
   id: "free" | "pro" | "business";
   name: string;
   tagline: string;
-  price: { USD: { monthly: number; annual: number }; NGN: { monthly: number; annual: number } };
+  price: { monthly: number; annual: number };
   cta: string;
   ctaHref: string;
   highlight?: boolean;
@@ -35,7 +23,7 @@ const TIERS: Tier[] = [
     id: "free",
     name: "Free",
     tagline: "For quick chats and trying things out.",
-    price: { USD: { monthly: 0, annual: 0 }, NGN: { monthly: 0, annual: 0 } },
+    price: { monthly: 0, annual: 0 },
     cta: "Get started free",
     ctaHref: "/dashboard",
     features: [
@@ -55,7 +43,7 @@ const TIERS: Tier[] = [
     id: "pro",
     name: "Pro",
     tagline: "For freelancers, teachers, and small teams.",
-    price: { USD: { monthly: 9, annual: 90 }, NGN: { monthly: 9000, annual: 90000 } },
+    price: { monthly: 20, annual: 240 },
     cta: "Upgrade to Pro",
     ctaHref: "/api/billing/checkout?plan=pro",
     highlight: true,
@@ -73,7 +61,7 @@ const TIERS: Tier[] = [
     id: "business",
     name: "Business",
     tagline: "For organizations that need polish and scale.",
-    price: { USD: { monthly: 19, annual: 190 }, NGN: { monthly: 19000, annual: 190000 } },
+    price: { monthly: 30, annual: 360 },
     cta: "Go Business",
     ctaHref: "/api/billing/checkout?plan=business",
     features: [
@@ -86,14 +74,12 @@ const TIERS: Tier[] = [
   },
 ];
 
-function formatPrice(amount: number, currency: "USD" | "NGN") {
-  if (amount === 0) return currency === "NGN" ? "₦0" : "$0";
-  if (currency === "NGN") return "₦" + amount.toLocaleString("en-NG");
-  return "$" + amount;
+function formatPrice(amount: number) {
+  if (amount === 0) return "0 Espees";
+  return amount + " Espees";
 }
 
-export default async function PricingPage() {
-  const currency = await detectCurrency();
+export default function PricingPage() {
   return (
     <div className="relative overflow-hidden">
       {/* Animated background orbs */}
@@ -118,7 +104,6 @@ export default async function PricingPage() {
           </h1>
           <p className="mt-6 text-lg text-cyan-100/70">
             Free forever for quick chats. Upgrade only when you need unlimited length, recording, or breakouts.
-            Prices below are shown in <span className="text-white">{currency}</span> based on your location.
           </p>
           <p className="mt-2 text-xs text-cyan-100/50">
             Billing is per host. Guests join free.
@@ -128,8 +113,8 @@ export default async function PricingPage() {
         {/* Tier cards */}
         <div className="mt-14 grid gap-6 lg:grid-cols-3">
           {TIERS.map((tier) => {
-            const monthly = tier.price[currency].monthly;
-            const annual = tier.price[currency].annual;
+            const monthly = tier.price.monthly;
+            const annual = tier.price.annual;
             const annualSaved = monthly * 12 - annual;
             return (
               <div
@@ -151,7 +136,7 @@ export default async function PricingPage() {
 
                 <div className="mt-6 flex items-baseline gap-1">
                   <span className="text-5xl font-bold text-white">
-                    {formatPrice(monthly, currency)}
+                    {formatPrice(monthly)}
                   </span>
                   {monthly > 0 && (
                     <span className="text-sm text-cyan-100/60">/mo</span>
@@ -159,10 +144,10 @@ export default async function PricingPage() {
                 </div>
                 {annual > 0 && (
                   <p className="mt-1 text-xs text-cyan-100/60">
-                    or <span className="text-white">{formatPrice(annual, currency)}</span>/yr
+                    or <span className="text-white">{formatPrice(annual)}</span>/yr
                     {annualSaved > 0 && (
                       <span className="ml-1 text-emerald-300">
-                        — save {formatPrice(annualSaved, currency)}
+                        — save {formatPrice(annualSaved)}
                       </span>
                     )}
                   </p>
@@ -227,8 +212,8 @@ export default async function PricingPage() {
           <Faq q="Can I cancel anytime?">
             Yes. Cancel from your dashboard and you keep your plan until the end of the billing period.
           </Faq>
-          <Faq q="Do you accept Naira?">
-            Yes — visitors from Nigeria see NGN pricing automatically and pay via eSPees. Everyone else pays in USD via Stripe.
+          <Faq q="What payment methods do you accept?">
+            We accept Espees. All plans are billed in Espees through the eSPees payment network.
           </Faq>
           <Faq q="Is there a refund policy?">
             Cancel within 14 days of your first paid charge for a full refund, no questions asked.
