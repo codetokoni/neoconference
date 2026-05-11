@@ -58,6 +58,9 @@ export async function initiatePayment(input: InitiateInput): Promise<InitiateRes
   const wallet = (process.env.ESPEES_MERCHANT_WALLET || "").trim();
   if (!wallet) return { ok: false, error: "ESPEES_MERCHANT_WALLET not configured" };
 
+  const apiKey = process.env.ESPEES_API_KEY;
+  if (!apiKey) return { ok: false, error: "ESPEES_API_KEY not configured" };
+
   const product = ESPEES_PRODUCTS[input.plan];
   if (!product) return { ok: false, error: "Unknown plan: " + input.plan };
 
@@ -79,7 +82,10 @@ export async function initiatePayment(input: InitiateInput): Promise<InitiateRes
   try {
     res = await fetch(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+      },
       body: JSON.stringify(body),
       cache: "no-store",
     });
@@ -95,8 +101,8 @@ export async function initiatePayment(input: InitiateInput): Promise<InitiateRes
   }
 
   const obj = (json && typeof json === "object" ? json : {}) as Record<string, unknown>;
-  const url = typeof obj.url === "string" ? obj.url : "";
   const paymentRef = typeof obj.payment_ref === "string" ? obj.payment_ref : "";
+  const url = paymentRef ? `https://payment.espees.org/pay/${paymentRef}` : (typeof obj.url === "string" ? obj.url : "");
   const message = typeof obj.message === "string" ? obj.message : "Unknown eSPees error";
 
   if (!res.ok || !url) {
