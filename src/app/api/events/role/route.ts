@@ -2,7 +2,7 @@
 // Lightweight GET that returns the caller’s effective role for an event.
 // Used by the in-room SpeakerBadge.
 // Query: ?slug=<event slug>
-// Response: { role: "host" | "cohost" | "speaker" | "viewer" | "guest", preApproved: boolean, isOwner: boolean }
+// Response: { role: "host" | "cohost" | "speaker" | "viewer" | "guest", preApproved: boolean, isOwner: boolean, ownerUserId: string | null }
 
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
@@ -20,7 +20,7 @@ export async function GET(req: Request) {
 
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.json({ role: "guest", preApproved: false, isOwner: false });
+    return NextResponse.json({ role: "guest", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null });
   }
 
   // Pre-fetch the current Clerk user once so we can match by stable email if userId churned.
@@ -32,7 +32,7 @@ export async function GET(req: Request) {
   const isOwner = ev.ownerUserId === userId
     || (ownerEmail !== "" && userEmails.includes(ownerEmail));
   if (isOwner) {
-    return NextResponse.json({ role: "host", preApproved: true, isOwner: true });
+    return NextResponse.json({ role: "host", preApproved: true, isOwner: true, ownerUserId: ev.ownerUserId || null });
   }
 
   // Match role assignment: by Clerk user id, primary email, or any verified email.
@@ -43,11 +43,12 @@ export async function GET(req: Request) {
     return id === userId.toLowerCase() || emails.includes(id);
   });
   if (!match) {
-    return NextResponse.json({ role: "viewer", preApproved: false, isOwner: false });
+    return NextResponse.json({ role: "viewer", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null });
   }
   return NextResponse.json({
     role: match.role,
     preApproved: Boolean(match.preApproved),
     isOwner: false,
+    ownerUserId: ev.ownerUserId || null,
   });
 }
