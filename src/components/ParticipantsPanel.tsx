@@ -35,7 +35,7 @@ export default function ParticipantsPanel({
 
   const call = useCallback(
     async (
-      action: 'muteAudio' | 'muteVideo' | 'kick' | 'requestUnmuteAudio' | 'requestCameraOn',
+      action: 'muteAudio' | 'muteVideo' | 'kick' | 'requestUnmuteAudio' | 'requestCameraOn' | 'makeCohost' | 'demoteToAttendee',
       identity: string,
     ) => {
       setError(null);
@@ -189,6 +189,23 @@ export default function ParticipantsPanel({
                       Kick
                     </button>
                   )}
+
+                <button
+                  type="button"
+                  disabled={!!pending}
+                  onClick={() => call('makeCohost', id)}
+                  style={{ flex: '1 1 auto', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(120,200,140,0.45)', background: 'rgba(120,200,140,0.12)', color: '#cdeacd', cursor: 'pointer' }}
+                >
+                  {busy('makeCohost') ? '...' : 'Make co-host'}
+                </button>
+                <button
+                  type="button"
+                  disabled={!!pending}
+                  onClick={() => call('demoteToAttendee', id)}
+                  style={{ flex: '1 1 auto', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(255,200,90,0.45)', background: 'rgba(255,200,90,0.12)', color: '#ffe6b8', cursor: 'pointer' }}
+                >
+                  {busy('demoteToAttendee') ? '...' : 'Demote'}
+                </button>
                 </div>
               )}
             </div>
