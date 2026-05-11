@@ -453,7 +453,6 @@ function RoomContainer({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [showPeople, setShowPeople] = useState(false);
   const [showChat, setShowChat] = useState(false); const [showWhiteboard, setShowWhiteboard] = useState(false); const [showPolls, setShowPolls] = useState(false); const [showParticipants, setShowParticipants] = useState(false); const [showWaitingRoom, setShowWaitingRoom] = useState(false);
   const [showBreakouts, setShowBreakouts] = useState(false);
   const [hideSelf, setHideSelf] = useState(false);
@@ -579,7 +578,7 @@ function RoomContainer({
       >
         <button
           type="button"
-          onClick={() => setShowPeople((v) => !v)}
+          onClick={() => setShowParticipants((v) => !v)}
           className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
           title="Show participants"
         >
@@ -623,17 +622,6 @@ function RoomContainer({
             {showPolls ? "Close polls" : "Polls"}
           </button>
         
-          {(roomRole === "host" || roomRole === "cohost") && (
-            <button
-              type="button"
-              data-room-chrome="true"
-              onClick={() => setShowParticipants((v) => !v)}
-              className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
-              title="Manage participants"
-            >
-              Manage
-            </button>
-          )}
           {(roomRole === "host" || roomRole === "cohost") && (
             <button
               type="button"
@@ -694,9 +682,6 @@ function RoomContainer({
               <SpeakerBadge />
         <RenameRedirectListener />
         <RenameUrlButton roomRole={roomRole} eventSlug={eventSlug} />
-        {showPeople && (
-          <ParticipantsPanel onClose={() => setShowPeople(false)} />
-        )}
       </LiveKitRoom>
     </div>
   );
@@ -801,146 +786,6 @@ function InitialsOverlay() {
   }, [participants]);
 
   return null;
-}
-
-function ParticipantsPanel({ onClose }: { onClose: () => void }) {
-  const participants = useParticipants();
-  const room = useRoomContext();
-  const [raisedHands, setRaisedHands] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (!room) return;
-    const onData = (
-      payload: Uint8Array,
-      participant?: Participant
-    ) => {
-      try {
-        const text = new TextDecoder().decode(payload);
-        const msg = JSON.parse(text);
-        if (msg?.type === "hand" && participant?.identity) {
-          setRaisedHands((prev) => {
-            const next = new Set(prev);
-            if (msg.raised) next.add(participant.identity);
-            else next.delete(participant.identity);
-            return next;
-          });
-        }
-      } catch {
-        // ignore
-      }
-    };
-    room.on(RoomEvent.DataReceived, onData);
-    return () => {
-      room.off(RoomEvent.DataReceived, onData);
-    };
-  }, [room]);
-
-  return (
-    <aside
-      data-room-chrome="true"
-      style={{
-        position: "absolute",
-        top: 48,
-        right: 8,
-        bottom: 8,
-        width: 260,
-        zIndex: 11,
-        background: "rgba(17, 17, 24, 0.95)",
-        color: "#fff",
-        borderRadius: 8,
-        boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          padding: "8px 12px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          borderBottom: "1px solid #2a2a33",
-          fontSize: 13,
-        }}
-      >
-        <strong>People ({participants.length})</strong>
-        <button
-          onClick={onClose}
-          className="text-xs opacity-70 hover:opacity-100"
-        >
-          Close
-        </button>
-      </div>
-      <ul
-        style={{
-          listStyle: "none",
-          margin: 0,
-          padding: 0,
-          overflowY: "auto",
-          flex: 1,
-        }}
-      >
-        {participants.map((p) => {
-          const display = p.name || p.identity;
-          const initials = getInitials(display);
-          const micOn = !p.getTrackPublication(Track.Source.Microphone)
-            ?.isMuted;
-          const camOn = !p.getTrackPublication(Track.Source.Camera)?.isMuted;
-          const handUp = raisedHands.has(p.identity);
-          return (
-            <li
-              key={p.identity}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "8px 12px",
-                borderBottom: "1px solid #1d1d25",
-                fontSize: 13,
-              }}
-            >
-              <span
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: "50%",
-                  background: stringToColor(display),
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: 600,
-                  fontSize: 12,
-                  color: "#fff",
-                  flex: "0 0 auto",
-                }}
-              >
-                {initials}
-              </span>
-              <span
-                style={{
-                  flex: 1,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {display}
-                {p.isLocal ? " (you)" : ""}
-              </span>
-                {handUp && <span title="Hand raised">✋</span>}
-              <span title={micOn ? "Mic on" : "Mic muted"}>
-                {micOn ? "Mic on" : "Mic muted"}
-              </span>
-              <span title={camOn ? "Camera on" : "Camera off"}>
-                {camOn ? "Camera on" : "Camera off"}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </aside>
-  );
 }
 
 /**
