@@ -16,7 +16,7 @@ import type { TicketTier } from '@/types/event';
 
 export const runtime = 'nodejs';
 
-const KNOWN_CURRENCIES = new Set(['usd', 'eur', 'gbp', 'cad', 'aud', 'ngn', 'inr', 'jpy', 'brl', 'mxn', 'zar', 'kes']);
+const KNOWN_CURRENCIES = new Set(['espees']);
 
 function slugifyId(label: string, idx: number): string {
   const base = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
@@ -45,8 +45,8 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
     const label = (raw.label || '').toString().slice(0, 80).trim();
     if (!label) continue;
     const priceCents = Math.max(0, Math.floor(Number(raw.priceCents) || 0));
-    let currency = (raw.currency || 'usd').toString().toLowerCase().slice(0, 3);
-    if (!KNOWN_CURRENCIES.has(currency)) currency = 'usd';
+    let currency = (raw.currency || 'espees').toString().toLowerCase();
+    if (!KNOWN_CURRENCIES.has(currency)) currency = 'espees';
     const id = raw.id && /^[a-z0-9-]{1,40}$/.test(raw.id) ? raw.id : slugifyId(label, i);
     const capacity = typeof raw.capacity === 'number' && raw.capacity > 0 ? Math.floor(raw.capacity) : undefined;
     const description = raw.description ? raw.description.toString().slice(0, 240) : undefined;
