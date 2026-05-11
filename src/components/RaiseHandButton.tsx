@@ -97,9 +97,10 @@ export default function RaiseHandButton({ isHost = false }: Props) {
 
   return (
     <>
-      <style>{`.lk-participant-tile[data-hand-raised="true"]::after { content: "\u270B"; position: absolute; top: 8px; left: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 20px; background: #fbbf24; color: #0e1530; border-radius: 50%; z-index: 5; pointer-events: none; box-shadow: 0 0 16px rgba(251,191,36,0.7); animation: neo-hand-pulse 1.6s ease-in-out infinite; } @keyframes neo-hand-pulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 12px rgba(251,191,36,0.55); } 50% { transform: scale(1.08); box-shadow: 0 0 22px rgba(251,191,36,0.95); } }`}</style>
+      <style>{`.lk-participant-tile[data-hand-raised="true"]::after { content: "\u270B"; position: absolute; top: 8px; left: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 20px; background: #fbbf24; color: #0e1530; border-radius: 50%; z-index: 5; pointer-events: none; box-shadow: 0 0 16px rgba(251,191,36,0.7); animation: neo-hand-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both, neo-hand-pulse 1.8s ease-in-out 220ms infinite; transform-origin: 50% 50%; } @keyframes neo-hand-in { 0% { transform: scale(0.4); opacity: 0; } 70% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } } @keyframes neo-hand-pulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 12px rgba(251,191,36,0.55); } 50% { transform: scale(1.06); box-shadow: 0 0 22px rgba(251,191,36,0.95); } } .neo-raise-btn { transition: background-color 220ms ease, color 220ms ease, box-shadow 260ms ease, border-color 220ms ease, transform 140ms ease; } .neo-raise-btn:hover { transform: translateY(-1px); } .neo-raise-btn:active { transform: scale(0.94); } .neo-raise-btn[aria-pressed="true"] { animation: neo-raise-glow 2.4s ease-in-out infinite; } @keyframes neo-raise-glow { 0%, 100% { box-shadow: 0 0 16px rgba(251,191,36,0.45); } 50% { box-shadow: 0 0 28px rgba(251,191,36,0.85); } }`}</style>
       <button
         type="button"
+        className="neo-raise-btn"
         onClick={toggle}
         aria-pressed={raised}
         title={raised ? "Lower hand" : "Raise hand"}
@@ -114,10 +115,11 @@ export default function RaiseHandButton({ isHost = false }: Props) {
           fontSize: 22,
           background: raised ? "#fbbf24" : "rgba(15,23,42,0.7)",
           color: raised ? "#0e1530" : "#fbbf24",
-          border: "1px solid rgba(251,191,36,0.4)",
+          border: "1px solid " + (raised ? "rgba(251,191,36,0.85)" : "rgba(251,191,36,0.4)"),
           cursor: "pointer",
           backdropFilter: "blur(10px)",
-          boxShadow: raised ? "0 0 24px rgba(251,191,36,0.4)" : "none",
+          boxShadow: raised ? "0 0 24px rgba(251,191,36,0.55)" : "0 0 0 rgba(251,191,36,0)",
+          transition: "background-color 220ms ease, color 220ms ease, box-shadow 260ms ease, border-color 220ms ease, transform 140ms ease",
         }}
       >
         ✋
