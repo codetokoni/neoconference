@@ -30,7 +30,7 @@ Groups:
 - **S3 / R2:** `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`.
 - **Vercel KV / Upstash Redis:** `KV_REST_API_URL`, `KV_REST_API_TOKEN`, plus `KV_URL` / `REDIS_URL` / `KV_REST_API_READ_ONLY_TOKEN` (auto-injected by the Vercel KV integration).
 - **KingsChat:** `KINGSCHAT_CLIENT_ID`, `KINGSCHAT_REDIRECT_URI` (= `https://www.neoconference.app/api/auth/kingschat/callback`), `KINGSCHAT_STATE_SECRET` (long random string used to sign OAuth state).
-- **ESPEES:** `ESPEES_MERCHANT_WALLET` and `ESPEES_API_KEY` (required: the API key is sent as `x-api-key` on every call to the v2 product-checkout endpoint).
+- **ESPEES:** `ESPEES_MERCHANT_WALLET`, `ESPEES_API_KEY`, `ESPEES_PRO_SKU`, `ESPEES_BUSINESS_SKU` (all required: the API key is sent as `x-api-key`; the per-plan SKUs are the numeric product IDs registered on the eSPees merchant dashboard and are sent as `product_sku` in the request body).
 - **Bootstrap:** `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_BUSINESS_EMAIL` (seeded on first deploy).
 
 ## 3. Clerk Development → Production cutover (completed 2026-05-10)
