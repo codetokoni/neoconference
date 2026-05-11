@@ -277,6 +277,40 @@ export default function RoomPage({ params }: { params: { name: string } }) {
 }
 
 /**
+ * RoleMetadataListener
+ *
+ * Subscribes to ParticipantMetadataChanged events on the local participant so that
+ * server-side role changes (via /api/livekit/moderate makeCohost / demoteToAttendee)
+ * are reflected in the room UI without a rejoin. Must be rendered INSIDE <LiveKitRoom>.
+ */
+function RoleMetadataListener({ onRoleChange }: { onRoleChange: (role: string) => void }) {
+  const room = useRoomContext();
+
+  useEffect(() => {
+    if (!room) return;
+    const apply = (_metadata: string | undefined, participant: Participant) => {
+      try {
+        if (participant.identity !== room.localParticipant.identity) return;
+        const md = participant.metadata ? JSON.parse(participant.metadata) : null;
+        if (md && typeof md.role === "string") onRoleChange(md.role);
+      } catch {
+        // ignore malformed metadata
+      }
+    };
+    try {
+      const md = room.localParticipant.metadata ? JSON.parse(room.localParticipant.metadata) : null;
+      if (md && typeof md.role === "string") onRoleChange(md.role);
+    } catch {}
+    room.on(RoomEvent.ParticipantMetadataChanged, apply);
+    return () => {
+      room.off(RoomEvent.ParticipantMetadataChanged, apply);
+    };
+  }, [room, onRoleChange]);
+
+  return null;
+}
+
+/**
  * RenameRedirectListener
  *
  * Listens for an "event_renamed" data packet from the rename API and hard-
@@ -537,6 +571,7 @@ function RoomContainer({
         video={true}
         onDisconnected={onLeave}
       >
+        <RoleMetadataListener onRoleChange={setRoomRole} />
         <ApplyPrejoinChoices choices={choices} />
         <MobileMoreMenu />
         <div
