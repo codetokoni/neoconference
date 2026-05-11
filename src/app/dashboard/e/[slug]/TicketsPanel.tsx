@@ -8,14 +8,14 @@ type Props = {
   initial?: TicketTier[];
 };
 
-const CURRENCIES = ["usd", "eur", "gbp", "ngn", "cad", "aud", "jpy", "inr", "brl", "zar", "kes", "ghs"];
+const CURRENCIES = ["espees"];
 
 function emptyTier(): TicketTier {
   return {
     id: "tier-" + Math.random().toString(36).slice(2, 8),
     label: "General Admission",
     priceCents: 0,
-    currency: "usd",
+    currency: "espees",
     capacity: undefined,
     sold: 0,
     description: "",

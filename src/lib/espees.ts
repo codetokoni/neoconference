@@ -9,8 +9,8 @@
 // fail_url after the user completes (or cancels) the payment.
 //
 // Pricing for v1 is monthly only:
-//   Pro      = SKU "neo_pro_monthly", 20 ESP / ~N9,000
-//   Business = SKU "neo_biz_monthly", 30 ESP / ~N19,000
+//   Pro      = SKU "neo_pro_monthly", 20 ESP
+//   Business = SKU "neo_biz_monthly", 30 ESP
 
 const ENDPOINT = "https://api.espees.org/v2/payment/product";
 
@@ -19,7 +19,6 @@ export type EspeesPlan = "pro" | "business";
 export type EspeesProduct = {
   sku: string;
   priceEsp: number;
-  priceNgn: number;
   narration: string;
 };
 
@@ -27,13 +26,11 @@ export const ESPEES_PRODUCTS: Record<EspeesPlan, EspeesProduct> = {
   pro: {
     sku: "neo_pro_monthly",
     priceEsp: 20,
-    priceNgn: 9000,
     narration: "NeoConference Pro - Monthly subscription",
   },
   business: {
     sku: "neo_biz_monthly",
     priceEsp: 30,
-    priceNgn: 19000,
     narration: "NeoConference Business - Monthly subscription",
   },
 };
