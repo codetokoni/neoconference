@@ -459,6 +459,57 @@ function RoomContainer({
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
 
+  const [pendingKnockCount, setPendingKnockCount] = useState(0);
+  const prevKnockCountRef = useRef(0);
+  const knockAudioCtxRef = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    const isHostOrCohost = roomRole === "host" || roomRole === "cohost";
+    if (!isHostOrCohost || !eventSlug || showWaitingRoom) {
+      prevKnockCountRef.current = 0;
+      return;
+    }
+    let cancelled = false;
+    const playChime = () => {
+      try {
+        const Ctor = (window as any).AudioContext || (window as any).webkitAudioContext;
+        if (!Ctor) return;
+        if (!knockAudioCtxRef.current) knockAudioCtxRef.current = new Ctor();
+        const ctx = knockAudioCtxRef.current!;
+        if (ctx.state === "suspended") ctx.resume().catch(() => {});
+        const now = ctx.currentTime;
+        [880, 1320].forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "sine";
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.0001, now + i * 0.18);
+          gain.gain.exponentialRampToValueAtTime(0.12, now + i * 0.18 + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.18 + 0.15);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(now + i * 0.18);
+          osc.stop(now + i * 0.18 + 0.16);
+        });
+      } catch {}
+    };
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/waiting-room?slug=${encodeURIComponent(eventSlug)}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const entries = Array.isArray(data.entries) ? data.entries : [];
+        const count = entries.filter((e: any) => e.status === "pending").length;
+        setPendingKnockCount(count);
+        if (count > prevKnockCountRef.current) playChime();
+        prevKnockCountRef.current = count;
+      } catch {}
+    };
+    tick();
+    const id = setInterval(tick, 4000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [roomRole, eventSlug, showWaitingRoom]);
+
   useEffect(() => {
     const onChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", onChange);
@@ -633,7 +684,7 @@ function RoomContainer({
               className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
               title="Toggle waiting room"
             >
-              {showWaitingRoom ? "Close waiting" : "Waiting"}
+              {showWaitingRoom ? "Close waiting" : (pendingKnockCount > 0 ? `Waiting (${pendingKnockCount})` : "Waiting")}
             </button>
           )}
           {(roomRole === "host" || roomRole === "cohost") && (
