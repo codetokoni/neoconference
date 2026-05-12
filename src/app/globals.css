@@ -227,6 +227,27 @@ body {
   50%      { box-shadow: 0 0 0 2px rgba(34,211,238,0.65), 0 0 60px rgba(34,211,238,0.55), 0 14px 60px rgba(0,0,0,0.6); }
 }
 
+/* Focus mode: dim every tile to ~30% opacity, then restore full opacity + soft glow
+   for the active speaker(s). Toggled by the F key or the toolbar Focus button via the
+   data-focus-mode attribute on the room container. Smooth 250ms transition so toggling
+   feels cinematic rather than jarring. */
+[data-focus-mode="true"] .lk-participant-tile {
+  opacity: 0.28;
+  filter: saturate(0.7);
+  transition: opacity 250ms ease, filter 250ms ease, transform 250ms ease;
+}
+[data-focus-mode="true"] .lk-participant-tile[data-lk-speaking="true"],
+[data-focus-mode="true"] .lk-participant-tile.lk-speaking {
+  opacity: 1;
+  filter: none;
+  transform: scale(1.015);
+  z-index: 2;
+}
+[data-focus-mode="true"] .lk-participant-tile {
+  /* Disable the pulsing speaker glow while in focus mode — the dim contrast is enough. */
+  animation: none !important;
+}
+
 /* Participant name plate */
 .lk-participant-metadata {
   background: rgba(4,8,18,0.55) !important;

@@ -464,6 +464,15 @@ function RoomContainer({
   const [copied, setCopied] = useState(false);
   const [showChat, setShowChat] = useState(false); const [showWhiteboard, setShowWhiteboard] = useState(false); const [showPolls, setShowPolls] = useState(false); const [showParticipants, setShowParticipants] = useState(false); const [showWaitingRoom, setShowWaitingRoom] = useState(false);
   const [showBreakouts, setShowBreakouts] = useState(false);
+  // Focus mode: dims all video tiles except the active speaker(s). Persisted to localStorage
+  // so it survives reload. Toggle via the toolbar "Focus" button or the F keyboard shortcut.
+  const [focusMode, setFocusMode] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try { return window.localStorage.getItem("neoconf:ui:focusMode") === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem("neoconf:ui:focusMode", focusMode ? "1" : "0"); } catch { /* ignore */ }
+  }, [focusMode]);
     type PanelName = "chat" | "whiteboard" | "polls" | "participants" | "waitingRoom" | "breakouts";
     const openPanel = (name: PanelName | null) => {
     setShowChat(name === "chat");
@@ -554,6 +563,34 @@ function RoomContainer({
       window.addEventListener("keydown", onKey);
       return () => window.removeEventListener("keydown", onKey);
     }, []);
+
+    // Global "F" keyboard shortcut: toggles Focus mode on/off. When on, every video
+    // tile dims to ~30% opacity except the active speaker (LiveKit's [data-lk-speaking]
+    // attribute drives the CSS selector in globals.css). Ignored while focus is in
+    // INPUT/TEXTAREA/SELECT/contenteditable so it never hijacks typing.  Uses bare "f"
+    // (no modifier) — same convention as M (mute), V (camera), L (captions), matching
+    // Zoom/Meet shortcut style. Browser fullscreen is still available via the toolbar
+    // "Fullscreen" button and the native F11 key, so reassigning F is non-destructive.
+    useEffect(() => {
+      const isTypingTarget = (t: EventTarget | null): boolean => {
+        if (!t || !(t instanceof HTMLElement)) return false;
+        const tag = t.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+        if (t.isContentEditable) return true;
+        return false;
+      };
+      const onKey = (e: KeyboardEvent) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+        if (isTypingTarget(e.target)) return;
+        if (e.key === "f" || e.key === "F") {
+          e.preventDefault();
+          setFocusMode((v) => !v);
+        }
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, []);
+
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
 
@@ -711,6 +748,7 @@ function RoomContainer({
       ref={containerRef}
       data-lk-theme="default"
       data-hide-self={hideSelf ? "true" : "false"}
+      data-focus-mode={focusMode ? "true" : "false"}
       style={{ height: "calc(100vh - 65px)", position: "relative" }}
     >
       <LiveKitRoom
@@ -827,6 +865,16 @@ function RoomContainer({
           title="Toggle fullscreen"
         >
           {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+        </button>
+        <button
+          type="button"
+          data-room-chrome="true"
+          onClick={() => setFocusMode((v) => !v)}
+          className={`px-3 py-1.5 text-xs rounded border shadow-sm ${focusMode ? "bg-cyan-500 text-black border-cyan-300 hover:bg-cyan-400" : "bg-black text-white border-white/30 hover:bg-zinc-800"}`}
+          title="Toggle focus mode (F) — dim everyone except the active speaker"
+          aria-pressed={focusMode}
+        >
+          {focusMode ? "Focus on" : "Focus"}
         </button>
         <ParticipantCountBadge />
         <RecordingControls roomName={roomName} roomRole={roomRole} />

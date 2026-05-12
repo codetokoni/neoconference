@@ -68,7 +68,7 @@ function buildGroups(): Group[] {
     {
       title: "View",
       items: [
-        { keys: ["F"], label: "Fullscreen" },
+        { keys: ["F"], label: "Toggle focus mode" },
         { keys: ["G"], label: "Toggle grid / speaker view" },
         { keys: ["T"], label: "Spotlight focused tile" },
         { keys: ["?"], label: "Show this help" },
