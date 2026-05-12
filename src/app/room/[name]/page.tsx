@@ -29,6 +29,7 @@ import ReactionsBar from "@/components/ReactionsBar";
 import NetworkQualityToast from "@/components/NetworkQualityToast";
 import KeyboardShortcutsHelp from "@/components/KeyboardShortcutsHelp";
 import LeaveConfirmModal from "@/components/LeaveConfirmModal";
+import SettingsModal from "@/components/SettingsModal";
 import ChatPanel from "@/components/ChatPanel";
 import FloatingVideoButton from "@/components/FloatingVideoButton";import BackgroundBlurButton from "@/components/BackgroundBlurButton";
 import PictureInPictureButton from "@/components/PictureInPictureButton";
@@ -773,6 +774,7 @@ function RoomContainer({
         <NetworkQualityToast />
         <KeyboardShortcutsHelp />
         <LeaveConfirmModal isHost={roomRole === "host" || roomRole === "cohost"} eventSlug={eventSlug} />
+        <SettingsModal />
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} isHost={roomRole === 'host' || roomRole === 'cohost'} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
