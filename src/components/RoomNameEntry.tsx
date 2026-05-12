@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
+import MicLevelMeter from "./MicLevelMeter";
 
 export type RoomEntryValues = {
   username: string;
@@ -551,12 +552,11 @@ export function RoomNameEntry({
                 <span className="text-[11px] uppercase tracking-[0.25em] text-cyan-400/70">Mic input</span>
                 <span className="text-[11px] text-zinc-500">{audio ? (micLevel > 0.04 ? "Speaking" : "Silent") : "Off"}</span>
               </div>
-              <div className="h-2 rounded-full bg-white/5 overflow-hidden border border-white/5">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-cyan-300 to-emerald-300 transition-[width] duration-100"
-                  style={{ width: `${audio ? Math.round(micLevel * 100) : 0}%` }}
-                />
-              </div>
+              {audio ? (
+                <MicLevelMeter deviceId={audioDeviceId} autoStart hideControls />
+              ) : (
+                <div className="h-2 rounded-full bg-white/5 overflow-hidden border border-white/5" aria-hidden="true" />
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3 mb-7">

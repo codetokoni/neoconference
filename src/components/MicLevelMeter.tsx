@@ -30,6 +30,10 @@ import { useEffect, useRef, useState, useCallback } from "react";
 type Props = {
   /** Selected audioinput deviceId. Empty string or undefined => browser default. */
   deviceId?: string;
+  /** If true, the meter starts measuring on mount without requiring a button click. */
+  autoStart?: boolean;
+  /** If true, hide the Start/Stop button and helper text. */
+  hideControls?: boolean;
 };
 
 const SEGMENTS = 20;
@@ -42,7 +46,7 @@ function shapeLevel(rms: number): number {
   return Math.pow(x, 0.65);
 }
 
-export default function MicLevelMeter({ deviceId }: Props) {
+export default function MicLevelMeter({ deviceId, autoStart = false, hideControls = false }: Props) {
   const [active, setActive] = useState(false);
   const [level, setLevel] = useState(0); // 0..1, smoothed for display
   const [error, setError] = useState<string | null>(null);
@@ -151,6 +155,16 @@ export default function MicLevelMeter({ deviceId }: Props) {
     setActive(false);
   }, [teardown]);
 
+  // Auto-start the meter on mount when caller opts in (e.g., prejoin which already has mic permission).
+  // We intentionally only watch `autoStart` so toggling it true once is enough; teardown happens on unmount.
+  useEffect(() => {
+    if (!autoStart) return;
+    setActive(true);
+    void start(deviceId);
+    return () => { teardown(); setActive(false); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart]);
+
   // If user picks a different mic while the test is running, hot-swap streams.
   useEffect(() => {
     if (!active) return;
@@ -209,6 +223,7 @@ export default function MicLevelMeter({ deviceId }: Props) {
       >
         {segments}
       </div>
+      {!hideControls && (
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <button
           type="button"
@@ -233,6 +248,7 @@ export default function MicLevelMeter({ deviceId }: Props) {
             : "Click Start test to verify your microphone is picking up sound."}
         </span>
       </div>
+      )}
       {error && (
         <div role="alert" style={{ fontSize: 11, color: "#ff9d9d" }}>
           {error}
