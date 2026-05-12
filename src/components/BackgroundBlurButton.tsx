@@ -143,6 +143,20 @@ export default function BackgroundBlurButton() {
     [busy]
   );
 
+  // Settings → Video tab can toggle blur on/off via this event.
+  useEffect(() => {
+    if (!supported) return;
+    const onToggle = () => {
+      if (busy) return;
+      setBusy(true);
+      setEffect((prev) => (prev.mode === "none" ? { mode: "blur" } : { mode: "none" }));
+      setOpen(false);
+      setTimeout(() => setBusy(false), 400);
+    };
+    window.addEventListener("neoconf:background-blur:toggle", onToggle as EventListener);
+    return () => window.removeEventListener("neoconf:background-blur:toggle", onToggle as EventListener);
+  }, [supported, busy]);
+
   if (!supported) return null;
 
   const isOn = effect.mode !== "none";

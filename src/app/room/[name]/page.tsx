@@ -485,6 +485,12 @@ function RoomContainer({
         window.localStorage.setItem("neo:captions-enabled", captionsEnabled ? "1" : "0");
       } catch {}
     }, [captionsEnabled]);
+    // Settings → Video tab can toggle captions via this event.
+    useEffect(() => {
+      const onToggle = () => setCaptionsEnabled((v) => !v);
+      window.addEventListener("neoconf:captions:toggle", onToggle as EventListener);
+      return () => window.removeEventListener("neoconf:captions:toggle", onToggle as EventListener);
+    }, []);
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
 

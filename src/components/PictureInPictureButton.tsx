@@ -197,6 +197,13 @@ export default function PictureInPictureButton() {
     return () => window.removeEventListener("keydown", onKey);
   }, [toggle]);
 
+  // Settings → Video tab can open/close PiP via this event.
+  useEffect(() => {
+    const onOpen = () => toggle();
+    window.addEventListener("neoconf:pip:open", onOpen as EventListener);
+    return () => window.removeEventListener("neoconf:pip:open", onOpen as EventListener);
+  }, [toggle]);
+
   // Clean up on unmount (e.g. user leaves the room while PiP is open).
   useEffect(() => {
     return () => {
