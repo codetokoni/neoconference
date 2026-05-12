@@ -71,6 +71,9 @@ export function RoomNameEntry({
   const [audioDeviceId, setAudioDeviceId] = useState<string>(() => readDeviceId(AUDIO_DEV_KEY));
   const [audioOutputDeviceId, setAudioOutputDeviceId] = useState<string>(() => readDeviceId(AUDIO_OUT_KEY));
   const [acquiring, setAcquiring] = useState(false);
+  const [ns, setNs] = useState<boolean>(() => readAudioPref("neoconf:audio:noiseSuppression", true));
+  const [ec, setEc] = useState<boolean>(() => readAudioPref("neoconf:audio:echoCancellation", true));
+  const [agc, setAgc] = useState<boolean>(() => readAudioPref("neoconf:audio:autoGainControl", true));
   const [toast, setToast] = useState<string | null>(null);
   const canSetSink = supportsSetSinkId();
 
@@ -180,9 +183,9 @@ export function RoomNameEntry({
           : false;
         const audioConstraints: MediaTrackConstraints | false = audio
           ? {
-              echoCancellation: readAudioPref("neoconf:audio:echoCancellation", true),
-              noiseSuppression: readAudioPref("neoconf:audio:noiseSuppression", true),
-              autoGainControl: readAudioPref("neoconf:audio:autoGainControl", true),
+              echoCancellation: ec,
+              noiseSuppression: ns,
+              autoGainControl: agc,
               ...(audioDeviceId ? { deviceId: { exact: audioDeviceId } } : {}),
             }
           : false;
@@ -231,7 +234,7 @@ export function RoomNameEntry({
     acquire();
     return () => { cancelled = true; stopStream(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [video, audio, videoDeviceId, audioDeviceId]);
+  }, [video, audio, videoDeviceId, audioDeviceId, ns, ec, agc]);
 
   // --- Connection quality probe ---
   useEffect(() => {
@@ -560,6 +563,46 @@ export function RoomNameEntry({
               <ToggleTile label="Camera" on={video} onChange={setVideo} kind="video" />
               <ToggleTile label="Microphone" on={audio} onChange={setAudio} kind="mic" />
             </div>
+            <div className="mb-7">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] uppercase tracking-[0.25em] text-cyan-400/70">Audio processing</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <AudioPrefPill
+                  label="Noise"
+                  hint="Suppress keyboards, fans"
+                  on={ns}
+                  disabled={!audio}
+                  onToggle={() => {
+                    const next = !ns;
+                    setNs(next);
+                    try { localStorage.setItem("neoconf:audio:noiseSuppression", next ? "1" : "0"); } catch {}
+                  }}
+                />
+                <AudioPrefPill
+                  label="Echo cancel"
+                  hint="No speaker echo"
+                  on={ec}
+                  disabled={!audio}
+                  onToggle={() => {
+                    const next = !ec;
+                    setEc(next);
+                    try { localStorage.setItem("neoconf:audio:echoCancellation", next ? "1" : "0"); } catch {}
+                  }}
+                />
+                <AudioPrefPill
+                  label="Auto gain"
+                  hint="Level your voice"
+                  on={agc}
+                  disabled={!audio}
+                  onToggle={() => {
+                    const next = !agc;
+                    setAgc(next);
+                    try { localStorage.setItem("neoconf:audio:autoGainControl", next ? "1" : "0"); } catch {}
+                  }}
+                />
+              </div>
+            </div>
 
             <button
               type="submit"
@@ -743,3 +786,48 @@ function ToggleTile({ label, on, onChange, kind }: { label: string; on: boolean;
 }
 
 export default RoomNameEntry;
+
+/**
+ * AudioPrefPill
+ *
+ * Compact toggle pill for the prejoin Audio Processing row. Three of these
+ * map to the same neoconf:audio:* localStorage keys read by the in-call
+ * DeviceSwitcher so the prejoin and in-room UIs stay in sync.
+ */
+function AudioPrefPill({ label, hint, on, onToggle, disabled }: { label: string; hint: string; on: boolean; onToggle: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={`${label}: ${on ? "on" : "off"}. ${hint}`}
+      title={hint}
+      onClick={onToggle}
+      disabled={disabled}
+      className={`group flex flex-col items-start gap-1 px-3 py-2 rounded-xl border text-left transition ${
+        disabled
+          ? "border-white/5 bg-black/30 text-zinc-600 cursor-not-allowed"
+          : on
+            ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.15)]"
+            : "border-white/10 bg-black/40 text-zinc-400 hover:text-zinc-200"
+      }`}
+    >
+      <span className="flex items-center justify-between w-full">
+        <span className="text-[12px] font-semibold tracking-wide">{label}</span>
+        <span
+          aria-hidden="true"
+          className={`inline-block w-7 h-4 rounded-full relative transition ${
+            disabled ? "bg-white/5" : on ? "bg-cyan-400" : "bg-white/15"
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-[left] ${
+              on ? "left-[14px]" : "left-0.5"
+            }`}
+          />
+        </span>
+      </span>
+      <span className="text-[10px] leading-tight text-zinc-500">{hint}</span>
+    </button>
+  );
+}
