@@ -248,6 +248,27 @@ body {
   animation: none !important;
 }
 
+/* Speaker view: hide non-speaking tiles entirely so the active speaker(s) fill the
+   stage area — Zoom's "Speaker View" pattern. Toggled by the G key or the toolbar
+   "Speaker" button via the data-speaker-view attribute on the room container. When
+   nobody is speaking, fall back to showing all tiles so the user is never staring at
+   an empty stage. */
+[data-speaker-view="true"] .lk-grid-layout .lk-participant-tile:not([data-lk-speaking="true"]):not(.lk-speaking) {
+  display: none;
+}
+[data-speaker-view="true"] .lk-participant-tile[data-lk-speaking="true"],
+[data-speaker-view="true"] .lk-participant-tile.lk-speaking {
+  opacity: 1;
+  filter: none;
+  z-index: 2;
+}
+/* Edge case: when no participant is speaking, .lk-grid-layout would collapse. Restore
+   all tiles via :has() (with a CSS fallback when :has() is unsupported, tiles simply
+   stay visible because the rule below applies). */
+[data-speaker-view="true"] .lk-grid-layout:not(:has([data-lk-speaking="true"])):not(:has(.lk-speaking)) .lk-participant-tile {
+  display: block;
+}
+
 /* Participant name plate */
 .lk-participant-metadata {
   background: rgba(4,8,18,0.55) !important;

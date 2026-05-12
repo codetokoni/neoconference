@@ -473,6 +473,16 @@ function RoomContainer({
   useEffect(() => {
     try { window.localStorage.setItem("neoconf:ui:focusMode", focusMode ? "1" : "0"); } catch { /* ignore */ }
   }, [focusMode]);
+  // Speaker view: hides non-speaking tiles entirely so the active speaker(s) fill the
+  // stage area — Zoom's "Speaker View" pattern. Toggle via the toolbar "Speaker" button
+  // or the G keyboard shortcut. Persisted to localStorage so it survives reload.
+  const [speakerView, setSpeakerView] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try { return window.localStorage.getItem("neoconf:ui:speakerView") === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem("neoconf:ui:speakerView", speakerView ? "1" : "0"); } catch { /* ignore */ }
+  }, [speakerView]);
     type PanelName = "chat" | "whiteboard" | "polls" | "participants" | "waitingRoom" | "breakouts";
     const openPanel = (name: PanelName | null) => {
     setShowChat(name === "chat");
@@ -669,6 +679,32 @@ function RoomContainer({
       return () => window.removeEventListener("keydown", onKey);
     }, []);
 
+    // Global "G" keyboard shortcut: toggles between grid view (everyone equal) and
+    // speaker view (active speakers fill the stage, non-speaking tiles hidden). Ignored
+    // while focus is in INPUT/TEXTAREA/SELECT/contenteditable so it never hijacks typing
+    // in chat, polls, the room rename modal, or the whiteboard's text annotations. Uses
+    // bare "g" (no modifier) — same convention as M (mute), V (camera), L (captions),
+    // F (focus), P (people), W (whiteboard), matching Zoom/Meet shortcut style.
+    useEffect(() => {
+      const isTypingTarget = (t: EventTarget | null): boolean => {
+        if (!t || !(t instanceof HTMLElement)) return false;
+        const tag = t.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+        if (t.isContentEditable) return true;
+        return false;
+      };
+      const onKey = (e: KeyboardEvent) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+        if (isTypingTarget(e.target)) return;
+        if (e.key === "g" || e.key === "G") {
+          e.preventDefault();
+          setSpeakerView((v) => !v);
+        }
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, []);
+
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
 
@@ -827,6 +863,7 @@ function RoomContainer({
       data-lk-theme="default"
       data-hide-self={hideSelf ? "true" : "false"}
       data-focus-mode={focusMode ? "true" : "false"}
+      data-speaker-view={speakerView ? "true" : "false"}
       style={{ height: "calc(100vh - 65px)", position: "relative" }}
     >
       <LiveKitRoom
@@ -953,6 +990,16 @@ function RoomContainer({
           aria-pressed={focusMode}
         >
           {focusMode ? "Focus on" : "Focus"}
+        </button>
+        <button
+          type="button"
+          data-room-chrome="true"
+          onClick={() => setSpeakerView((v) => !v)}
+          className={`px-3 py-1.5 text-xs rounded border shadow-sm ${speakerView ? "bg-cyan-500 text-black border-cyan-300 hover:bg-cyan-400" : "bg-black text-white border-white/30 hover:bg-zinc-800"}`}
+          title="Toggle speaker view (G) — hide non-speaking tiles so the active speaker fills the stage"
+          aria-pressed={speakerView}
+        >
+          {speakerView ? "Speaker on" : "Speaker"}
         </button>
         <ParticipantCountBadge />
         <RecordingControls roomName={roomName} roomRole={roomRole} />
