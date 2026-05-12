@@ -591,6 +591,45 @@ function RoomContainer({
       return () => window.removeEventListener("keydown", onKey);
     }, []);
 
+    // Global "P" keyboard shortcut: toggles the Participants panel on/off. Matches
+    // the cheatsheet (KeyboardShortcutsHelp.tsx) which documents "P" for people.
+    // Ignored while focus is in INPUT/TEXTAREA/SELECT/contenteditable so it never
+    // hijacks typing in chat, polls, the room rename modal, etc.  Uses bare "p"
+    // (no modifier) — same convention as M (mute), V (camera), L (captions),
+    // F (focus mode), matching Zoom/Meet shortcut style. Alt+P is reserved for
+    // Picture-in-Picture (see cheatsheet line 52), so the modifier check excludes
+    // any combination — bare P only.
+    useEffect(() => {
+      const isTypingTarget = (t: EventTarget | null): boolean => {
+        if (!t || !(t instanceof HTMLElement)) return false;
+        const tag = t.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+        if (t.isContentEditable) return true;
+        return false;
+      };
+      const onKey = (e: KeyboardEvent) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+        if (isTypingTarget(e.target)) return;
+        if (e.key === "p" || e.key === "P") {
+          e.preventDefault();
+          setShowParticipants((open) => {
+            const next = !open;
+            if (next) {
+              // Mirror openPanel() behaviour: opening Participants hides the other side panels.
+              setShowChat(false);
+              setShowWhiteboard(false);
+              setShowPolls(false);
+              setShowWaitingRoom(false);
+              setShowBreakouts(false);
+            }
+            return next;
+          });
+        }
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, []);
+
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
 
