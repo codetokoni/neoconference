@@ -455,6 +455,15 @@ function RoomContainer({
   const [copied, setCopied] = useState(false);
   const [showChat, setShowChat] = useState(false); const [showWhiteboard, setShowWhiteboard] = useState(false); const [showPolls, setShowPolls] = useState(false); const [showParticipants, setShowParticipants] = useState(false); const [showWaitingRoom, setShowWaitingRoom] = useState(false);
   const [showBreakouts, setShowBreakouts] = useState(false);
+    type PanelName = "chat" | "whiteboard" | "polls" | "participants" | "waitingRoom" | "breakouts";
+    const openPanel = (name: PanelName | null) => {
+    setShowChat(name === "chat");
+    setShowWhiteboard(name === "whiteboard");
+    setShowPolls(name === "polls");
+    setShowParticipants(name === "participants");
+    setShowWaitingRoom(name === "waitingRoom");
+    setShowBreakouts(name === "breakouts");
+    };
   const [hideSelf, setHideSelf] = useState(false);
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
@@ -632,7 +641,7 @@ function RoomContainer({
       >
         <button
           type="button"
-          onClick={() => setShowParticipants((v) => !v)}
+          onClick={() => openPanel(showParticipants ? null : "participants")}
           className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
           title="Show participants"
         >
@@ -650,7 +659,7 @@ function RoomContainer({
           <button
             type="button"
             data-room-chrome="true"
-            onClick={() => setShowWhiteboard((v) => !v)}
+            onClick={() => openPanel(showWhiteboard ? null : "whiteboard")}
             className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
             title="Toggle whiteboard"
           >
@@ -659,7 +668,7 @@ function RoomContainer({
           <button
             type="button"
             data-room-chrome="true"
-            onClick={() => setShowChat((v) => !v)}
+            onClick={() => openPanel(showChat ? null : "chat")}
             className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
             title="Toggle chat"
         >
@@ -669,7 +678,7 @@ function RoomContainer({
           <button
             type="button"
             data-room-chrome="true"
-            onClick={() => setShowPolls((v) => !v)}
+            onClick={() => openPanel(showPolls ? null : "polls")}
             className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
             title="Toggle polls"
           >
@@ -680,7 +689,7 @@ function RoomContainer({
             <button
               type="button"
               data-room-chrome="true"
-              onClick={() => setShowWaitingRoom((v) => !v)}
+              onClick={() => openPanel(showWaitingRoom ? null : "waitingRoom")}
               className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
               title="Toggle waiting room"
             >
@@ -691,7 +700,7 @@ function RoomContainer({
             <button
               type="button"
               data-room-chrome="true"
-              onClick={() => setShowBreakouts((v) => !v)}
+              onClick={() => openPanel(showBreakouts ? null : "breakouts")}
               className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
               title="Toggle breakouts"
             >
