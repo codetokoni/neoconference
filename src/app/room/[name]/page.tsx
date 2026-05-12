@@ -28,7 +28,7 @@ import GoLiveButton from "@/components/GoLiveButton";
 import LiveCaptions from "@/components/LiveCaptions";
 import ReactionsBar from "@/components/ReactionsBar";
 import ChatPanel from "@/components/ChatPanel";
-import FloatingVideoButton from "@/components/FloatingVideoButton";
+import FloatingVideoButton from "@/components/FloatingVideoButton";import BackgroundBlurButton from "@/components/BackgroundBlurButton";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
 import SpeakerBadge from "@/components/SpeakerBadge";import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel";import ManageParticipantsPanel from "@/components/ParticipantsPanel"; import TileRoleBadges from "@/components/TileRoleBadges"; import WaitingRoomPanel from "@/components/WaitingRoomPanel";import BreakoutsPanel from "@/components/BreakoutsPanel";
@@ -678,6 +678,7 @@ function RoomContainer({
             >
               {captionsEnabled ? "CC on" : "CC off"}
         </button>
+            <BackgroundBlurButton />
           <button
             type="button"
             data-room-chrome="true"
