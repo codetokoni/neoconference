@@ -174,7 +174,7 @@ export default function BackgroundBlurButton() {
           ref={popoverRef}
           role="menu"
           data-room-chrome="true"
-          className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 min-w-[180px] rounded-md bg-zinc-900 border border-white/15 shadow-lg p-2"
+          className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 w-[280px] rounded-md bg-zinc-900 border border-white/15 shadow-lg p-2"
         >
           <Option
             active={effect.mode === "none"}
@@ -187,29 +187,21 @@ export default function BackgroundBlurButton() {
             onClick={() => choose({ mode: "blur" })}
           />
           {manifest.length > 0 && (
-            <div className="mt-2 grid grid-cols-3 gap-1.5">
-              {manifest.map((bg) => {
-                const active =
-                  effect.mode === "image" && effect.url === bg.url;
-                return (
-                  <button
-                    key={bg.id}
-                    type="button"
-                    data-room-chrome="true"
-                    onClick={() => choose({ mode: "image", url: bg.url })}
-                    title={bg.label}
-                    aria-label={bg.label}
-                    aria-pressed={active}
-                    className={
-                      "block w-full aspect-video rounded border bg-cover bg-center " +
-                      (active
-                        ? "border-white ring-2 ring-white/60"
-                        : "border-white/20 hover:border-white/60")
-                    }
-                    style={{ backgroundImage: `url(${bg.thumb ?? bg.url})` }}
-                  />
-                );
-              })}
+            <div
+              role="radiogroup"
+              aria-label="Virtual backgrounds"
+              className="mt-2 grid grid-cols-2 gap-2"
+            >
+              {manifest.map((bg) => (
+                <BackgroundTile
+                  key={bg.id}
+                  bg={bg}
+                  active={
+                    effect.mode === "image" && effect.url === bg.url
+                  }
+                  onSelect={() => choose({ mode: "image", url: bg.url })}
+                />
+              ))}
             </div>
           )}
           {manifest.length === 0 && (
@@ -247,6 +239,105 @@ function Option({
       }
     >
       {label}
+    </button>
+  );
+}
+
+/**
+ * BackgroundTile
+ *
+ * Polished preview tile for a virtual-background option. Shows an actual
+ * <img> (with lazy + async decode), a skeleton shimmer while decoding,
+ * a graceful gradient fallback if the asset 404s, a visible label, and a
+ * checkmark badge when active. Matches the visual language users expect
+ * from Zoom/Meet/Whereby background pickers.
+ */
+function BackgroundTile({
+  bg,
+  active,
+  onSelect,
+}: {
+  bg: ManifestEntry;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(
+    "loading"
+  );
+  const src = bg.thumb ?? bg.url;
+  const initial = (bg.label || "?").trim().charAt(0).toUpperCase();
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      data-room-chrome="true"
+      onClick={onSelect}
+      title={bg.label}
+      className={
+        "group flex flex-col gap-1 text-left rounded-md p-1 transition " +
+        (active
+          ? "bg-white/10 ring-2 ring-white"
+          : "hover:bg-white/5 ring-1 ring-white/10 hover:ring-white/30")
+      }
+    >
+      <div className="relative w-full aspect-video overflow-hidden rounded bg-zinc-800">
+        {status === "loading" && (
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 animate-pulse bg-gradient-to-br from-zinc-700 via-zinc-800 to-zinc-700"
+          />
+        )}
+        {status !== "error" && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={src}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            onLoad={() => setStatus("ready")}
+            onError={() => setStatus("error")}
+            className={
+              "absolute inset-0 w-full h-full object-cover transition-opacity " +
+              (status === "ready" ? "opacity-100" : "opacity-0")
+            }
+          />
+        )}
+        {status === "error" && (
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-zinc-700 to-zinc-900 text-zinc-300 text-lg font-semibold"
+          >
+            {initial}
+          </div>
+        )}
+        {active && (
+          <span
+            aria-hidden="true"
+            className="absolute top-1 right-1 w-4 h-4 rounded-full bg-white text-zinc-900 flex items-center justify-center shadow"
+          >
+            <svg viewBox="0 0 12 12" width="9" height="9" aria-hidden="true">
+              <path
+                d="M2 6.5l2.5 2.5L10 3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+        )}
+      </div>
+      <span
+        className={
+          "block px-0.5 text-[11px] leading-tight truncate " +
+          (active ? "text-white" : "text-zinc-300 group-hover:text-white")
+        }
+      >
+        {bg.label}
+      </span>
     </button>
   );
 }
