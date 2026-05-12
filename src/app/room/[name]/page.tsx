@@ -630,6 +630,45 @@ function RoomContainer({
       return () => window.removeEventListener("keydown", onKey);
     }, []);
 
+    // Global "W" keyboard shortcut: toggles the Whiteboard panel on/off. Matches
+    // the cheatsheet (KeyboardShortcutsHelp.tsx) which documents "W" for whiteboard.
+    // Ignored while focus is in INPUT/TEXTAREA/SELECT/contenteditable so it never
+    // hijacks typing in chat, polls, the room rename modal, or the whiteboard's own
+    // text annotations.  Uses bare "w" (no modifier) — same convention as M (mute),
+    // V (camera), L (captions), F (focus mode), P (people), matching Zoom/Meet
+    // shortcut style. With this, the Panels group is fully wired: Alt+C → chat,
+    // P → people, W → whiteboard.
+    useEffect(() => {
+      const isTypingTarget = (t: EventTarget | null): boolean => {
+        if (!t || !(t instanceof HTMLElement)) return false;
+        const tag = t.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+        if (t.isContentEditable) return true;
+        return false;
+      };
+      const onKey = (e: KeyboardEvent) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+        if (isTypingTarget(e.target)) return;
+        if (e.key === "w" || e.key === "W") {
+          e.preventDefault();
+          setShowWhiteboard((open) => {
+            const next = !open;
+            if (next) {
+              // Mirror openPanel() behaviour: opening Whiteboard hides the other side panels.
+              setShowChat(false);
+              setShowPolls(false);
+              setShowParticipants(false);
+              setShowWaitingRoom(false);
+              setShowBreakouts(false);
+            }
+            return next;
+          });
+        }
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, []);
+
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
 

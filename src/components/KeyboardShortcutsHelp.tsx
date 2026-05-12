@@ -59,7 +59,7 @@ function buildGroups(): Group[] {
       items: [
         { keys: [ALT, "C"], label: "Toggle chat" },
         { keys: ["P"], label: "Toggle people" },
-        { keys: ["W"], label: "Open whiteboard" },
+        { keys: ["W"], label: "Toggle whiteboard" },
         { keys: ["R"], label: "Reactions" },
         { keys: ["H"], label: "Raise / lower hand" },
         { keys: ["L"], label: "Toggle live captions" },
