@@ -20,7 +20,6 @@ import { RoomEvent, Track, type Participant } from "livekit-client";
 import "@livekit/components-styles";
 import "./initials-overlay.css";
 import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
-import MobileMoreMenu from "@/components/MobileMoreMenu";
 import { RoomNameEntry } from "@/components/RoomNameEntry";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import RoomIdleController from "@/components/RoomIdleController";
@@ -652,7 +651,6 @@ function RoomContainer({
         <TileRoleBadges ownerUserId={ownerUserId} />
         <ApplyPrejoinChoices choices={choices} />
         <AudioOutputSwitcher deviceId={audioOutputDeviceId} />
-        <MobileMoreMenu />
         <div
         data-room-chrome="true" className="room-toolbar" style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", zIndex: 12, display: "flex", gap: 8, alignItems: "center" }}
       >
