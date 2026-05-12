@@ -57,7 +57,7 @@ function buildGroups(): Group[] {
     {
       title: "Panels",
       items: [
-        { keys: ["C"], label: "Open chat" },
+        { keys: [ALT, "C"], label: "Toggle chat" },
         { keys: ["P"], label: "Open people" },
         { keys: ["W"], label: "Open whiteboard" },
         { keys: ["R"], label: "Reactions" },

@@ -517,6 +517,43 @@ function RoomContainer({
       window.addEventListener("keydown", onKey);
       return () => window.removeEventListener("keydown", onKey);
     }, []);
+
+    // Global "Alt+C" keyboard shortcut: toggles the chat panel on/off. Matches
+    // the cheatsheet (KeyboardShortcutsHelp.tsx) which documents "Alt+C" for chat.
+    // Ignored while focus is in INPUT/TEXTAREA/SELECT/contenteditable so it
+    // never hijacks chat typing. Uses Alt (Option on macOS) so it doesn't
+    // collide with normal "c" keystrokes or browser shortcuts like Ctrl+C.
+    useEffect(() => {
+      const isTypingTarget = (t: EventTarget | null): boolean => {
+        if (!t || !(t instanceof HTMLElement)) return false;
+        const tag = t.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+        if (t.isContentEditable) return true;
+        return false;
+      };
+      const onKey = (e: KeyboardEvent) => {
+        if (!e.altKey) return;
+        if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+        if (isTypingTarget(e.target)) return;
+        if (e.key === "c" || e.key === "C" || e.code === "KeyC") {
+          e.preventDefault();
+          setShowChat((open) => {
+            const next = !open;
+            if (next) {
+              // Mirror openPanel() behaviour: opening chat hides the other side panels.
+              setShowWhiteboard(false);
+              setShowPolls(false);
+              setShowParticipants(false);
+              setShowWaitingRoom(false);
+              setShowBreakouts(false);
+            }
+            return next;
+          });
+        }
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, []);
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
 
