@@ -1639,8 +1639,145 @@ function DeviceSwitcher() {
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Your browser doesn’t support selecting an output device. Use your system audio settings instead.</div>
             </div>
           )}
+          <AudioProcessingSection />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * AudioProcessingSection
+ *
+ * Three switches controlling browser-level audio processing on the local
+ * mic track: Noise suppression, Echo cancellation, Auto gain control.
+ * These are standard WebRTC constraints honored by Chrome, Edge, Firefox,
+ * and Safari (with varying DSP quality). Toggling republishes the mic
+ * track via localParticipant.setMicrophoneEnabled() so the change takes
+ * effect mid-call without leaving the room.
+ *
+ * Defaults match Zoom/Meet: all three ON. Preferences persist to
+ * neoconf:audio:noiseSuppression / echoCancellation / autoGainControl
+ * so the prejoin can read them on next join.
+ */
+function AudioProcessingSection() {
+  const room = useRoomContext();
+  const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
+
+  const readPref = (key: string, fallback: boolean): boolean => {
+    try { const v = window.localStorage.getItem(key); return v == null ? fallback : v === "1"; } catch { return fallback; }
+  };
+  const writePref = (key: string, value: boolean) => {
+    try { window.localStorage.setItem(key, value ? "1" : "0"); } catch {}
+  };
+
+  const [ns, setNs] = useState<boolean>(() => readPref("neoconf:audio:noiseSuppression", true));
+  const [ec, setEc] = useState<boolean>(() => readPref("neoconf:audio:echoCancellation", true));
+  const [agc, setAgc] = useState<boolean>(() => readPref("neoconf:audio:autoGainControl", true));
+  const [busy, setBusy] = useState(false);
+
+  // Feature-detect which constraints the browser claims to support.
+  const supports = useMemo(() => {
+    try {
+      const s = navigator.mediaDevices.getSupportedConstraints?.() || {};
+      return {
+        noiseSuppression: s.noiseSuppression !== false,
+        echoCancellation: s.echoCancellation !== false,
+        autoGainControl: s.autoGainControl !== false,
+      };
+    } catch {
+      return { noiseSuppression: true, echoCancellation: true, autoGainControl: true };
+    }
+  }, []);
+
+  const applyConstraints = async (next: { ns: boolean; ec: boolean; agc: boolean }) => {
+    if (!localParticipant || busy) return; if (!isMicrophoneEnabled) return; // don’t auto-unmute when toggling processing
+    setBusy(true);
+    try {
+      let micDeviceId: string | undefined;
+      try {
+        const r: any = room;
+        if (r && typeof r.getActiveDevice === "function") {
+          micDeviceId = r.getActiveDevice("audioinput") || undefined;
+        }
+      } catch {}
+      const captureOptions: any = {
+        noiseSuppression: next.ns,
+        echoCancellation: next.ec,
+        autoGainControl: next.agc,
+      };
+      if (micDeviceId) captureOptions.deviceId = micDeviceId;
+      // Republish the mic track with new constraints.
+      await localParticipant.setMicrophoneEnabled(true, captureOptions);
+    } catch {
+      // ignore — if it fails the toggle simply doesn’t take effect
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleNs = () => { const v = !ns; setNs(v); writePref("neoconf:audio:noiseSuppression", v); applyConstraints({ ns: v, ec, agc }); };
+  const toggleEc = () => { const v = !ec; setEc(v); writePref("neoconf:audio:echoCancellation", v); applyConstraints({ ns, ec: v, agc }); };
+  const toggleAgc = () => { const v = !agc; setAgc(v); writePref("neoconf:audio:autoGainControl", v); applyConstraints({ ns, ec, agc: v }); };
+
+  const Row = ({ label, hint, on, onToggle, disabled }: { label: string; hint: string; on: boolean; onToggle: () => void; disabled?: boolean }) => (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={onToggle}
+      disabled={disabled || busy}
+      style={{
+        width: "100%", textAlign: "left", padding: "8px 10px",
+        background: "transparent", border: "none", color: "#fff",
+        cursor: disabled ? "not-allowed" : "pointer",
+        display: "flex", alignItems: "center", gap: 10, borderRadius: 6,
+        opacity: disabled ? 0.45 : 1,
+      }}
+    >
+      <span style={{
+        position: "relative", width: 32, height: 18, borderRadius: 999,
+        background: on ? "rgba(34,211,238,0.85)" : "rgba(255,255,255,0.18)",
+        transition: "background 120ms ease", flexShrink: 0,
+        boxShadow: on ? "0 0 8px rgba(34,211,238,0.45)" : "none",
+      }} aria-hidden="true">
+        <span style={{
+          position: "absolute", top: 2, left: on ? 16 : 2, width: 14, height: 14,
+          borderRadius: "50%", background: "#fff", transition: "left 120ms ease",
+        }} />
+      </span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: "block", fontSize: 13, fontWeight: 500 }}>{label}</span>
+        <span style={{ display: "block", fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 1 }}>{hint}</span>
+      </span>
+    </button>
+  );
+
+  return (
+    <div style={{ padding: "8px 4px" }}>
+      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, color: "rgba(255,255,255,0.55)", padding: "0 8px 4px" }}>Audio processing</div>
+      <Row
+        label="Noise suppression"
+        hint="Filter background noise like keyboards and fans"
+        on={ns}
+        onToggle={toggleNs}
+        disabled={!supports.noiseSuppression}
+      />
+      <Row
+        label="Echo cancellation"
+        hint="Prevent your speakers from echoing back to others"
+        on={ec}
+        onToggle={toggleEc}
+        disabled={!supports.echoCancellation}
+      />
+      <Row
+        label="Auto gain control"
+        hint="Automatically level your mic volume"
+        on={agc}
+        onToggle={toggleAgc}
+        disabled={!supports.autoGainControl}
+      />
     </div>
   );
 }

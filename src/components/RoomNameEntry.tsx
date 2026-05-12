@@ -28,6 +28,9 @@ function readDeviceId(key: string): string {
 function writeDeviceId(key: string, id: string) {
   try { if (id) localStorage.setItem(key, id); else localStorage.removeItem(key); } catch {}
 }
+function readAudioPref(key: string, fallback: boolean): boolean {
+try { const v = localStorage.getItem(key); return v == null ? fallback : v === "1"; } catch { return fallback; }
+}
 
 type Quality = "checking" | "excellent" | "good" | "poor" | "offline";
 
@@ -177,9 +180,9 @@ export function RoomNameEntry({
           : false;
         const audioConstraints: MediaTrackConstraints | false = audio
           ? {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
+              echoCancellation: readAudioPref("neoconf:audio:echoCancellation", true),
+              noiseSuppression: readAudioPref("neoconf:audio:noiseSuppression", true),
+              autoGainControl: readAudioPref("neoconf:audio:autoGainControl", true),
               ...(audioDeviceId ? { deviceId: { exact: audioDeviceId } } : {}),
             }
           : false;
