@@ -754,7 +754,7 @@ function RoomContainer({
         <ChatTranscriptDownloader roomName={roomName} />
         <InitialsOverlay />
         <RoomIdleController /><MobileVideoConference />
-        <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} slug={eventSlug} />
+        <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} slug={eventSlug ?? ""} />
         <MediaRequestPrompt />
         <RoomAudioRenderer />
         <LiveCaptions enabled={captionsEnabled} />
@@ -762,7 +762,7 @@ function RoomContainer({
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} isHost={roomRole === 'host' || roomRole === 'cohost'} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
-        <ManageParticipantsPanel open={showParticipants} onClose={() => setShowParticipants(false)} isHost={roomRole === "host" || roomRole === "cohost"} slug={eventSlug} ownerUserId={ownerUserId} />
+        <ManageParticipantsPanel open={showParticipants} onClose={() => setShowParticipants(false)} isHost={roomRole === "host" || roomRole === "cohost"} slug={eventSlug ?? ""} ownerUserId={ownerUserId} />
         <WaitingRoomPanel open={showWaitingRoom} onClose={() => setShowWaitingRoom(false)} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          <BreakoutsPanel open={showBreakouts} onClose={() => setShowBreakouts(false)} isHost={roomRole === "host" || roomRole === "cohost"} eventSlug={eventSlug} /><PlanGateOverlay />
               <SpeakerBadge />
         <RenameRedirectListener />
