@@ -684,6 +684,7 @@ function RoomContainer({
               {captionsEnabled ? "CC on" : "CC off"}
         </button>
             <BackgroundBlurButton />
+            <DeviceSwitcher />
           <button
             type="button"
             data-room-chrome="true"
@@ -1425,4 +1426,221 @@ function AudioOutputSwitcher({ deviceId }: { deviceId: string | null }) {
     };
   }, [room, deviceId]);
   return null;
+}
+
+/**
+ * DeviceSwitcher
+ *
+ * In-room toolbar control that opens a themed popover with three sections
+ * (Camera / Microphone / Speaker), each listing available devices with a
+ * checkmark on the currently active one. Selecting an entry calls
+ * room.switchActiveDevice() and persists the choice to the same
+ * neoconf:device:* localStorage keys used by the prejoin picker, so the
+ * prejoin and in-room agree on the active device across sessions.
+ *
+ * - Listens to navigator.mediaDevices.devicechange so plug/unplug refreshes
+ *   the list live.
+ * - Feature-detects HTMLMediaElement.setSinkId; when unavailable (Firefox /
+ *   Safari), hides the Speaker section and shows an explanatory hint.
+ * - Full a11y: aria-haspopup, aria-expanded, role=listbox / option,
+ *   Escape closes, click-outside dismisses, focus moves to the popover.
+ */
+function DeviceSwitcher() {
+  const room = useRoomContext();
+  const [open, setOpen] = useState(false);
+  const [cams, setCams] = useState<MediaDeviceInfo[]>([]);
+  const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
+  const [outs, setOuts] = useState<MediaDeviceInfo[]>([]);
+  const [activeCam, setActiveCam] = useState<string | null>(null);
+  const [activeMic, setActiveMic] = useState<string | null>(null);
+  const [activeOut, setActiveOut] = useState<string | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const popRef = useRef<HTMLDivElement | null>(null);
+
+  // Feature detect setSinkId for the Speaker section.
+  const speakerSupported = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const proto = (window as any).HTMLMediaElement?.prototype;
+      return !!(proto && typeof proto.setSinkId === "function");
+    } catch { return false; }
+  }, []);
+
+  // Refresh device list (post-permission labels are populated).
+  const refresh = async () => {
+    try {
+      const list = await navigator.mediaDevices.enumerateDevices();
+      setCams(list.filter((d) => d.kind === "videoinput"));
+      setMics(list.filter((d) => d.kind === "audioinput"));
+      setOuts(list.filter((d) => d.kind === "audiooutput"));
+    } catch {
+      // ignore — likely no permission yet
+    }
+  };
+
+  // Read currently-active device IDs from LiveKit Room (defensive against
+  // version differences: getActiveDevice may not exist on older builds).
+  const readActive = () => {
+    try {
+      const r: any = room;
+      if (!r) return;
+      if (typeof r.getActiveDevice === "function") {
+        setActiveCam(r.getActiveDevice("videoinput") || null);
+        setActiveMic(r.getActiveDevice("audioinput") || null);
+        setActiveOut(r.getActiveDevice("audiooutput") || null);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    refresh();
+    readActive();
+    const onChange = () => { refresh(); readActive(); };
+    navigator.mediaDevices?.addEventListener?.("devicechange", onChange);
+    return () => navigator.mediaDevices?.removeEventListener?.("devicechange", onChange);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep checkmarks in sync if LiveKit changes the active device for us
+  // (e.g. an unplugged device caused an automatic fallback).
+  useEffect(() => {
+    if (!room) return;
+    const onActive = (kind: string, deviceId: string) => {
+      if (kind === "videoinput") setActiveCam(deviceId || null);
+      else if (kind === "audioinput") setActiveMic(deviceId || null);
+      else if (kind === "audiooutput") setActiveOut(deviceId || null);
+    };
+    try { (room as any).on?.("activeDeviceChanged", onActive); } catch {}
+    return () => { try { (room as any).off?.("activeDeviceChanged", onActive); } catch {} };
+  }, [room]);
+
+  // Close on Escape / click-outside.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (popRef.current?.contains(t)) return;
+      if (btnRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick);
+    };
+  }, [open]);
+
+  // When the menu opens, refresh once more so the labels are current.
+  useEffect(() => { if (open) { refresh(); readActive(); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pick = async (kind: "videoinput" | "audioinput" | "audiooutput", deviceId: string) => {
+    if (!room) return;
+    try {
+      await room.switchActiveDevice(kind, deviceId);
+    } catch {
+      // graceful — device may have disappeared between enumerate and click
+      return;
+    }
+    try {
+      const key =
+        kind === "videoinput" ? "neoconf:device:videoId" :
+        kind === "audioinput" ? "neoconf:device:audioId" :
+        "neoconf:device:audioOutId";
+      window.localStorage.setItem(key, deviceId);
+    } catch {}
+    if (kind === "videoinput") setActiveCam(deviceId);
+    else if (kind === "audioinput") setActiveMic(deviceId);
+    else setActiveOut(deviceId);
+  };
+
+  const labelFor = (d: MediaDeviceInfo, idx: number, prefix: string) =>
+    (d.label && d.label.trim()) || `${prefix} ${idx + 1}`;
+
+  const Section = ({
+    title, items, active, kind, emptyHint,
+  }: {
+    title: string;
+    items: MediaDeviceInfo[];
+    active: string | null;
+    kind: "videoinput" | "audioinput" | "audiooutput";
+    emptyHint?: string;
+  }) => (
+    <div style={{ padding: "8px 4px" }}>
+      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, color: "rgba(255,255,255,0.55)", padding: "0 8px 4px" }}>{title}</div>
+      {items.length === 0 ? (
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", padding: "6px 8px" }}>{emptyHint || "No devices found"}</div>
+      ) : (
+        <ul role="listbox" aria-label={title} style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {items.map((d, i) => {
+            const isActive = !!active && d.deviceId === active;
+            const prefix = kind === "videoinput" ? "Camera" : kind === "audioinput" ? "Microphone" : "Speaker";
+            return (
+              <li key={d.deviceId || i} role="option" aria-selected={isActive}>
+                <button
+                  type="button"
+                  onClick={() => pick(kind, d.deviceId)}
+                  style={{
+                    width: "100%", textAlign: "left", padding: "8px 10px",
+                    background: isActive ? "rgba(34,211,238,0.15)" : "transparent",
+                    border: "none", color: "#fff", fontSize: 13, cursor: "pointer",
+                    display: "flex", alignItems: "center", gap: 8, borderRadius: 6,
+                  }}
+                >
+                  <span style={{ width: 14, color: isActive ? "#22d3ee" : "transparent" }} aria-hidden="true">✓</span>
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{labelFor(d, i, prefix)}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+
+  return (
+    <div data-room-chrome="true" style={{ position: "relative" }}>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        title="Audio & video devices"
+        className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+      >
+        Devices
+      </button>
+      {open && (
+        <div
+          ref={popRef}
+          role="dialog"
+          aria-label="Audio and video devices"
+          style={{
+            position: "absolute", top: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)",
+            width: 320, maxHeight: 420, overflowY: "auto",
+            background: "rgba(17,17,24,0.98)", color: "#fff",
+            border: "1px solid rgba(255,255,255,0.15)", borderRadius: 12,
+            boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
+            padding: 6, zIndex: 9999,
+          }}
+        >
+          <Section title="Camera" items={cams} active={activeCam} kind="videoinput" />
+          <div style={{ height: 1, background: "rgba(255,255,255,0.08)", margin: "2px 6px" }} />
+          <Section title="Microphone" items={mics} active={activeMic} kind="audioinput" />
+          <div style={{ height: 1, background: "rgba(255,255,255,0.08)", margin: "2px 6px" }} />
+          {speakerSupported ? (
+            <Section title="Speaker" items={outs} active={activeOut} kind="audiooutput" />
+          ) : (
+            <div style={{ padding: "8px 10px" }}>
+              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, color: "rgba(255,255,255,0.55)", padding: "0 0 4px" }}>Speaker</div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>Your browser doesn’t support selecting an output device. Use your system audio settings instead.</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
