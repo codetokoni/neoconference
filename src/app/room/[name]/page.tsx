@@ -492,6 +492,31 @@ function RoomContainer({
       window.addEventListener("neoconf:captions:toggle", onToggle as EventListener);
       return () => window.removeEventListener("neoconf:captions:toggle", onToggle as EventListener);
     }, []);
+
+    // Global "L" keyboard shortcut: toggles live captions on/off. Matches
+    // the cheatsheet (KeyboardShortcutsHelp.tsx) which documents "L" for captions.
+    // Ignored while focus is in INPUT/TEXTAREA/SELECT/contenteditable, and while
+    // any modifier (Ctrl/Alt/Meta/Shift) is held so it never clashes with browser
+    // shortcuts like Ctrl+L (focus address bar) or Alt+L.
+    useEffect(() => {
+      const isTypingTarget = (t: EventTarget | null): boolean => {
+        if (!t || !(t instanceof HTMLElement)) return false;
+        const tag = t.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+        if (t.isContentEditable) return true;
+        return false;
+      };
+      const onKey = (e: KeyboardEvent) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+        if (isTypingTarget(e.target)) return;
+        if (e.key === "l" || e.key === "L") {
+          e.preventDefault();
+          setCaptionsEnabled((v) => !v);
+        }
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, []);
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
 
