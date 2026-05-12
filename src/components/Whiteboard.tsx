@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, type CSSProperties } from "react";
 import { useRoomContext, useLocalParticipant } from "@livekit/components-react";
-import { RoomEvent, type Participant } from "livekit-client";
+import { RoomEvent, type Participant } from "livekit-client";import { zIndex } from "@/lib/zIndex";
 
 /**
  * Collaborative whiteboard.
@@ -56,6 +56,15 @@ export default function Whiteboard({
   const [color, setColor] = useState<string>("#22d3ee");
   const [size, setSize] = useState<number>(3);
   const [erase, setErase] = useState<boolean>(false);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+  if (typeof window === "undefined") return;
+  const mq = window.matchMedia("(max-width: 640px)");
+  const apply = () => setIsMobile(mq.matches);
+  apply();
+  mq.addEventListener("change", apply);
+  return () => mq.removeEventListener("change", apply);
+  }, []);
 
   const strokesRef = useRef<Stroke[]>([]);
   const drawingRef = useRef<Stroke | null>(null);
@@ -245,24 +254,39 @@ export default function Whiteboard({
 
   if (!open) return null;
 
-  return (
+  const panelStyle: CSSProperties = isMobile ? {
+    position: "fixed",
+    inset: 0,
+    width: "100vw",
+    height: "100vh",
+    zIndex: zIndex.panelModal,
+    background: "rgba(8, 12, 24, 0.98)",
+    color: "#fff",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))",
+    boxSizing: "border-box",
+    } : {
+      position: "absolute",
+      top: 48,
+      left: 8,
+      right: 8,
+      bottom: 8,
+      zIndex: 14,
+      background: "rgba(8, 12, 24, 0.96)",
+      border: "1px solid rgba(34,211,238,0.25)",
+      borderRadius: 12,
+      boxShadow: "0 12px 40px rgba(0,0,0,0.55)",
+      display: "flex",
+      flexDirection: "column",
+      overflow: "hidden",
+      };
+      
+      return (
     <div
       data-room-chrome="true"
-      style={{
-        position: "absolute",
-        top: 48,
-        left: 8,
-        right: 8,
-        bottom: 8,
-        zIndex: 14,
-        background: "rgba(8, 12, 24, 0.96)",
-        border: "1px solid rgba(34,211,238,0.25)",
-        borderRadius: 12,
-        boxShadow: "0 12px 40px rgba(0,0,0,0.55)",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}
+      style={panelStyle}
     >
       {/* Toolbar */}
       <div
