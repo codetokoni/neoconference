@@ -693,9 +693,12 @@ function RoomContainer({
             >
               {captionsEnabled ? "CC on" : "CC off"}
         </button>
-            <BackgroundBlurButton />
-            <PictureInPictureButton />
-            <DeviceSwitcher />
+            {/* Toolbar zoo cleanup: these features are now reached via Settings (⚙ bottom-right) and keyboard shortcuts (PiP: Alt+P). Kept mounted so their listeners and persisted prefs stay alive. */}
+            <div aria-hidden="true" style={{ display: "none" }} data-toolbar-zoo="true">
+              <BackgroundBlurButton />
+              <PictureInPictureButton />
+              <DeviceSwitcher />
+            </div>
           <button
             type="button"
             data-room-chrome="true"
