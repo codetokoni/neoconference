@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import MicLevelMeter from "./MicLevelMeter";
+import SpeakerTestButton from "./SpeakerTestButton";
 
 /**
  * SettingsModal
@@ -357,6 +358,7 @@ export default function SettingsModal() {
                   </Field>
                   <Field label="Speaker" hint={canSetSink ? undefined : "Speaker selection isn't supported in this browser. System default will be used."}>
                     <Select value={spkId} onChange={applySpk} options={spks} fallbackLabel="Default speaker" disabled={!canSetSink} />
+                    <SpeakerTestButton deviceId={spkId} canSetSink={canSetSink} />
                   </Field>
                   <fieldset style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "12px 14px 14px", margin: 0 }}>
                     <legend style={{ padding: "0 6px", fontSize: 11, color: "#9aa2b4", textTransform: "uppercase", letterSpacing: 1.1 }}>Audio processing</legend>
