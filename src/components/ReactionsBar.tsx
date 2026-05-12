@@ -141,7 +141,7 @@ export default function ReactionsBar() {
             style={{
               position: 'fixed',
               inset: 0,
-              zIndex: 68,
+              zIndex: zIndex.panel,
               background: 'transparent',
             }}
           />

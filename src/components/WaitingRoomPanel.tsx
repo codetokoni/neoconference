@@ -204,7 +204,7 @@ export default function WaitingRoomPanel({
         left: 8,
         bottom: 8,
         width: 320,
-        zIndex: 13,
+        zIndex: zIndex.panel,
         background: "rgba(17, 17, 24, 0.96)",
         color: "#fff",
         borderRadius: 8,

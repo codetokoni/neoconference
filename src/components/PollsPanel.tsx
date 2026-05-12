@@ -313,7 +313,7 @@ export default function PollsPanel({
         right: 8,
         bottom: 8,
         width: 340,
-        zIndex: 13,
+        zIndex: zIndex.panel,
         background: "rgba(8, 12, 24, 0.96)",
         border: "1px solid rgba(34,211,238,0.25)",
         borderRadius: 12,

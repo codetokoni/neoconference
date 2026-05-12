@@ -273,7 +273,7 @@ export default function Whiteboard({
       left: 8,
       right: 8,
       bottom: 8,
-      zIndex: 14,
+      zIndex: zIndex.panel,
       background: "rgba(8, 12, 24, 0.96)",
       border: "1px solid rgba(34,211,238,0.25)",
       borderRadius: 12,
