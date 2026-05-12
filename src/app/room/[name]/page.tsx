@@ -43,6 +43,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   const [wsUrl, setWsUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null); const [waitingState, setWaitingState] = useState<"pending" | "denied" | null>(null); const [waitForHost, setWaitForHost] = useState<boolean>(false);
   const [choices, setChoices] = useState<LocalUserChoices | null>(null);
+  const [audioOut, setAudioOut] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const roomName = decodeURIComponent(params.name);
@@ -225,7 +226,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
           </button>
         </div>
         <div data-lk-theme="default" className="w-full max-w-xl">
-          <RoomNameEntry roomName={roomName} defaultName={defaultUsername} onSubmit={(values) => setChoices(values as LocalUserChoices)} onCopyLink={copyLink} copied={copied} />
+          <RoomNameEntry roomName={roomName} defaultName={defaultUsername} onSubmit={(values) => { setChoices(values as LocalUserChoices); setAudioOut((values as { audioOutputDeviceId?: string }).audioOutputDeviceId || null); }} onCopyLink={copyLink} copied={copied} />
         </div>
       </div>
     );
@@ -271,6 +272,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
       roomName={roomName}
       eventSlug={eventSlug}
       choices={choices}
+      audioOutputDeviceId={audioOut}
       onLeave={() => router.push("/")}
     />
   );
@@ -442,6 +444,7 @@ function RoomContainer({
   eventSlug,
   choices,
   onLeave,
+  audioOutputDeviceId,
 }: {
   token: string;
   wsUrl: string;
@@ -449,6 +452,7 @@ function RoomContainer({
   eventSlug?: string;
   choices: LocalUserChoices;
   onLeave: () => void;
+  audioOutputDeviceId: string | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -647,6 +651,7 @@ function RoomContainer({
         <RoleMetadataListener onRoleChange={setRoomRole} />
         <TileRoleBadges ownerUserId={ownerUserId} />
         <ApplyPrejoinChoices choices={choices} />
+        <AudioOutputSwitcher deviceId={audioOutputDeviceId} />
         <MobileMoreMenu />
         <div
         data-room-chrome="true" className="room-toolbar" style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", zIndex: 12, display: "flex", gap: 8, alignItems: "center" }}
@@ -1389,3 +1394,35 @@ function downloadTranscript(
 
 
 
+
+/**
+ * AudioOutputSwitcher
+ *
+ * Applies the user's prejoin speaker (audiooutput) choice once the local
+ * Room is connected and re-applies if the device id changes mid-call.
+ * Silently no-ops on browsers without setSinkId support.
+ */
+function AudioOutputSwitcher({ deviceId }: { deviceId: string | null }) {
+  const room = useRoomContext();
+  useEffect(() => {
+    if (!room || !deviceId) return;
+    let cancelled = false;
+    const apply = async () => {
+      try {
+        await room.switchActiveDevice("audiooutput", deviceId);
+      } catch {
+        // not supported on this browser, or device gone — ignore
+      }
+    };
+    if (room.state === "connected") {
+      apply();
+    }
+    const onConnected = () => { if (!cancelled) apply(); };
+    room.on(RoomEvent.Connected, onConnected);
+    return () => {
+      cancelled = true;
+      room.off(RoomEvent.Connected, onConnected);
+    };
+  }, [room, deviceId]);
+  return null;
+}
