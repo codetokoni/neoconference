@@ -33,6 +33,7 @@ import SettingsModal from "@/components/SettingsModal";
 import ChatPanel from "@/components/ChatPanel";
 import FloatingVideoButton from "@/components/FloatingVideoButton";import BackgroundBlurButton from "@/components/BackgroundBlurButton";
 import PictureInPictureButton from "@/components/PictureInPictureButton";
+import DeviceSelectListener from "@/components/DeviceSelectListener";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
 import SpeakerBadge from "@/components/SpeakerBadge";import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel";import ManageParticipantsPanel from "@/components/ParticipantsPanel"; import TileRoleBadges from "@/components/TileRoleBadges"; import WaitingRoomPanel from "@/components/WaitingRoomPanel";import BreakoutsPanel from "@/components/BreakoutsPanel";
@@ -781,6 +782,7 @@ function RoomContainer({
         <KeyboardShortcutsHelp />
         <LeaveConfirmModal isHost={roomRole === "host" || roomRole === "cohost"} eventSlug={eventSlug} />
         <SettingsModal />
+        <DeviceSelectListener />
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} isHost={roomRole === 'host' || roomRole === 'cohost'} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
