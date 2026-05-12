@@ -26,6 +26,7 @@ import RoomIdleController from "@/components/RoomIdleController";
 import GoLiveButton from "@/components/GoLiveButton";
 import LiveCaptions from "@/components/LiveCaptions";
 import ReactionsBar from "@/components/ReactionsBar";
+import NetworkQualityToast from "@/components/NetworkQualityToast";
 import ChatPanel from "@/components/ChatPanel";
 import FloatingVideoButton from "@/components/FloatingVideoButton";import BackgroundBlurButton from "@/components/BackgroundBlurButton";
 import PictureInPictureButton from "@/components/PictureInPictureButton";
@@ -767,6 +768,7 @@ function RoomContainer({
         <RoomAudioRenderer />
         <LiveCaptions enabled={captionsEnabled} />
         <ReactionsBar />
+        <NetworkQualityToast />
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} isHost={roomRole === 'host' || roomRole === 'cohost'} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
