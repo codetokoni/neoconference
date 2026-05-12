@@ -1,4 +1,5 @@
 'use client';
+import { zIndex } from "@/lib/zIndex";
 
 // src/components/ReactionsBar.tsx
 //
@@ -102,7 +103,7 @@ export default function ReactionsBar() {
         position: 'fixed',
         inset: 0,
         pointerEvents: 'none',
-        zIndex: 60,
+        zIndex: zIndex.panel,
         overflow: 'hidden',
       }}
     >
@@ -150,7 +151,7 @@ export default function ReactionsBar() {
             position: 'fixed',
             right: 12,
             bottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
-            zIndex: 70,
+            zIndex: zIndex.panelRaised,
             display: 'flex',
             flexDirection: 'row-reverse',
             alignItems: 'center',
@@ -235,7 +236,7 @@ export default function ReactionsBar() {
           position: 'fixed',
           right: 18,
           bottom: '18%',
-          zIndex: 70,
+          zIndex: zIndex.panelRaised,
           display: 'flex',
           flexDirection: 'column',
           gap: 8,

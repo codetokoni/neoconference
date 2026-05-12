@@ -1,4 +1,5 @@
 'use client';
+import { zIndex } from "@/lib/zIndex";
 
 // src/components/ChatPanel.tsx
 // Sidebar chat for the live LiveKit room. Hybrid model:
@@ -372,14 +373,14 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
 
   const panelStyle: React.CSSProperties = isMobile
     ? {
-        position: 'fixed', inset: 0, zIndex: 80,
+        position: 'fixed', inset: 0, zIndex: zIndex.panelModal,
         background: 'rgba(8,11,20,0.96)',
         backdropFilter: 'blur(16px)',
         display: 'flex', flexDirection: 'column', color: '#e2e8f0',
       }
     : {
         position: 'fixed', top: 0, right: 0, bottom: 0,
-        width: 'min(380px, 92vw)', zIndex: 80,
+        width: 'min(380px, 92vw)', zIndex: zIndex.panelModal,
         background: 'rgba(8,11,20,0.86)',
         backdropFilter: 'blur(16px)',
         borderLeft: '1px solid rgba(34,211,238,0.25)',
@@ -495,7 +496,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
                     role='menu'
                     aria-label='Moderation actions'
                     style={{
-                      position: 'absolute', top: '100%', left: 40, zIndex: 5,
+                      position: 'absolute', top: '100%', left: 40, zIndex: zIndex.tileBadge,
                       background: 'rgba(15,23,42,0.98)',
                       border: '1px solid rgba(239,68,68,0.35)',
                       borderRadius: 8, padding: 4, minWidth: 180,

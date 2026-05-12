@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParticipants } from '@livekit/components-react';
+import { zIndex } from "@/lib/zIndex";
 
 /**
  * TileRoleBadges
@@ -86,7 +87,7 @@ export default function TileRoleBadges({ ownerUserId }: { ownerUserId: string | 
                 (it.role === 'host' ? 'rgba(140,180,240,0.95)' : 'rgba(120,210,150,0.95)'),
               color: 'white',
               boxShadow: '0 1px 4px rgba(0,0,0,0.45)',
-              zIndex: 5,
+              zIndex: zIndex.tileBadge,
               pointerEvents: 'none',
               userSelect: 'none',
               letterSpacing: 0.2,

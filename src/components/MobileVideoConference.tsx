@@ -1,4 +1,5 @@
 'use client';
+import { zIndex } from "@/lib/zIndex";
 
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -257,7 +258,7 @@ function MobileControlBar() {
           gap: 8,
           alignItems: 'stretch',
           background: 'linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.55))',
-          zIndex: 20,
+          zIndex: zIndex.videoChrome,
           boxSizing: 'border-box',
         }}
       >
@@ -282,7 +283,7 @@ function MobileControlBar() {
             position: 'absolute',
             inset: 0,
             background: 'rgba(0,0,0,0.55)',
-            zIndex: 30,
+            zIndex: zIndex.videoChromeRaised,
             display: 'flex',
             alignItems: 'flex-end',
             justifyContent: 'center',

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { zIndex } from "@/lib/zIndex";
 
 /**
  * MobileMoreMenu — phone-only "More" overflow.
@@ -117,7 +118,7 @@ export default function MobileMoreMenu() {
             style={{
               position: "fixed",
               inset: 0,
-              zIndex: 49,
+              zIndex: zIndex.mobileMenuBackdrop,
               background: "rgba(0,0,0,0.35)",
             }}
           />
@@ -129,7 +130,7 @@ export default function MobileMoreMenu() {
               bottom: 80,
               left: "50%",
               transform: "translateX(-50%)",
-              zIndex: 50,
+              zIndex: zIndex.mobileMenu,
               background: "rgba(15, 23, 42, 0.98)",
               border: "1px solid rgba(255,255,255,0.1)",
               borderRadius: 14,

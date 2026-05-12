@@ -1,4 +1,5 @@
 'use client';
+import { zIndex } from "@/lib/zIndex";
 
 import { useState, useCallback } from 'react';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
@@ -70,7 +71,7 @@ export function HostTileMenu({
         position: 'absolute',
         top: 6,
         right: 6,
-        zIndex: 10,
+        zIndex: zIndex.tileMenu,
         pointerEvents: 'auto',
       }}
       onClick={(e) => e.stopPropagation()}

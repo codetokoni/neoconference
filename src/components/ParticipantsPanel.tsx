@@ -1,4 +1,5 @@
 'use client';
+import { zIndex } from "@/lib/zIndex";
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParticipants, useLocalParticipant } from '@livekit/components-react';
@@ -108,7 +109,7 @@ export default function ParticipantsPanel({
         height: "100vh",
         background: "rgba(10,10,12,0.98)",
         color: "white",
-        zIndex: 80,
+        zIndex: zIndex.panelModal,
         display: "flex",
         flexDirection: "column",
         paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))",
@@ -122,7 +123,7 @@ export default function ParticipantsPanel({
         width: "min(380px, 100vw)",
         background: "rgba(10,10,12,0.97)",
         color: "white",
-        zIndex: 60,
+        zIndex: zIndex.panel,
         borderLeft: "1px solid rgba(255,255,255,0.1)",
         display: "flex",
         flexDirection: "column",

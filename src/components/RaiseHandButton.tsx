@@ -1,4 +1,5 @@
 'use client';
+import { zIndex } from "@/lib/zIndex";
 
 // src/components/RaiseHandButton.tsx
 //
@@ -222,7 +223,7 @@ export default function RaiseHandButton({ isHost = false }: Props) {
           position: 'fixed',
           bottom: 90,
           right: 18,
-          zIndex: 70,
+          zIndex: zIndex.panelRaised,
           width: 44,
           height: 44,
           borderRadius: 22,
@@ -242,7 +243,7 @@ export default function RaiseHandButton({ isHost = false }: Props) {
         <button
           type="button"
           onClick={() => setShowRoster((v) => !v)}
-          style={{ position: 'fixed', bottom: 90, right: 72, zIndex: 70, padding: '6px 12px', borderRadius: 16, background: '#fbbf24', color: '#0e1530', border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+          style={{ position: 'fixed', bottom: 90, right: 72, zIndex: zIndex.panelRaised, padding: '6px 12px', borderRadius: 16, background: '#fbbf24', color: '#0e1530', border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
         >
           {handCount} hand{handCount === 1 ? '' : 's'}
         </button>
@@ -250,7 +251,7 @@ export default function RaiseHandButton({ isHost = false }: Props) {
 
       {isHost && showRoster ? (
         <div
-          style={{ position: 'fixed', bottom: 140, right: 18, zIndex: 70, width: 240, maxHeight: 320, overflowY: 'auto', padding: 12, borderRadius: 12, background: 'rgba(8,11,20,0.92)', border: '1px solid rgba(251,191,36,0.35)', color: '#e2e8f0', backdropFilter: 'blur(14px)' }}
+          style={{ position: 'fixed', bottom: 140, right: 18, zIndex: zIndex.panelRaised, width: 240, maxHeight: 320, overflowY: 'auto', padding: 12, borderRadius: 12, background: 'rgba(8,11,20,0.92)', border: '1px solid rgba(251,191,36,0.35)', color: '#e2e8f0', backdropFilter: 'blur(14px)' }}
         >
           <p style={{ margin: 0, fontSize: 11, letterSpacing: 1.4, color: '#fbbf24', textTransform: 'uppercase' }}>Raised hands</p>
           <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0', display: 'flex', flexDirection: 'column', gap: 6 }}>

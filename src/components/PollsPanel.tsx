@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { zIndex } from "@/lib/zIndex";
 import { useRoomContext, useLocalParticipant } from "@livekit/components-react";
 import { RoomEvent, type Participant } from "livekit-client";
 
@@ -230,7 +231,7 @@ export default function PollsPanel({
         left: '50%',
         bottom: 96,
         transform: 'translateX(-50%)',
-        zIndex: 90,
+        zIndex: zIndex.panelModalRaised,
         background: 'rgba(8,12,24,0.96)',
         border: '1px solid rgba(34,211,238,0.45)',
         borderRadius: 12,
@@ -296,7 +297,7 @@ export default function PollsPanel({
         inset: 0,
         width: "100vw",
         height: "100vh",
-        zIndex: 80,
+        zIndex: zIndex.panelModal,
         background: "rgba(8, 12, 24, 0.98)",
         backdropFilter: "blur(12px)",
         color: "#fff",

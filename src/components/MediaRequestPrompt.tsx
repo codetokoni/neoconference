@@ -1,4 +1,5 @@
 'use client';
+import { zIndex } from "@/lib/zIndex";
 
 import { useEffect, useState } from 'react';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
@@ -65,7 +66,7 @@ export default function MediaRequestPrompt() {
         position: 'fixed',
         inset: 0,
         background: 'rgba(0,0,0,0.6)',
-        zIndex: 9999,
+        zIndex: zIndex.mediaPrompt,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

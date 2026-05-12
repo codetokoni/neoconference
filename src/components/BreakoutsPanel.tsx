@@ -19,6 +19,7 @@
 // because the host re-sends on RoomEvent.ParticipantConnected.
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { zIndex } from "@/lib/zIndex";
 import {
   useRoomContext,
   useParticipants,
@@ -364,7 +365,7 @@ export default function BreakoutsPanel({
         inset: 0,
         width: "100vw",
         height: "100vh",
-        zIndex: 80,
+        zIndex: zIndex.panelModal,
         background: "rgba(17,17,24,0.98)",
         color: "#fff",
         display: "flex",

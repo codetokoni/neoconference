@@ -1,4 +1,5 @@
 'use client';
+import { zIndex } from "@/lib/zIndex";
 
 // src/components/FloatingVideoButton.tsx
 // Picture-in-Picture toggle so the call keeps showing in a small floating
@@ -242,7 +243,7 @@ export default function FloatingVideoButton() {
             position: 'fixed', left: '50%', bottom: 96, transform: 'translateX(-50%)',
             background: 'rgba(15,23,42,0.96)', color: '#fbbf24',
             border: '1px solid rgba(251,191,36,0.4)', borderRadius: 8,
-            padding: '8px 14px', fontSize: 12, zIndex: 200,
+            padding: '8px 14px', fontSize: 12, zIndex: zIndex.floatingPiP,
             boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
           }}
         >{hint}</div>

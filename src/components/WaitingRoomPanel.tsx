@@ -9,6 +9,7 @@
 // just guards on its own props for safety.
 
 import { useEffect, useState } from "react";
+import { zIndex } from "@/lib/zIndex";
 
 interface WaitingEntry {
   id: string;
@@ -188,7 +189,7 @@ export default function WaitingRoomPanel({
         inset: 0,
         width: "100vw",
         height: "100vh",
-        zIndex: 80,
+        zIndex: zIndex.panelModal,
         background: "rgba(17, 17, 24, 0.98)",
         color: "#fff",
         display: "flex",
