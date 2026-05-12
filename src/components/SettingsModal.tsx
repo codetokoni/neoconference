@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import MicLevelMeter from "./MicLevelMeter";
 
 /**
  * SettingsModal
@@ -350,6 +351,9 @@ export default function SettingsModal() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   <Field label="Microphone">
                     <Select value={micId} onChange={applyMic} options={mics} fallbackLabel="Default microphone" />
+                  </Field>
+                  <Field label="Test microphone" hint="Verifies your mic is picking up sound. Bars react when you speak. Uses a separate stream so noise suppression / echo cancellation are bypassed for an honest level.">
+                    <MicLevelMeter deviceId={micId} />
                   </Field>
                   <Field label="Speaker" hint={canSetSink ? undefined : "Speaker selection isn't supported in this browser. System default will be used."}>
                     <Select value={spkId} onChange={applySpk} options={spks} fallbackLabel="Default speaker" disabled={!canSetSink} />
