@@ -1,0 +1,4 @@
+{
+  "_readme": "Add entries to `backgrounds` to expose virtual-background options in the room toolbar. Each entry: { id (kebab-case, stable), label (UI text), url (served from /backgrounds/...), thumb (optional smaller preview, same path if omitted) }. Recommended file format: WebP at quality 80, 1280x720. Recommended thumbnail: 320x180 WebP. Keep each backdrop under ~150KB.",
+  "backgrounds": []
+}

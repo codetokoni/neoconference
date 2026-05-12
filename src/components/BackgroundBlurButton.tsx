@@ -1,43 +1,85 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocalParticipant } from "@livekit/components-react";
 import { Track, type LocalVideoTrack } from "livekit-client";
-import { isBlurSupported, getBlurProcessor } from "@/lib/backgroundBlur";
+import {
+  isEffectsSupported,
+  getProcessor,
+  type BackgroundEffect,
+} from "@/lib/backgroundBlur";
 
-const STORAGE_KEY = "neo:bg-blur";
+const STORAGE_KEY = "neo:bg-effect";
+const MANIFEST_URL = "/backgrounds/manifest.json";
+
+type ManifestEntry = {
+  id: string;
+  label: string;
+  url: string;
+  thumb?: string;
+};
+
+type Manifest = { backgrounds: ManifestEntry[] };
 
 /**
  * BackgroundBlurButton
  *
- * Toolbar toggle for applying a privacy blur to the local camera feed.
- * Rendered inside <LiveKitRoom> so useLocalParticipant resolves.
+ * Toolbar control for applying privacy effects to the local camera feed.
+ * Despite the legacy name, it now exposes three modes: none, blur, and
+ * image (virtual background). The image set is sourced at runtime from
+ * /backgrounds/manifest.json so background art can be added without
+ * shipping a new bundle.
  *
  * Behavior:
- * - Hidden entirely on browsers without MediaStreamTrackProcessor (Safari/iOS).
- * - State is persisted to localStorage under "neo:bg-blur" and restored next
- *   time the camera publishes.
- * - Errors are swallowed silently and the toggle resets to off — a failed
- *   blur should never break the call.
+ * - Hidden entirely on browsers without MediaStreamTrackProcessor (Safari).
+ * - Selection persisted to localStorage under "neo:bg-effect".
+ * - Errors are logged and the effect resets to none — a failed effect
+ *   should never break the call.
  */
 export default function BackgroundBlurButton() {
-  const supported = isBlurSupported();
+  const supported = isEffectsSupported();
   const { localParticipant } = useLocalParticipant();
-  const [enabled, setEnabled] = useState(false);
+  const [effect, setEffect] = useState<BackgroundEffect>({ mode: "none" });
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [manifest, setManifest] = useState<ManifestEntry[]>([]);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   // Restore persisted preference on mount.
   useEffect(() => {
     if (!supported) return;
     try {
-      const v = window.localStorage.getItem(STORAGE_KEY);
-      if (v === "1") setEnabled(true);
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as BackgroundEffect;
+      if (parsed && typeof parsed === "object" && "mode" in parsed) {
+        setEffect(parsed);
+      }
     } catch {
-      // localStorage may throw in private mode — ignore.
+      // ignore — corrupted preference, default to none.
     }
   }, [supported]);
 
-  // Apply / remove the processor whenever `enabled` or the published camera track changes.
+  // Load manifest the first time the popover opens.
+  useEffect(() => {
+    if (!open || manifest.length > 0) return;
+    let cancelled = false;
+    fetch(MANIFEST_URL, { cache: "force-cache" })
+      .then((r) => (r.ok ? r.json() : { backgrounds: [] }))
+      .then((data: Manifest) => {
+        if (cancelled) return;
+        if (Array.isArray(data?.backgrounds)) setManifest(data.backgrounds);
+      })
+      .catch(() => {
+        // Manifest is optional; leave list empty.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, manifest.length]);
+
+  // Apply / remove the processor whenever effect or camera track changes.
   useEffect(() => {
     if (!supported || !localParticipant) return;
     let cancelled = false;
@@ -47,18 +89,16 @@ export default function BackgroundBlurButton() {
       const track = pub?.videoTrack as LocalVideoTrack | undefined;
       if (!track) return;
       try {
-        if (enabled) {
-          const proc = await getBlurProcessor();
-          if (cancelled) return;
-          await track.setProcessor(proc as any);
-        } else {
+        if (effect.mode === "none") {
           await track.stopProcessor();
+        } else {
+          const proc = await getProcessor(effect);
+          if (cancelled || !proc) return;
+          await track.setProcessor(proc as any);
         }
       } catch (e) {
-        // If anything goes wrong (model fetch, GPU init, etc.) reset to off
-        // so the user keeps an unblurred but working video feed.
-        console.warn("background blur failed", e);
-        if (!cancelled) setEnabled(false);
+        console.warn("background effect failed", e);
+        if (!cancelled) setEffect({ mode: "none" });
       }
     };
 
@@ -66,39 +106,147 @@ export default function BackgroundBlurButton() {
     return () => {
       cancelled = true;
     };
-  }, [enabled, supported, localParticipant]);
+  }, [effect, supported, localParticipant]);
 
   // Persist preference.
   useEffect(() => {
     if (!supported) return;
     try {
-      window.localStorage.setItem(STORAGE_KEY, enabled ? "1" : "0");
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(effect));
     } catch {
       // ignore
     }
-  }, [enabled, supported]);
+  }, [effect, supported]);
 
-  const onClick = useCallback(async () => {
-    if (busy) return;
-    setBusy(true);
-    setEnabled((v) => !v);
-    // Brief debounce so rapid clicks don't fire overlapping setProcessor calls.
-    setTimeout(() => setBusy(false), 400);
-  }, [busy]);
+  // Close popover on outside click.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (popoverRef.current?.contains(t)) return;
+      if (buttonRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const choose = useCallback(
+    (next: BackgroundEffect) => {
+      if (busy) return;
+      setBusy(true);
+      setEffect(next);
+      setOpen(false);
+      // Brief debounce so rapid clicks don't fire overlapping setProcessor calls.
+      setTimeout(() => setBusy(false), 400);
+    },
+    [busy]
+  );
 
   if (!supported) return null;
 
+  const isOn = effect.mode !== "none";
+  const label =
+    effect.mode === "none"
+      ? "Effects"
+      : effect.mode === "blur"
+      ? "Blur"
+      : "Background";
+
+  return (
+    <div className="relative inline-block">
+      <button
+        ref={buttonRef}
+        type="button"
+        data-room-chrome="true"
+        onClick={() => setOpen((v) => !v)}
+        aria-pressed={isOn}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={busy}
+        className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+        title="Background effects"
+      >
+        {label}
+      </button>
+      {open && (
+        <div
+          ref={popoverRef}
+          role="menu"
+          data-room-chrome="true"
+          className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 min-w-[180px] rounded-md bg-zinc-900 border border-white/15 shadow-lg p-2"
+        >
+          <Option
+            active={effect.mode === "none"}
+            label="None"
+            onClick={() => choose({ mode: "none" })}
+          />
+          <Option
+            active={effect.mode === "blur"}
+            label="Blur"
+            onClick={() => choose({ mode: "blur" })}
+          />
+          {manifest.length > 0 && (
+            <div className="mt-2 grid grid-cols-3 gap-1.5">
+              {manifest.map((bg) => {
+                const active =
+                  effect.mode === "image" && effect.url === bg.url;
+                return (
+                  <button
+                    key={bg.id}
+                    type="button"
+                    data-room-chrome="true"
+                    onClick={() => choose({ mode: "image", url: bg.url })}
+                    title={bg.label}
+                    aria-label={bg.label}
+                    aria-pressed={active}
+                    className={
+                      "block w-full aspect-video rounded border bg-cover bg-center " +
+                      (active
+                        ? "border-white ring-2 ring-white/60"
+                        : "border-white/20 hover:border-white/60")
+                    }
+                    style={{ backgroundImage: `url(${bg.thumb ?? bg.url})` }}
+                  />
+                );
+              })}
+            </div>
+          )}
+          {manifest.length === 0 && (
+            <p className="mt-2 text-[10px] text-zinc-400 px-1">
+              No backgrounds installed yet.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Option({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
+      role="menuitemradio"
+      aria-checked={active}
       data-room-chrome="true"
       onClick={onClick}
-      aria-pressed={enabled}
-      disabled={busy}
-      className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
-      title={enabled ? "Turn off background blur" : "Blur your background"}
+      className={
+        "block w-full text-left px-2 py-1.5 text-xs rounded " +
+        (active
+          ? "bg-white text-black"
+          : "text-white hover:bg-white/10")
+      }
     >
-      {enabled ? "Blur on" : "Blur off"}
+      {label}
     </button>
   );
 }
