@@ -30,6 +30,8 @@ type Props = {
   deviceId?: string;
   /** Whether the browser advertises HTMLMediaElement.setSinkId. */
   canSetSink: boolean;
+  /** Compact mode: hide the secondary helper text so the button can sit inline (e.g. inside DevicePicker rightSlot). */
+  compact?: boolean;
 };
 
 const TONE_HZ = 440;
@@ -37,7 +39,7 @@ const TONE_DURATION_MS = 700;
 const TONE_GAIN = 0.18;
 const FADE_MS = 12;
 
-export default function SpeakerTestButton({ deviceId, canSetSink }: Props) {
+export default function SpeakerTestButton({ deviceId, canSetSink, compact = false }: Props) {
   const [playing, setPlaying] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
@@ -190,11 +192,13 @@ export default function SpeakerTestButton({ deviceId, canSetSink }: Props) {
           />
           {playing ? "Playing…" : "Test speaker"}
         </button>
+        {!compact && (
         <span style={{ fontSize: 11, color: "#9aa2b4" }}>
           {playing
             ? "You should hear a short tone from the selected speaker."
             : "Plays a short 440 Hz tone so you can confirm sound is coming out of the right device."}
         </span>
+        )}
       </div>
       {note && (
         <div role="status" style={{ fontSize: 11, color: "#f5c451" }}>

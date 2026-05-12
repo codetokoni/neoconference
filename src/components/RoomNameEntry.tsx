@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
 import MicLevelMeter from "./MicLevelMeter";
+import SpeakerTestButton from "./SpeakerTestButton";
 
 export type RoomEntryValues = {
   username: string;
@@ -86,8 +87,6 @@ export function RoomNameEntry({
   const micTestTimerRef = useRef<number | null>(null);
   const micTestAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Speaker test (chord)
-  const [speakerTesting, setSpeakerTesting] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -260,46 +259,6 @@ export function RoomNameEntry({
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  // --- Speaker test: pleasant 3-note chord through chosen output ---
-  const playSpeakerTest = useCallback(async () => {
-    if (speakerTesting) return;
-    setSpeakerTesting(true);
-    try {
-      const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-      const dest = ctx.createMediaStreamDestination();
-      const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
-      const now = ctx.currentTime;
-      notes.forEach((freq, i) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.value = freq;
-        const start = now + i * 0.18;
-        gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(0.18, start + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.32);
-        osc.connect(gain);
-        if (canSetSink && audioOutputDeviceId) {
-          gain.connect(dest);
-        } else {
-          gain.connect(ctx.destination);
-        }
-        osc.start(start);
-        osc.stop(start + 0.35);
-      });
-      if (canSetSink && audioOutputDeviceId) {
-        const a = new Audio();
-        a.srcObject = dest.stream;
-        try { await (a as any).setSinkId(audioOutputDeviceId); } catch {}
-        a.play().catch(() => {});
-        setTimeout(() => { a.pause(); a.srcObject = null; }, 1200);
-      }
-      setTimeout(() => { setSpeakerTesting(false); ctx.close().catch(() => {}); }, 1200);
-    } catch {
-      setSpeakerTesting(false);
-      showToast("Speaker test failed");
-    }
-  }, [audioOutputDeviceId, canSetSink, speakerTesting, showToast]);
 
   // --- Mic test: record 3s, play back through chosen speaker ---
   const stopMicTest = useCallback(() => {
@@ -529,15 +488,7 @@ export function RoomNameEntry({
                   value={audioOutputDeviceId}
                   onChange={setAudioOutputDeviceId}
                   rightSlot={(
-                    <button
-                      type="button"
-                      onClick={playSpeakerTest}
-                      disabled={speakerTesting}
-                      title="Play a short test tone through the selected speaker"
-                      className={`shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition border border-cyan-400/40 text-cyan-200 hover:bg-cyan-400/10 ${speakerTesting ? "bg-cyan-400/20" : ""}`}
-                    >
-                      {speakerTesting ? "Playing…" : "Test"}
-                    </button>
+                    <SpeakerTestButton deviceId={audioOutputDeviceId} canSetSink={canSetSink} compact />
                   )}
                 />
               )}
