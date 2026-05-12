@@ -659,12 +659,12 @@ function RoomContainer({
           <button
             type="button"
             data-room-chrome="true"
-            onClick={() => setShowChat(true)}
+            onClick={() => setShowChat((v) => !v)}
             className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
             title="Toggle chat"
-          >
-            Chat
-          </button>
+        >
+          {showChat ? "Close chat" : "Chat"}
+        </button>
           <FloatingVideoButton />
           <button
             type="button"
