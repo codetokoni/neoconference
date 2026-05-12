@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import MicLevelMeter from "./MicLevelMeter";
 import SpeakerTestButton from "./SpeakerTestButton";
+import MicRecordTest from "./MicRecordTest";
 
 /**
  * SettingsModal
@@ -355,6 +356,9 @@ export default function SettingsModal() {
                   </Field>
                   <Field label="Test microphone" hint="Verifies your mic is picking up sound. Bars react when you speak. Uses a separate stream so noise suppression / echo cancellation are bypassed for an honest level.">
                     <MicLevelMeter deviceId={micId} />
+                  </Field>
+                  <Field label="Test microphone (playback)" hint="Records a 3-second sample and plays it back through your speaker. Confirms both mic and speaker are working end-to-end.">
+                    <MicRecordTest deviceId={micId} audioOutputDeviceId={spkId} canSetSink={canSetSink} />
                   </Field>
                   <Field label="Speaker" hint={canSetSink ? undefined : "Speaker selection isn't supported in this browser. System default will be used."}>
                     <Select value={spkId} onChange={applySpk} options={spks} fallbackLabel="Default speaker" disabled={!canSetSink} />

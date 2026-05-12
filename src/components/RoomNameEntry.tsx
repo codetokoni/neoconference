@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import MicLevelMeter from "./MicLevelMeter";
 import SpeakerTestButton from "./SpeakerTestButton";
+import MicRecordTest from "./MicRecordTest";
 
 export type RoomEntryValues = {
   username: string;
@@ -79,13 +80,7 @@ export function RoomNameEntry({
   const [toast, setToast] = useState<string | null>(null);
   const canSetSink = supportsSetSinkId();
 
-  // Mic test (record-and-playback)
-  const [micTesting, setMicTesting] = useState<"idle" | "recording" | "playing">("idle");
-  const [micTestProgress, setMicTestProgress] = useState(0);
-  const micRecorderRef = useRef<MediaRecorder | null>(null);
-  const micTestChunksRef = useRef<Blob[]>([]);
-  const micTestTimerRef = useRef<number | null>(null);
-  const micTestAudioRef = useRef<HTMLAudioElement | null>(null);
+
 
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -260,71 +255,7 @@ export function RoomNameEntry({
   }, []);
 
 
-  // --- Mic test: record 3s, play back through chosen speaker ---
-  const stopMicTest = useCallback(() => {
-    try { micRecorderRef.current?.stop(); } catch {}
-    micRecorderRef.current = null;
-    if (micTestTimerRef.current) { clearInterval(micTestTimerRef.current); micTestTimerRef.current = null; }
-    if (micTestAudioRef.current) {
-      try { micTestAudioRef.current.pause(); } catch {}
-      micTestAudioRef.current = null;
-    }
-    setMicTesting("idle");
-    setMicTestProgress(0);
-  }, []);
 
-  const startMicTest = useCallback(async () => {
-    if (micTesting !== "idle") { stopMicTest(); return; }
-    const stream = streamRef.current;
-    if (!stream || !audio) { showToast("Turn on the microphone to test it"); return; }
-    const audioTracks = stream.getAudioTracks();
-    if (audioTracks.length === 0) { showToast("No microphone track available"); return; }
-    try {
-      const audioOnlyStream = new MediaStream(audioTracks);
-      if (!(window as any).MediaRecorder) { showToast("Mic test not supported in this browser"); return; }
-      const mime = (MediaRecorder as any).isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
-      const rec = new MediaRecorder(audioOnlyStream, mime ? { mimeType: mime } : undefined);
-      micTestChunksRef.current = [];
-      rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) micTestChunksRef.current.push(e.data); };
-      rec.onstop = async () => {
-        const blob = new Blob(micTestChunksRef.current, { type: mime || "audio/webm" });
-        const url = URL.createObjectURL(blob);
-        const a = new Audio(url);
-        micTestAudioRef.current = a;
-        if (canSetSink && audioOutputDeviceId) {
-          try { await (a as any).setSinkId(audioOutputDeviceId); } catch {}
-        }
-        a.onended = () => { URL.revokeObjectURL(url); stopMicTest(); };
-        setMicTesting("playing");
-        setMicTestProgress(0);
-        const playStart = performance.now();
-        micTestTimerRef.current = window.setInterval(() => {
-          const dur = (a.duration && isFinite(a.duration)) ? a.duration * 1000 : 3000;
-          const pct = Math.min(1, (performance.now() - playStart) / dur);
-          setMicTestProgress(pct);
-        }, 50);
-        try { await a.play(); } catch { stopMicTest(); }
-      };
-      micRecorderRef.current = rec;
-      rec.start();
-      setMicTesting("recording");
-      setMicTestProgress(0);
-      const recStart = performance.now();
-      micTestTimerRef.current = window.setInterval(() => {
-        const pct = Math.min(1, (performance.now() - recStart) / 3000);
-        setMicTestProgress(pct);
-        if (pct >= 1) {
-          if (micTestTimerRef.current) { clearInterval(micTestTimerRef.current); micTestTimerRef.current = null; }
-          try { rec.stop(); } catch {}
-        }
-      }, 50);
-    } catch {
-      showToast("Mic test failed");
-      stopMicTest();
-    }
-  }, [audio, audioOutputDeviceId, canSetSink, micTesting, showToast, stopMicTest]);
-
-  useEffect(() => () => { stopMicTest(); }, [stopMicTest]);
 
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -456,28 +387,8 @@ export function RoomNameEntry({
                   devices={mics}
                   value={audioDeviceId}
                   onChange={setAudioDeviceId}
-                  rightSlot={(
-                    <button
-                      type="button"
-                      onClick={startMicTest}
-                      disabled={!audio || micTesting === "playing"}
-                      title={micTesting === "idle" ? "Record a 3-second mic sample" : micTesting === "recording" ? "Recording… click to cancel" : "Playing back…"}
-                      className={`shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition border ${audio ? "border-cyan-400/40 text-cyan-200 hover:bg-cyan-400/10" : "border-white/10 text-zinc-600 cursor-not-allowed"} ${micTesting !== "idle" ? "bg-cyan-400/20" : ""}`}
-                    >
-                      {micTesting === "idle" && "Test mic"}
-                      {micTesting === "recording" && "Recording…"}
-                      {micTesting === "playing" && "Playing…"}
-                    </button>
-                  )}
+                  rightSlot={<MicRecordTest deviceId={audioDeviceId} audioOutputDeviceId={audioOutputDeviceId} canSetSink={canSetSink} compact disabled={!audio} onError={showToast} />}
                 />
-                {micTesting !== "idle" && (
-                  <div className="mt-1.5 h-1 rounded-full bg-white/5 overflow-hidden">
-                    <div
-                      className={`h-full transition-[width] duration-75 ${micTesting === "recording" ? "bg-rose-400" : "bg-cyan-400"}`}
-                      style={{ width: `${Math.round(micTestProgress * 100)}%` }}
-                    />
-                  </div>
-                )}
               </div>
               {canSetSink && speakers.length > 0 && (
                 <DevicePicker
