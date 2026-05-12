@@ -465,6 +465,18 @@ function RoomContainer({
     setShowBreakouts(name === "breakouts");
     };
   const [hideSelf, setHideSelf] = useState(false);
+    const [captionsEnabled, setCaptionsEnabled] = useState(false);
+    useEffect(() => {
+      try {
+        const v = window.localStorage.getItem("neo:captions-enabled");
+        if (v === "1") setCaptionsEnabled(true);
+      } catch {}
+    }, []);
+    useEffect(() => {
+      try {
+        window.localStorage.setItem("neo:captions-enabled", captionsEnabled ? "1" : "0");
+      } catch {}
+    }, [captionsEnabled]);
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
 
@@ -655,6 +667,16 @@ function RoomContainer({
           title="Hide your own video"
         >
           {hideSelf ? "Show me" : "Hide me"}
+            </button>
+            <button
+              type="button"
+              data-room-chrome="true"
+              onClick={() => setCaptionsEnabled((v) => !v)}
+              aria-pressed={captionsEnabled}
+              className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+              title={captionsEnabled ? "Disable live captions" : "Enable live captions"}
+            >
+              {captionsEnabled ? "CC on" : "CC off"}
         </button>
           <button
             type="button"
@@ -735,7 +757,7 @@ function RoomContainer({
         <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} slug={eventSlug} />
         <MediaRequestPrompt />
         <RoomAudioRenderer />
-        <LiveCaptions />
+        <LiveCaptions enabled={captionsEnabled} />
         <ReactionsBar />
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} isHost={roomRole === 'host' || roomRole === 'cohost'} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
