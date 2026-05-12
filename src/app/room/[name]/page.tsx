@@ -705,6 +705,33 @@ function RoomContainer({
       return () => window.removeEventListener("keydown", onKey);
     }, []);
 
+    // Global "H" keyboard shortcut: raise or lower hand. Dispatches a CustomEvent on
+    // window which the RaiseHandButton component listens for and invokes its internal
+    // toggle (which also broadcasts the new state to all participants via LiveKit's
+    // DataChannel). Using a CustomEvent keeps the H wiring decoupled from RaiseHandButton's
+    // internal raised/hands state — no prop drilling or ref bridge. Ignored while focus
+    // is in INPUT/TEXTAREA/SELECT/contenteditable so it never hijacks typing. Uses bare
+    // "h" (no modifier) — same convention as M, V, L, F, P, W, G, matching Zoom/Meet.
+    useEffect(() => {
+      const isTypingTarget = (t: EventTarget | null): boolean => {
+        if (!t || !(t instanceof HTMLElement)) return false;
+        const tag = t.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+        if (t.isContentEditable) return true;
+        return false;
+      };
+      const onKey = (e: KeyboardEvent) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+        if (isTypingTarget(e.target)) return;
+        if (e.key === "h" || e.key === "H") {
+          e.preventDefault();
+          window.dispatchEvent(new CustomEvent("neo:raise-hand:toggle"));
+        }
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, []);
+
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
 
@@ -863,7 +890,6 @@ function RoomContainer({
       data-lk-theme="default"
       data-hide-self={hideSelf ? "true" : "false"}
       data-focus-mode={focusMode ? "true" : "false"}
-      data-speaker-view={speakerView ? "true" : "false"}
       style={{ height: "calc(100vh - 65px)", position: "relative" }}
     >
       <LiveKitRoom
@@ -990,16 +1016,6 @@ function RoomContainer({
           aria-pressed={focusMode}
         >
           {focusMode ? "Focus on" : "Focus"}
-        </button>
-        <button
-          type="button"
-          data-room-chrome="true"
-          onClick={() => setSpeakerView((v) => !v)}
-          className={`px-3 py-1.5 text-xs rounded border shadow-sm ${speakerView ? "bg-cyan-500 text-black border-cyan-300 hover:bg-cyan-400" : "bg-black text-white border-white/30 hover:bg-zinc-800"}`}
-          title="Toggle speaker view (G) — hide non-speaking tiles so the active speaker fills the stage"
-          aria-pressed={speakerView}
-        >
-          {speakerView ? "Speaker on" : "Speaker"}
         </button>
         <ParticipantCountBadge />
         <RecordingControls roomName={roomName} roomRole={roomRole} />

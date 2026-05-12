@@ -71,6 +71,17 @@ export default function RaiseHandButton({ isHost = false }: Props) {
     } catch {}
   }, [raised, room]);
 
+  // Listen for the global "H" keyboard shortcut (dispatched from room/[name]/page.tsx).
+  // Decoupling the H wiring via a window CustomEvent avoids prop drilling and keeps the
+  // raise/lower state local to this component. Re-attached when toggle's identity
+  // changes (room or raised dependency) so the listener always invokes the current
+  // toggle closure with the right state snapshot.
+  useEffect(() => {
+    const handler = () => { void toggle(); };
+    window.addEventListener("neo:raise-hand:toggle", handler);
+    return () => window.removeEventListener("neo:raise-hand:toggle", handler);
+  }, [toggle]);
+
   // Track hands that were just removed so we can animate them out.
   const prevHandsRef = useRef<Map<string, Hand>>(new Map());
   useEffect(() => {
