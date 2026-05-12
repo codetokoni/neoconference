@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";import { createPortal } from 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser, RedirectToSignIn } from "@clerk/nextjs";
 import {
@@ -761,6 +761,7 @@ function RoomContainer({
         <ChatTranscriptDownloader roomName={roomName} />
         <InitialsOverlay />
         <RoomIdleController /><MobileVideoConference />
+        <ConnectionStatsOverlay />
         <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} slug={eventSlug ?? ""} />
         <MediaRequestPrompt />
         <RoomAudioRenderer />
@@ -1640,6 +1641,8 @@ function DeviceSwitcher() {
             </div>
           )}
           <AudioProcessingSection />
+          <div style={{ height: 1, background: "rgba(255,255,255,0.08)", margin: "2px 6px" }} />
+          <ShowStatsRow />
         </div>
       )}
     </div>
@@ -1778,6 +1781,282 @@ function AudioProcessingSection() {
         onToggle={toggleAgc}
         disabled={!supports.autoGainControl}
       />
+    </div>
+  );
+}
+
+/**
+ * ConnectionStatsOverlay
+ *
+ * World-class per-tile WebRTC stats chip. Polls each participant\u2019s
+ * RTCStatsReport every 2s and renders a compact monospace chip in the
+ * top-left corner of each LiveKit tile showing:
+ *
+ *   - Connection quality (colored dot from LiveKit ConnectionQuality)
+ *   - Bitrate (kbps, computed as delta(bytes)*8/elapsed)
+ *   - Packet loss (%, delta packets lost / delta packets received)
+ *   - Round-trip time (ms, from candidate-pair currentRoundTripTime)
+ *   - Video resolution and fps
+ *
+ * LiveKit\u2019s stock <VideoConference /> renders tiles internally, so we
+ * use a MutationObserver to track [data-lk-participant-sid] elements and
+ * attach an absolutely positioned chip inside each via React portals.
+ *
+ * Toggle is persisted to neoconf:ui:showStats and broadcast via the
+ * neoconf:stats-toggle window event so the DeviceSwitcher footer can drive
+ * it without prop drilling. All work is gated on enabled === true so the
+ * polling loop and portal work disappear entirely when the user has stats off.
+ */
+function ConnectionStatsOverlay() {
+  const participants = useParticipants();
+  const [enabled, setEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try { return localStorage.getItem("neoconf:ui:showStats") === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    const onToggle = (e: Event) => {
+      const ce = e as CustomEvent<{ on: boolean }>;
+      setEnabled(Boolean(ce.detail?.on));
+    };
+    window.addEventListener("neoconf:stats-toggle", onToggle as EventListener);
+    return () => window.removeEventListener("neoconf:stats-toggle", onToggle as EventListener);
+  }, []);
+  const [tileMap, setTileMap] = useState<Map<string, HTMLElement>>(new Map());
+  useEffect(() => {
+    if (!enabled) { setTileMap(new Map()); return; }
+    let raf = 0;
+    const scan = () => {
+      const nodes = document.querySelectorAll<HTMLElement>("[data-lk-participant-sid]");
+      const next = new Map<string, HTMLElement>();
+      nodes.forEach((n) => {
+        const sid = n.getAttribute("data-lk-participant-sid");
+        if (sid) next.set(sid, n);
+      });
+      setTileMap((prev) => {
+        if (prev.size === next.size) {
+          let same = true;
+          for (const [k, v] of next) { if (prev.get(k) !== v) { same = false; break; } }
+          if (same) return prev;
+        }
+        return next;
+      });
+    };
+    scan();
+    const mo = new MutationObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(scan);
+    });
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-lk-participant-sid"] });
+    return () => { mo.disconnect(); cancelAnimationFrame(raf); };
+  }, [enabled]);
+  if (!enabled) return null;
+  return (
+    <>
+      {participants.map((p) => {
+        const host = tileMap.get(p.sid);
+        if (!host) return null;
+        return <StatsChip key={p.sid} participant={p} host={host} />;
+      })}
+    </>
+  );
+}
+
+type StatsSample = {
+  bitrateKbps: number;
+  packetLossPct: number;
+  rttMs: number | null;
+  width: number | null;
+  height: number | null;
+  fps: number | null;
+};
+
+function qualityColor(q: unknown): string {
+  // LiveKit ConnectionQuality is exported as a string enum
+  switch (String(q)) {
+    case "excellent": return "#22c55e";
+    case "good": return "#eab308";
+    case "poor": return "#ef4444";
+    case "lost": return "#7f1d1d";
+    default: return "#9ca3af";
+  }
+}
+
+type StatLike = {
+  type?: string;
+  bytesSent?: number;
+  bytesReceived?: number;
+  packetsLost?: number;
+  packetsReceived?: number;
+  frameWidth?: number;
+  frameHeight?: number;
+  framesPerSecond?: number;
+  currentRoundTripTime?: number;
+  nominated?: boolean;
+  state?: string;
+};
+
+function StatsChip({ participant, host }: { participant: Participant; host: HTMLElement }) {
+  const [sample, setSample] = useState<StatsSample | null>(null);
+  const [quality, setQuality] = useState<unknown>(participant.connectionQuality);
+  const prevBytesRef = useRef<{ bytes: number; t: number } | null>(null);
+  const prevLossRef = useRef<{ lost: number; recv: number } | null>(null);
+  useEffect(() => {
+    const onQ = () => setQuality(participant.connectionQuality);
+    try { participant.on(RoomEvent.ConnectionQualityChanged as never, onQ as never); } catch {}
+    return () => { try { participant.off(RoomEvent.ConnectionQualityChanged as never, onQ as never); } catch {} };
+  }, [participant]);
+  useEffect(() => {
+    const cs = getComputedStyle(host);
+    if (cs.position === "static") host.style.position = "relative";
+  }, [host]);
+  useEffect(() => {
+    let cancelled = false;
+    const collect = async () => {
+      try {
+        const pubs = Array.from(participant.trackPublications.values());
+        const videoPub = pubs.find((pp) => pp.kind === Track.Kind.Video && pp.track);
+        const audioPub = pubs.find((pp) => pp.kind === Track.Kind.Audio && pp.track);
+        const pub = videoPub ?? audioPub;
+        if (!pub || !pub.track) return;
+        const anyTrack = pub.track as unknown as { sender?: RTCRtpSender; receiver?: RTCRtpReceiver };
+        let report: RTCStatsReport | null = null;
+        if (anyTrack.sender && typeof anyTrack.sender.getStats === "function") report = await anyTrack.sender.getStats();
+        else if (anyTrack.receiver && typeof anyTrack.receiver.getStats === "function") report = await anyTrack.receiver.getStats();
+        if (!report || cancelled) return;
+        let bytes: number | null = null;
+        let lost: number | null = null;
+        let recv: number | null = null;
+        let width: number | null = null;
+        let height: number | null = null;
+        let fps: number | null = null;
+        let rttMs: number | null = null;
+        report.forEach((raw) => {
+          const stat = raw as StatLike;
+          if (stat.type === "outbound-rtp" || stat.type === "inbound-rtp") {
+            if (typeof stat.bytesSent === "number") bytes = (bytes ?? 0) + stat.bytesSent;
+            if (typeof stat.bytesReceived === "number") bytes = (bytes ?? 0) + stat.bytesReceived;
+            if (typeof stat.packetsLost === "number") lost = (lost ?? 0) + stat.packetsLost;
+            if (typeof stat.packetsReceived === "number") recv = (recv ?? 0) + stat.packetsReceived;
+            if (typeof stat.frameWidth === "number") width = stat.frameWidth;
+            if (typeof stat.frameHeight === "number") height = stat.frameHeight;
+            if (typeof stat.framesPerSecond === "number") fps = stat.framesPerSecond;
+          }
+          if (stat.type === "candidate-pair" && stat.nominated && stat.state === "succeeded") {
+            if (typeof stat.currentRoundTripTime === "number") rttMs = Math.round(stat.currentRoundTripTime * 1000);
+          }
+        });
+        const now = performance.now();
+        let bitrateKbps = 0;
+        if (bytes !== null) {
+          const prev = prevBytesRef.current;
+          if (prev) {
+            const dt = (now - prev.t) / 1000;
+            if (dt > 0) bitrateKbps = Math.max(0, Math.round(((bytes - prev.bytes) * 8) / 1000 / dt));
+          }
+          prevBytesRef.current = { bytes, t: now };
+        }
+        let packetLossPct = 0;
+        if (lost !== null && recv !== null) {
+          const prev = prevLossRef.current;
+          if (prev) {
+            const dLost = Math.max(0, lost - prev.lost);
+            const dRecv = Math.max(1, recv - prev.recv);
+            packetLossPct = Math.min(100, (dLost / dRecv) * 100);
+          }
+          prevLossRef.current = { lost, recv };
+        }
+        if (!cancelled) { setSample({ bitrateKbps, packetLossPct, rttMs, width, height, fps }); setQuality(participant.connectionQuality); }
+      } catch { /* swallow per-tick errors */ }
+    };
+    collect();
+    const id = window.setInterval(collect, 2000);
+    return () => { cancelled = true; window.clearInterval(id); };
+  }, [participant]);
+  const color = qualityColor(quality);
+  const chip = (
+    <div
+      style={{
+        position: "absolute", top: 6, left: 6, zIndex: 5,
+        display: "inline-flex", alignItems: "center", gap: 6,
+        padding: "3px 6px", borderRadius: 6,
+        background: "rgba(0,0,0,0.55)", color: "#fff",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontSize: 10, lineHeight: "12px", letterSpacing: 0.2,
+        pointerEvents: "none", userSelect: "none",
+        backdropFilter: "blur(4px)",
+      }}
+      aria-hidden="true"
+      data-nc-stats-chip="true"
+    >
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, boxShadow: `0 0 4px ${color}` }} />
+      <span>
+        {sample ? `${sample.bitrateKbps} kbps` : "\u2014 kbps"}
+        {sample && sample.rttMs !== null ? ` \u00b7 ${sample.rttMs}ms` : ""}
+        {sample && sample.packetLossPct > 0.1 ? ` \u00b7 ${sample.packetLossPct.toFixed(1)}%` : ""}
+        {sample && sample.width && sample.height ? ` \u00b7 ${sample.width}\u00d7${sample.height}` : ""}
+        {sample && sample.fps ? ` @ ${Math.round(sample.fps)}` : ""}
+      </span>
+    </div>
+  );
+  return createPortal(chip, host);
+}
+/**
+ * ShowStatsRow
+ *
+ * A single-row pill switch in the DeviceSwitcher footer that toggles the
+ * per-tile WebRTC stats overlay. Persists to neoconf:ui:showStats and
+ * broadcasts neoconf:stats-toggle so ConnectionStatsOverlay reacts live.
+ */
+function ShowStatsRow() {
+  const [on, setOn] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try { return localStorage.getItem("neoconf:ui:showStats") === "1"; } catch { return false; }
+  });
+  const toggle = () => {
+    const next = !on;
+    setOn(next);
+    try { localStorage.setItem("neoconf:ui:showStats", next ? "1" : "0"); } catch {}
+    try { window.dispatchEvent(new CustomEvent("neoconf:stats-toggle", { detail: { on: next } })); } catch {}
+  };
+  return (
+    <div style={{ padding: "8px 4px" }}>
+      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6, color: "rgba(255,255,255,0.55)", padding: "0 8px 4px" }}>Diagnostics</div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        onClick={toggle}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          width: "100%", textAlign: "left",
+          padding: "8px 10px", borderRadius: 8, border: "none",
+          background: "transparent", color: "#fff", cursor: "pointer",
+        }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.06)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+      >
+        <span style={{ display: "flex", flex: 1, minWidth: 0, flexDirection: "column" }}>
+          <span style={{ fontSize: 13 }}>Show connection stats</span>
+          <span style={{ display: "block", fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 1 }}>Bitrate, latency, packet loss, resolution</span>
+        </span>
+        <span
+          aria-hidden="true"
+          style={{
+            width: 32, height: 18, borderRadius: 999,
+            background: on ? "#22c55e" : "rgba(255,255,255,0.2)",
+            position: "relative", transition: "background 120ms ease",
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              position: "absolute", top: 2, left: on ? 16 : 2,
+              width: 14, height: 14, borderRadius: "50%", background: "#fff",
+              transition: "left 120ms ease",
+            }}
+          />
+        </span>
+      </button>
     </div>
   );
 }
