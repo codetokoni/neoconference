@@ -210,8 +210,41 @@ export async function GET(req: NextRequest) {
     let participantRole: string = "guest";
     try {
       if (eventSlug) {
-        const { eventStore: __esRole } = await import("@/lib/eventStore");
-        const __evRole = await __esRole.bySlug(eventSlug);
+        const { eventStore: __esRole, generateId: __genId, generateQrSeed: __genSeed } = await import("@/lib/eventStore");
+        let __evRole = await __esRole.bySlug(eventSlug);
+        if (!__evRole) {
+          // Orphan-room adoption: mirror /api/events/role logic so instant-meeting hosts
+          // get role="host" baked into participant token metadata on first join.
+          const __uAdopt = await currentUser().catch(() => null);
+          const __primaryEmailAdopt = (__uAdopt?.emailAddresses?.find((e: { id: string; emailAddress: string }) => e.id === __uAdopt?.primaryEmailAddressId)?.emailAddress || __uAdopt?.emailAddresses?.[0]?.emailAddress || "").toLowerCase();
+          const __nowAdopt = new Date().toISOString();
+          try {
+            const __created: any = {
+              id: __genId(),
+              slug: eventSlug,
+              name: eventSlug,
+              ownerUserId: userId,
+              ownerEmail: __primaryEmailAdopt || undefined,
+              visibility: "unlisted",
+              waitingRoomEnabled: false,
+              livekitRoom: eventSlug,
+              hsmoh: { shortCode: eventSlug, shortUrl: "/e/" + eventSlug, fallback: true },
+              qrSeed: __genSeed(),
+              roles: [],
+              waitingRoom: [],
+              recordings: [],
+              state: "live",
+              startedAt: __nowAdopt,
+              createdAt: __nowAdopt,
+              updatedAt: __nowAdopt,
+            };
+            await __esRole.create(__created);
+            __evRole = __created;
+          } catch (adoptErr) {
+            console.warn("[livekit/token] adopt orphan failed, re-reading", adoptErr);
+            __evRole = await __esRole.bySlug(eventSlug);
+          }
+        }
         if (__evRole) {
           const uRole = await currentUser().catch(() => null);
           const emailsRole = (uRole?.emailAddresses || []).map(
