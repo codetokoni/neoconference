@@ -13,12 +13,11 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@livekit/agents": "^0.7.0",
-    "@livekit/agents-plugin-deepgram": "^0.6.0",
-    "@livekit/agents-plugin-silero": "^0.6.0",
-    "@livekit/rtc-node": "^0.13.0",
-    "livekit-server-sdk": "^2.15.2",
-    "dotenv": "^16.4.5"
+    "@livekit/agents": "1.4.1",
+    "@livekit/agents-plugin-deepgram": "1.4.1",
+    "@livekit/rtc-node": "0.13.27",
+    "livekit-server-sdk": "2.15.2",
+    "dotenv": "16.4.5"
   },
   "devDependencies": {
     "tsx": "^4.19.0",
