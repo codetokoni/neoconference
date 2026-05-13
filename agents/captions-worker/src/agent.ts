@@ -5,7 +5,7 @@
 // Joins a LiveKit room, subscribes to other participants' audio, streams to
 // Deepgram, republishes transcripts via LiveKit Transcription API.
 
-import { AutoSubscribe, type JobContext, stt } from '@livekit/agents';
+import { AutoSubscribe, defineAgent, type JobContext, stt } from '@livekit/agents';
 import * as deepgram from '@livekit/agents-plugin-deepgram';
 import {
   AudioStream,
@@ -25,7 +25,7 @@ if (!DEEPGRAM_API_KEY) {
 
 type RoomState = { enabled: boolean };
 
-export default async (ctx: JobContext): Promise<void> => {
+const entry = async (ctx: JobContext): Promise<void> => {
   const room = ctx.room;
   const state: RoomState = { enabled: false };
 
@@ -117,3 +117,5 @@ export default async (ctx: JobContext): Promise<void> => {
     });
   });
 };
+
+export default defineAgent({ entry });
