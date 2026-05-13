@@ -3,11 +3,22 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
+type PersistedTranscript = {
+  jobId: string;
+  status: 'queued' | 'running' | 'done' | 'error';
+  provider: string;
+  text?: string;
+  summary?: string;
+  error?: string;
+  updatedAt?: string;
+};
+
 type Recording = {
   key: string;
   size: number;
   lastModified?: string;
   downloadUrl: string;
+  transcript?: PersistedTranscript | null;
 };
 
 type Resp = {
@@ -60,6 +71,34 @@ export default function RecordingsPage() {
       const res = await fetch('/api/recordings', { cache: 'no-store' });
       const j: Resp = await res.json();
       setData(j);
+
+      // Hydrate the transcribe-state map from any transcripts the API already
+      // returned (these come from the KV-backed transcribeStore and survive
+      // page reloads / lambda cold starts).
+      const hydrated: Record<string, TranscribeState> = {};
+      for (const rec of j.recordings || []) {
+        const t = rec.transcript;
+        if (!t) continue;
+        if (t.status === 'done' && t.text) {
+          hydrated[rec.key] = {
+            status: 'done',
+            jobId: t.jobId,
+            provider: t.provider,
+            text: t.text,
+            summary: t.summary,
+          };
+        } else if (t.status === 'error') {
+          hydrated[rec.key] = { status: 'error', error: t.error || 'Transcription failed.' };
+        } else if (t.status === 'running') {
+          hydrated[rec.key] = { status: 'running', jobId: t.jobId, provider: t.provider };
+        } else if (t.status === 'queued') {
+          hydrated[rec.key] = { status: 'queued', jobId: t.jobId, provider: t.provider };
+        }
+      }
+      if (Object.keys(hydrated).length > 0) {
+        // Merge so any in-flight client states aren't clobbered.
+        setTx((prev) => ({ ...hydrated, ...prev }));
+      }
     } catch (e: unknown) {
       setData({ ok: false, error: e instanceof Error ? e.message : 'Network error' });
     } finally {
@@ -96,8 +135,6 @@ export default function RecordingsPage() {
         }));
       } else if (job.status === 'running') {
         setTx((s) => ({ ...s, [key]: { status: 'running', jobId: job.id, provider } }));
-        // Could poll GET /api/transcribe?id=... here. Skipping for now since
-        // Deepgram is synchronous.
       } else {
         setTx((s) => ({ ...s, [key]: { status: 'queued', jobId: job.id, provider } }));
       }
