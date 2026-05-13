@@ -16,7 +16,11 @@ import { eventStore } from '@/lib/eventStore';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const LIVEKIT_URL = process.env.LIVEKIT_URL || '';
+const LIVEKIT_URL =
+  process.env.NEXT_PUBLIC_LIVEKIT_URL ||
+  process.env.LIVEKIT_WS_URL ||
+  process.env.LIVEKIT_URL ||
+  '';
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || '';
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || '';
 const AGENT_NAME = process.env.CAPTIONS_AGENT_NAME || 'neo-captions';
