@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { isR2Configured, listRecordings, signGetUrl, deleteObject, renameObject } from '@/lib/r2';
+import { transcribeStore } from '@/lib/transcribeStore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,19 +24,8 @@ function userPrefix(userId: string): string {
  * GET /api/recordings
  *
  * Lists ONLY the authenticated user's recordings from R2 and signs a fresh
- * download URL for each (1 hour expiry).
- *
- * Notes:
- *  - Per-user scoping is enforced server-side: we always list with the
- *    'recordings/<userId>/' prefix and ignore any client-supplied prefix
- *    except as an optional sub-filter under that namespace.
- *  - Files written before per-user namespacing (i.e. legacy 'recordings/<room>/...')
- *    are intentionally NOT returned to any user — they predate ownership info.
- *
- * Query params:
- *  subPrefix?: string  optional further filter under the user's namespace,
- *                      e.g. room slug. Slashes are allowed.
- *  max?:      number   default 100, max 500.
+ * download URL for each (1 hour expiry). Also enriches each recording with
+ * its transcript (and AI summary) when one exists in the transcribeStore.
  */
 export async function GET(req: Request) {
   const { userId } = await auth();
@@ -53,12 +43,9 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url);
-  // Accept legacy 'prefix' param but treat it as a sub-filter under the user's
-  // namespace; never let a client list outside their own prefix.
   const rawSub = url.searchParams.get('subPrefix') || url.searchParams.get('prefix') || '';
   const sub = rawSub.replace(/^\/+/, '');
   const base = userPrefix(userId);
-  // If the caller already passed the full user prefix, don't double it.
   const effectivePrefix = sub.startsWith(base) ? sub : base + sub;
   const max = Math.min(
     Math.max(parseInt(url.searchParams.get('max') || '100', 10) || 100, 1),
@@ -67,18 +54,35 @@ export async function GET(req: Request) {
 
   try {
     const items = await listRecordings(effectivePrefix, max);
+    const filtered = items
+      .filter((o) => o.size > 0)
+      .filter((o) => o.key.startsWith(base));
+
+    // Look up persisted transcripts in one parallel batch keyed by recordingKey.
+    const keys = filtered.map((o) => o.key);
+    const jobsByKey = await transcribeStore.getByRecordingKeys(keys);
+
     const recordings = await Promise.all(
-      items
-        .filter((o) => o.size > 0)
-        // Defense in depth: even if the listing somehow returned objects
-        // outside the user's prefix, drop them before exposing to the client.
-        .filter((o) => o.key.startsWith(base))
-        .map(async (o) => ({
+      filtered.map(async (o) => {
+        const job = jobsByKey.get(o.key);
+        return {
           key: o.key,
           size: o.size,
           lastModified: o.lastModified,
           downloadUrl: await signGetUrl(o.key, 3600),
-        }))
+          transcript: job
+            ? {
+                jobId: job.id,
+                status: job.status,
+                provider: job.provider,
+                text: job.text,
+                summary: job.summary,
+                error: job.error,
+                updatedAt: job.updatedAt,
+              }
+            : null,
+        };
+      })
     );
 
     return NextResponse.json({ ok: true, configured: true, recordings });
@@ -90,9 +94,6 @@ export async function GET(req: Request) {
 
 /**
  * DELETE /api/recordings?key=<r2-object-key>
- *
- * Permanently removes a recording object from R2. The key MUST live inside
- * the authenticated user's prefix; anything else is rejected (403).
  */
 export async function DELETE(req: Request) {
   const { userId } = await auth();
@@ -123,10 +124,6 @@ export async function DELETE(req: Request) {
 
 /**
  * PATCH /api/recordings
- *
- * Body: { key: string, newKey: string }
- * Renames an R2 object by copying then deleting the original.
- * Both old and new keys MUST live inside the authenticated user's prefix.
  */
 export async function PATCH(req: Request) {
   const { userId } = await auth();
@@ -143,7 +140,6 @@ export async function PATCH(req: Request) {
   if (!key || !newKey || key === newKey || key.length > 512 || newKey.length > 512) {
     return NextResponse.json({ ok: false, error: 'missing-or-invalid-keys' }, { status: 400 });
   }
-  // Constrain newKey to safe chars.
   if (!/^[A-Za-z0-9._\/\-]+$/.test(newKey)) {
     return NextResponse.json({ ok: false, error: 'invalid-newKey-chars' }, { status: 400 });
   }
