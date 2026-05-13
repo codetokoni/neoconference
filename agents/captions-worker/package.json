@@ -16,7 +16,7 @@
   "dependencies": {
     "@livekit/agents": "1.4.1",
     "@livekit/agents-plugin-deepgram": "1.4.1",
-    "@livekit/rtc-node": "0.13.27",
+    "@livekit/rtc-node": "0.13.28",
     "livekit-server-sdk": "2.15.2",
     "dotenv": "16.4.5"
   },
@@ -26,6 +26,6 @@
     "@types/node": "^20.14.0"
   },
   "overrides": {
-  "@livekit/rtc-node": "0.13.27"
+  "@livekit/rtc-node": "0.13.28"
   }
 }
