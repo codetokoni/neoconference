@@ -13,6 +13,7 @@ const isPublicRoute = createRouteMatcher([
   '/replay/(.*)',
   '/api/qr/(.*)',
   '/api/livekit/token(.*)',
+  '/api/livekit/webhook(.*)',
   '/api/auth/kingschat/(.*)',
   '/api/events/by-domain',
   '/api/stripe/webhook',
@@ -97,4 +98,3 @@ export const config = {
     '/(api(?!/auth/kingschat)|trpc)(.*)',
   ],
 };
-
