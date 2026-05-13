@@ -223,3 +223,39 @@ export function generateQrSeed(): string {
   return Math.random().toString(36).slice(2, 14) + Date.now().toString(36);
 }
 
+// Adopt an "orphan" room (one with no backing event record) by creating a
+// minimal event record with the first authenticated caller as host/owner.
+// Shared between /api/events/role and /api/livekit/token so both routes agree
+// on who is host for instant-meeting / direct-link rooms.
+export async function adoptOrphanRoom(slug: string, userId: string, email?: string): Promise<NeoEvent | null> {
+  const now = new Date().toISOString();
+  const ev: NeoEvent = {
+    id: generateId(),
+    slug,
+    name: slug,
+    ownerUserId: userId,
+    ownerEmail: email,
+    visibility: 'unlisted',
+    waitingRoomEnabled: false,
+    livekitRoom: slug,
+    hsmoh: { shortCode: slug, shortUrl: '/e/' + slug, fallback: true },
+    qrSeed: generateQrSeed(),
+    roles: [],
+    waitingRoom: [],
+    recordings: [],
+    state: 'live',
+    startedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  };
+  try {
+    await eventStore.create(ev);
+    return ev;
+  } catch (e) {
+    // Race: another request may have just created it. Re-read and use whatever
+    // exists rather than failing.
+    console.warn('[eventStore] adoptOrphanRoom create failed, re-reading', e);
+    return await eventStore.bySlug(slug);
+  }
+}
+

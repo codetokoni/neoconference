@@ -6,54 +6,10 @@
 
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { eventStore, generateId, generateQrSeed } from "@/lib/eventStore";
-import type { NeoEvent } from "@/types/event";
+import { eventStore, adoptOrphanRoom } from "@/lib/eventStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-// Adopt an "orphan" room (one with no backing event record) by creating a
-// minimal event record with the first authenticated caller as host/owner.
-// This handles three cases:
-//   1. A user lands on /room/<slug> via a stale or shared link where no event
-//      was ever provisioned (the original instant-meeting endpoint creates one;
-//      direct URLs don't).
-//   2. KV is cold or eventually-consistent and the event hasn't propagated yet
-//      — in that race we'd rather elect the current user as host than leave
-//      the room with no host at all (which blocks recording approval, waiting
-//      room admission, etc.).
-//   3. Old test rooms created before this endpoint was deployed.
-async function adoptOrphanRoom(slug: string, userId: string, email?: string): Promise<NeoEvent | null> {
-  const now = new Date().toISOString();
-  const ev: NeoEvent = {
-    id: generateId(),
-    slug,
-    name: slug,
-    ownerUserId: userId,
-    ownerEmail: email,
-    visibility: 'unlisted',
-    waitingRoomEnabled: false,
-    livekitRoom: slug,
-    hsmoh: { shortCode: slug, shortUrl: '/e/' + slug, fallback: true },
-    qrSeed: generateQrSeed(),
-    roles: [],
-    waitingRoom: [],
-    recordings: [],
-    state: 'live',
-    startedAt: now,
-    createdAt: now,
-    updatedAt: now,
-  };
-  try {
-    await eventStore.create(ev);
-    return ev;
-  } catch (e) {
-    // Race: another request may have just created it. Re-read and use whatever
-    // exists rather than failing the role check.
-    console.warn('[events/role] adoptOrphanRoom create failed, re-reading', e);
-    return await eventStore.bySlug(slug);
-  }
-}
 
 export async function GET(req: Request) {
   const url = new URL(req.url);

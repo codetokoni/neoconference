@@ -1,5 +1,5 @@
 // @ts-nocheck -- TODO: re-enable after verifying SpeechStream runtime API matches type defs in @livekit/agents 1.4.1
-// // agents/captions-worker/src/agent.ts
+// agents/captions-worker/src/agent.ts
 //
 // NeoConference live-captions worker entry function.
 // Joins a LiveKit room, subscribes to other participants' audio, streams to
@@ -29,9 +29,8 @@ const entry = async (ctx: JobContext): Promise<void> => {
   const room = ctx.room;
   const state: RoomState = { enabled: false };
 
-  console.log(`[captions-worker] entering room=${room.name}`);
-
   await ctx.connect(undefined, AutoSubscribe.AUDIO_ONLY);
+  console.log(`[captions-worker] entered room=${room.name}`);
 
   room.on(RoomEvent.DataReceived, (payload, participant) => {
     try {
