@@ -5,21 +5,21 @@
 // without touching call sites.
 //
 // Active providers:
-//   - 'stub'       : default, returns 'queued' forever. Useful for UI scaffolding.
-//   - 'openai'     : OpenAI Whisper API. 25 MB file cap.
-//   - 'assemblyai' : AssemblyAI long-form. R2 URL ingest (no upload).
-//   - 'deepgram'   : Deepgram Nova-3 pre-recorded API. We fetch the file from
-//                    R2 ourselves and POST the bytes to Deepgram, because
-//                    R2 signed URLs sometimes return 403 to Deepgram's outbound
-//                    fetcher (REMOTE_CONTENT_ERROR). Lambda has trusted R2
-//                    access via the SDK so this always succeeds. Built-in
-//                    summarize=v2 returns a summary in the same response.
+// - 'stub' : default, returns 'queued' forever. Useful for UI scaffolding.
+// - 'openai' : OpenAI Whisper API. 25 MB file cap.
+// - 'assemblyai' : AssemblyAI long-form. R2 URL ingest (no upload).
+// - 'deepgram' : Deepgram Nova-3 pre-recorded API. We fetch the file from
+//                R2 ourselves via the S3 SDK (bypasses presigned-URL quirks
+//                where R2 occasionally returns SignatureDoesNotMatch) and
+//                POST the bytes to /v1/listen. Built-in summarize=v2 returns
+//                a summary in the same response.
 // Future: 'livekit' - shape preserved.
 //
 // Persistence: jobs are written to transcribeStore (KV-backed) so callers
 // can poll GET /api/transcribe?id=<jobId> after submit.
 
-import { signGetUrl, isR2Configured } from '@/lib/r2';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { r2Client, isR2Configured, signGetUrl } from '@/lib/r2';
 import { transcribeStore } from '@/lib/transcribeStore';
 
 export type TranscribeJob = {
@@ -116,17 +116,13 @@ async function runOpenAIWhisper(job: TranscribeJob): Promise<TranscribeJob> {
   if (!apiKey) return { ...job, status: 'error', error: 'OPENAI_API_KEY missing', updatedAt: new Date().toISOString() };
   if (!isR2Configured()) return { ...job, status: 'error', error: 'R2 not configured', updatedAt: new Date().toISOString() };
   try {
-    const signed = await signGetUrl(job.recordingKey, 600);
-    if (!signed) return { ...job, status: 'error', error: 'Could not sign R2 URL', updatedAt: new Date().toISOString() };
-    const fileRes = await fetch(signed);
-    if (!fileRes.ok) return { ...job, status: 'error', error: 'R2 fetch ' + fileRes.status, updatedAt: new Date().toISOString() };
-    const blob = await fileRes.blob();
-    if (blob.size > 25 * 1024 * 1024) {
-      return { ...job, status: 'error', error: 'File too large for Whisper (' + (blob.size / 1024 / 1024).toFixed(1) + ' MB > 25 MB). Switch TRANSCRIBE_PROVIDER to deepgram for long-form.', updatedAt: new Date().toISOString() };
+    const bytes = await getR2Bytes(job.recordingKey);
+    if (bytes.byteLength > 25 * 1024 * 1024) {
+      return { ...job, status: 'error', error: 'File too large for Whisper (' + (bytes.byteLength / 1024 / 1024).toFixed(1) + ' MB > 25 MB). Switch TRANSCRIBE_PROVIDER to deepgram for long-form.', updatedAt: new Date().toISOString() };
     }
     const filename = job.recordingKey.split('/').pop() || 'recording.mp4';
     const fd = new FormData();
-    fd.append('file', blob, filename);
+    fd.append('file', new Blob([bytes]), filename);
     fd.append('model', 'whisper-1');
     if (job.language) fd.append('language', job.language);
     fd.append('response_format', 'json');
@@ -179,14 +175,12 @@ async function runAssemblyAI(job: TranscribeJob): Promise<TranscribeJob> {
 /**
  * Deepgram pre-recorded provider.
  *
- * Pulls audio bytes from R2 via the SDK (trusted access) and POSTs them as
- * the raw request body to /v1/listen. This sidesteps the REMOTE_CONTENT_ERROR
- * we hit when Deepgram tried to fetch our signed R2 URLs directly.
+ * Pulls audio bytes from R2 via the S3 SDK (sidesteps presigned-URL quirks
+ * where R2 occasionally returns SignatureDoesNotMatch on fetch) and POSTs
+ * them as the raw request body to /v1/listen.
  *
  * Body limit: this approach buffers the whole file in lambda RAM. Vercel's
- * default request memory is 1024 MB, so files up to ~500 MB are safe. For
- * multi-GB recordings we'd need to switch back to URL ingest with a custom
- * R2 public domain.
+ * default request memory is 1024 MB, so files up to ~500 MB are safe.
  */
 async function runDeepgram(job: TranscribeJob): Promise<TranscribeJob> {
   const apiKey = process.env.DEEPGRAM_API_KEY;
@@ -194,15 +188,8 @@ async function runDeepgram(job: TranscribeJob): Promise<TranscribeJob> {
   if (!isR2Configured()) return { ...job, status: 'error', error: 'R2 not configured', updatedAt: new Date().toISOString() };
 
   try {
-    // Step 1: fetch the audio from R2 ourselves (trusted SDK signed URL).
-    const signed = await signGetUrl(job.recordingKey, 600);
-    if (!signed) return { ...job, status: 'error', error: 'Could not sign R2 URL', updatedAt: new Date().toISOString() };
-    const fileRes = await fetch(signed);
-    if (!fileRes.ok) {
-      const t = await fileRes.text().catch(() => '');
-      return { ...job, status: 'error', error: 'R2 fetch ' + fileRes.status + ': ' + t.slice(0, 200), updatedAt: new Date().toISOString() };
-    }
-    const bytes = await fileRes.arrayBuffer();
+    // Step 1: fetch the audio from R2 via SDK (no presigned-URL involved).
+    const bytes = await getR2Bytes(job.recordingKey);
 
     // Step 2: build the Deepgram URL with all our model + feature flags.
     const params = new URLSearchParams({
@@ -251,6 +238,44 @@ async function runDeepgram(job: TranscribeJob): Promise<TranscribeJob> {
   } catch (e: unknown) {
     return { ...job, status: 'error', error: e instanceof Error ? e.message : 'Unknown Deepgram error', updatedAt: new Date().toISOString() };
   }
+}
+
+/**
+ * Fetch an object from R2 via the SDK and return its body as an ArrayBuffer.
+ * This bypasses presigned-URL signature pitfalls.
+ */
+async function getR2Bytes(key: string): Promise<ArrayBuffer> {
+  const s3 = r2Client();
+  const out = await s3.send(
+    new GetObjectCommand({ Bucket: requireBucket(), Key: key })
+  );
+  const body = out.Body;
+  if (!body) throw new Error('R2 object body missing for key ' + key);
+  // body is a Node Readable stream in lambda runtimes; .transformToByteArray
+  // is provided by @aws-sdk/util-stream which AWS SDK v3 ships with.
+  const maybe = body as unknown as { transformToByteArray?: () => Promise<Uint8Array> };
+  if (typeof maybe.transformToByteArray === 'function') {
+    const arr = await maybe.transformToByteArray();
+    return arr.buffer.slice(arr.byteOffset, arr.byteOffset + arr.byteLength) as ArrayBuffer;
+  }
+  // Fallback: collect a Node Readable stream manually.
+  const stream = body as unknown as AsyncIterable<Uint8Array>;
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for await (const c of stream) {
+    chunks.push(c);
+    total += c.byteLength;
+  }
+  const out2 = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) { out2.set(c, offset); offset += c.byteLength; }
+  return out2.buffer.slice(out2.byteOffset, out2.byteOffset + out2.byteLength) as ArrayBuffer;
+}
+
+function requireBucket(): string {
+  const b = process.env.S3_BUCKET;
+  if (!b) throw new Error('Missing env: S3_BUCKET');
+  return b;
 }
 
 function guessContentType(key: string): string {
