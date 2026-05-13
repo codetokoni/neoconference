@@ -18,10 +18,21 @@ type Resp = {
   hint?: string;
 };
 
+type TranscribeJob = {
+  id: string;
+  status: 'queued' | 'running' | 'done' | 'error';
+  text?: string;
+  summary?: string;
+  error?: string;
+  provider?: string;
+};
+
 type TranscribeState =
   | { status: 'idle' }
   | { status: 'submitting' }
   | { status: 'queued'; jobId: string; provider: string }
+  | { status: 'running'; jobId: string; provider: string }
+  | { status: 'done'; jobId: string; provider: string; text: string; summary?: string }
   | { status: 'error'; error: string };
 
 function fmtBytes(n: number) {
@@ -41,6 +52,7 @@ export default function RecordingsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
   const [tx, setTx] = useState<Record<string, TranscribeState>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   async function load() {
     setLoading(true);
@@ -65,19 +77,43 @@ export default function RecordingsPage() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ recordingKey: key }),
       });
-      const j = await res.json();
+      const j = (await res.json()) as { ok?: boolean; error?: string; provider?: string; job?: TranscribeJob };
       if (!j.ok || !j.job) {
         throw new Error(j.error || 'Could not queue transcription.');
       }
-      setTx((s) => ({
-        ...s,
-        [key]: { status: 'queued', jobId: j.job.id, provider: j.provider || 'stub' },
-      }));
+      const job = j.job;
+      const provider = j.provider || 'stub';
+      if (job.status === 'done' && job.text) {
+        setTx((s) => ({
+          ...s,
+          [key]: { status: 'done', jobId: job.id, provider, text: job.text!, summary: job.summary },
+        }));
+        setExpanded((s) => ({ ...s, [key]: true }));
+      } else if (job.status === 'error') {
+        setTx((s) => ({
+          ...s,
+          [key]: { status: 'error', error: job.error || 'Transcription failed.' },
+        }));
+      } else if (job.status === 'running') {
+        setTx((s) => ({ ...s, [key]: { status: 'running', jobId: job.id, provider } }));
+        // Could poll GET /api/transcribe?id=... here. Skipping for now since
+        // Deepgram is synchronous.
+      } else {
+        setTx((s) => ({ ...s, [key]: { status: 'queued', jobId: job.id, provider } }));
+      }
     } catch (e: unknown) {
       setTx((s) => ({
         ...s,
         [key]: { status: 'error', error: e instanceof Error ? e.message : 'transcribe failed' },
       }));
+    }
+  }
+
+  async function copyTranscript(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // ignore
     }
   }
 
@@ -163,19 +199,65 @@ export default function RecordingsPage() {
                 <tbody>
                   {recordings.map((r) => {
                     const state = tx[r.key] || { status: 'idle' };
+                    const isExpanded = expanded[r.key];
                     return (
-                      <tr key={r.key} className="border-b border-white/5 hover:bg-white/[0.02] transition">
+                      <tr key={r.key} className="border-b border-white/5 hover:bg-white/[0.02] transition align-top">
                         <td className="px-4 sm:px-5 py-3.5">
                           <div className="font-mono text-white/90 truncate max-w-[200px] sm:max-w-[420px]" title={r.key}>{r.key}</div>
                           <div className="md:hidden text-[10px] text-white/40 mt-0.5">{fmtDate(r.lastModified)}</div>
-                          {state.status === 'queued' && (
-                            <div className="mt-1 inline-flex items-center gap-1.5 text-[10px] text-cyan-200/80">
-                              <span className="h-1 w-1 rounded-full bg-cyan-300 animate-pulse" />
-                              Transcript queued · {state.provider}
+                          {state.status === 'submitting' && (
+                            <div className="mt-1 inline-flex items-center gap-1.5 text-[10px] text-fuchsia-200/80">
+                              <span className="h-1 w-1 rounded-full bg-fuchsia-300 animate-pulse" />
+                              Transcribing… this can take up to 30s for an hour of audio.
                             </div>
                           )}
+                          {state.status === 'queued' && (
+                            <div className="mt-1 inline-flex items-center gap-1.5 text-[10px] text-amber-200/80">
+                              <span className="h-1 w-1 rounded-full bg-amber-300 animate-pulse" />
+                              Queued · {state.provider} (stub mode — no API key configured?)
+                            </div>
+                          )}
+                          {state.status === 'running' && (
+                            <div className="mt-1 inline-flex items-center gap-1.5 text-[10px] text-cyan-200/80">
+                              <span className="h-1 w-1 rounded-full bg-cyan-300 animate-pulse" />
+                              Processing on {state.provider}… reload later to check.
+                            </div>
+                          )}
+                          {state.status === 'done' && (
+                            <button
+                              onClick={() => setExpanded((s) => ({ ...s, [r.key]: !s[r.key] }))}
+                              className="mt-1 inline-flex items-center gap-1.5 text-[10px] text-emerald-200/90 hover:text-emerald-100 transition"
+                            >
+                              <span className="h-1 w-1 rounded-full bg-emerald-300" />
+                              Transcript ready · {state.provider} {isExpanded ? '▲ hide' : '▼ show'}
+                            </button>
+                          )}
                           {state.status === 'error' && (
-                            <div className="mt-1 text-[10px] text-red-300">{state.error}</div>
+                            <div className="mt-1 text-[10px] text-red-300 max-w-[420px] break-words">{state.error}</div>
+                          )}
+                          {state.status === 'done' && isExpanded && (
+                            <div className="mt-3 rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-3 sm:p-4 text-xs sm:text-sm text-white/85 space-y-3 max-w-[640px]">
+                              {state.summary && (
+                                <div>
+                                  <div className="text-[10px] uppercase tracking-[0.2em] text-emerald-300/80 mb-1">AI Summary</div>
+                                  <div className="text-white/90 leading-relaxed">{state.summary}</div>
+                                </div>
+                              )}
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <div className="text-[10px] uppercase tracking-[0.2em] text-emerald-300/80">Transcript</div>
+                                  <button
+                                    onClick={() => copyTranscript(state.text)}
+                                    className="text-[10px] text-cyan-200/80 hover:text-cyan-100 transition"
+                                  >
+                                    Copy
+                                  </button>
+                                </div>
+                                <div className="text-white/80 leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto">
+                                  {state.text}
+                                </div>
+                              </div>
+                            </div>
                           )}
                         </td>
                         <td className="px-4 sm:px-5 py-3.5 text-white/65 text-xs sm:text-sm">{fmtBytes(r.size)}</td>
@@ -184,17 +266,27 @@ export default function RecordingsPage() {
                           <div className="inline-flex items-center gap-2 justify-end">
                             <button
                               onClick={() => transcribe(r.key)}
-                              disabled={state.status === 'submitting' || state.status === 'queued'}
+                              disabled={state.status === 'submitting' || state.status === 'queued' || state.status === 'running'}
                               title="Submit for AI transcription"
                               className="inline-flex items-center gap-1 rounded-lg border border-fuchsia-400/30 bg-fuchsia-400/10 text-fuchsia-100 px-2.5 py-1.5 text-[11px] hover:bg-fuchsia-400/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              {state.status === 'submitting' ? '…' : state.status === 'queued' ? '✓ Queued' : 'Transcribe'}
+                              {state.status === 'submitting' ? '…' : state.status === 'queued' ? '✓ Queued' : state.status === 'running' ? '… Running' : state.status === 'done' ? '↻ Re-run' : 'Transcribe'}
                             </button>
                             <a
                               href={r.downloadUrl}
                               download
                               className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 text-cyan-100 px-3 py-1.5 text-xs hover:bg-cyan-400/20 transition"
-                            >Download</a><button onClick={async () => { if (!confirm('Delete this recording permanently? This cannot be undone.')) return; const res2 = await fetch('/api/recordings?key=' + encodeURIComponent(r.key), { method: 'DELETE' }); const j2 = await res2.json(); if (j2.ok) load(); else alert(j2.error || 'Delete failed'); }} className="inline-flex items-center gap-1 rounded-lg border border-red-400/30 bg-red-400/10 text-red-200 px-2.5 py-1.5 text-[11px] hover:bg-red-400/20 transition">Delete</button>
+                            >Download</a>
+                            <button
+                              onClick={async () => {
+                                if (!confirm('Delete this recording permanently? This cannot be undone.')) return;
+                                const res2 = await fetch('/api/recordings?key=' + encodeURIComponent(r.key), { method: 'DELETE' });
+                                const j2 = await res2.json();
+                                if (j2.ok) load();
+                                else alert(j2.error || 'Delete failed');
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg border border-red-400/30 bg-red-400/10 text-red-200 px-2.5 py-1.5 text-[11px] hover:bg-red-400/20 transition"
+                            >Delete</button>
                           </div>
                         </td>
                       </tr>
