@@ -26,6 +26,7 @@ import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import RoomIdleController from "@/components/RoomIdleController";
 import GoLiveButton from "@/components/GoLiveButton";
 import LiveCaptions from "@/components/LiveCaptions";
+import CaptionsToggle from "@/components/CaptionsToggle";
 import ReactionsBar from "@/components/ReactionsBar";
 import ChatPanel from "@/components/ChatPanel";
 import FloatingVideoButton from "@/components/FloatingVideoButton";
@@ -727,6 +728,7 @@ function RoomContainer({
         <MediaRequestPrompt />
         <RoomAudioRenderer />
         <LiveCaptions />
+<CaptionsToggle roomRole={roomRole} roomName={roomName} eventSlug={eventSlug} />
         <ReactionsBar />
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} isHost={roomRole === 'host' || roomRole === 'cohost'} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
