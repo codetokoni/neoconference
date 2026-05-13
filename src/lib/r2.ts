@@ -20,9 +20,9 @@ function requiredEnv(name: string): string {
 export function isR2Configured(): boolean {
   return Boolean(
     process.env.S3_ENDPOINT &&
-    process.env.S3_BUCKET &&
-    process.env.S3_ACCESS_KEY &&
-    process.env.S3_SECRET_KEY
+      process.env.S3_BUCKET &&
+      process.env.S3_ACCESS_KEY &&
+      process.env.S3_SECRET_KEY
   );
 }
 
@@ -96,6 +96,11 @@ export async function signGetUrl(key: string, expiresIn = 3600): Promise<string>
   const u = new URL(url);
   u.searchParams.delete('x-amz-checksum-mode');
   u.searchParams.delete('x-id');
+  // Non-SDK fetchers (e.g. our own fetch, Deepgram URL-ingest) don't compute
+  // the payload sha; tell R2 the body is unsigned so the signature matches.
+  if (!u.searchParams.has('x-amz-content-sha256')) {
+    u.searchParams.set('x-amz-content-sha256', 'UNSIGNED-PAYLOAD');
+  }
   return u.toString();
 }
 export async function deleteObject(key: string): Promise<void> {
