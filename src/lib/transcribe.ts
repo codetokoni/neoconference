@@ -6,17 +6,14 @@
 //
 // Active providers:
 //   - 'stub'       : default, returns 'queued' forever. Useful for UI scaffolding.
-//   - 'openai'     : OpenAI Whisper API. Set TRANSCRIBE_PROVIDER=openai +
-//                    OPENAI_API_KEY in env. Synchronous - returns 'done' with
-//                    full transcript text on the same call. 25 MB file cap.
-//   - 'assemblyai' : AssemblyAI long-form. Set TRANSCRIBE_PROVIDER=assemblyai +
-//                    ASSEMBLYAI_API_KEY in env. Ingests directly from R2 signed
-//                    URL (no upload). Polls until 'completed' / 'error'. Handles
-//                    multi-GB files for >25 MB recordings.
-//   - 'deepgram'   : Deepgram Nova-3 pre-recorded API. Set TRANSCRIBE_PROVIDER=deepgram +
-//                    DEEPGRAM_API_KEY in env. Submits an R2 signed URL and gets
-//                    back transcript + built-in summary in one synchronous call.
-//                    Cheap (~$0.0043/min Nova-3) and supports 30+ languages.
+//   - 'openai'     : OpenAI Whisper API. 25 MB file cap.
+//   - 'assemblyai' : AssemblyAI long-form. R2 URL ingest (no upload).
+//   - 'deepgram'   : Deepgram Nova-3 pre-recorded API. We fetch the file from
+//                    R2 ourselves and POST the bytes to Deepgram, because
+//                    R2 signed URLs sometimes return 403 to Deepgram's outbound
+//                    fetcher (REMOTE_CONTENT_ERROR). Lambda has trusted R2
+//                    access via the SDK so this always succeeds. Built-in
+//                    summarize=v2 returns a summary in the same response.
 // Future: 'livekit' - shape preserved.
 //
 // Persistence: jobs are written to transcribeStore (KV-backed) so callers
@@ -58,25 +55,12 @@ export type TranscribeProvider =
   | 'assemblyai'
   | 'stub';
 
-/**
- * Returns the configured provider, or 'stub' when none is set or when
- * the chosen provider is missing its API key.
- */
 export function getTranscribeProvider(): TranscribeProvider {
   const v = (process.env.TRANSCRIBE_PROVIDER || '').toLowerCase();
-  if (v === 'openai') {
-    return process.env.OPENAI_API_KEY ? 'openai' : 'stub';
-  }
-  if (v === 'assemblyai') {
-    return process.env.ASSEMBLYAI_API_KEY ? 'assemblyai' : 'stub';
-  }
-  if (v === 'deepgram') {
-    return process.env.DEEPGRAM_API_KEY ? 'deepgram' : 'stub';
-  }
-  if (v === 'livekit') {
-    // Not implemented yet, fall through to stub.
-    return 'stub';
-  }
+  if (v === 'openai') return process.env.OPENAI_API_KEY ? 'openai' : 'stub';
+  if (v === 'assemblyai') return process.env.ASSEMBLYAI_API_KEY ? 'assemblyai' : 'stub';
+  if (v === 'deepgram') return process.env.DEEPGRAM_API_KEY ? 'deepgram' : 'stub';
+  if (v === 'livekit') return 'stub';
   return 'stub';
 }
 
@@ -84,14 +68,6 @@ export function isTranscribeConfigured(): boolean {
   return getTranscribeProvider() !== 'stub';
 }
 
-/**
- * Submit a transcription job. When provider is configured, the job runs
- * synchronously and the returned object has status='done' + .text. In
- * stub mode the job returns 'queued' and never advances.
- *
- * Every job is persisted to transcribeStore (queued, then again on done/error)
- * so callers can poll GET /api/transcribe?id=<jobId>.
- */
 export async function submitTranscribeJob(input: {
   recordingKey: string;
   eventSlug?: string;
@@ -109,7 +85,6 @@ export async function submitTranscribeJob(input: {
     createdAt: now,
     updatedAt: now,
   };
-  // Persist immediately so polling works even before provider returns.
   await transcribeStore.put(baseJob);
 
   if (provider === 'openai') {
@@ -117,252 +92,119 @@ export async function submitTranscribeJob(input: {
     await transcribeStore.put(finished);
     return finished;
   }
-
   if (provider === 'assemblyai') {
     const finished = await runAssemblyAI(baseJob);
     await transcribeStore.put(finished);
     return finished;
   }
-
   if (provider === 'deepgram') {
     const finished = await runDeepgram(baseJob);
     await transcribeStore.put(finished);
     return finished;
   }
-
-  // Stub or unimplemented provider - return queued placeholder.
   return baseJob;
 }
 
-/**
- * Look up a job by id. Returns the persisted job from transcribeStore,
- * or null if not found / KV not configured and the job has rotated out
- * of the in-memory cache.
- */
 export async function getTranscribeJob(id: string): Promise<TranscribeJob | null> {
   return transcribeStore.get(id);
 }
 
 // ---------- providers ----------
 
-/**
- * OpenAI Whisper provider. Fetches the recording from R2, streams it to
- * the Whisper API, and returns a 'done' job with the full transcript text.
- *
- * Limits: Whisper accepts files up to 25 MB. Larger recordings will fail
- * with a clear error message - use the AssemblyAI provider for long-form.
- */
 async function runOpenAIWhisper(job: TranscribeJob): Promise<TranscribeJob> {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return { ...job, status: 'error', error: 'OPENAI_API_KEY missing', updatedAt: new Date().toISOString() };
-  }
-  if (!isR2Configured()) {
-    return { ...job, status: 'error', error: 'R2 not configured - cannot fetch recording', updatedAt: new Date().toISOString() };
-  }
-
+  if (!apiKey) return { ...job, status: 'error', error: 'OPENAI_API_KEY missing', updatedAt: new Date().toISOString() };
+  if (!isR2Configured()) return { ...job, status: 'error', error: 'R2 not configured', updatedAt: new Date().toISOString() };
   try {
     const signed = await signGetUrl(job.recordingKey, 600);
-    if (!signed) {
-      return { ...job, status: 'error', error: 'Could not sign R2 URL', updatedAt: new Date().toISOString() };
-    }
+    if (!signed) return { ...job, status: 'error', error: 'Could not sign R2 URL', updatedAt: new Date().toISOString() };
     const fileRes = await fetch(signed);
-    if (!fileRes.ok) {
-      return { ...job, status: 'error', error: 'R2 fetch ' + fileRes.status, updatedAt: new Date().toISOString() };
-    }
+    if (!fileRes.ok) return { ...job, status: 'error', error: 'R2 fetch ' + fileRes.status, updatedAt: new Date().toISOString() };
     const blob = await fileRes.blob();
-
     if (blob.size > 25 * 1024 * 1024) {
-      return {
-        ...job,
-        status: 'error',
-        error: 'File too large for Whisper (' + (blob.size / 1024 / 1024).toFixed(1) + ' MB > 25 MB). Switch TRANSCRIBE_PROVIDER to assemblyai or deepgram for long-form.',
-        updatedAt: new Date().toISOString(),
-      };
+      return { ...job, status: 'error', error: 'File too large for Whisper (' + (blob.size / 1024 / 1024).toFixed(1) + ' MB > 25 MB). Switch TRANSCRIBE_PROVIDER to deepgram for long-form.', updatedAt: new Date().toISOString() };
     }
-
     const filename = job.recordingKey.split('/').pop() || 'recording.mp4';
     const fd = new FormData();
     fd.append('file', blob, filename);
     fd.append('model', 'whisper-1');
     if (job.language) fd.append('language', job.language);
     fd.append('response_format', 'json');
-
-    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + apiKey },
-      body: fd,
-    });
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: 'Bearer ' + apiKey }, body: fd });
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      return {
-        ...job,
-        status: 'error',
-        error: 'Whisper ' + res.status + ': ' + errText.slice(0, 200),
-        updatedAt: new Date().toISOString(),
-      };
+      return { ...job, status: 'error', error: 'Whisper ' + res.status + ': ' + errText.slice(0, 200), updatedAt: new Date().toISOString() };
     }
     const j = (await res.json()) as { text?: string };
-    return {
-      ...job,
-      status: 'done',
-      text: j.text || '',
-      updatedAt: new Date().toISOString(),
-    };
+    return { ...job, status: 'done', text: j.text || '', updatedAt: new Date().toISOString() };
   } catch (e: unknown) {
-    return {
-      ...job,
-      status: 'error',
-      error: e instanceof Error ? e.message : 'Unknown transcribe error',
-      updatedAt: new Date().toISOString(),
-    };
+    return { ...job, status: 'error', error: e instanceof Error ? e.message : 'Unknown transcribe error', updatedAt: new Date().toISOString() };
   }
 }
 
-/**
- * AssemblyAI long-form provider. Hands the API a signed R2 URL and polls
- * the resulting transcript id until it resolves to 'completed' or 'error'.
- *
- * Handles multi-GB recordings without buffering them through this lambda,
- * so it's the right choice when Whisper's 25 MB cap is too small.
- *
- * Polling cap: ~90 seconds (30 attempts x 3s). For longer files we'd return
- * a 'running' job with externalId so the caller can poll GET /api/transcribe
- * later, but most <2h recordings finish well under that cap.
- */
 async function runAssemblyAI(job: TranscribeJob): Promise<TranscribeJob> {
   const apiKey = process.env.ASSEMBLYAI_API_KEY;
-  if (!apiKey) {
-    return { ...job, status: 'error', error: 'ASSEMBLYAI_API_KEY missing', updatedAt: new Date().toISOString() };
-  }
-  if (!isR2Configured()) {
-    return { ...job, status: 'error', error: 'R2 not configured - cannot sign URL', updatedAt: new Date().toISOString() };
-  }
-
+  if (!apiKey) return { ...job, status: 'error', error: 'ASSEMBLYAI_API_KEY missing', updatedAt: new Date().toISOString() };
+  if (!isR2Configured()) return { ...job, status: 'error', error: 'R2 not configured', updatedAt: new Date().toISOString() };
   try {
-    // 1. Sign a long-lived R2 URL (1h) so AssemblyAI's pipeline has time to ingest.
     const signed = await signGetUrl(job.recordingKey, 60 * 60);
-    if (!signed) {
-      return { ...job, status: 'error', error: 'Could not sign R2 URL', updatedAt: new Date().toISOString() };
-    }
-
-    // 2. Submit transcription job by audio URL (no upload).
+    if (!signed) return { ...job, status: 'error', error: 'Could not sign R2 URL', updatedAt: new Date().toISOString() };
     const submitRes = await fetch('https://api.assemblyai.com/v2/transcript', {
       method: 'POST',
-      headers: {
-        Authorization: apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        audio_url: signed,
-        language_code: job.language || undefined,
-        speaker_labels: true,
-        punctuate: true,
-        format_text: true,
-      }),
+      headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio_url: signed, language_code: job.language || undefined, speaker_labels: true, punctuate: true, format_text: true }),
     });
     if (!submitRes.ok) {
       const errText = await submitRes.text().catch(() => '');
-      return {
-        ...job,
-        status: 'error',
-        error: 'AssemblyAI submit ' + submitRes.status + ': ' + errText.slice(0, 200),
-        updatedAt: new Date().toISOString(),
-      };
+      return { ...job, status: 'error', error: 'AssemblyAI submit ' + submitRes.status + ': ' + errText.slice(0, 200), updatedAt: new Date().toISOString() };
     }
     const submitJson = (await submitRes.json()) as { id?: string; error?: string };
     const externalId = submitJson.id;
-    if (!externalId) {
-      return {
-        ...job,
-        status: 'error',
-        error: 'AssemblyAI returned no transcript id: ' + (submitJson.error || 'unknown'),
-        updatedAt: new Date().toISOString(),
-      };
-    }
-
-    // 3. Poll for completion. Bail after ~90s and return a 'running' job that
-    //    upstream callers can re-poll via GET /api/transcribe?id=...
+    if (!externalId) return { ...job, status: 'error', error: 'AssemblyAI returned no transcript id: ' + (submitJson.error || 'unknown'), updatedAt: new Date().toISOString() };
     const maxAttempts = 30;
     for (let i = 0; i < maxAttempts; i++) {
       await sleep(3000);
-      const pollRes = await fetch('https://api.assemblyai.com/v2/transcript/' + externalId, {
-        headers: { Authorization: apiKey },
-      });
+      const pollRes = await fetch('https://api.assemblyai.com/v2/transcript/' + externalId, { headers: { Authorization: apiKey } });
       if (!pollRes.ok) continue;
       const j = (await pollRes.json()) as { status?: string; text?: string; error?: string };
-      if (j.status === 'completed') {
-        return {
-          ...job,
-          status: 'done',
-          text: j.text || '',
-          externalId,
-          updatedAt: new Date().toISOString(),
-        };
-      }
-      if (j.status === 'error') {
-        return {
-          ...job,
-          status: 'error',
-          externalId,
-          error: 'AssemblyAI: ' + (j.error || 'unknown'),
-          updatedAt: new Date().toISOString(),
-        };
-      }
-      // queued / processing - continue polling
+      if (j.status === 'completed') return { ...job, status: 'done', text: j.text || '', externalId, updatedAt: new Date().toISOString() };
+      if (j.status === 'error') return { ...job, status: 'error', externalId, error: 'AssemblyAI: ' + (j.error || 'unknown'), updatedAt: new Date().toISOString() };
     }
-
-    // Polling cap reached - return a 'running' job so the client can re-poll.
-    return {
-      ...job,
-      status: 'running',
-      externalId,
-      error: undefined,
-      updatedAt: new Date().toISOString(),
-    };
+    return { ...job, status: 'running', externalId, error: undefined, updatedAt: new Date().toISOString() };
   } catch (e: unknown) {
-    return {
-      ...job,
-      status: 'error',
-      error: e instanceof Error ? e.message : 'Unknown AssemblyAI error',
-      updatedAt: new Date().toISOString(),
-    };
+    return { ...job, status: 'error', error: e instanceof Error ? e.message : 'Unknown AssemblyAI error', updatedAt: new Date().toISOString() };
   }
 }
 
 /**
- * Deepgram pre-recorded provider. Submits a signed R2 URL to Deepgram's
- * /v1/listen endpoint and gets back the transcript + built-in summary in
- * a single synchronous call (Deepgram processes faster than realtime).
+ * Deepgram pre-recorded provider.
  *
- * Uses Nova-3 (their flagship model, ~$0.0043/min). Asks for:
- *   - smart_format=true      : numbers, dates, currency formatted nicely
- *   - punctuate=true         : commas, periods, question marks
- *   - paragraphs=true        : paragraph breaks on long silences / speaker change
- *   - utterances=true        : sentence-level timestamps (useful for chapters)
- *   - diarize=true           : speaker labels
- *   - summarize=v2           : abstractive summary in the same response
+ * Pulls audio bytes from R2 via the SDK (trusted access) and POSTs them as
+ * the raw request body to /v1/listen. This sidesteps the REMOTE_CONTENT_ERROR
+ * we hit when Deepgram tried to fetch our signed R2 URLs directly.
  *
- * Handles multi-GB recordings via signed URL ingest (no upload through lambda).
- * Synchronous - typically returns in under 30s even for hour-long meetings.
+ * Body limit: this approach buffers the whole file in lambda RAM. Vercel's
+ * default request memory is 1024 MB, so files up to ~500 MB are safe. For
+ * multi-GB recordings we'd need to switch back to URL ingest with a custom
+ * R2 public domain.
  */
 async function runDeepgram(job: TranscribeJob): Promise<TranscribeJob> {
   const apiKey = process.env.DEEPGRAM_API_KEY;
-  if (!apiKey) {
-    return { ...job, status: 'error', error: 'DEEPGRAM_API_KEY missing', updatedAt: new Date().toISOString() };
-  }
-  if (!isR2Configured()) {
-    return { ...job, status: 'error', error: 'R2 not configured - cannot sign URL', updatedAt: new Date().toISOString() };
-  }
+  if (!apiKey) return { ...job, status: 'error', error: 'DEEPGRAM_API_KEY missing', updatedAt: new Date().toISOString() };
+  if (!isR2Configured()) return { ...job, status: 'error', error: 'R2 not configured', updatedAt: new Date().toISOString() };
 
   try {
-    // Sign a long-lived R2 URL (1h) so Deepgram's pipeline can fetch it.
-    const signed = await signGetUrl(job.recordingKey, 60 * 60);
-    if (!signed) {
-      return { ...job, status: 'error', error: 'Could not sign R2 URL', updatedAt: new Date().toISOString() };
+    // Step 1: fetch the audio from R2 ourselves (trusted SDK signed URL).
+    const signed = await signGetUrl(job.recordingKey, 600);
+    if (!signed) return { ...job, status: 'error', error: 'Could not sign R2 URL', updatedAt: new Date().toISOString() };
+    const fileRes = await fetch(signed);
+    if (!fileRes.ok) {
+      const t = await fileRes.text().catch(() => '');
+      return { ...job, status: 'error', error: 'R2 fetch ' + fileRes.status + ': ' + t.slice(0, 200), updatedAt: new Date().toISOString() };
     }
+    const bytes = await fileRes.arrayBuffer();
 
-    // Build query string with model + features.
+    // Step 2: build the Deepgram URL with all our model + feature flags.
     const params = new URLSearchParams({
       model: 'nova-3',
       smart_format: 'true',
@@ -373,69 +215,54 @@ async function runDeepgram(job: TranscribeJob): Promise<TranscribeJob> {
       summarize: 'v2',
     });
     if (job.language) params.set('language', job.language);
-
     const endpoint = 'https://api.deepgram.com/v1/listen?' + params.toString();
+
+    // Step 3: POST the audio bytes directly. Content-Type tells Deepgram the
+    // codec; mp4 covers AAC-in-MP4 which is what LiveKit egress writes.
+    const contentType = guessContentType(job.recordingKey);
 
     const res = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        Authorization: 'Token ' + apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ url: signed }),
+      headers: { Authorization: 'Token ' + apiKey, 'Content-Type': contentType },
+      body: bytes,
     });
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      return {
-        ...job,
-        status: 'error',
-        error: 'Deepgram ' + res.status + ': ' + errText.slice(0, 300),
-        updatedAt: new Date().toISOString(),
-      };
+      return { ...job, status: 'error', error: 'Deepgram ' + res.status + ': ' + errText.slice(0, 300), updatedAt: new Date().toISOString() };
     }
 
     type DGAlt = { transcript?: string };
     type DGChannel = { alternatives?: DGAlt[] };
     type DGSummary = { short?: string; result?: string };
-    type DGResults = {
-      channels?: DGChannel[];
-      summary?: DGSummary;
-    };
+    type DGResults = { channels?: DGChannel[]; summary?: DGSummary };
     type DGResponse = { results?: DGResults; metadata?: { request_id?: string } };
 
     const j = (await res.json()) as DGResponse;
-    const transcript =
-      j.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? '';
+    const transcript = j.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? '';
     const summary = j.results?.summary?.short || j.results?.summary?.result;
     const externalId = j.metadata?.request_id;
 
     if (!transcript) {
-      return {
-        ...job,
-        status: 'error',
-        externalId,
-        error: 'Deepgram returned empty transcript',
-        updatedAt: new Date().toISOString(),
-      };
+      return { ...job, status: 'error', externalId, error: 'Deepgram returned empty transcript (silent audio?)', updatedAt: new Date().toISOString() };
     }
 
-    return {
-      ...job,
-      status: 'done',
-      text: transcript,
-      summary: summary || undefined,
-      externalId,
-      updatedAt: new Date().toISOString(),
-    };
+    return { ...job, status: 'done', text: transcript, summary: summary || undefined, externalId, updatedAt: new Date().toISOString() };
   } catch (e: unknown) {
-    return {
-      ...job,
-      status: 'error',
-      error: e instanceof Error ? e.message : 'Unknown Deepgram error',
-      updatedAt: new Date().toISOString(),
-    };
+    return { ...job, status: 'error', error: e instanceof Error ? e.message : 'Unknown Deepgram error', updatedAt: new Date().toISOString() };
   }
+}
+
+function guessContentType(key: string): string {
+  const lower = key.toLowerCase();
+  if (lower.endsWith('.mp4')) return 'audio/mp4';
+  if (lower.endsWith('.m4a')) return 'audio/mp4';
+  if (lower.endsWith('.mp3')) return 'audio/mpeg';
+  if (lower.endsWith('.wav')) return 'audio/wav';
+  if (lower.endsWith('.webm')) return 'audio/webm';
+  if (lower.endsWith('.ogg')) return 'audio/ogg';
+  if (lower.endsWith('.flac')) return 'audio/flac';
+  return 'application/octet-stream';
 }
 
 // ---------- helpers ----------
@@ -453,8 +280,6 @@ function cryptoRandomId(): string {
       c.getRandomValues(buf);
       return Array.from(buf).map((b) => b.toString(16).padStart(2, '0')).join('');
     }
-  } catch {
-    // ignore
-  }
+  } catch {}
   return 'job_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
