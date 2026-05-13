@@ -2,6 +2,7 @@
   "name": "neoconference-captions-worker",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "LiveKit Agents worker that streams meeting audio to Deepgram and publishes live transcriptions back into the room.",
   "main": "dist/index.js",
   "scripts": {
@@ -23,5 +24,8 @@
     "tsx": "^4.19.0",
     "typescript": "^5.5.4",
     "@types/node": "^20.14.0"
+  },
+  "overrides": {
+  "@livekit/rtc-node": "0.13.27"
   }
 }
