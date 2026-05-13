@@ -1,0 +1,28 @@
+{
+  "name": "neoconference-captions-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LiveKit Agents worker that streams meeting audio to Deepgram and publishes live transcriptions back into the room.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js start",
+    "dev": "tsx watch src/index.ts dev"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@livekit/agents": "^0.7.0",
+    "@livekit/agents-plugin-deepgram": "^0.6.0",
+    "@livekit/agents-plugin-silero": "^0.6.0",
+    "@livekit/rtc-node": "^0.13.0",
+    "livekit-server-sdk": "^2.15.2",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.0"
+  }
+}
