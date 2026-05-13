@@ -13,7 +13,11 @@
 //                    ASSEMBLYAI_API_KEY in env. Ingests directly from R2 signed
 //                    URL (no upload). Polls until 'completed' / 'error'. Handles
 //                    multi-GB files for >25 MB recordings.
-// Future: 'livekit', 'deepgram' - shape preserved.
+//   - 'deepgram'   : Deepgram Nova-3 pre-recorded API. Set TRANSCRIBE_PROVIDER=deepgram +
+//                    DEEPGRAM_API_KEY in env. Submits an R2 signed URL and gets
+//                    back transcript + built-in summary in one synchronous call.
+//                    Cheap (~$0.0043/min Nova-3) and supports 30+ languages.
+// Future: 'livekit' - shape preserved.
 //
 // Persistence: jobs are written to transcribeStore (KV-backed) so callers
 // can poll GET /api/transcribe?id=<jobId> after submit.
@@ -36,6 +40,8 @@ export type TranscribeJob = {
   status: 'queued' | 'running' | 'done' | 'error';
   /** Final transcript text (only set when status === 'done'). */
   text?: string;
+  /** Optional provider-generated summary (Deepgram summarize=v2; others may add). */
+  summary?: string;
   /** Provider-specific error message. */
   error?: string;
   /** Provider-side job id, when the upstream API exposes one (e.g. AssemblyAI). */
@@ -64,7 +70,10 @@ export function getTranscribeProvider(): TranscribeProvider {
   if (v === 'assemblyai') {
     return process.env.ASSEMBLYAI_API_KEY ? 'assemblyai' : 'stub';
   }
-  if (v === 'livekit' || v === 'deepgram') {
+  if (v === 'deepgram') {
+    return process.env.DEEPGRAM_API_KEY ? 'deepgram' : 'stub';
+  }
+  if (v === 'livekit') {
     // Not implemented yet, fall through to stub.
     return 'stub';
   }
@@ -115,6 +124,12 @@ export async function submitTranscribeJob(input: {
     return finished;
   }
 
+  if (provider === 'deepgram') {
+    const finished = await runDeepgram(baseJob);
+    await transcribeStore.put(finished);
+    return finished;
+  }
+
   // Stub or unimplemented provider - return queued placeholder.
   return baseJob;
 }
@@ -161,7 +176,7 @@ async function runOpenAIWhisper(job: TranscribeJob): Promise<TranscribeJob> {
       return {
         ...job,
         status: 'error',
-        error: 'File too large for Whisper (' + (blob.size / 1024 / 1024).toFixed(1) + ' MB > 25 MB). Switch TRANSCRIBE_PROVIDER to assemblyai for long-form.',
+        error: 'File too large for Whisper (' + (blob.size / 1024 / 1024).toFixed(1) + ' MB > 25 MB). Switch TRANSCRIBE_PROVIDER to assemblyai or deepgram for long-form.',
         updatedAt: new Date().toISOString(),
       };
     }
@@ -310,6 +325,114 @@ async function runAssemblyAI(job: TranscribeJob): Promise<TranscribeJob> {
       ...job,
       status: 'error',
       error: e instanceof Error ? e.message : 'Unknown AssemblyAI error',
+      updatedAt: new Date().toISOString(),
+    };
+  }
+}
+
+/**
+ * Deepgram pre-recorded provider. Submits a signed R2 URL to Deepgram's
+ * /v1/listen endpoint and gets back the transcript + built-in summary in
+ * a single synchronous call (Deepgram processes faster than realtime).
+ *
+ * Uses Nova-3 (their flagship model, ~$0.0043/min). Asks for:
+ *   - smart_format=true      : numbers, dates, currency formatted nicely
+ *   - punctuate=true         : commas, periods, question marks
+ *   - paragraphs=true        : paragraph breaks on long silences / speaker change
+ *   - utterances=true        : sentence-level timestamps (useful for chapters)
+ *   - diarize=true           : speaker labels
+ *   - summarize=v2           : abstractive summary in the same response
+ *
+ * Handles multi-GB recordings via signed URL ingest (no upload through lambda).
+ * Synchronous - typically returns in under 30s even for hour-long meetings.
+ */
+async function runDeepgram(job: TranscribeJob): Promise<TranscribeJob> {
+  const apiKey = process.env.DEEPGRAM_API_KEY;
+  if (!apiKey) {
+    return { ...job, status: 'error', error: 'DEEPGRAM_API_KEY missing', updatedAt: new Date().toISOString() };
+  }
+  if (!isR2Configured()) {
+    return { ...job, status: 'error', error: 'R2 not configured - cannot sign URL', updatedAt: new Date().toISOString() };
+  }
+
+  try {
+    // Sign a long-lived R2 URL (1h) so Deepgram's pipeline can fetch it.
+    const signed = await signGetUrl(job.recordingKey, 60 * 60);
+    if (!signed) {
+      return { ...job, status: 'error', error: 'Could not sign R2 URL', updatedAt: new Date().toISOString() };
+    }
+
+    // Build query string with model + features.
+    const params = new URLSearchParams({
+      model: 'nova-3',
+      smart_format: 'true',
+      punctuate: 'true',
+      paragraphs: 'true',
+      utterances: 'true',
+      diarize: 'true',
+      summarize: 'v2',
+    });
+    if (job.language) params.set('language', job.language);
+
+    const endpoint = 'https://api.deepgram.com/v1/listen?' + params.toString();
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Token ' + apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url: signed }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      return {
+        ...job,
+        status: 'error',
+        error: 'Deepgram ' + res.status + ': ' + errText.slice(0, 300),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    type DGAlt = { transcript?: string };
+    type DGChannel = { alternatives?: DGAlt[] };
+    type DGSummary = { short?: string; result?: string };
+    type DGResults = {
+      channels?: DGChannel[];
+      summary?: DGSummary;
+    };
+    type DGResponse = { results?: DGResults; metadata?: { request_id?: string } };
+
+    const j = (await res.json()) as DGResponse;
+    const transcript =
+      j.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? '';
+    const summary = j.results?.summary?.short || j.results?.summary?.result;
+    const externalId = j.metadata?.request_id;
+
+    if (!transcript) {
+      return {
+        ...job,
+        status: 'error',
+        externalId,
+        error: 'Deepgram returned empty transcript',
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    return {
+      ...job,
+      status: 'done',
+      text: transcript,
+      summary: summary || undefined,
+      externalId,
+      updatedAt: new Date().toISOString(),
+    };
+  } catch (e: unknown) {
+    return {
+      ...job,
+      status: 'error',
+      error: e instanceof Error ? e.message : 'Unknown Deepgram error',
       updatedAt: new Date().toISOString(),
     };
   }
