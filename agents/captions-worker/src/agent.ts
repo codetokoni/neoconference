@@ -29,8 +29,24 @@ const entry = async (ctx: JobContext): Promise<void> => {
   const room = ctx.room;
   const state: RoomState = { enabled: false };
 
+  // register TrackSubscribed BEFORE connect to avoid missing subscription
+  // events that fire synchronously inside ctx.connect() with AUDIO_ONLY.
+  room.on(RoomEvent.TrackSubscribed, startPipe);
+
   await ctx.connect(undefined, AutoSubscribe.AUDIO_ONLY);
   console.log(`[captions-worker] entered room=${room.name}`);
+
+  // belt-and-suspenders: replay startPipe for any audio publications that
+  // were already subscribed during connect (race window if the underlying
+  // event fired before our listener was wired).
+  for (const participant of room.remoteParticipants.values()) {
+    for (const pub of participant.trackPublications.values()) {
+      if (pub.track && pub.kind === TrackKind.KIND_AUDIO) {
+        console.log(`[captions-worker] replay-subscribe ${participant.identity}`);
+        startPipe(pub.track, pub, participant);
+      }
+    }
+  }
 
   room.on(RoomEvent.DataReceived, (payload, participant) => {
     try {
@@ -106,8 +122,6 @@ const entry = async (ctx: JobContext): Promise<void> => {
       }
     })();
   };
-
-  room.on(RoomEvent.TrackSubscribed, startPipe);
 
   await new Promise<void>((resolve) => {
     room.on(RoomEvent.Disconnected, () => {
