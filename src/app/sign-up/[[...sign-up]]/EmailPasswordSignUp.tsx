@@ -11,9 +11,13 @@ export default function EmailPasswordSignUp() {
   const searchParams = useSearchParams();
   const redirectUrl = searchParams.get('redirect_url') || '/';
 
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [code, setCode] = useState('');
   const [pendingVerification, setPendingVerification] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,9 +27,20 @@ export default function EmailPasswordSignUp() {
     e.preventDefault();
     if (!isLoaded || !signUp) return;
     setError(null);
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
     setLoading(true);
     try {
-      await signUp.create({ emailAddress: email, password });
+      await signUp.create({
+        emailAddress: email,
+        password,
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
+      } as any);
       await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
       setPendingVerification(true);
     } catch (err: any) {
@@ -123,6 +138,31 @@ export default function EmailPasswordSignUp() {
         <p className='text-sm text-gray-500'>Start hosting premium HD meetings.</p>
       </div>
 
+      <div className='grid grid-cols-2 gap-3'>
+        <label className='flex flex-col gap-1 text-sm'>
+          <span className='font-medium'>First name</span>
+          <input
+            type='text'
+            autoComplete='given-name'
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            className='border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500'
+            placeholder='Jane'
+          />
+        </label>
+        <label className='flex flex-col gap-1 text-sm'>
+          <span className='font-medium'>Last name</span>
+          <input
+            type='text'
+            autoComplete='family-name'
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            className='border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500'
+            placeholder='Doe'
+          />
+        </label>
+      </div>
+
       <label className='flex flex-col gap-1 text-sm'>
         <span className='font-medium'>Email address</span>
         <input
@@ -157,6 +197,32 @@ export default function EmailPasswordSignUp() {
             {showPassword ? 'Hide' : 'Show'}
           </button>
         </div>
+      </label>
+
+      <label className='flex flex-col gap-1 text-sm'>
+        <span className='font-medium'>Confirm password</span>
+        <div className='relative'>
+          <input
+            type={showConfirmPassword ? 'text' : 'password'}
+            required
+            minLength={8}
+            autoComplete='new-password'
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            className={'w-full border rounded px-3 py-2 pr-16 focus:outline-none focus:ring-2 ' + (confirmPassword && password !== confirmPassword ? 'border-red-400 focus:ring-red-500' : 'focus:ring-blue-500')}
+            placeholder='Re-enter your password'
+          />
+          <button
+            type='button'
+            onClick={() => setShowConfirmPassword((s) => !s)}
+            className='absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:underline'
+          >
+            {showConfirmPassword ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        {confirmPassword && password !== confirmPassword && (
+          <span className='text-xs text-red-600'>Passwords do not match.</span>
+        )}
       </label>
 
       {error && (
