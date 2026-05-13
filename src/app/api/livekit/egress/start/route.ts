@@ -16,6 +16,15 @@ function requiredEnv(name: string): string {
   return v;
 }
 
+// Sanitize a path segment so it can safely sit inside an S3/R2 object key.
+// Allows letters, digits, dot, dash, underscore. Everything else -> '-'.
+function sanitizeSegment(s: string): string {
+  return (s || '')
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'x';
+}
+
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
@@ -33,7 +42,7 @@ export async function POST(req: Request) {
     const apiSecret = requiredEnv("LIVEKIT_API_SECRET");
     const wsUrl = requiredEnv("NEXT_PUBLIC_LIVEKIT_URL");
 
-    // Convert wss:// → https:// for the egress client base URL.
+    // Convert wss:// -> https:// for the egress client base URL.
     const httpUrl = wsUrl.replace(/^ws/, "http");
 
     const s3AccessKey = requiredEnv("S3_ACCESS_KEY");
@@ -46,7 +55,14 @@ export async function POST(req: Request) {
       .toISOString()
       .slice(0, 19)
       .replace(/[:T]/g, "-");
-    const filepath = `recordings/${room}/${timestamp}.mp4`;
+
+    // NOTE: Object key is namespaced by the user who started the recording.
+    // The recordings list/delete/rename APIs enforce that the authenticated
+    // user's key prefix must match this layout, so users only ever see their
+    // own recordings on the dashboard.
+    const userSeg = sanitizeSegment(userId);
+    const roomSeg = sanitizeSegment(room);
+    const filepath = `recordings/${userSeg}/${roomSeg}/${timestamp}.mp4`;
 
     const fileOutput = new EncodedFileOutput({
       fileType: EncodedFileType.MP4,
