@@ -2,7 +2,7 @@
 
 import { useSignIn } from '@clerk/nextjs';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 
 export default function EmailPasswordSignIn() {
@@ -10,12 +10,48 @@ export default function EmailPasswordSignIn() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectUrl = searchParams.get('redirect_url') || '/';
+  const ticket = searchParams.get('__clerk_ticket');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [ticketProcessing, setTicketProcessing] = useState<boolean>(!!ticket);
+  const ticketTriedRef = useRef(false);
+
+  // Handle KingsChat (or any external) sign-in ticket from /api/auth/kingschat/callback.
+  // The callback redirects here with ?__clerk_ticket=... and we exchange it for a session.
+  useEffect(() => {
+    if (!ticket) return;
+    if (!isLoaded || !signIn) return;
+    if (ticketTriedRef.current) return;
+    ticketTriedRef.current = true;
+
+    (async () => {
+      try {
+        const result = await signIn.create({
+          strategy: 'ticket',
+          ticket,
+        } as any);
+
+        if (result.status === 'complete' && result.createdSessionId) {
+          await setActive({ session: result.createdSessionId });
+          router.replace(redirectUrl);
+        } else {
+          setError('KingsChat sign-in could not be completed. Please try again.');
+          setTicketProcessing(false);
+        }
+      } catch (err: any) {
+        const msg =
+          err?.errors?.[0]?.longMessage ||
+          err?.errors?.[0]?.message ||
+          'KingsChat sign-in failed. Please try again.';
+        setError(msg);
+        setTicketProcessing(false);
+      }
+    })();
+  }, [ticket, isLoaded, signIn, setActive, router, redirectUrl]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,6 +79,15 @@ export default function EmailPasswordSignIn() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (ticketProcessing) {
+    return (
+      <div className='w-full max-w-sm bg-white text-black rounded-xl shadow-lg p-6 flex flex-col items-center gap-3'>
+        <div className='animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent' />
+        <p className='text-sm text-gray-700'>Completing KingsChat sign-in…</p>
+      </div>
+    );
   }
 
   return (
