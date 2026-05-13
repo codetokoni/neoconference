@@ -33,9 +33,9 @@ function userPrefix(userId: string): string {
  *    are intentionally NOT returned to any user — they predate ownership info.
  *
  * Query params:
- *   subPrefix?: string  optional further filter under the user's namespace,
- *                       e.g. room slug. Slashes are allowed.
- *   max?: number        default 100, max 500.
+ *  subPrefix?: string  optional further filter under the user's namespace,
+ *                      e.g. room slug. Slashes are allowed.
+ *  max?:      number   default 100, max 500.
  */
 export async function GET(req: Request) {
   const { userId } = await auth();
@@ -55,7 +55,8 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   // Accept legacy 'prefix' param but treat it as a sub-filter under the user's
   // namespace; never let a client list outside their own prefix.
-  const sub = (url.searchParams.get('subPrefix') || url.searchParams.get('prefix') || '').replace(/^/+/, '');
+  const rawSub = url.searchParams.get('subPrefix') || url.searchParams.get('prefix') || '';
+  const sub = rawSub.replace(/^\/+/, '');
   const base = userPrefix(userId);
   // If the caller already passed the full user prefix, don't double it.
   const effectivePrefix = sub.startsWith(base) ? sub : base + sub;
