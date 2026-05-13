@@ -207,7 +207,32 @@ export async function GET(req: NextRequest) {
       canSubscribe: true,
       canPublishData: true,
     });
-    at.metadata = JSON.stringify({ planLimits, hostPlan });
+    let participantRole: string = "guest";
+    try {
+      if (eventSlug) {
+        const { eventStore: __esRole } = await import("@/lib/eventStore");
+        const __evRole = await __esRole.bySlug(eventSlug);
+        if (__evRole) {
+          const uRole = await currentUser().catch(() => null);
+          const emailsRole = (uRole?.emailAddresses || []).map(
+            (e: { emailAddress: string }) => e.emailAddress.toLowerCase()
+          );
+          if (__evRole.ownerUserId === userId) {
+            participantRole = "host";
+          } else {
+            const matched = (__evRole.roles || []).find((r: { role: string; identifier: string }) => {
+              const id = r.identifier.toLowerCase();
+              return id === userId.toLowerCase() || emailsRole.includes(id);
+            });
+            if (matched?.role) participantRole = matched.role;
+            else participantRole = "attendee";
+          }
+        }
+      }
+    } catch (roleErr) {
+      console.error("[livekit/token] role resolve error:", roleErr);
+    }
+    at.metadata = JSON.stringify({ planLimits, hostPlan, role: participantRole });
 
     const token = await at.toJwt();
     return NextResponse.json({ token, wsUrl });
