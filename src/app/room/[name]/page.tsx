@@ -325,9 +325,12 @@ function RenameRedirectListener() {
     const onData = (payload: Uint8Array) => {
       try {
         const txt = new TextDecoder().decode(payload);
-        const msg = JSON.parse(txt) as { type?: string; roomUrl?: string };
+        const msg = JSON.parse(txt) as { type?: string; roomUrl?: string; slug?: string };
         if (msg && msg.type === "event_renamed" && typeof msg.roomUrl === "string") {
           window.location.href = msg.roomUrl;
+        } else if (msg && msg.type === "event_deleted") {
+          try { alert("This meeting was deleted by the host."); } catch { /* alert blocked */ }
+          window.location.href = "/";
         }
       } catch {
         /* ignore non-JSON packets */
