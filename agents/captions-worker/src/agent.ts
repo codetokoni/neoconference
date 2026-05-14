@@ -32,6 +32,23 @@ const entry = async (ctx: JobContext): Promise<void> => {
   await ctx.connect(undefined, AutoSubscribe.AUDIO_ONLY);
   console.log(`[captions-worker] entered room=${room.name}`);
 
+  // [diagnostic] snapshot of remoteParticipants and their publications immediately after connect
+  console.log(`[captions-worker] post-connect snapshot: ${room.remoteParticipants.size} remoteParticipants`);
+  for (const p of room.remoteParticipants.values()) {
+    console.log(`[captions-worker]   participant=${p.identity} pubs=${p.trackPublications.size}`);
+    for (const pub of p.trackPublications.values()) {
+      console.log(`[captions-worker]     pub sid=${pub.sid} kind=${pub.kind} subscribed=${!!pub.track} muted=${pub.muted}`);
+    }
+  }
+
+  // [diagnostic] log future participant joins and track publications
+  room.on(RoomEvent.ParticipantConnected, (p) => {
+    console.log(`[captions-worker] participant connected: ${p.identity}`);
+  });
+  room.on(RoomEvent.TrackPublished, (pub, p) => {
+    console.log(`[captions-worker] track published by ${p.identity}: kind=${pub.kind} subscribed=${!!pub.track}`);
+  });
+
   room.on(RoomEvent.DataReceived, (payload, participant) => {
     try {
       const msg = JSON.parse(new TextDecoder().decode(payload)) as { type?: string; enabled?: boolean };
