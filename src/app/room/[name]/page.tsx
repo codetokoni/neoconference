@@ -32,7 +32,7 @@ import ChatPanel from "@/components/ChatPanel";
 import FloatingVideoButton from "@/components/FloatingVideoButton";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
-import SpeakerBadge from "@/components/SpeakerBadge";import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel";import ManageParticipantsPanel from "@/components/ParticipantsPanel"; import TileRoleBadges from "@/components/TileRoleBadges"; import WaitingRoomPanel from "@/components/WaitingRoomPanel";import BreakoutsPanel from "@/components/BreakoutsPanel";
+import SpeakerBadge from "@/components/SpeakerBadge"; import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel"; import ManageParticipantsPanel from "@/components/ParticipantsPanel"; import TileRoleBadges from "@/components/TileRoleBadges"; import WaitingRoomPanel from "@/components/WaitingRoomPanel"; import BreakoutsPanel from "@/components/BreakoutsPanel";
 import PlanGateOverlay from "@/components/PlanGateOverlay";
 
 type TokenResponse = { token: string; wsUrl: string };
@@ -89,7 +89,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify({ op: "knock", slug: eventSlug }),
               });
-            } catch {}
+            } catch { }
             return;
           }
           if (res.status === 403 && body?.error === "wait_for_host") {
@@ -301,7 +301,7 @@ function RoleMetadataListener({ onRoleChange }: { onRoleChange: (role: string) =
     try {
       const md = room.localParticipant.metadata ? JSON.parse(room.localParticipant.metadata) : null;
       if (md && typeof md.role === "string") onRoleChange(md.role);
-    } catch {}
+    } catch { }
     room.on(RoomEvent.ParticipantMetadataChanged, apply);
     return () => {
       room.off(RoomEvent.ParticipantMetadataChanged, apply);
@@ -348,7 +348,7 @@ function RenameRedirectListener() {
  * Old links keep working as aliases. Calling the API broadcasts an
  * event_renamed packet so all current participants redirect to the new URL.
  */
-function RenameUrlButton({
+function humanizeRenameError(code?: string): string { switch ((code || "").toLowerCase()) { case "slug_taken": return "That URL is already taken. Try another."; case "invalid_slug": return "Invalid URL. Use lowercase letters, numbers, and dashes."; case "forbidden": return "Only the host can rename this meeting."; case "network_error": return "Network error. Check your connection and try again."; case "rename_failed": return "Rename failed. Please try again."; case "not_found": return "This meeting doesn't exist."; default: return code ? "Rename failed (" + code + ")." : "Rename failed. Please try again."; } } function RenameUrlButton({
   roomRole,
   eventSlug,
 }: {
@@ -373,13 +373,13 @@ function RenameUrlButton({
       });
       const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; roomUrl?: string };
       if (!res.ok || !j.ok || !j.roomUrl) {
-        setErr(j.error || "rename_failed");
+        setErr(humanizeRenameError(j.error));
         setBusy(false);
         return;
       }
       window.location.href = j.roomUrl;
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "network_error");
+      setErr(humanizeRenameError("network_error"));
       setBusy(false);
     }
   };
@@ -477,7 +477,7 @@ function RoomContainer({
         if (!Ctor) return;
         if (!knockAudioCtxRef.current) knockAudioCtxRef.current = new Ctor();
         const ctx = knockAudioCtxRef.current!;
-        if (ctx.state === "suspended") ctx.resume().catch(() => {});
+        if (ctx.state === "suspended") ctx.resume().catch(() => { });
         const now = ctx.currentTime;
         [880, 1320].forEach((freq, i) => {
           const osc = ctx.createOscillator();
@@ -491,7 +491,7 @@ function RoomContainer({
           osc.start(now + i * 0.18);
           osc.stop(now + i * 0.18 + 0.16);
         });
-      } catch {}
+      } catch { }
     };
     const tick = async () => {
       try {
@@ -504,7 +504,7 @@ function RoomContainer({
         setPendingKnockCount(count);
         if (count > prevKnockCountRef.current) playChime();
         prevKnockCountRef.current = count;
-      } catch {}
+      } catch { }
     };
     tick();
     const id = setInterval(tick, 4000);
@@ -629,25 +629,25 @@ function RoomContainer({
         <ApplyPrejoinChoices choices={choices} />
         <MobileMoreMenu />
         <div
-        data-room-chrome="true" className="room-toolbar" style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", zIndex: 12, display: "flex", gap: 8, alignItems: "center" }}
-      >
-        <button
-          type="button"
-          onClick={() => setShowParticipants((v) => !v)}
-          className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
-          title="Show participants"
+          data-room-chrome="true" className="room-toolbar" style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", zIndex: 12, display: "flex", gap: 8, alignItems: "center" }}
         >
-          People
-        </button>
-        <button
-          type="button"
-          data-room-chrome="true"
-          onClick={() => setHideSelf((v) => !v)}
-          className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
-          title="Hide your own video"
-        >
-          {hideSelf ? "Show me" : "Hide me"}
-        </button>
+          <button
+            type="button"
+            onClick={() => setShowParticipants((v) => !v)}
+            className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+            title="Show participants"
+          >
+            People
+          </button>
+          <button
+            type="button"
+            data-room-chrome="true"
+            onClick={() => setHideSelf((v) => !v)}
+            className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+            title="Hide your own video"
+          >
+            {hideSelf ? "Show me" : "Hide me"}
+          </button>
           <button
             type="button"
             data-room-chrome="true"
@@ -676,7 +676,7 @@ function RoomContainer({
           >
             {showPolls ? "Close polls" : "Polls"}
           </button>
-        
+
           {(roomRole === "host" || roomRole === "cohost") && (
             <button
               type="button"
@@ -699,28 +699,28 @@ function RoomContainer({
               {showBreakouts ? "Close breakouts" : "Breakouts"}
             </button>
           )}
-        <button
-          type="button"
-          onClick={copyLink}
-          className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
-          title="Copy room link"
-        >
-          {copied ? "Link copied!" : "Copy link"}
-        </button>
-        <button
-          type="button"
-          onClick={toggleFullscreen}
-          className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
-          title="Toggle fullscreen"
-        >
-          {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-        </button>
-        <ParticipantCountBadge />
-        <RecordingControls roomName={roomName} roomRole={roomRole} />
-        <GoLiveButton roomName={roomName} eventSlug={eventSlug} />
-      </div>
-      <RaiseHandButton isHost={roomRole === "host" || roomRole === "cohost"} />
-      <SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
+          <button
+            type="button"
+            onClick={copyLink}
+            className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+            title="Copy room link"
+          >
+            {copied ? "Link copied!" : "Copy link"}
+          </button>
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+            title="Toggle fullscreen"
+          >
+            {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          </button>
+          <ParticipantCountBadge />
+          <RecordingControls roomName={roomName} roomRole={roomRole} />
+          <GoLiveButton roomName={roomName} eventSlug={eventSlug} />
+        </div>
+        <RaiseHandButton isHost={roomRole === "host" || roomRole === "cohost"} />
+        <SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
         <ChatTranscriptDownloader roomName={roomName} />
         <InitialsOverlay />
         <RoomIdleController /><MobileVideoConference />
@@ -728,14 +728,14 @@ function RoomContainer({
         <MediaRequestPrompt />
         <RoomAudioRenderer />
         <LiveCaptions />
-<CaptionsToggle roomRole={roomRole} roomName={roomName} eventSlug={eventSlug} />
+        <CaptionsToggle roomRole={roomRole} roomName={roomName} eventSlug={eventSlug} />
         <ReactionsBar />
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} isHost={roomRole === 'host' || roomRole === 'cohost'} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
         <ManageParticipantsPanel open={showParticipants} onClose={() => setShowParticipants(false)} isHost={roomRole === "host" || roomRole === "cohost"} slug={eventSlug} ownerUserId={ownerUserId} />
         <WaitingRoomPanel open={showWaitingRoom} onClose={() => setShowWaitingRoom(false)} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          <BreakoutsPanel open={showBreakouts} onClose={() => setShowBreakouts(false)} isHost={roomRole === "host" || roomRole === "cohost"} eventSlug={eventSlug} /><PlanGateOverlay />
-              <SpeakerBadge />
+        <SpeakerBadge />
         <RenameRedirectListener />
         <RenameUrlButton roomRole={roomRole} eventSlug={eventSlug} />
       </LiveKitRoom>
@@ -922,33 +922,33 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       try {
         const msg = JSON.parse(new TextDecoder().decode(payload));
         if (msg?.type === "recording") {
-            if (msg.active) {
-              setRemoteRecording({
-                by: msg.by || participant?.name || participant?.identity || "Someone",
-              });
+          if (msg.active) {
+            setRemoteRecording({
+              by: msg.by || participant?.name || participant?.identity || "Someone",
+            });
+          } else {
+            setRemoteRecording(null);
+          }
+        } else if (msg?.type === "record_request") {
+          if (roomRole === "host" || roomRole === "cohost") {
+            setRecordApproval({
+              fromIdentity: String(msg.from || participant?.identity || ""),
+              fromName: String(msg.fromName || participant?.name || participant?.identity || "Someone"),
+            });
+          }
+        } else if (msg?.type === "record_request_response") {
+          const myIdentity = (room as any).localParticipant?.identity;
+          if (msg.to && msg.to === myIdentity) {
+            if (msg.ok) {
+              setRecordPending(null);
+              doStart();
             } else {
-              setRemoteRecording(null);
-            }
-          } else if (msg?.type === "record_request") {
-            if (roomRole === "host" || roomRole === "cohost") {
-              setRecordApproval({
-                fromIdentity: String(msg.from || participant?.identity || ""),
-                fromName: String(msg.fromName || participant?.name || participant?.identity || "Someone"),
-              });
-            }
-          } else if (msg?.type === "record_request_response") {
-            const myIdentity = (room as any).localParticipant?.identity;
-            if (msg.to && msg.to === myIdentity) {
-              if (msg.ok) {
-                setRecordPending(null);
-                doStart();
-              } else {
-                setRecordPending(null);
-                setToast({ message: "Recording denied by host" });
-                setTimeout(() => setToast(null), 4000);
-              }
+              setRecordPending(null);
+              setToast({ message: "Recording denied by host" });
+              setTimeout(() => setToast(null), 4000);
             }
           }
+        }
       } catch {
         // ignore
       }
@@ -971,7 +971,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       }
     };
     return () => {
-      try { delete (window as any).__ncRecordToggle; } catch {}
+      try { delete (window as any).__ncRecordToggle; } catch { }
     };
   });
 
@@ -1203,7 +1203,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
           </div>
         </div>
       )}
-            {/* Record button: bottom-right floating */}
+      {/* Record button: bottom-right floating */}
       <button
         type="button"
         data-room-chrome="true"
@@ -1227,10 +1227,10 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
         {busy
           ? "…"
           : recordPending === "asking"
-          ? "⏳ Waiting…"
-          : egressId
-          ? "■ Stop recording"
-          : "● Record"}
+            ? "⏳ Waiting…"
+            : egressId
+              ? "■ Stop recording"
+              : "● Record"}
       </button>
 
       {/* Toast (e.g. download URL) */}
