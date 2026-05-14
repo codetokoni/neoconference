@@ -32,21 +32,16 @@ const entry = async (ctx: JobContext): Promise<void> => {
   await ctx.connect(undefined, AutoSubscribe.AUDIO_ONLY);
   console.log(`[captions-worker] entered room=${room.name}`);
 
-  // [diagnostic] snapshot of remoteParticipants and their publications immediately after connect
-  console.log(`[captions-worker] post-connect snapshot: ${room.remoteParticipants.size} remoteParticipants`);
-  for (const p of room.remoteParticipants.values()) {
-    console.log(`[captions-worker]   participant=${p.identity} pubs=${p.trackPublications.size}`);
-    for (const pub of p.trackPublications.values()) {
-      console.log(`[captions-worker]     pub sid=${pub.sid} kind=${pub.kind} subscribed=${!!pub.track} muted=${pub.muted}`);
-    }
-  }
-
-  // [diagnostic] log future participant joins and track publications
-  room.on(RoomEvent.ParticipantConnected, (p) => {
-    console.log(`[captions-worker] participant connected: ${p.identity}`);
-  });
+  // Auto-subscribe to audio publications. AutoSubscribe.AUDIO_ONLY only
+  // subscribes to publications present at connect-time; late-arriving
+  // tracks (e.g. when agent joins empty room before any human) need an
+  // explicit setSubscribed(true). Confirmed via diagnostics in commit
+  // 9261833 — TrackPublished fires but auto-subscribe does not follow.
   room.on(RoomEvent.TrackPublished, (pub, p) => {
-    console.log(`[captions-worker] track published by ${p.identity}: kind=${pub.kind} subscribed=${!!pub.track}`);
+    if (pub.kind === TrackKind.KIND_AUDIO) {
+      console.log(`[captions-worker] subscribing audio pub from ${p.identity}`);
+      pub.setSubscribed(true);
+    }
   });
 
   room.on(RoomEvent.DataReceived, (payload, participant) => {
