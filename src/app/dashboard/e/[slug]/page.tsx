@@ -8,6 +8,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { eventStore } from "@/lib/eventStore";
 import EndEventButton from "./EndEventButton";
+import DeleteEventButton from "./DeleteEventButton";
 import InviteSpeakers from "./InviteSpeakers";
 import EditMetadata from "./EditMetadata";
 import WaitingRoomPanel from "./WaitingRoomPanel";
@@ -286,7 +287,17 @@ export default async function EventAdminPage({
         <SummaryPanel eventId={ev.id} initial={ev.summary || null} />
         </section>
 
-        <footer className="pt-6 border-t border-slate-900 text-xs text-slate-600">
+        <section className="space-y-3 pt-6 border-t border-rose-900/40">
+            <h2 className="text-sm uppercase tracking-widest text-rose-300/80">Danger zone</h2>
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm text-rose-100/80">
+                Permanently delete this meeting. Slug aliases will stop resolving. Recording files are kept.
+              </div>
+              <DeleteEventButton slug={ev.slug} name={ev.name} />
+            </div>
+          </section>
+
+          <footer className="pt-6 border-t border-slate-900 text-xs text-slate-600">
           updated {fmt(ev.updatedAt)} · created {fmt(ev.createdAt)}
         </footer>
       </div>
