@@ -63,8 +63,8 @@ export function getPlanLimits(plan: Plan): PlanLimits {
     case "free":
     default:
       return {
-        meetingMinutes: 20,
-        maxParticipants: 10,
+        meetingMinutes: 30,
+        maxParticipants: 20,
         recording: false,
         recordingHoursPerMonth: 0,
         breakouts: false,
