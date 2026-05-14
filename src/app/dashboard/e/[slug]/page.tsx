@@ -21,9 +21,9 @@ import SummaryPanel from "./SummaryPanel";
 export const dynamic = "force-dynamic";
 
 function fmt(iso?: string | number) {
-  if (!iso) return "ÃÂ¢ÃÂÃÂ";
+  if (!iso) return "—";
   const d = new Date(iso);
-  if (isNaN(d.getTime())) return "ÃÂ¢ÃÂÃÂ";
+  if (isNaN(d.getTime())) return "—";
   return d.toLocaleString();
 }
 
@@ -59,13 +59,13 @@ export default async function EventAdminPage({
     return (
       <main className="min-h-screen bg-[#05060a] text-slate-100 flex items-center justify-center p-8">
         <div className="max-w-md text-center space-y-4">
-          <div className="text-5xl">ÃÂ¢ÃÂÃÂ ÃÂ¯ÃÂ¸ÃÂ</div>
+          <div className="text-5xl">⚠️</div>
           <h1 className="text-2xl font-semibold">Not your event</h1>
           <p className="text-slate-400 text-sm">
             Only the event owner can open this admin page. If you were given a join link, head to the public event page instead.
           </p>
           <Link href={"/e/" + ev.slug} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-cyan-500/15 border border-cyan-400/40 text-cyan-200 hover:bg-cyan-500/25 transition">
-            Public event page ÃÂ¢ÃÂÃÂ
+            Public event page →
           </Link>
         </div>
       </main>
@@ -88,7 +88,7 @@ export default async function EventAdminPage({
         <header className="flex flex-wrap items-start justify-between gap-6">
           <div className="space-y-3">
             <Link href="/dashboard" className="text-xs text-slate-400 hover:text-cyan-300 transition">
-              ÃÂ¢ÃÂÃÂ All events
+              ← All events
             </Link>
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-3xl font-semibold tracking-tight">{ev.name}</h1>
@@ -98,13 +98,13 @@ export default async function EventAdminPage({
               <p className="text-sm text-slate-400 max-w-2xl">{ev.description}</p>
             ) : null}
             <p className="text-xs text-slate-500 font-mono">
-              /e/{ev.slug} ÃÂÃÂ· owner {me}
+              /e/{ev.slug} · owner {me}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href={"/room/" + ev.livekitRoom + "?event=" + ev.slug} className="px-4 py-2 rounded-full bg-cyan-500 text-slate-950 font-medium hover:bg-cyan-400 transition">
-              {liveOrWaiting ? "Open room ÃÂ¢ÃÂÃÂ" : "Start room ÃÂ¢ÃÂÃÂ"}
-            </Link>
+              {liveOrWaiting ? "Open room →" : "Start room →"}
+        </Link>
             <Link href={"/e/" + ev.slug} className="px-4 py-2 rounded-full border border-slate-700 hover:border-cyan-400 hover:text-cyan-200 transition text-sm">
               Public page
             </Link>
@@ -206,7 +206,7 @@ export default async function EventAdminPage({
                   <div className="min-w-0">
                     <div className="text-sm text-slate-200 truncate font-mono">{r.key.split("/").pop()}</div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                      {r.kind.toUpperCase()} ÃÂÃÂ· {fmt(r.createdAt)}{r.size ? " ÃÂÃÂ· " + Math.round(r.size / 1024) + " KB" : ""}
+                      {r.kind.toUpperCase()} · {fmt(r.createdAt)}{r.size ? " · " + Math.round(r.size / 1024) + " KB" : ""}
                     </div>
                   </div>
                   <Link href={"/e/" + ev.slug + "/replay"} className="text-xs px-3 py-1.5 rounded-full border border-slate-700 hover:border-cyan-400 hover:text-cyan-200 transition shrink-0">
@@ -287,7 +287,7 @@ export default async function EventAdminPage({
         </section>
 
         <footer className="pt-6 border-t border-slate-900 text-xs text-slate-600">
-          updated {fmt(ev.updatedAt)} ÃÂÃÂ· created {fmt(ev.createdAt)}
+          updated {fmt(ev.updatedAt)} · created {fmt(ev.createdAt)}
         </footer>
       </div>
     </main>
