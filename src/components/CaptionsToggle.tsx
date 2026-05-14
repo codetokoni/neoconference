@@ -120,7 +120,7 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
   const labelOff = 'CC ● ON';
 
   return (
-    <>
+    <div className="fixed bottom-24 right-4 z-50 flex items-center gap-1">
       <button
         type="button"
         data-room-chrome="true"
@@ -157,6 +157,6 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
           {error}
         </span>
       )}
-    </>
+    </div>
   );
 }
