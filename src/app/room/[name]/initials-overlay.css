@@ -302,3 +302,13 @@
 .lk-chat-toggle {
   display: none !important;
 }
+
+/* Hide the captions agent tile from the participant grid. The agent joins as a
+   regular LiveKit participant (required for audio subscription) but should be
+      invisible since it has no camera/audio of its own. Matched via the inner
+         .lk-participant-name text since LiveKit doesn't expose identity as a tile
+            attribute. data-nc-hide is stamped by InitialsOverlay in page.tsx. */
+            .lk-participant-tile[data-nc-hide="true"] {
+              display: none !important;
+              }
+              

@@ -791,6 +791,17 @@ function InitialsOverlay() {
         const raw = (nameEl?.textContent || "").trim();
         const lower = raw.toLowerCase();
 
+        // Hide the captions agent tile from the participant grid. The agent
+        // participant joins as a regular LiveKit participant (required for audio
+        // subscription) but has no camera/audio of its own, so its placeholder
+        // tile shouldn't be visible. Match by identity-style "agent-" name prefix
+        // since LiveKit doesn't expose participant.identity as a tile attribute.
+        if (raw.startsWith("agent-")) {
+          tile.setAttribute("data-nc-hide", "true");
+          return;
+        }
+        tile.removeAttribute("data-nc-hide");
+
         const nameIsReal =
           raw.length > 0 &&
           !PLACEHOLDERS.has(lower) &&
