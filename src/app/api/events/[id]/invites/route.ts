@@ -26,7 +26,7 @@ export async function GET(
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   const invites = await inviteStore.listForEvent(ev.id);
-  return NextResponse.json({ invites });
+  return NextResponse.json({ ok: true, invites });
 }
 
 export async function POST(
@@ -62,7 +62,7 @@ export async function POST(
     label,
   });
 
-  return NextResponse.json({ invite });
+  return NextResponse.json({ ok: true, invite });
 }
 
 export async function DELETE(
