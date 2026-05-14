@@ -34,7 +34,8 @@ export default function HeaderNav({ role }: { role?: string | null }) {
         <div aria-hidden className="w-9 h-9" />
       ) : isSignedIn ? (
         <>
-          {role === "admin" && (
+            <Link href="/dashboard" className="hidden sm:inline-flex text-xs font-medium px-3 py-1.5 rounded-lg text-cyan-100/80 hover:text-white hover:bg-white/5 transition">Dashboard</Link>
+            {role === "admin" && (
             <Link
               href="/admin"
               className="hidden sm:inline-flex text-xs font-semibold px-3 py-1.5 rounded-lg bg-cyan-400/10 text-cyan-200 border border-cyan-300/30 hover:bg-cyan-400/20 transition"
