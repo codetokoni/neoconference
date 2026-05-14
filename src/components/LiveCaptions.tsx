@@ -118,7 +118,7 @@ export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) 
     <div
       aria-live="polite"
       aria-atomic="false"
-      className="pointer-events-none fixed inset-x-0 bottom-24 sm:bottom-28 z-30 flex justify-center px-4"
+      className="pointer-events-none fixed inset-x-0 bottom-40 sm:bottom-44 z-30 flex justify-center px-4"
     >
       <div className="max-w-3xl w-full rounded-2xl border border-white/10 bg-black/55 backdrop-blur-xl shadow-[0_0_60px_-20px_rgba(34,211,238,0.4)] px-4 sm:px-5 py-3">
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-cyan-200/80">
