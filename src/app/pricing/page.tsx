@@ -27,8 +27,8 @@ const TIERS: Tier[] = [
     cta: "Get started free",
     ctaHref: "/dashboard",
     features: [
-      { label: "20-minute meeting cap", included: true },
-      { label: "Up to 10 participants", included: true },
+      { label: "30-minute meeting cap", included: true },
+      { label: "Up to 20 participants", included: true },
       { label: "HD video & crystal-clear audio", included: true },
       { label: "Live captions", included: true },
       { label: "Polls, chat, reactions, raise hand", included: true },
