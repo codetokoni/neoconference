@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Check, ChevronDown, Mic, Pencil, Video, X } from "lucide-react";
+import { Check, ChevronDown, Mic, MicOff, Pencil, Video, VideoOff, X } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
 export type RoomEntryValues = {
@@ -342,15 +342,17 @@ export function RoomNameEntry({
               </div>
             </div>
 
-            {/* Device pickers */}
-            <div className="flex flex-col gap-3 mb-5">
+            {/* Device pickers — each row has its own on/off toggle */}
+            <div className="flex flex-col gap-3 mb-7">
               <DeviceRow
                 rowRef={cameraRowRef}
                 kind="video"
                 label="Camera"
                 selectedLabel={labelForSelected(videoDevices, videoDeviceId, "Camera")}
+                enabled={video}
                 onOpen={() => setPickerOpen(pickerOpen === "video" ? null : "video")}
-                disabled={devicesUnavailable}
+                onToggle={() => setVideo((v) => !v)}
+                disabled={devicesUnavailable || videoDevices.length === 0}
               >
                 <AnimatePresence>
                   {pickerOpen === "video" && (
@@ -370,8 +372,10 @@ export function RoomNameEntry({
                 kind="audio"
                 label="Microphone"
                 selectedLabel={labelForSelected(audioDevices, audioDeviceId, "Microphone")}
+                enabled={audio}
                 onOpen={() => setPickerOpen(pickerOpen === "audio" ? null : "audio")}
-                disabled={devicesUnavailable}
+                onToggle={() => setAudio((v) => !v)}
+                disabled={devicesUnavailable || audioDevices.length === 0}
               >
                 <AnimatePresence>
                   {pickerOpen === "audio" && (
@@ -386,11 +390,6 @@ export function RoomNameEntry({
                   )}
                 </AnimatePresence>
               </DeviceRow>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 mb-7">
-              <ToggleTile label="Camera"     on={video} onChange={setVideo} kind="video" />
-              <ToggleTile label="Microphone" on={audio} onChange={setAudio} kind="mic" />
             </div>
 
             <button
@@ -418,40 +417,6 @@ export function RoomNameEntry({
   );
 }
 
-function ToggleTile({ label, on, onChange, kind }: { label: string; on: boolean; onChange: (v: boolean) => void; kind: "video" | "mic" }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!on)}
-      className={`group flex items-center justify-between gap-3 px-4 py-3 rounded-xl border transition ${on ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-200 shadow-[0_0_20px_rgba(34,211,238,0.2)]" : "border-white/10 bg-black/40 text-zinc-400 hover:text-zinc-200"}`}
-    >
-      <span className="flex items-center gap-2">
-        {kind === "video" ? (
-          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.7">
-            {on ? (
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            ) : (
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M9 6h4a2 2 0 012 2v1m4 0l3-1.5v9l-6-3M5 8a2 2 0 00-2 2v6a2 2 0 002 2h7" />
-            )}
-          </svg>
-        ) : (
-          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="1.7">
-            {on ? (
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v3m-4 0h8M5 11a7 7 0 0014 0M12 14a3 3 0 01-3-3V6a3 3 0 016 0v5a3 3 0 01-3 3z" />
-            ) : (
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 3l18 18M9 9v2a3 3 0 005.12 2.12M15 11V6a3 3 0 00-5.83-1M5 11a7 7 0 001.17 3.86M19 11a6.97 6.97 0 01-1.62 4.5M12 18v3m-4 0h8" />
-            )}
-          </svg>
-        )}
-        <span className="text-sm font-medium">{label}</span>
-      </span>
-      <span className={`relative w-9 h-5 rounded-full transition ${on ? "bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.6)]" : "bg-white/10"}`}>
-        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${on ? "left-[18px]" : "left-0.5"}`} />
-      </span>
-    </button>
-  );
-}
-
 function labelForSelected(
   devices: MediaDeviceInfo[],
   selectedId: string | undefined,
@@ -469,7 +434,9 @@ function DeviceRow({
   kind,
   label,
   selectedLabel,
+  enabled,
   onOpen,
+  onToggle,
   disabled,
   children,
 }: {
@@ -477,33 +444,79 @@ function DeviceRow({
   kind: "video" | "audio";
   label: string;
   selectedLabel: string;
+  enabled: boolean;
   onOpen: () => void;
+  onToggle: () => void;
   disabled?: boolean;
   children?: React.ReactNode;
 }) {
-  const Icon = kind === "video" ? Video : Mic;
-  const a11y = kind === "video" ? "Choose camera" : "Choose microphone";
+  const Icon = enabled
+    ? (kind === "video" ? Video : Mic)
+    : (kind === "video" ? VideoOff : MicOff);
+  const pickerA11y = kind === "video" ? "Choose camera" : "Choose microphone";
+  const labelLower = label.toLowerCase();
+  const toggleA11y = enabled ? `Turn ${labelLower} off` : `Turn ${labelLower} on`;
+  // Red-tinted treatment when toggled off (matches the disabled-control pattern
+  // used in MobileControlBar). The unavailable-devices case keeps the default
+  // row treatment but greys out both buttons.
+  const rowStyle: React.CSSProperties = !enabled
+    ? { background: "rgba(220, 38, 38, 0.08)", borderColor: "rgba(220, 38, 38, 0.3)" }
+    : {};
   return (
     <div ref={rowRef} className="relative">
-      <button
-        type="button"
-        onClick={onOpen}
-        disabled={disabled}
-        aria-label={a11y}
-        title={disabled ? "Devices unavailable on insecure origin" : undefined}
-        className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-white/[0.04] border-[0.5px] border-white/[0.08] hover:bg-white/[0.06] disabled:opacity-50 disabled:cursor-not-allowed transition"
+      <div
+        className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border-[0.5px] transition ${
+          enabled ? "bg-white/[0.04] border-white/[0.08]" : ""
+        }`}
+        style={rowStyle}
       >
-        <span className="flex items-center gap-3 min-w-0">
-          <Icon className="w-4 h-4 text-zinc-400 shrink-0" />
+        <button
+          type="button"
+          onClick={onOpen}
+          disabled={disabled}
+          aria-label={pickerA11y}
+          title={disabled ? "Devices unavailable on insecure origin" : undefined}
+          className="flex items-center gap-3 min-w-0 flex-1 text-left disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Icon className={`w-4 h-4 shrink-0 ${enabled ? "text-zinc-400" : "text-red-400"}`} />
           <span className="flex flex-col items-start min-w-0">
             <span className="text-[10px] uppercase tracking-wide text-zinc-400">{label}</span>
-            <span className="text-sm text-zinc-200 truncate max-w-[220px] md:max-w-[260px]">
+            <span className="text-sm text-zinc-200 truncate max-w-[180px] md:max-w-[220px]">
               {selectedLabel}
             </span>
           </span>
-        </span>
-        <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
-      </button>
+        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            aria-label={toggleA11y}
+            onClick={onToggle}
+            disabled={disabled}
+            className={`relative w-9 h-5 rounded-full transition disabled:opacity-50 disabled:cursor-not-allowed ${
+              enabled ? "bg-cyan-500 shadow-[0_0_12px_rgba(34,211,238,0.45)]" : "bg-zinc-700"
+            }`}
+          >
+            <span
+              aria-hidden
+              className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-150 ${
+                enabled ? "translate-x-[16px]" : "translate-x-0"
+              }`}
+            />
+          </button>
+          <button
+            type="button"
+            onClick={onOpen}
+            disabled={disabled}
+            aria-label={pickerA11y}
+            title={disabled ? "Devices unavailable on insecure origin" : undefined}
+            className="p-1 -m-1 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <ChevronDown className="w-4 h-4 text-zinc-400" />
+          </button>
+        </div>
+      </div>
       {children}
     </div>
   );
