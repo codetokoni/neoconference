@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Pencil } from "lucide-react";
 
 export type RoomEntryValues = {
   username: string;
@@ -9,11 +11,26 @@ export type RoomEntryValues = {
 
 const NAME_KEY = "neoconf:displayName";
 
+// Mirrors the server-side regex in /api/events/rename for client-side shortcutting.
+const SLUG_REGEX = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
+
 export function getSavedDisplayName(): string {
   try { return localStorage.getItem(NAME_KEY) || ""; } catch { return ""; }
 }
 export function saveDisplayName(name: string) {
   try { localStorage.setItem(NAME_KEY, name); } catch {}
+}
+
+function humanizeRenameError(code?: string): string {
+  switch ((code || "").toLowerCase()) {
+    case "slug_taken": return "That URL is already taken. Try another.";
+    case "invalid_slug": return "URL can only contain lowercase letters, numbers, and dashes.";
+    case "forbidden": return "Only the host can rename this meeting.";
+    case "network_error": return "Network error. Check your connection and try again.";
+    case "rename_failed": return "Rename failed. Please try again.";
+    case "not_found": return "This meeting doesn't exist.";
+    default: return code ? `Rename failed (${code}).` : "Rename failed. Please try again.";
+  }
 }
 
 type Quality = "checking" | "excellent" | "good" | "poor" | "offline";
@@ -24,12 +41,16 @@ export function RoomNameEntry({
   onSubmit,
   onCopyLink,
   copied,
+  isHost = false,
+  eventSlug,
 }: {
   roomName: string;
   defaultName: string;
   onSubmit: (v: RoomEntryValues) => void;
   onCopyLink: () => void;
   copied: boolean;
+  isHost?: boolean;
+  eventSlug?: string;
 }) {
   const [name, setName] = useState(() => getSavedDisplayName() || defaultName);
   const [video, setVideo] = useState(true);
@@ -39,12 +60,14 @@ export function RoomNameEntry({
   const [micLevel, setMicLevel] = useState(0); // 0..1
   const [quality, setQuality] = useState<Quality>("checking");
   const [pingMs, setPingMs] = useState<number | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number | null>(null);
+  const pencilRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!getSavedDisplayName() && defaultName) setName(defaultName);
@@ -206,9 +229,32 @@ export function RoomNameEntry({
           {/* Right: Controls panel */}
           <form onSubmit={submit} className="w-full rounded-3xl border border-cyan-400/20 bg-zinc-950/60 backdrop-blur-xl shadow-[0_0_60px_rgba(34,211,238,0.15)] p-6 md:p-8">
             <div className="flex items-start justify-between gap-3 mb-6">
-              <div className="min-w-0">
+              <div className="min-w-0 relative">
                 <div className="text-[10px] uppercase tracking-[0.35em] text-cyan-400/80">You’re joining</div>
-                <div className="text-2xl md:text-3xl font-bold text-white truncate mt-1">{roomName}</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="text-2xl md:text-3xl font-bold text-white truncate min-w-0">{roomName}</div>
+                  {isHost && eventSlug && (
+                    <button
+                      ref={pencilRef}
+                      type="button"
+                      onClick={() => setRenameOpen((x) => !x)}
+                      aria-label="Rename room URL"
+                      aria-expanded={renameOpen}
+                      className="shrink-0 w-6 h-6 rounded-full bg-white/5 border-[0.5px] border-white/10 hover:bg-white/10 hover:border-cyan-400/30 transition flex items-center justify-center"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-zinc-300" />
+                    </button>
+                  )}
+                </div>
+                <AnimatePresence>
+                  {renameOpen && isHost && eventSlug && (
+                    <RenameUrlPopover
+                      currentSlug={eventSlug}
+                      onClose={() => setRenameOpen(false)}
+                      anchorRef={pencilRef}
+                    />
+                  )}
+                </AnimatePresence>
               </div>
               <button type="button" onClick={onCopyLink} className="shrink-0 text-[11px] px-3 py-1.5 rounded-full border border-cyan-400/40 text-cyan-300 hover:bg-cyan-400/10 transition">
                 {copied ? "Copied!" : "Copy link"}
@@ -299,6 +345,145 @@ function ToggleTile({ label, on, onChange, kind }: { label: string; on: boolean;
         <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${on ? "left-[18px]" : "left-0.5"}`} />
       </span>
     </button>
+  );
+}
+
+function RenameUrlPopover({
+  currentSlug,
+  onClose,
+  anchorRef,
+}: {
+  currentSlug: string;
+  onClose: () => void;
+  anchorRef: React.RefObject<HTMLButtonElement | null>;
+}) {
+  const reduced = useReducedMotion();
+  const [value, setValue] = useState(currentSlug);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus input + select all on open; restore focus to pencil on close.
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+    const anchor = anchorRef.current;
+    return () => { anchor?.focus(); };
+  }, [anchorRef]);
+
+  // Outside-tap and Escape close the popover.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    const onPointer = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (popoverRef.current?.contains(target)) return;
+      if (anchorRef.current?.contains(target)) return; // pencil toggles itself
+      onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointer, true);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointer, true);
+    };
+  }, [onClose, anchorRef]);
+
+  const trimmed = value.trim().toLowerCase();
+  const sameAsCurrent = trimmed === currentSlug.toLowerCase();
+  const formatValid = SLUG_REGEX.test(trimmed);
+  const formatError = trimmed.length > 0 && !formatValid
+    ? humanizeRenameError("invalid_slug")
+    : null;
+  const canSave = formatValid && !sameAsCurrent && !busy;
+  const displayError = err || formatError;
+
+  const submit = useCallback(async () => {
+    if (!canSave) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/events/rename", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ slug: currentSlug, newSlug: trimmed }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; roomUrl?: string };
+      if (!res.ok || !j.ok || !j.roomUrl) {
+        setErr(humanizeRenameError(j.error));
+        setBusy(false);
+        return;
+      }
+      // Full reload re-derives roomName/eventSlug/role from the new URL.
+      window.location.href = j.roomUrl;
+    } catch {
+      setErr(humanizeRenameError("network_error"));
+      setBusy(false);
+    }
+  }, [canSave, currentSlug, trimmed]);
+
+  return (
+    <motion.div
+      ref={popoverRef}
+      initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
+      animate={reduced ? { opacity: 1 } : { opacity: 1, scale: 1 }}
+      exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.15, ease: "easeOut" }}
+      role="dialog"
+      aria-label="Rename room URL"
+      className="absolute left-0 top-full mt-2 z-30 min-w-[260px] rounded-xl p-3"
+      style={{
+        background: "rgba(0,0,0,0.85)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        border: "0.5px solid rgba(34,211,238,0.3)",
+        transformOrigin: "top left",
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && canSave) {
+          e.preventDefault();
+          submit();
+        }
+      }}
+    >
+      <div className="text-[10px] uppercase tracking-wide text-zinc-400 mb-1.5">
+        Rename URL
+      </div>
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={(e) => { setValue(e.target.value); setErr(null); }}
+        maxLength={64}
+        placeholder="lowercase, numbers, dashes"
+        disabled={busy}
+        className="w-full px-3 py-2 rounded-lg bg-black/60 border border-white/10 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/30 text-sm text-white placeholder:text-zinc-500"
+      />
+      {displayError && (
+        <div className="text-xs text-red-400 mt-2">{displayError}</div>
+      )}
+      <div className="flex justify-end gap-2 mt-3">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          className="text-sm text-zinc-400 hover:text-zinc-200 px-2 py-1 transition"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!canSave}
+          className="bg-cyan-500 hover:bg-cyan-400 disabled:bg-cyan-500/30 disabled:cursor-not-allowed rounded-md px-3 py-1.5 text-sm font-medium text-black transition"
+        >
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </motion.div>
   );
 }
 
