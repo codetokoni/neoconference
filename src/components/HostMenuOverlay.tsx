@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParticipants, useLocalParticipant } from '@livekit/components-react';
 import { HostTileMenu } from './HostTileMenu';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 /**
  * HostMenuOverlay
@@ -21,11 +22,14 @@ export default function HostMenuOverlay({
 }) {
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
+  // MobileParticipantTile has its own long-press host menu, so we skip the
+  // desktop kebab-menu portal on mobile to avoid double UI.
+  const isMobile = useIsMobile();
   const [tick, setTick] = useState(0);
 
   // Re-scan tiles whenever the DOM mutates (tiles get added/removed/paginated).
   useEffect(() => {
-    if (!isHost) return;
+    if (!isHost || isMobile) return;
     let raf = 0;
     const obs = new MutationObserver(() => {
       cancelAnimationFrame(raf);
@@ -33,9 +37,9 @@ export default function HostMenuOverlay({
     });
     obs.observe(document.body, { childList: true, subtree: true });
     return () => { obs.disconnect(); cancelAnimationFrame(raf); };
-  }, [isHost]);
+  }, [isHost, isMobile]);
 
-  if (!isHost) return null;
+  if (!isHost || isMobile) return null;
 
   const localIdentity = localParticipant?.identity || '';
   // Snapshot tiles (read at render time; tick triggers re-render).
