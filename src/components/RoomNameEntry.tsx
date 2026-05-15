@@ -1,12 +1,15 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Pencil } from "lucide-react";
+import { Check, ChevronDown, Mic, Pencil, Video, X } from "lucide-react";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 export type RoomEntryValues = {
   username: string;
   videoEnabled: boolean;
   audioEnabled: boolean;
+  videoDeviceId?: string;
+  audioDeviceId?: string;
 };
 
 const NAME_KEY = "neoconf:displayName";
@@ -62,12 +65,45 @@ export function RoomNameEntry({
   const [pingMs, setPingMs] = useState<number | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
 
+  // Device pickers (camera + mic only — speaker output deferred due to
+  // setSinkId being absent/broken in Safari).
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [videoDeviceId, setVideoDeviceId] = useState<string | undefined>(undefined);
+  const [audioDeviceId, setAudioDeviceId] = useState<string | undefined>(undefined);
+  const [pickerOpen, setPickerOpen] = useState<"video" | "audio" | null>(null);
+  const [devicesUnavailable, setDevicesUnavailable] = useState(false);
+  const isMobile = useIsMobile();
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number | null>(null);
   const pencilRef = useRef<HTMLButtonElement>(null);
+  const cameraRowRef = useRef<HTMLDivElement>(null);
+  const micRowRef = useRef<HTMLDivElement>(null);
+
+  // --- Enumerate input devices + listen for hot-plug changes ---
+  const enumerate = useCallback(async () => {
+    try {
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      setVideoDevices(devs.filter((d) => d.kind === "videoinput"));
+      setAudioDevices(devs.filter((d) => d.kind === "audioinput"));
+      setDevicesUnavailable(false);
+    } catch {
+      setDevicesUnavailable(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    enumerate();
+    const md = navigator.mediaDevices;
+    if (!md?.addEventListener) return;
+    const onChange = () => { enumerate(); };
+    md.addEventListener("devicechange", onChange);
+    return () => md.removeEventListener("devicechange", onChange);
+  }, [enumerate]);
 
   useEffect(() => {
     if (!getSavedDisplayName() && defaultName) setName(defaultName);
@@ -96,13 +132,29 @@ export function RoomNameEntry({
       stopStream();
       if (!video && !audio) return;
       try {
+        const videoConstraints: MediaTrackConstraints = {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          ...(videoDeviceId
+            ? { deviceId: { ideal: videoDeviceId } }
+            : { facingMode: "user" }),
+        };
+        const audioConstraints: MediaTrackConstraints = {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          ...(audioDeviceId ? { deviceId: { ideal: audioDeviceId } } : {}),
+        };
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: video ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } : false,
-          audio: audio ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false,
+          video: video ? videoConstraints : false,
+          audio: audio ? audioConstraints : false,
         });
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
         setPermError(null);
+        // After permission is granted, enumerateDevices() returns real labels;
+        // re-run so device pickers can show names instead of "Camera 1".
+        enumerate();
         if (video && videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.play().catch(() => {});
@@ -136,7 +188,7 @@ export function RoomNameEntry({
     acquire();
     return () => { cancelled = true; stopStream(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [video, audio]);
+  }, [video, audio, videoDeviceId, audioDeviceId]);
 
   // --- Connection quality probe ---
   useEffect(() => {
@@ -168,7 +220,13 @@ export function RoomNameEntry({
     saveDisplayName(trimmed);
     setJoining(true);
     setTimeout(() => {
-      onSubmit({ username: trimmed, videoEnabled: video, audioEnabled: audio });
+      onSubmit({
+        username: trimmed,
+        videoEnabled: video,
+        audioEnabled: audio,
+        videoDeviceId,
+        audioDeviceId,
+      });
     }, 280);
   };
 
@@ -284,6 +342,52 @@ export function RoomNameEntry({
               </div>
             </div>
 
+            {/* Device pickers */}
+            <div className="flex flex-col gap-3 mb-5">
+              <DeviceRow
+                rowRef={cameraRowRef}
+                kind="video"
+                label="Camera"
+                selectedLabel={labelForSelected(videoDevices, videoDeviceId, "Camera")}
+                onOpen={() => setPickerOpen(pickerOpen === "video" ? null : "video")}
+                disabled={devicesUnavailable}
+              >
+                <AnimatePresence>
+                  {pickerOpen === "video" && (
+                    <DevicePicker
+                      kind="video"
+                      devices={videoDevices}
+                      selectedId={videoDeviceId}
+                      isMobile={isMobile}
+                      onSelect={(id) => { setVideoDeviceId(id); setPickerOpen(null); }}
+                      onClose={() => setPickerOpen(null)}
+                    />
+                  )}
+                </AnimatePresence>
+              </DeviceRow>
+              <DeviceRow
+                rowRef={micRowRef}
+                kind="audio"
+                label="Microphone"
+                selectedLabel={labelForSelected(audioDevices, audioDeviceId, "Microphone")}
+                onOpen={() => setPickerOpen(pickerOpen === "audio" ? null : "audio")}
+                disabled={devicesUnavailable}
+              >
+                <AnimatePresence>
+                  {pickerOpen === "audio" && (
+                    <DevicePicker
+                      kind="audio"
+                      devices={audioDevices}
+                      selectedId={audioDeviceId}
+                      isMobile={isMobile}
+                      onSelect={(id) => { setAudioDeviceId(id); setPickerOpen(null); }}
+                      onClose={() => setPickerOpen(null)}
+                    />
+                  )}
+                </AnimatePresence>
+              </DeviceRow>
+            </div>
+
             <div className="grid grid-cols-2 gap-3 mb-7">
               <ToggleTile label="Camera"     on={video} onChange={setVideo} kind="video" />
               <ToggleTile label="Microphone" on={audio} onChange={setAudio} kind="mic" />
@@ -345,6 +449,204 @@ function ToggleTile({ label, on, onChange, kind }: { label: string; on: boolean;
         <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${on ? "left-[18px]" : "left-0.5"}`} />
       </span>
     </button>
+  );
+}
+
+function labelForSelected(
+  devices: MediaDeviceInfo[],
+  selectedId: string | undefined,
+  fallbackPrefix: string,
+): string {
+  if (devices.length === 0) return "System default";
+  if (!selectedId) return devices[0]?.label || `${fallbackPrefix} 1`;
+  const idx = devices.findIndex((d) => d.deviceId === selectedId);
+  if (idx === -1) return "System default";
+  return devices[idx].label || `${fallbackPrefix} ${idx + 1}`;
+}
+
+function DeviceRow({
+  rowRef,
+  kind,
+  label,
+  selectedLabel,
+  onOpen,
+  disabled,
+  children,
+}: {
+  rowRef: React.RefObject<HTMLDivElement | null>;
+  kind: "video" | "audio";
+  label: string;
+  selectedLabel: string;
+  onOpen: () => void;
+  disabled?: boolean;
+  children?: React.ReactNode;
+}) {
+  const Icon = kind === "video" ? Video : Mic;
+  const a11y = kind === "video" ? "Choose camera" : "Choose microphone";
+  return (
+    <div ref={rowRef} className="relative">
+      <button
+        type="button"
+        onClick={onOpen}
+        disabled={disabled}
+        aria-label={a11y}
+        title={disabled ? "Devices unavailable on insecure origin" : undefined}
+        className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-white/[0.04] border-[0.5px] border-white/[0.08] hover:bg-white/[0.06] disabled:opacity-50 disabled:cursor-not-allowed transition"
+      >
+        <span className="flex items-center gap-3 min-w-0">
+          <Icon className="w-4 h-4 text-zinc-400 shrink-0" />
+          <span className="flex flex-col items-start min-w-0">
+            <span className="text-[10px] uppercase tracking-wide text-zinc-400">{label}</span>
+            <span className="text-sm text-zinc-200 truncate max-w-[220px] md:max-w-[260px]">
+              {selectedLabel}
+            </span>
+          </span>
+        </span>
+        <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
+      </button>
+      {children}
+    </div>
+  );
+}
+
+function DevicePicker({
+  kind,
+  devices,
+  selectedId,
+  isMobile,
+  onSelect,
+  onClose,
+}: {
+  kind: "video" | "audio";
+  devices: MediaDeviceInfo[];
+  selectedId?: string;
+  isMobile: boolean;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
+  const reduced = useReducedMotion();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // Desktop only: outside-tap closes. Mobile uses the backdrop overlay.
+  useEffect(() => {
+    if (isMobile) return;
+    const onPointer = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (containerRef.current?.contains(target)) return;
+      onClose();
+    };
+    document.addEventListener("pointerdown", onPointer, true);
+    return () => document.removeEventListener("pointerdown", onPointer, true);
+  }, [isMobile, onClose]);
+
+  const title = kind === "video" ? "Choose camera" : "Choose microphone";
+  const fallbackPrefix = kind === "video" ? "Camera" : "Microphone";
+
+  const items = devices.map((d, i) => (
+    <button
+      key={d.deviceId || `idx-${i}`}
+      type="button"
+      onClick={() => onSelect(d.deviceId)}
+      className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg hover:bg-white/5 transition"
+    >
+      <span className="text-sm text-zinc-200 truncate text-left min-w-0">
+        {d.label || `${fallbackPrefix} ${i + 1}`}
+      </span>
+      {selectedId === d.deviceId && (
+        <Check className="w-4 h-4 text-cyan-400 shrink-0" />
+      )}
+    </button>
+  ));
+
+  if (isMobile) {
+    return (
+      <>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="fixed inset-0 z-40 bg-black/50"
+          onClick={onClose}
+          aria-hidden
+        />
+        <motion.div
+          ref={containerRef}
+          role="dialog"
+          aria-label={title}
+          initial={reduced ? { opacity: 0 } : { y: "100%" }}
+          animate={reduced ? { opacity: 1 } : { y: 0 }}
+          exit={reduced ? { opacity: 0 } : { y: "100%" }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="fixed left-0 right-0 bottom-0 z-50 rounded-t-2xl p-4 max-h-[60vh] overflow-y-auto"
+          style={{
+            background: "rgba(0,0,0,0.95)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            paddingBottom: "calc(1rem + env(safe-area-inset-bottom))",
+          }}
+        >
+          <div className="flex justify-center mb-3">
+            <div className="w-10 h-1 rounded-full bg-white/20" />
+          </div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-7" />
+            <div className="text-sm font-medium text-white">{title}</div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition"
+            >
+              <X className="w-4 h-4 text-zinc-300" />
+            </button>
+          </div>
+          <div className="flex flex-col gap-1">
+            {items.length > 0 ? items : (
+              <div className="text-center text-zinc-500 text-sm py-6">
+                No devices found
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </>
+    );
+  }
+
+  // Desktop popover
+  return (
+    <motion.div
+      ref={containerRef}
+      role="dialog"
+      aria-label={title}
+      initial={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+      animate={reduced ? { opacity: 1 } : { opacity: 1, scale: 1 }}
+      exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 0.97 }}
+      transition={{ duration: 0.15, ease: "easeOut" }}
+      className="absolute left-0 right-0 top-full mt-2 z-40 max-h-64 overflow-y-auto rounded-xl p-1"
+      style={{
+        background: "rgba(0,0,0,0.9)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        border: "0.5px solid rgba(255,255,255,0.12)",
+        transformOrigin: "top",
+      }}
+    >
+      {items.length > 0 ? items : (
+        <div className="text-center text-zinc-500 text-sm py-3">
+          No devices found
+        </div>
+      )}
+    </motion.div>
   );
 }
 

@@ -628,8 +628,8 @@ function RoomContainer({
         serverUrl={wsUrl}
         token={token}
         connect={true}
-        audio={true}
-        video={true}
+        audio={choices.audioDeviceId ? { deviceId: { ideal: choices.audioDeviceId } } : true}
+        video={choices.videoDeviceId ? { deviceId: { ideal: choices.videoDeviceId } } : true}
         onDisconnected={onLeave}
       >
         <RoleMetadataListener onRoleChange={setRoomRole} />
