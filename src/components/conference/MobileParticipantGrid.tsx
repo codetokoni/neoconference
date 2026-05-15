@@ -94,12 +94,16 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
   );
 
   /* ---------- render ---------- */
+  // Outer wrapper uses absolute inset-0 so it fills the parent
+  // (<div className="flex-1 relative overflow-hidden"> in MobileVideoConference).
+  // min-height: 100% on a flow child of a flex item doesn't reliably resolve,
+  // which left the gradient painted only behind the tiles. inset:0 anchors it
+  // to the full middle area and lets the grid scroll inside it.
   if (participants.length === 0) {
     return (
       <div
-        className="flex items-center justify-center text-white/40 text-sm"
+        className="absolute inset-0 flex items-center justify-center text-white/40 text-sm"
         style={{
-          minHeight: '100%',
           background: 'radial-gradient(ellipse at top, #0a1a24 0%, #000 60%)',
         }}
       >
@@ -110,14 +114,13 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
 
   return (
     <div
-      className="relative"
+      className="absolute inset-0 overflow-y-auto"
       style={{
-        minHeight: '100%',
         background: 'radial-gradient(ellipse at top, #0a1a24 0%, #000 60%)',
       }}
     >
       <LayoutGroup>
-        <div className="grid grid-cols-3 gap-2 px-3 pb-4 overflow-y-auto">
+        <div className="grid grid-cols-3 gap-2 px-3 pb-4">
           {participants.map((p) => (
             <div key={p.identity} ref={refCallback(p.identity)}>
               <MobileParticipantTile
