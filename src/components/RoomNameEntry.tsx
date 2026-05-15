@@ -240,7 +240,7 @@ export function RoomNameEntry({
   const qm = qualityMeta[quality];
 
   return (
-    <div className="fixed inset-0 z-30 overflow-hidden bg-[#040713] text-white">
+    <div className="fixed inset-0 z-50 overflow-hidden bg-[#040713] text-white">
       <div aria-hidden className="absolute inset-0 pointer-events-none">
         <div className="absolute -top-40 -left-40 w-[40rem] h-[40rem] rounded-full bg-cyan-500/20 blur-3xl animate-pulse" />
         <div className="absolute -bottom-40 -right-40 w-[40rem] h-[40rem] rounded-full bg-fuchsia-500/10 blur-3xl" />
