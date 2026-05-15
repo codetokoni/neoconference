@@ -254,7 +254,7 @@ export function RoomNameEntry({
           {/* Left: Camera preview */}
           <div className="relative aspect-square sm:aspect-video w-full rounded-3xl overflow-hidden border border-white/10 bg-black shadow-[0_0_80px_rgba(34,211,238,0.18)]">
             {video && !permError && (
-              <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover object-top scale-x-[-1]" />
+              <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover object-[center_20%] scale-x-[-1]" />
             )}
             {(!video || permError) && (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
