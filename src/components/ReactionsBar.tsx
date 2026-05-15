@@ -128,102 +128,12 @@ export default function ReactionsBar() {
     <style>{`@keyframes neoFloat { 0% { transform: translateY(0) scale(0.6); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(-260px) scale(1.15); opacity: 0; } }`}</style>
   );
 
-  // ---- Mobile layout: single trigger + expandable row above control bar ----
+  // Mobile reaction UI is now provided by ReactionsRail.
+  // The mobile branch here is muted; useEffect subscribers above
+  // continue to run for any global side effects (logging, metrics,
+  // legacy float fallback for pid-less desktop senders).
   if (isMobile) {
-    return (
-      <>
-        {floatOverlay}
-        {pickerOpen && (
-          <div
-            aria-hidden
-            onClick={() => setPickerOpen(false)}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 68,
-              background: 'transparent',
-            }}
-          />
-        )}
-        <div
-          style={{
-            position: 'fixed',
-            right: 12,
-            bottom: 'calc(72px + env(safe-area-inset-bottom, 0px))',
-            zIndex: 70,
-            display: 'flex',
-            flexDirection: 'row-reverse',
-            alignItems: 'center',
-            gap: 8,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            aria-label={pickerOpen ? 'Close reactions' : 'Open reactions'}
-            aria-expanded={pickerOpen}
-            onClick={() => setPickerOpen((v) => !v)}
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              background: 'rgba(15,23,42,0.85)',
-              border: '1px solid rgba(34,211,238,0.35)',
-              backdropFilter: 'blur(12px)',
-              color: '#fff',
-              fontSize: 22,
-              cursor: 'pointer',
-              padding: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-            }}
-          >
-            {pickerOpen ? '✕' : '😊'}
-          </button>
-          {pickerOpen && (
-            <div
-              role="group"
-              aria-label="Reactions"
-              style={{
-                display: 'flex',
-                flexDirection: 'row',
-                gap: 4,
-                padding: 6,
-                borderRadius: 28,
-                background: 'rgba(15,23,42,0.92)',
-                border: '1px solid rgba(34,211,238,0.3)',
-                backdropFilter: 'blur(12px)',
-                boxShadow: '0 6px 20px rgba(0,0,0,0.45)',
-              }}
-            >
-              {REACTIONS.map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  aria-label={`Send ${k}`}
-                  onClick={() => send(k)}
-                  style={{
-                    fontSize: '22px',
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    width: 40,
-                    height: 40,
-                    borderRadius: 20,
-                    padding: 0,
-                  }}
-                >
-                  {EMOJI[k]}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        {keyframes}
-      </>
-    );
+    return null;
   }
 
   // ---- Desktop layout (unchanged) ----
