@@ -27,6 +27,7 @@ interface MobileParticipantTileProps {
   slug: string;
   onSpotlight?: (participantId: string) => void;
   isVisible?: boolean;
+  aspect?: 'square' | 'video';
 }
 
 interface ReactionBurst {
@@ -81,6 +82,7 @@ function MobileParticipantTileInner({
   slug,
   onSpotlight,
   isVisible = true,
+  aspect = 'square',
 }: MobileParticipantTileProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const isSpeaking = useIsSpeaking(participant);
@@ -257,7 +259,7 @@ function MobileParticipantTileInner({
     <motion.div
       ref={rootRef}
       layout
-      className="lk-participant-tile aspect-square rounded-xl overflow-hidden relative"
+      className={`lk-participant-tile ${aspect === 'video' ? 'aspect-video' : 'aspect-square'} rounded-xl overflow-hidden relative`}
       style={rootStyle}
       data-lk-participant-identity={participant.identity}
       onPointerDown={onPointerDown}
@@ -471,5 +473,6 @@ export const MobileParticipantTile = React.memo(
     prev.localIsHost === next.localIsHost &&
     prev.participantIsHost === next.participantIsHost &&
     prev.slug === next.slug &&
-    prev.isVisible === next.isVisible,
+    prev.isVisible === next.isVisible &&
+    prev.aspect === next.aspect,
 );
