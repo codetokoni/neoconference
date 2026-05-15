@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParticipants } from '@livekit/components-react';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 /**
  * TileRoleBadges
@@ -22,11 +23,16 @@ import { useParticipants } from '@livekit/components-react';
  */
 export default function TileRoleBadges({ ownerUserId }: { ownerUserId: string | null }) {
   const participants = useParticipants();
+  // MobileParticipantTile renders its own HOST chip inside the bottom pill,
+  // so the desktop-style top-left badge bleeds through and looks like a bug.
+  const isMobile = useIsMobile();
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((t) => (t + 1) % 1000000), 1200);
     return () => clearInterval(id);
   }, []);
+
+  if (isMobile) return null;
 
   // Build name -> role map.
   const roleByName = new Map<string, 'host' | 'cohost'>();

@@ -14,6 +14,7 @@ import {
   useLocalParticipant,
 } from "@livekit/components-react";
 import MobileVideoConference from "@/components/MobileVideoConference";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import HostMenuOverlay from "@/components/HostMenuOverlay";
 import MediaRequestPrompt from "@/components/MediaRequestPrompt";
 import { RoomEvent, Track, type Participant } from "livekit-client";
@@ -358,11 +359,15 @@ function humanizeRenameError(code?: string): string { switch ((code || "").toLow
   roomRole: string;
   eventSlug?: string;
 }) {
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [next, setNext] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   if (roomRole !== "host" || !eventSlug) return null;
+  // Mobile hosts rename via the MobileMoreMenu — the fixed top-right chip
+  // bleeds through the mobile grid otherwise.
+  if (isMobile) return null;
   const submit = async () => {
     const cleaned = (next || "").trim().toLowerCase();
     if (!cleaned) return;
