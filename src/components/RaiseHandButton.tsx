@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useRoomContext, useParticipants } from '@livekit/components-react';
 import { RoomEvent } from 'livekit-client';
+import { useIsMobile } from '@/hooks/useIsMobile';
 
 const TOPIC = 'neo-hand';
 const EXIT_MS = 260;
@@ -23,6 +24,10 @@ type Props = { isHost?: boolean };
 export default function RaiseHandButton({ isHost = false }: Props) {
   const room = useRoomContext();
   const participants = useParticipants();
+  // On mobile the floating bottom-right ✋ button is replaced by ReactionsRail's
+  // capsule (which has its own hand toggle). We still need the on-tile portal
+  // pills though, so we only suppress the floating button + host roster.
+  const isMobile = useIsMobile();
   const [raised, setRaised] = useState(false);
   const [hands, setHands] = useState<Map<string, Hand>>(new Map());
   const [leaving, setLeaving] = useState<Map<string, Hand>>(new Map());
@@ -212,33 +217,35 @@ export default function RaiseHandButton({ isHost = false }: Props) {
         ),
       )}
 
-      <button
-        type="button"
-        className="neo-raise-btn"
-        onClick={toggle}
-        aria-pressed={raised}
-        title={raised ? 'Lower hand' : 'Raise hand'}
-        style={{
-          position: 'fixed',
-          bottom: 90,
-          right: 18,
-          zIndex: 70,
-          width: 44,
-          height: 44,
-          borderRadius: 22,
-          fontSize: 22,
-          backgroundColor: raised ? '#fbbf24' : 'rgba(15,23,42,0.7)',
-          color: raised ? '#0e1530' : '#fbbf24',
-          border: '1px solid ' + (raised ? 'rgba(251,191,36,0.85)' : 'rgba(251,191,36,0.4)'),
-          cursor: 'pointer',
-          backdropFilter: 'blur(10px)',
-          boxShadow: raised ? '0 0 24px rgba(251,191,36,0.55)' : '0 0 0 rgba(251,191,36,0)',
-        }}
-      >
-        ✋
-      </button>
+      {!isMobile && (
+        <button
+          type="button"
+          className="neo-raise-btn"
+          onClick={toggle}
+          aria-pressed={raised}
+          title={raised ? 'Lower hand' : 'Raise hand'}
+          style={{
+            position: 'fixed',
+            bottom: 90,
+            right: 18,
+            zIndex: 70,
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            fontSize: 22,
+            backgroundColor: raised ? '#fbbf24' : 'rgba(15,23,42,0.7)',
+            color: raised ? '#0e1530' : '#fbbf24',
+            border: '1px solid ' + (raised ? 'rgba(251,191,36,0.85)' : 'rgba(251,191,36,0.4)'),
+            cursor: 'pointer',
+            backdropFilter: 'blur(10px)',
+            boxShadow: raised ? '0 0 24px rgba(251,191,36,0.55)' : '0 0 0 rgba(251,191,36,0)',
+          }}
+        >
+          ✋
+        </button>
+      )}
 
-      {isHost && handCount > 0 ? (
+      {!isMobile && isHost && handCount > 0 ? (
         <button
           type="button"
           onClick={() => setShowRoster((v) => !v)}
@@ -248,7 +255,7 @@ export default function RaiseHandButton({ isHost = false }: Props) {
         </button>
       ) : null}
 
-      {isHost && showRoster ? (
+      {!isMobile && isHost && showRoster ? (
         <div
           style={{ position: 'fixed', bottom: 140, right: 18, zIndex: 70, width: 240, maxHeight: 320, overflowY: 'auto', padding: 12, borderRadius: 12, background: 'rgba(8,11,20,0.92)', border: '1px solid rgba(251,191,36,0.35)', color: '#e2e8f0', backdropFilter: 'blur(14px)' }}
         >
