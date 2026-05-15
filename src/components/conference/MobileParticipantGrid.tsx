@@ -30,6 +30,18 @@ function isHostRole(p: Participant | undefined | null): boolean {
   }
 }
 
+// Adaptive density (mobile only — this whole component is gated to <640px).
+// 1   → 1 col, 16:9 (fullscreen-ish solo)
+// 2   → 1 col, 16:9 (stacked landscape, big faces for 1-on-1)
+// 3-4 → 2 cols, square (2x2)
+// 5-8 → 2 cols, square (scrolls if needed)
+// 9+  → 3 cols, square (gallery)
+function densityFor(count: number): { cols: string; aspect: 'square' | 'video' } {
+  if (count <= 2) return { cols: 'grid-cols-1', aspect: 'video' };
+  if (count <= 8) return { cols: 'grid-cols-2', aspect: 'square' };
+  return { cols: 'grid-cols-3', aspect: 'square' };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -112,6 +124,8 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
     );
   }
 
+  const { cols, aspect } = densityFor(participants.length);
+
   return (
     <div
       className="absolute inset-0 overflow-y-auto"
@@ -120,7 +134,7 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
       }}
     >
       <LayoutGroup>
-        <div className="grid grid-cols-3 gap-2 px-3 pb-4">
+        <div className={`grid ${cols} gap-2 px-3 pb-4`}>
           {participants.map((p) => (
             <div key={p.identity} ref={refCallback(p.identity)}>
               <MobileParticipantTile
@@ -129,6 +143,7 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
                 participantIsHost={isHostRole(p)}
                 slug={slug}
                 isVisible={visibilityMap.get(p.identity) ?? true}
+                aspect={aspect}
               />
             </div>
           ))}
