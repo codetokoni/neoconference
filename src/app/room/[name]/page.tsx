@@ -227,7 +227,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
           </button>
         </div>
         <div data-lk-theme="default" className="w-full max-w-xl">
-          <RoomNameEntry roomName={roomName} defaultName={defaultUsername} onSubmit={(values) => setChoices(values as LocalUserChoices)} onCopyLink={copyLink} copied={copied} /><PrejoinRenameUrlPanel roomRole={pageRoomRole} eventSlug={eventSlug} />
+          <RoomNameEntry roomName={roomName} defaultName={defaultUsername} onSubmit={(values) => setChoices(values as LocalUserChoices)} onCopyLink={copyLink} copied={copied} isHost={pageRoomRole === "host"} eventSlug={eventSlug} />
         </div>
       </div>
     );
@@ -352,7 +352,7 @@ function RenameRedirectListener() {
  * Old links keep working as aliases. Calling the API broadcasts an
  * event_renamed packet so all current participants redirect to the new URL.
  */
-function humanizeRenameError(code?: string): string { switch ((code || "").toLowerCase()) { case "slug_taken": return "That URL is already taken. Try another."; case "invalid_slug": return "Invalid URL. Use lowercase letters, numbers, and dashes."; case "forbidden": return "Only the host can rename this meeting."; case "network_error": return "Network error. Check your connection and try again."; case "rename_failed": return "Rename failed. Please try again."; case "not_found": return "This meeting doesn't exist."; default: return code ? "Rename failed (" + code + ")." : "Rename failed. Please try again."; } } function PrejoinRenameUrlPanel({ roomRole, eventSlug }: { roomRole: string; eventSlug?: string }) { const [next, setNext] = useState(""); const [busy, setBusy] = useState(false); const [err, setErr] = useState<string | null>(null); if (roomRole !== "host" || !eventSlug) return null; const submit = async () => { const cleaned = (next || "").trim().toLowerCase(); if (!cleaned) return; setBusy(true); setErr(null); try { const res = await fetch("/api/events/rename", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slug: eventSlug, newSlug: cleaned }) }); const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; roomUrl?: string }; if (!res.ok || !j.ok || !j.roomUrl) { setErr(humanizeRenameError(j.error)); setBusy(false); return; } window.location.href = j.roomUrl; } catch { setErr(humanizeRenameError("network_error")); setBusy(false); } }; return (<div className="mt-3 w-full rounded-xl border border-cyan-300/30 bg-cyan-500/5 p-3"><div className="text-[11px] uppercase tracking-wider text-cyan-200/80 mb-2">Rename meeting URL (host only)</div><div className="flex gap-2"><input type="text" value={next} onChange={(e) => setNext(e.target.value)} placeholder="my-meeting" className="flex-1 px-2 py-1.5 rounded bg-white/5 border border-white/10 text-sm outline-none focus:border-cyan-300/50" /><button type="button" onClick={submit} className="px-3 py-1.5 rounded bg-cyan-500/80 hover:bg-cyan-500 text-[12px] text-white disabled:opacity-50" disabled={busy || !next.trim()}>{busy ? "Renaming..." : "Rename"}</button></div>{err && <div className="text-[11px] text-rose-300 mt-2">{err}</div>}<div className="text-[10px] text-white/50 mt-1">Lowercase letters, numbers, dashes. Old link keeps working.</div></div>); } function RenameUrlButton({
+function humanizeRenameError(code?: string): string { switch ((code || "").toLowerCase()) { case "slug_taken": return "That URL is already taken. Try another."; case "invalid_slug": return "Invalid URL. Use lowercase letters, numbers, and dashes."; case "forbidden": return "Only the host can rename this meeting."; case "network_error": return "Network error. Check your connection and try again."; case "rename_failed": return "Rename failed. Please try again."; case "not_found": return "This meeting doesn't exist."; default: return code ? "Rename failed (" + code + ")." : "Rename failed. Please try again."; } } function RenameUrlButton({
   roomRole,
   eventSlug,
 }: {
@@ -628,8 +628,8 @@ function RoomContainer({
         serverUrl={wsUrl}
         token={token}
         connect={true}
-        audio={true}
-        video={true}
+        audio={choices.audioDeviceId ? { deviceId: { ideal: choices.audioDeviceId } } : true}
+        video={choices.videoDeviceId ? { deviceId: { ideal: choices.videoDeviceId } } : true}
         onDisconnected={onLeave}
       >
         <RoleMetadataListener onRoleChange={setRoomRole} />
