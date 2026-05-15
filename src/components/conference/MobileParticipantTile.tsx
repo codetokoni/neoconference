@@ -60,6 +60,15 @@ function ensureKeyframes() {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.4; }
 }
+@keyframes mobile-tile-spin {
+  to { transform: rotate(360deg); }
+}
+.mobile-tile-spin {
+  animation: mobile-tile-spin 1.2s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-tile-spin { animation: none; }
+}
 `;
   document.head.appendChild(style);
 }
@@ -96,6 +105,29 @@ function MobileParticipantTileInner({
   /* ---------- camera track detection ---------- */
   const camPub = participant.getTrackPublication(Track.Source.Camera);
   const hasCam = !!(camPub?.isSubscribed && !camPub.isMuted);
+  const trackSid = camPub?.trackSid;
+
+  /* ---------- first-frame tracking for cross-fade ---------- */
+  // Without this, the tile snaps from avatar to video the moment LiveKit
+  // subscribes the track — but frames take 1-3s to arrive. We crossfade
+  // when the video element actually has decoded data.
+  const [hasFirstFrame, setHasFirstFrame] = useState(false);
+  const videoElRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    setHasFirstFrame(false);
+    if (!hasCam) return;
+    const video = videoElRef.current;
+    if (!video) return;
+    // If the video already has decoded data (e.g. fast reconnect), skip the fade.
+    if (video.readyState >= 2 /* HAVE_CURRENT_DATA */) {
+      setHasFirstFrame(true);
+      return;
+    }
+    const onLoaded = () => setHasFirstFrame(true);
+    video.addEventListener('loadeddata', onLoaded);
+    return () => video.removeEventListener('loadeddata', onLoaded);
+  }, [hasCam, trackSid]);
 
   /* ---------- host menu (long press) ---------- */
   const [menuOpen, setMenuOpen] = useState(false);
@@ -276,9 +308,14 @@ function MobileParticipantTileInner({
         }}
       />
 
-      {/* Camera or Avatar */}
-      {hasCam && camPub?.videoTrack ? (
+      {/* Video — mounted while the track exists; fades in once the first
+          frame is decoded. Keyed by trackSid so a camera swap (front↔back,
+          off→on) tears down the old element and re-runs the first-frame
+          effect for the new stream. */}
+      {hasCam && camPub?.videoTrack && (
         <VideoTrack
+          key={trackSid}
+          ref={videoElRef}
           trackRef={{
             participant,
             publication: camPub,
@@ -290,10 +327,31 @@ function MobileParticipantTileInner({
             width: '100%',
             height: '100%',
             objectFit: 'cover',
+            opacity: hasFirstFrame ? 1 : 0,
+            transition: 'opacity 300ms ease-out',
           }}
         />
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center">
+      )}
+
+      {/* Avatar — always mounted; fades out once first frame lands so the
+          DOM stays stable across transitions and there's no layout flash. */}
+      <div
+        className="absolute inset-0 flex items-center justify-center"
+        style={{
+          opacity: hasCam && hasFirstFrame ? 0 : 1,
+          transition: 'opacity 300ms ease-out',
+        }}
+      >
+        <div className="relative">
+          {/* Connecting indicator: cyan arc that spins around the avatar
+              while the camera is on but no frames have arrived yet. */}
+          {hasCam && !hasFirstFrame && (
+            <div
+              className="mobile-tile-spin absolute -inset-2 rounded-full border-2 border-transparent pointer-events-none"
+              style={{ borderTopColor: 'rgb(34, 211, 238)' }}
+              aria-hidden
+            />
+          )}
           <div
             className="w-12 h-12 rounded-full flex items-center justify-center"
             style={{
@@ -304,7 +362,7 @@ function MobileParticipantTileInner({
             <span className="text-base font-medium text-white">{initials}</span>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Reaction bursts */}
       {bursts.map((b, i) => (
