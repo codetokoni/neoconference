@@ -8,8 +8,9 @@
 //
 // Responsibilities:
 //   1. Meeting-length cap — counts down from when this component mounts. In
-//      the last 3 minutes it shows a glass countdown widget; at T=0 it
-//      disconnects the room and paints a full-screen "Upgrade" overlay.
+//      the last 5 minutes it shows a glass countdown widget that shifts
+//      through amber -> orange -> red urgency tiers; at T=0 it disconnects
+//      the room and paints a full-screen "Upgrade" overlay.
 //   2. Hide breakouts / recording UI elements via injected CSS when the
 //      host's plan does not include those features.
 
@@ -130,16 +131,24 @@ export default function PlanGateOverlay() {
     style.textContent = rules.join("\n");
   }, [limits]);
 
-  // Throttled value for the aria-live region: announce every 30s, plus
-  // immediately when we cross into the <=60s "red" urgency state.
-  const wasUrgentRef = useRef(false);
+  // Aria-live announcements: speak when entering the orange (<=3 min) or
+  // red (<=1 min) tier, plus throttled 30s updates while in red. Amber is
+  // the calm "heads up" state — the color is the signal, no speech.
+  const prevTierRef = useRef<"none" | "amber" | "orange" | "red">("none");
   const announced = useMemo(() => {
     if (secondsLeft === null) return "";
-    const isUrgent = secondsLeft <= 60;
-    const crossedIntoUrgent = isUrgent && !wasUrgentRef.current;
-    wasUrgentRef.current = isUrgent;
-    const isBoundary = secondsLeft % 30 === 0 || crossedIntoUrgent;
-    if (!isBoundary) return "";
+    const tier: "none" | "amber" | "orange" | "red" =
+      secondsLeft > 300 ? "none" :
+      secondsLeft > 180 ? "amber" :
+      secondsLeft > 60 ? "orange" : "red";
+    const prev = prevTierRef.current;
+    prevTierRef.current = tier;
+
+    const enteredOrange = tier === "orange" && prev !== "orange" && prev !== "red";
+    const enteredRed = tier === "red" && prev !== "red";
+    const periodicRed = tier === "red" && secondsLeft % 30 === 0;
+    if (!enteredOrange && !enteredRed && !periodicRed) return "";
+
     const m = Math.floor(secondsLeft / 60);
     const s = secondsLeft % 60;
     if (m > 0 && s === 0) return `${m} minute${m === 1 ? "" : "s"} left on Free plan`;
@@ -150,9 +159,14 @@ export default function PlanGateOverlay() {
   if (!limits) return null;
 
   const showWidget =
-    secondsLeft !== null && secondsLeft > 0 && secondsLeft <= 180 && !ended;
-  const isRed = showWidget && secondsLeft !== null && secondsLeft <= 60;
-  const countdownColor = isRed ? "text-red-400" : "text-orange-400";
+    secondsLeft !== null && secondsLeft > 0 && secondsLeft <= 300 && !ended;
+  const tier: "amber" | "orange" | "red" =
+    secondsLeft !== null && secondsLeft <= 60 ? "red" :
+    secondsLeft !== null && secondsLeft <= 180 ? "orange" : "amber";
+  const isRed = tier === "red";
+  const countdownColor =
+    tier === "red" ? "text-red-400" :
+    tier === "orange" ? "text-orange-400" : "text-amber-400";
 
   return (
     <>
@@ -161,26 +175,24 @@ export default function PlanGateOverlay() {
           data-room-chrome="true"
           className={
             isMobile
-              ? "fixed top-3 left-3 right-3 z-[60] flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-black/60 px-3 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur-xl"
+              ? "fixed top-12 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-white/[0.08] bg-black/60 px-4 py-3 shadow-[0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur-xl"
               : "fixed top-3 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-white/[0.08] bg-black/60 px-4 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur-xl"
           }
           style={{ minWidth: isMobile ? undefined : 280, borderWidth: "0.5px" }}
         >
           <div className="flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
-            {!isMobile && (
-              <span className="text-[10px] font-medium uppercase tracking-widest text-zinc-400">
-                Free plan
-              </span>
-            )}
+            <span className="text-[10px] font-medium uppercase tracking-widest text-zinc-400">
+              Free plan
+            </span>
           </div>
 
-          {!isMobile && <span className="h-5 w-px bg-white/10" aria-hidden="true" />}
+          <span className="h-5 w-px bg-white/10" aria-hidden="true" />
 
           <span
             className={`${
-              isMobile ? "text-xl" : "text-2xl"
-            } font-bold tabular-nums ${countdownColor} ${
+              isMobile ? "text-3xl" : "text-2xl"
+            } font-bold tabular-nums leading-none ${countdownColor} ${
               isRed ? "plan-gate-pulse" : ""
             }`}
             style={isRed ? { animation: "plan-gate-pulse 1s ease-in-out infinite" } : undefined}
