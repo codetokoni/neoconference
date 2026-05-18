@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { getPlanForUserId, getPlanLimits, type Plan } from "@/lib/plan";
+import { isAdmin } from "@/lib/roles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,8 +50,9 @@ export async function GET(req: NextRequest) {
             const id = r.identifier.toLowerCase();
             return id === userId.toLowerCase() || emails.includes(id);
           });
+          const isAdminCaller = emails.some((e) => isAdmin(e));
           const isHostlike =
-            isOwner || role?.role === "host" || role?.role === "cohost";
+            isOwner || isAdminCaller || role?.role === "host" || role?.role === "cohost";
           const isPreApproved = Boolean(role?.preApproved);
           if (!isHostlike && !isPreApproved) {
             const entry = (ev.waitingRoom || []).find((e) => e.id === userId);
@@ -81,8 +83,9 @@ export async function GET(req: NextRequest) {
             const id = r.identifier.toLowerCase();
             return id === userId.toLowerCase() || emails2.includes(id);
           });
+          const isAdminCaller2 = emails2.some((e) => isAdmin(e));
           const isHostlike2 =
-            isOwner2 || role2?.role === "host" || role2?.role === "cohost";
+            isOwner2 || isAdminCaller2 || role2?.role === "host" || role2?.role === "cohost";
           if (!isHostlike2) {
             const apiKey2 = process.env.LIVEKIT_API_KEY;
             const apiSecret2 = process.env.LIVEKIT_API_SECRET;
@@ -224,7 +227,8 @@ export async function GET(req: NextRequest) {
           const emailsRole = (uRole?.emailAddresses || []).map(
             (e: { emailAddress: string }) => e.emailAddress.toLowerCase()
           );
-          if (__evRole.ownerUserId === userId) {
+          const isAdminCallerRole = emailsRole.some((e) => isAdmin(e));
+          if (isAdminCallerRole || __evRole.ownerUserId === userId) {
             participantRole = "host";
           } else {
             const matched = (__evRole.roles || []).find((r: { role: string; identifier: string }) => {
