@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { eventStore, adoptOrphanRoom } from "@/lib/eventStore";
+import { isAdmin } from "@/lib/roles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +44,13 @@ export async function GET(req: Request) {
 
   if (!userId) {
     return NextResponse.json({ role: "guest", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null });
+  }
+
+  // Permanent admins (ADMIN_EMAILS env var) are treated as host of any room
+  // they join. Keep isOwner=false — they are *acting as* host, not the actual
+  // owner of the event record.
+  if (userEmails.some((e) => isAdmin(e))) {
+    return NextResponse.json({ role: "host", preApproved: true, isOwner: false, ownerUserId: ev.ownerUserId || null });
   }
 
   const ownerEmail = (ev.ownerEmail || "").toLowerCase();

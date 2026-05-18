@@ -1,4 +1,4 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
 
 export type Role = "admin" | "staff" | "user";
 
@@ -21,10 +21,42 @@ export function readRoleFromMetadata(metadata: unknown): Role {
 }
 
 /**
+ * Permanent-admin list, sourced from the ADMIN_EMAILS env var.
+ * Comma-separated, case-insensitive, whitespace-tolerant. Empty/missing -> [].
+ * Authority lives in the env var; we do NOT persist these to Clerk so that
+ * removing an email from ADMIN_EMAILS revokes admin on the next request.
+ */
+function getAdminEmails(): string[] {
+  return (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => e.length > 0);
+}
+
+/** Returns true iff the given email is in ADMIN_EMAILS. Null-safe. */
+export function isAdmin(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const target = email.trim().toLowerCase();
+  if (!target) return false;
+  return getAdminEmails().includes(target);
+}
+
+/** True iff the signed-in user's primary/verified emails include an ADMIN_EMAILS entry. */
+export async function isCurrentUserAdmin(): Promise<boolean> {
+  const u = await currentUser().catch(() => null);
+  if (!u) return false;
+  const emails = (u.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
+  return emails.some((e) => isAdmin(e));
+}
+
+/**
  * Get the current signed-in user's role.
- * Also handles bootstrap: if BOOTSTRAP_ADMIN_EMAIL matches the current
- * user's primary email and they have no explicit role yet, promote them
- * to admin and persist that to publicMetadata so subsequent calls are fast.
+ *
+ * Resolution order:
+ *   1. ADMIN_EMAILS env-var list — permanent admins beat all other signals.
+ *   2. Explicit Clerk publicMetadata.role (admin/staff) — non-"user" wins.
+ *   3. BOOTSTRAP_ADMIN_EMAIL single-email seed — promotes to admin and
+ *      persists to publicMetadata so subsequent calls are fast.
  *
  * Returns null if the user is not signed in.
  */
@@ -34,19 +66,19 @@ export async function getCurrentRole(): Promise<Role | null> {
 
   const client = await clerkClient();
   const user = await client.users.getUser(userId);
-  const existing = readRoleFromMetadata(user.publicMetadata);
+  const emails = user.emailAddresses?.map((e) => e.emailAddress.toLowerCase()) ?? [];
 
+  if (emails.some((e) => isAdmin(e))) return "admin";
+
+  const existing = readRoleFromMetadata(user.publicMetadata);
   if (existing !== "user") return existing;
 
   const bootstrap = process.env.BOOTSTRAP_ADMIN_EMAIL?.toLowerCase().trim();
-  if (bootstrap) {
-    const emails = user.emailAddresses?.map((e) => e.emailAddress.toLowerCase()) ?? [];
-    if (emails.includes(bootstrap)) {
-      await client.users.updateUserMetadata(userId, {
-        publicMetadata: { ...(user.publicMetadata ?? {}), role: "admin" },
-      });
-      return "admin";
-    }
+  if (bootstrap && emails.includes(bootstrap)) {
+    await client.users.updateUserMetadata(userId, {
+      publicMetadata: { ...(user.publicMetadata ?? {}), role: "admin" },
+    });
+    return "admin";
   }
 
   return existing;

@@ -12,6 +12,7 @@
 // with thin client mirrors for UX (timer banner, locked CTAs).
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import { isAdmin } from "@/lib/roles";
 
 export type Plan = "free" | "pro" | "business";
 
@@ -94,19 +95,22 @@ export async function getCurrentPlan(): Promise<Plan | null> {
 
   const client = await clerkClient();
   const user = await client.users.getUser(userId);
-  const existing = readPlanFromMetadata(user.publicMetadata);
+  const emails = (user.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
 
+  // Permanent admins (ADMIN_EMAILS) get the highest plan tier so the in-room
+  // countdown widget and participant cap don't apply to app operators. Not
+  // persisted — env var stays authoritative.
+  if (emails.some((e) => isAdmin(e))) return "business";
+
+  const existing = readPlanFromMetadata(user.publicMetadata);
   if (existing !== "free") return existing;
 
   const bootstrap = (process.env.BOOTSTRAP_BUSINESS_EMAIL || "").trim().toLowerCase();
-  if (bootstrap) {
-    const emails = (user.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
-    if (emails.includes(bootstrap)) {
-      await client.users.updateUserMetadata(userId, {
-        publicMetadata: { ...(user.publicMetadata ?? {}), plan: "business" },
-      });
-      return "business";
-    }
+  if (bootstrap && emails.includes(bootstrap)) {
+    await client.users.updateUserMetadata(userId, {
+      publicMetadata: { ...(user.publicMetadata ?? {}), plan: "business" },
+    });
+    return "business";
   }
 
   return existing;
@@ -114,14 +118,20 @@ export async function getCurrentPlan(): Promise<Plan | null> {
 
 /**
  * Look up the plan for a specific userId (used when issuing tokens for a
- * meeting whose host is not the current user).
+ * meeting whose host is not the current user). Honors ADMIN_EMAILS the same
+ * way getCurrentPlan does, so an admin's own rooms run without plan limits
+ * regardless of what publicMetadata.plan says.
  */
 export async function getPlanForUserId(userId: string): Promise<Plan> {
   if (!userId) return "free";
   try {
     const client = await clerkClient();
     const user = await client.users.getUser(userId);
-    return readPlanFromMetadata(user.publicMetadata);
+    const explicit = readPlanFromMetadata(user.publicMetadata);
+    if (explicit !== "free") return explicit;
+    const emails = (user.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
+    if (emails.some((e) => isAdmin(e))) return "business";
+    return explicit;
   } catch {
     return "free";
   }
