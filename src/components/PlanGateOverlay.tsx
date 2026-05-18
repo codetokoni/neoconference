@@ -7,15 +7,17 @@
 // the token route).
 //
 // Responsibilities:
-//   1. Meeting-length cap — counts down from when this component mounts. At
-//      T-3 minutes it shows a banner; at T=0 it disconnects the room and
-//      paints a full-screen "Upgrade" overlay.
+//   1. Meeting-length cap — counts down from when this component mounts. In
+//      the last 3 minutes it shows a glass countdown widget; at T=0 it
+//      disconnects the room and paints a full-screen "Upgrade" overlay.
 //   2. Hide breakouts / recording UI elements via injected CSS when the
 //      host's plan does not include those features.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocalParticipant, useRoomContext } from "@livekit/components-react";
 import Link from "next/link";
+import { ArrowRight, Clock } from "lucide-react";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 type PlanLimits = {
   meetingMinutes: number;
@@ -41,9 +43,35 @@ function parseMeta(raw: string | undefined | null): TokenMeta | null {
   }
 }
 
+const KEYFRAMES_ID = "__plan-gate-countdown-kf";
+
+function ensureKeyframes() {
+  if (typeof document === "undefined") return;
+  if (document.getElementById(KEYFRAMES_ID)) return;
+  const style = document.createElement("style");
+  style.id = KEYFRAMES_ID;
+  style.textContent = `
+@keyframes plan-gate-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.7; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .plan-gate-pulse { animation: none !important; }
+}
+`;
+  document.head.appendChild(style);
+}
+
+function formatMMSS(totalSec: number): string {
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 export default function PlanGateOverlay() {
   const { localParticipant } = useLocalParticipant();
   const room = useRoomContext();
+  const isMobile = useIsMobile();
 
   const meta = useMemo(
     () => parseMeta(localParticipant?.metadata),
@@ -55,6 +83,10 @@ export default function PlanGateOverlay() {
 
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [ended, setEnded] = useState(false);
+
+  useEffect(() => {
+    ensureKeyframes();
+  }, []);
 
   useEffect(() => {
     if (!limits || !limits.meetingMinutes || limits.meetingMinutes <= 0) {
@@ -98,25 +130,78 @@ export default function PlanGateOverlay() {
     style.textContent = rules.join("\n");
   }, [limits]);
 
+  // Throttled value for the aria-live region: announce every 30s, plus
+  // immediately when we cross into the <=60s "red" urgency state.
+  const wasUrgentRef = useRef(false);
+  const announced = useMemo(() => {
+    if (secondsLeft === null) return "";
+    const isUrgent = secondsLeft <= 60;
+    const crossedIntoUrgent = isUrgent && !wasUrgentRef.current;
+    wasUrgentRef.current = isUrgent;
+    const isBoundary = secondsLeft % 30 === 0 || crossedIntoUrgent;
+    if (!isBoundary) return "";
+    const m = Math.floor(secondsLeft / 60);
+    const s = secondsLeft % 60;
+    if (m > 0 && s === 0) return `${m} minute${m === 1 ? "" : "s"} left on Free plan`;
+    if (m === 0) return `${s} seconds left on Free plan`;
+    return `${m} minute${m === 1 ? "" : "s"} ${s} seconds left on Free plan`;
+  }, [secondsLeft]);
+
   if (!limits) return null;
+
+  const showWidget =
+    secondsLeft !== null && secondsLeft > 0 && secondsLeft <= 180 && !ended;
+  const isRed = showWidget && secondsLeft !== null && secondsLeft <= 60;
+  const countdownColor = isRed ? "text-red-400" : "text-orange-400";
 
   return (
     <>
-      {secondsLeft !== null && secondsLeft > 0 && secondsLeft <= 180 && !ended && (
+      {showWidget && (
         <div
           data-room-chrome="true"
-          className="fixed top-3 left-1/2 -translate-x-1/2 z-[60] rounded-full bg-amber-500/95 text-slate-900 px-4 py-1.5 text-xs font-semibold shadow-lg flex items-center gap-2"
+          className={
+            isMobile
+              ? "fixed top-3 left-3 right-3 z-[60] flex items-center gap-2 rounded-2xl border border-white/[0.08] bg-black/60 px-3 py-2 shadow-[0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur-xl"
+              : "fixed top-3 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-white/[0.08] bg-black/60 px-4 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur-xl"
+          }
+          style={{ minWidth: isMobile ? undefined : 280, borderWidth: "0.5px" }}
         >
-          <span>
-            {Math.floor(secondsLeft / 60)}:
-            {String(secondsLeft % 60).padStart(2, "0")} left on Free plan
+          <div className="flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
+            {!isMobile && (
+              <span className="text-[10px] font-medium uppercase tracking-widest text-zinc-400">
+                Free plan
+              </span>
+            )}
+          </div>
+
+          {!isMobile && <span className="h-5 w-px bg-white/10" aria-hidden="true" />}
+
+          <span
+            className={`${
+              isMobile ? "text-xl" : "text-2xl"
+            } font-bold tabular-nums ${countdownColor} ${
+              isRed ? "plan-gate-pulse" : ""
+            }`}
+            style={isRed ? { animation: "plan-gate-pulse 1s ease-in-out infinite" } : undefined}
+          >
+            {formatMMSS(secondsLeft as number)}
           </span>
+
+          <span className="h-5 w-px bg-white/10" aria-hidden="true" />
+
           <Link
             href="/pricing"
-            className="underline underline-offset-2 hover:no-underline"
+            aria-label="Upgrade to remove time limit"
+            className="inline-flex items-center gap-1 rounded-full bg-cyan-500 px-3 py-1 text-xs font-medium text-black transition-colors hover:bg-cyan-400"
           >
             Upgrade
+            {!isMobile && <ArrowRight className="h-3 w-3" aria-hidden="true" />}
           </Link>
+
+          <span aria-live="polite" className="sr-only">
+            {announced}
+          </span>
         </div>
       )}
 
