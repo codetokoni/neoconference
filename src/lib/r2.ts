@@ -91,17 +91,7 @@ export async function signGetUrl(key: string, expiresIn = 3600): Promise<string>
     Bucket: requiredEnv('S3_BUCKET'),
     Key: key,
   });
-  const url = await getSignedUrl(s3, cmd, { expiresIn });
-  // Strip extension query params R2 cannot validate.
-  const u = new URL(url);
-  u.searchParams.delete('x-amz-checksum-mode');
-  u.searchParams.delete('x-id');
-  // Non-SDK fetchers (e.g. our own fetch, Deepgram URL-ingest) don't compute
-  // the payload sha; tell R2 the body is unsigned so the signature matches.
-  if (!u.searchParams.has('x-amz-content-sha256')) {
-    u.searchParams.set('x-amz-content-sha256', 'UNSIGNED-PAYLOAD');
-  }
-  return u.toString();
+  return getSignedUrl(s3, cmd, { expiresIn });
 }
 export async function deleteObject(key: string): Promise<void> {
   if (!isR2Configured()) throw new Error('R2 not configured');
