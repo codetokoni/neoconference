@@ -64,14 +64,10 @@ export async function POST(req: Request) {
     const roomSeg = sanitizeSegment(room);
     const basepath = `recordings/${userSeg}/${roomSeg}/${timestamp}`;
     const filepath = `${basepath}.mp4`;
-    // Audio sidecar: LiveKit Cloud's RoomComposite pipeline writes the
-    // audio-only output as MP3 regardless of the EncodedFileType hint or
-    // the extension we pass in audioFilepath — verified empirically by
-    // downloading the sibling from R2 (content-type audio/mpeg). History:
-    // OGG was rejected with "no supported codec is compatible" (PR #47),
-    // then we tried .m4a assuming AAC-in-MP4 (PR #48), but Cloud overrides
-    // the extension and emits .mp3. Match what Cloud actually produces.
-    const audioFilepath = `${basepath}.mp3`;
+    // Audio sidecar is an audio-only MP4 container (AAC), so .m4a is the
+    // correct extension. audioOnly is passed via the third SDK arg below,
+    // not as a field on the output wrapper.
+    const audioFilepath = `${basepath}.m4a`;
 
     const s3Upload = new S3Upload({
       accessKey: s3AccessKey,
@@ -101,12 +97,10 @@ export async function POST(req: Request) {
     // egress fails (LiveKit rejects, network blip, quota), we log and
     // continue with video-only — the recording UX matches today.
     const [videoSettled, audioSettled] = await Promise.allSettled([
-      egressClient.startRoomCompositeEgress(room, {
-        file: fileOutput,
+      egressClient.startRoomCompositeEgress(room, fileOutput, {
         layout: "grid",
       }),
-      egressClient.startRoomCompositeEgress(room, {
-        file: audioFileOutput,
+      egressClient.startRoomCompositeEgress(room, audioFileOutput, {
         audioOnly: true,
       }),
     ]);
