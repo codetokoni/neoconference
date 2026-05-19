@@ -13,6 +13,7 @@ type Tab = { label: string; href: string };
 const TABS: Tab[] = [
   { label: "Users", href: "/admin" },
   { label: "Events", href: "/admin/events" },
+  { label: "Metrics", href: "/admin/metrics" },
 ];
 
 export default function AdminTabs() {
