@@ -122,13 +122,13 @@ function DownloadMenu({ recordingKey, videoUrl, audioUrl, transcriptReady }: Dow
           {audioUrl ? (
             <a
               href={audioUrl}
-              download={`${baseName}.ogg`}
+              download={`${baseName}.m4a`}
               role="menuitem"
               onClick={() => setOpen(false)}
               className="flex items-center justify-between px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-400/15 transition border-t border-white/5"
             >
               <span>Download audio</span>
-              <span className="text-[10px] text-white/40">.ogg</span>
+              <span className="text-[10px] text-white/40">.m4a</span>
             </a>
           ) : (
             <div

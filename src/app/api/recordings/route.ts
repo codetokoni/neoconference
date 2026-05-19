@@ -58,13 +58,13 @@ export async function GET(req: Request) {
       .filter((o) => o.size > 0)
       .filter((o) => o.key.startsWith(base));
 
-    // Pair each .mp4 with its .ogg audio sidecar (same basename). Old
-    // recordings have no .ogg sibling and surface audio: null, which the
+    // Pair each .mp4 with its .m4a audio sidecar (same basename). Old
+    // recordings have no .m4a sibling and surface audio: null, which the
     // dashboard renders as a disabled "Audio" item in the download dropdown.
     const videos = filtered.filter((o) => /\.mp4$/i.test(o.key));
     const audioByBase = new Map<string, { key: string; size: number }>();
     for (const o of filtered) {
-      if (/\.ogg$/i.test(o.key)) {
+      if (/\.m4a$/i.test(o.key)) {
         audioByBase.set(o.key.slice(0, -4), { key: o.key, size: o.size });
       }
     }
