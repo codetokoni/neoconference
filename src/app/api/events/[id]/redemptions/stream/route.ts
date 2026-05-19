@@ -5,6 +5,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
+import { assertOwnerOrAdmin } from "@/lib/roles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +23,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!ev) {
     return new Response("not_found", { status: 404 });
   }
-  if (ev.ownerUserId !== userId) {
+  const check = await assertOwnerOrAdmin(ev, userId);
+  if (!check.ok) {
     return new Response("forbidden", { status: 403 });
   }
 

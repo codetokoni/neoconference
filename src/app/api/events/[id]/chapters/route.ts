@@ -20,6 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
+import { assertOwnerOrAdmin } from '@/lib/roles';
 import { deriveChaptersHeuristic, deriveChaptersWithAI } from '@/lib/chapters';
 import type { Chapter, NeoEvent } from '@/types/event';
 
@@ -38,7 +39,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   const ev = await eventStore.byId(id);
   if (!ev) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  if (ev.ownerUserId !== userId) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const checkPost = await assertOwnerOrAdmin(ev, userId);
+  if (!checkPost.ok) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
   const mode: 'auto' | 'ai' | 'heuristic' = body?.mode === 'ai' || body?.mode === 'heuristic' ? body.mode : 'auto';
@@ -79,7 +81,8 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   const { id } = await ctx.params;
   const ev = await eventStore.byId(id);
   if (!ev) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  if (ev.ownerUserId !== userId) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const checkPut = await assertOwnerOrAdmin(ev, userId);
+  if (!checkPut.ok) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
   if (!Array.isArray(body?.chapters)) {

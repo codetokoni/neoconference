@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
+import { assertOwnerOrAdmin } from '@/lib/roles';
 import type { TicketTier } from '@/types/event';
 
 export const runtime = 'nodejs';
@@ -29,7 +30,8 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   const { id } = await ctx.params;
   const ev = await eventStore.byId(id);
   if (!ev) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  if (ev.ownerUserId !== userId) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const check = await assertOwnerOrAdmin(ev, userId);
+  if (!check.ok) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
   if (!Array.isArray(body?.tickets)) {

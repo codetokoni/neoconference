@@ -8,8 +8,9 @@
 // -> 200 { ok: true, slug, livekitRoom, roomUrl }
 
 import { NextResponse } from 'next/server';
-import { auth, currentUser } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
+import { assertOwnerOrAdmin } from '@/lib/roles';
 import { RoomServiceClient, DataPacket_Kind } from 'livekit-server-sdk';
 
 export const runtime = 'nodejs';
@@ -35,16 +36,8 @@ export async function POST(req: Request) {
   const ev = await eventStore.bySlug(slug);
   if (!ev) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
-  // Owner check: by Clerk userId or by snapshot email.
-  const u = await currentUser().catch(() => null);
-  const userEmails = (u?.emailAddresses || []).map(
-    (e: { emailAddress: string }) => e.emailAddress.toLowerCase()
-  );
-  const ownerEmail = (ev.ownerEmail || '').toLowerCase();
-  const isOwner =
-    ev.ownerUserId === userId ||
-    (ownerEmail !== '' && userEmails.includes(ownerEmail));
-  if (!isOwner) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const check = await assertOwnerOrAdmin(ev, userId);
+  if (!check.ok) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const oldLivekitRoom = ev.livekitRoom;
   const result = await eventStore.rename(ev.id, newSlug);

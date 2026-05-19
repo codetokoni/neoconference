@@ -1,4 +1,5 @@
 import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
+import type { RoleAssignment } from "@/types/event";
 
 export type Role = "admin" | "staff" | "user";
 
@@ -94,4 +95,99 @@ export async function requireRole(allowed: Role[]): Promise<{ userId: string; ro
   const role = await getCurrentRole();
   if (!role || !allowed.includes(role)) return null;
   return { userId, role };
+}
+
+/* ----------------------------- assertOwnerOrAdmin ---------------------------- */
+
+/** Minimal shape needed from an event record for ownership/role checks. */
+export type Eventish = {
+  ownerUserId?: string;
+  ownerEmail?: string;
+  roles?: RoleAssignment[];
+};
+
+export type AuthzResult =
+  | { ok: true; reason: "owner" | "admin" | "cohost" | "host" }
+  | { ok: false };
+
+export interface AuthzOptions {
+  /** Accept users in event.roles[] with role === 'cohost'. */
+  allowCohost?: boolean;
+  /** Accept users in event.roles[] with role === 'host' OR 'cohost'.
+   *  Implies allowCohost. */
+  allowHostlike?: boolean;
+}
+
+/**
+ * Server-side authorization check for event-bound endpoints. Used by Phase 2
+ * of the admin override (PR #41) to let permanent admins pass any ownership
+ * gate regardless of who actually owns the event record.
+ *
+ * Returns { ok: true } if the caller is any of:
+ *   - the event owner (matched by Clerk userId OR snapshot ownerEmail)
+ *   - a permanent admin (ADMIN_EMAILS env var)
+ *   - a cohost on event.roles[]  — only if options.allowCohost or .allowHostlike
+ *   - a host on event.roles[]    — only if options.allowHostlike
+ * Otherwise { ok: false }.
+ *
+ * The `reason` field on success identifies which path passed (for logging /
+ * future audit). On failure there is no reason — the only valid response is
+ * 403 and callers don't need to distinguish "not_owner" from "forbidden".
+ *
+ * Security checklist:
+ *  - Returns ok:false for null/undefined event or userId. No false-positive
+ *    paths.
+ *  - Admin status uses isAdmin() against the ADMIN_EMAILS env var only;
+ *    never trusts client-provided claims.
+ *  - Caller MUST run auth() before invoking this helper. The helper performs
+ *    no authentication.
+ *  - Caller MUST look up the event before invoking. A forged eventId fails
+ *    the route's own 404 check, never reaching this helper.
+ *  - The helper reads the signed-in user's verified emails via currentUser()
+ *    (request-scoped, Clerk-verified). It does NOT trust any email passed in
+ *    a request body or query string.
+ *  - Speaker, viewer, and ticket-holder role assignments NEVER pass this
+ *    helper. Only owner / admin / cohost (when enabled) / host-on-roles[]
+ *    (when allowHostlike) succeed.
+ */
+export async function assertOwnerOrAdmin(
+  event: Eventish | null | undefined,
+  userId: string | null | undefined,
+  options?: AuthzOptions
+): Promise<AuthzResult> {
+  if (!event || !userId) return { ok: false };
+
+  const u = await currentUser().catch(() => null);
+  const userEmails = (u?.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
+
+  if (userEmails.some((e) => isAdmin(e))) {
+    return { ok: true, reason: "admin" };
+  }
+
+  if (event.ownerUserId && event.ownerUserId === userId) {
+    return { ok: true, reason: "owner" };
+  }
+
+  const ownerEmail = (event.ownerEmail || "").toLowerCase();
+  if (ownerEmail && userEmails.includes(ownerEmail)) {
+    return { ok: true, reason: "owner" };
+  }
+
+  if (options?.allowCohost || options?.allowHostlike) {
+    const match = (event.roles || []).find((r) => {
+      const id = (r.identifier || "").toLowerCase();
+      if (!id) return false;
+      return id === userId.toLowerCase() || userEmails.includes(id);
+    });
+    if (match) {
+      if (options.allowHostlike && (match.role === "host" || match.role === "cohost")) {
+        return { ok: true, reason: match.role === "host" ? "host" : "cohost" };
+      }
+      if (options.allowCohost && match.role === "cohost") {
+        return { ok: true, reason: "cohost" };
+      }
+    }
+  }
+
+  return { ok: false };
 }

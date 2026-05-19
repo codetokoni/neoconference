@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { RoomServiceClient } from "livekit-server-sdk";
 import { eventStore } from "@/lib/eventStore";
+import { assertOwnerOrAdmin } from "@/lib/roles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,29 +45,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 
-  // ---- Authz: host (owner) or cohost ----
+  // ---- Authz: owner, app-wide admin, or cohost on this event ----
   const ev = await eventStore.bySlug(slug);
   if (!ev) {
     return NextResponse.json({ error: "event_not_found" }, { status: 404 });
   }
 
-  const isOwner = ev.ownerUserId === userId;
-  let isCohost = false;
-  if (!isOwner) {
-    const u = await currentUser().catch(() => null);
-    const emails = (u?.emailAddresses || []).map((e: { emailAddress: string }) =>
-      e.emailAddress.toLowerCase(),
-    );
-    const roles = ev.roles || [];
-    const match = roles.find((r: { identifier?: string; role?: string }) => {
-      const id = r.identifier?.toLowerCase();
-      if (!id) return false;
-      return id === userId.toLowerCase() || emails.includes(id);
-    });
-    isCohost = match?.role === "cohost";
-  }
-
-  if (!isOwner && !isCohost) {
+  const check = await assertOwnerOrAdmin(ev, userId, { allowCohost: true });
+  if (!check.ok) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

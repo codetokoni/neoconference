@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
+import { assertOwnerOrAdmin } from "@/lib/roles";
 import { chatStore } from "@/lib/chatStore";
 import { transcribeStore } from "@/lib/transcribeStore";
 
@@ -24,7 +25,8 @@ export async function GET(
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const ev = await eventStore.byId(params.id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (ev.ownerUserId !== userId) {
+  const checkGet = await assertOwnerOrAdmin(ev, userId);
+  if (!checkGet.ok) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   return NextResponse.json({ ok: true, summary: ev.summary || null });
@@ -38,7 +40,8 @@ export async function POST(
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const ev = await eventStore.byId(params.id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (ev.ownerUserId !== userId) {
+  const checkPost = await assertOwnerOrAdmin(ev, userId);
+  if (!checkPost.ok) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
