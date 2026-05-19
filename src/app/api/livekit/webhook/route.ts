@@ -4,15 +4,21 @@
 // settings (Webhooks tab) — it must point to:
 //   https://www.neoconference.app/api/livekit/webhook
 //
-// We listen for 'egress_ended' and auto-submit a transcription job so the
-// transcript + summary are ready by the time the host opens /dashboard/recordings.
+// Subscribed events:
+//   - egress_ended    -> auto-submit transcription job
+//   - room_started    -> set NeoEvent.startedAt if unset (idempotent)
+//   - room_finished   -> transition NeoEvent.state 'live' -> 'ended' with
+//                        endedAt from webhook timestamp (idempotent)
 //
 // Signature verification is handled by livekit-server-sdk's WebhookReceiver,
 // which validates the Authorization header against the project's API secret.
+// On signature mismatch we return 200 OK rather than 401 so LiveKit doesn't
+// retry endlessly during transient misconfigurations.
 
 import { NextResponse } from 'next/server';
 import { WebhookReceiver } from 'livekit-server-sdk';
 import { submitTranscribeJob, isTranscribeConfigured } from '@/lib/transcribe';
+import { eventStore } from '@/lib/eventStore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,6 +27,20 @@ function requiredEnv(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error('Missing env: ' + name);
   return v;
+}
+
+/**
+ * LiveKit emits unix seconds in `createdAt`. Some SDK builds vary; defensively
+ * handle either seconds or milliseconds. Falls back to now on invalid input.
+ */
+function isoFromWebhookCreatedAt(createdAt: unknown): string {
+  if (typeof createdAt !== 'number' || !Number.isFinite(createdAt) || createdAt <= 0) {
+    return new Date().toISOString();
+  }
+  const ms = createdAt > 1e11 ? createdAt : createdAt * 1000;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return new Date().toISOString();
+  return d.toISOString();
 }
 
 export async function POST(req: Request) {
@@ -46,9 +66,55 @@ export async function POST(req: Request) {
       event?: string;
       egressInfo?: LKEgressInfo;
       room?: { name?: string };
+      createdAt?: number;
     };
 
     const event = (await receiver.receive(body, authHeader)) as unknown as LKWebhookEvent;
+
+    // ----- room_finished: transition NeoEvent state 'live' -> 'ended' -----
+    if (event?.event === 'room_finished') {
+      const roomName = event.room?.name;
+      if (!roomName) {
+        return NextResponse.json({ ok: true, ignored: 'room_finished_no_room' });
+      }
+      const ev = await eventStore.bySlug(roomName);
+      if (!ev) {
+        return NextResponse.json({ ok: true, ignored: 'event_not_found', roomName });
+      }
+      if (ev.state !== 'live') {
+        return NextResponse.json({ ok: true, transitioned: false, reason: 'not_live', eventId: ev.id });
+      }
+      const endedAt = isoFromWebhookCreatedAt(event.createdAt);
+      await eventStore.update(ev.id, (prev) => ({
+        ...prev,
+        state: 'ended',
+        endedAt: prev.endedAt || endedAt,
+        updatedAt: new Date().toISOString(),
+      }));
+      return NextResponse.json({ ok: true, transitioned: true, eventId: ev.id, endedAt });
+    }
+
+    // ----- room_started: set startedAt if it isn't already set -----
+    if (event?.event === 'room_started') {
+      const roomName = event.room?.name;
+      if (!roomName) {
+        return NextResponse.json({ ok: true, ignored: 'room_started_no_room' });
+      }
+      const ev = await eventStore.bySlug(roomName);
+      if (!ev) {
+        return NextResponse.json({ ok: true, ignored: 'event_not_found', roomName });
+      }
+      if (ev.startedAt) {
+        return NextResponse.json({ ok: true, transitioned: false, reason: 'already_started', eventId: ev.id });
+      }
+      const startedAt = isoFromWebhookCreatedAt(event.createdAt);
+      await eventStore.update(ev.id, (prev) => ({
+        ...prev,
+        startedAt: prev.startedAt || startedAt,
+        updatedAt: new Date().toISOString(),
+      }));
+      return NextResponse.json({ ok: true, transitioned: true, eventId: ev.id, startedAt });
+    }
 
     // We only auto-transcribe when a recording egress finished writing.
     if (event?.event !== 'egress_ended') {
