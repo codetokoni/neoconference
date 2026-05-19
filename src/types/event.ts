@@ -265,4 +265,60 @@ export function toPublicView(e: NeoEvent): PublicEventView {
   };
 }
 
+/**
+ * Admin-only sanitized event view. Used by /api/admin/events for the
+ * platform-wide event list. Strips secrets (password, streamKey, rtmpUrl,
+ * qrSeed) and pre-computes derived flags so the client doesn't need to
+ * inspect nested objects.
+ */
+export interface AdminEventView {
+  id: string;
+  slug: string;
+  name: string;
+  description?: string;
+  ownerUserId: string;
+  ownerName?: string;
+  ownerEmail?: string;
+  visibility: EventVisibility;
+  state: EventState;
+  createdAt: string;
+  updatedAt: string;
+  scheduledAt?: string;
+  startedAt?: string;
+  endedAt?: string;
+  livekitRoom: string;
+  customDomain?: string;
+  hasRecording: boolean;
+  recordingCount: number;
+  isPaid: boolean;
+  isStreaming: boolean;
+  hasShortlink: boolean;
+}
+
+export function toAdminView(e: NeoEvent): AdminEventView {
+  return {
+    id: e.id,
+    slug: e.slug,
+    name: e.name,
+    description: e.description,
+    ownerUserId: e.ownerUserId,
+    ownerName: e.ownerName,
+    ownerEmail: e.ownerEmail,
+    visibility: e.visibility,
+    state: e.state,
+    createdAt: e.createdAt,
+    updatedAt: e.updatedAt,
+    scheduledAt: e.scheduledAt,
+    startedAt: e.startedAt,
+    endedAt: e.endedAt,
+    livekitRoom: e.livekitRoom,
+    customDomain: e.customDomain,
+    hasRecording: (e.recordings || []).length > 0,
+    recordingCount: (e.recordings || []).length,
+    isPaid: (e.tickets || []).length > 0,
+    isStreaming: Boolean(e.streamlab?.hlsUrl),
+    hasShortlink: Boolean(e.hsmoh?.shortUrl) && !e.hsmoh?.fallback,
+  };
+}
+
 

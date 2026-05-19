@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
 import { getCurrentRole } from "@/lib/roles";
-import AdminClient from "./admin-client";
-import AdminTabs from "./AdminTabs";
+import AdminTabs from "../AdminTabs";
+import AdminEventsClient from "./admin-events-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
+export default async function AdminEventsPage() {
   const role = await getCurrentRole();
   if (!role) redirect("/sign-in");
   if (role !== "admin") {
@@ -22,7 +22,7 @@ export default async function AdminPage() {
   return (
     <>
       <AdminTabs />
-      <AdminClient />
+      <AdminEventsClient />
     </>
   );
 }

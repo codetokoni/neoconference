@@ -127,17 +127,25 @@ export const eventStore = {
     return events.filter((x): x is NeoEvent => Boolean(x));
   },
 
-  async listAll(limit = 100): Promise<NeoEvent[]> {
+  /**
+   * Returns all events sorted by updatedAt DESC (newest activity first).
+   * `limit` is optional — when omitted, returns every event. Pre-MVP we
+   * read all event records in parallel; past ~10K events this should move
+   * to indexed Redis sets. Used by /api/admin/events (no limit) and by
+   * legacy callers that pass an explicit cap.
+   */
+  async listAll(limit?: number): Promise<NeoEvent[]> {
+    let events: NeoEvent[];
     if (!isKvConfigured()) {
-      return Array.from(memEvents.values()).slice(0, limit);
+      events = Array.from(memEvents.values());
+    } else {
+      const ids = (await kv.smembers(ALL)) as string[];
+      if (!ids || ids.length === 0) return [];
+      const raw = await Promise.all(ids.map((id) => kv.get<NeoEvent>(PREFIX + id)));
+      events = raw.filter((x): x is NeoEvent => Boolean(x));
     }
-    const ids = (await kv.smembers(ALL)) as string[];
-    if (!ids || ids.length === 0) return [];
-    const slice = ids.slice(0, limit);
-    const events = await Promise.all(
-      slice.map((id) => kv.get<NeoEvent>(PREFIX + id))
-    );
-    return events.filter((x): x is NeoEvent => Boolean(x));
+    events.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    return typeof limit === "number" ? events.slice(0, limit) : events;
   },
 
   async rename(
