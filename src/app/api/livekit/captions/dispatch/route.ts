@@ -9,9 +9,10 @@
 // is present in the room so it can listen.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth, currentUser } from '@clerk/nextjs/server';
+import { auth } from '@clerk/nextjs/server';
 import { AgentDispatchClient } from 'livekit-server-sdk';
 import { eventStore } from '@/lib/eventStore';
+import { assertOwnerOrAdmin } from '@/lib/roles';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,32 +45,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'room_required' }, { status: 400 });
   }
 
-  // Authorize: only host or cohost on this event may dispatch the worker.
-  // Mirrors the role-resolution logic in /api/events/role.
+  // Authorize: only event owner, app-wide admin, or a host/cohost role
+  // assignment on this event may dispatch the worker. Mirrors the
+  // role-resolution logic in /api/events/role.
   try {
     const ev = await eventStore.bySlug(eventSlug);
     if (!ev) {
       return NextResponse.json({ error: 'event_not_found' }, { status: 404 });
     }
-    const u = await currentUser().catch(() => null);
-    const userEmails = (u?.emailAddresses || []).map(
-      (e: { emailAddress: string }) => e.emailAddress.toLowerCase(),
-    );
-    const ownerEmail = (ev.ownerEmail || '').toLowerCase();
-    const isOwner =
-      ev.ownerUserId === userId ||
-      (ownerEmail !== '' && userEmails.includes(ownerEmail));
-    let role: string = isOwner ? 'host' : 'viewer';
-    if (!isOwner) {
-      const roles = ev.roles || [];
-      const match = roles.find((r) => {
-        const id = r.identifier.toLowerCase();
-        return id === userId.toLowerCase() || userEmails.includes(id);
-      });
-      if (match) role = match.role;
-    }
-    if (role !== 'host' && role !== 'cohost') {
-      return NextResponse.json({ error: 'forbidden', role }, { status: 403 });
+    const check = await assertOwnerOrAdmin(ev, userId, { allowHostlike: true });
+    if (!check.ok) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     }
   } catch (e) {
     console.error('[captions/dispatch] event lookup failed', e);

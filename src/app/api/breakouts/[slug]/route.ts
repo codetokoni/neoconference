@@ -16,6 +16,7 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
+import { isAdmin } from "@/lib/roles";
 import { breakoutsStore, type BreakoutState } from "@/lib/breakoutsStore";
 import type { NeoEvent } from "@/types/event";
 
@@ -38,7 +39,10 @@ async function getCaller(): Promise<CallerInfo | null> {
 }
 
 function isHostlike(ev: NeoEvent, caller: CallerInfo): boolean {
+  if (caller.emails.some((e) => isAdmin(e))) return true;
   if (ev.ownerUserId === caller.userId) return true;
+  const ownerEmail = (ev.ownerEmail || "").toLowerCase();
+  if (ownerEmail && caller.emails.includes(ownerEmail)) return true;
   const role = (ev.roles || []).find((r) => {
     const id = r.identifier.toLowerCase();
     return id === caller.userId.toLowerCase() || caller.emails.includes(id);

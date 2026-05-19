@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
+import { assertOwnerOrAdmin } from "@/lib/roles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +24,8 @@ export async function POST(
   const { id } = await ctx.params;
   const ev = await eventStore.byId(id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (ev.ownerUserId !== userId)
+  const check = await assertOwnerOrAdmin(ev, userId);
+  if (!check.ok)
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   // Allow start from scheduled or waiting; idempotent if already live.

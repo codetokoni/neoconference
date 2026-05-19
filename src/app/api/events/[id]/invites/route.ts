@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
+import { assertOwnerOrAdmin } from '@/lib/roles';
 import { inviteStore } from '@/lib/inviteStore';
 
 export const runtime = 'nodejs';
@@ -22,7 +23,8 @@ export async function GET(
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const ev = await eventStore.byId(params.id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (ev.ownerUserId !== userId) {
+  const checkGet = await assertOwnerOrAdmin(ev, userId);
+  if (!checkGet.ok) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   const invites = await inviteStore.listForEvent(ev.id);
@@ -37,7 +39,8 @@ export async function POST(
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const ev = await eventStore.byId(params.id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (ev.ownerUserId !== userId) {
+  const checkPost = await assertOwnerOrAdmin(ev, userId);
+  if (!checkPost.ok) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
@@ -73,7 +76,8 @@ export async function DELETE(
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const ev = await eventStore.byId(params.id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  if (ev.ownerUserId !== userId) {
+  const checkDel = await assertOwnerOrAdmin(ev, userId);
+  if (!checkDel.ok) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   let body: any = {};

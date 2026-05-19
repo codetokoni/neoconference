@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
+import { assertOwnerOrAdmin } from '@/lib/roles';
 
 export const runtime = 'nodejs';
 
@@ -44,7 +45,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   const ev = await eventStore.byId(id);
   if (!ev) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  if (ev.ownerUserId !== userId) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const checkPost = await assertOwnerOrAdmin(ev, userId);
+  if (!checkPost.ok) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
 
   const body = await req.json().catch(() => ({}));
   const domain = normalizeDomain(body?.domain || '');
@@ -71,7 +73,8 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   const { id } = await ctx.params;
   const ev = await eventStore.byId(id);
   if (!ev) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  if (ev.ownerUserId !== userId) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const checkDel = await assertOwnerOrAdmin(ev, userId);
+  if (!checkDel.ok) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   await eventStore.update(ev.id, { customDomain: undefined });
   return NextResponse.json({ ok: true });
 }

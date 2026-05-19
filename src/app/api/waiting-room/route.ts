@@ -17,6 +17,7 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
+import { isAdmin } from "@/lib/roles";
 import type { NeoEvent, RoleAssignment, WaitingRoomEntry } from "@/types/event";
 
 export const runtime = "nodejs";
@@ -44,7 +45,11 @@ async function getCaller(): Promise<CallerInfo | null> {
 }
 
 function callerRole(ev: NeoEvent, caller: CallerInfo) {
-  const isOwner = ev.ownerUserId === caller.userId;
+  const isAdminCaller = caller.emails.some((e) => isAdmin(e));
+  const ownerEmail = (ev.ownerEmail || "").toLowerCase();
+  const isOwner =
+    ev.ownerUserId === caller.userId ||
+    (ownerEmail !== "" && caller.emails.includes(ownerEmail));
   const role = (ev.roles || []).find((r) => {
     const id = r.identifier.toLowerCase();
     return id === caller.userId.toLowerCase() || caller.emails.includes(id);
@@ -53,7 +58,7 @@ function callerRole(ev: NeoEvent, caller: CallerInfo) {
     isOwner,
     role: role?.role,
     preApproved: Boolean(role?.preApproved),
-    isHostlike: isOwner || role?.role === "host" || role?.role === "cohost",
+    isHostlike: isAdminCaller || isOwner || role?.role === "host" || role?.role === "cohost",
   };
 }
 
