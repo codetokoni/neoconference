@@ -899,6 +899,27 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
   } | null>(null);
 
   const isRecording = !!egressId || !!remoteRecording;
+  const isHost = roomRole === "host" || roomRole === "cohost";
+
+  // Brief "Recording started" flash shown to non-hosts on the false→true
+  // transition. Hosts keep the full persistent REC banner; non-hosts get a
+  // 3.5s flash + a discreet always-on red dot (privacy notice). Mid-recording
+  // joiners only see the dot — the data-channel message isn't replayed, so
+  // they won't get the flash. Acceptable trade-off; see PR for follow-up.
+  const [showStartFlash, setShowStartFlash] = useState(false);
+  const wasRecordingRef = useRef(false);
+  useEffect(() => {
+    if (!isHost && isRecording && !wasRecordingRef.current) {
+      wasRecordingRef.current = true;
+      setShowStartFlash(true);
+      const t = setTimeout(() => setShowStartFlash(false), 3500);
+      return () => clearTimeout(t);
+    }
+    if (!isRecording && wasRecordingRef.current) {
+      wasRecordingRef.current = false;
+      setShowStartFlash(false);
+    }
+  }, [isRecording, isHost]);
 
   // Recording duration tracking (PR #24): wall-clock since the local
   // start, or since first observing a remote recording flip on.
@@ -1120,8 +1141,8 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
 
   return (
     <>
-      {/* REC banner shown to everyone while a recording is active */}
-      {isRecording && (
+      {/* Host/cohost: full persistent REC banner with live timer */}
+      {isHost && isRecording && (
         <div
           data-room-chrome="true"
           style={{
@@ -1165,6 +1186,75 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
             </span>
           ) : null}
         </div>
+      )}
+
+      {/* Non-host: brief "Recording started" flash on the false→true edge */}
+      {!isHost && isRecording && (
+        <div
+          data-room-chrome="true"
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "absolute",
+            top: 48,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 11,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 14px",
+            borderRadius: 999,
+            background: "rgba(17,17,24,0.85)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            border: "1px solid rgba(239,68,68,0.4)",
+            color: "rgb(252,165,165)",
+            fontSize: 12,
+            fontWeight: 600,
+            letterSpacing: 0.3,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
+            pointerEvents: "none",
+            opacity: showStartFlash ? 1 : 0,
+            transition: showStartFlash
+              ? "opacity 200ms ease-out"
+              : "opacity 300ms ease-in",
+          }}
+        >
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: "#ef4444",
+              boxShadow: "0 0 6px rgba(239,68,68,0.7)",
+              animation: "lk-rec-soft-pulse 2s ease-in-out infinite",
+            }}
+          />
+          Recording started
+        </div>
+      )}
+
+      {/* Non-host: persistent discreet red dot for continuous privacy notice */}
+      {!isHost && isRecording && (
+        <div
+          data-room-chrome="true"
+          aria-label="Recording in progress"
+          title="Recording in progress"
+          style={{
+            position: "absolute",
+            top: 14,
+            right: 14,
+            zIndex: 11,
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            background: "#ef4444",
+            boxShadow: "0 0 6px rgba(239,68,68,0.7)",
+            animation: "lk-rec-soft-pulse 2s ease-in-out infinite",
+            pointerEvents: "none",
+          }}
+        />
       )}
 
       {/* Recording approval modal (host/cohost view) */}
@@ -1295,7 +1385,10 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       )}
 
       {/* Pulse keyframes */}
-      <style>{`@keyframes lk-rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }`}</style>
+      <style>{`
+        @keyframes lk-rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        @keyframes lk-rec-soft-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+      `}</style>
     </>
   );
 }
