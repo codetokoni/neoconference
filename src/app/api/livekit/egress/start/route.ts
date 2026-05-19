@@ -64,7 +64,11 @@ export async function POST(req: Request) {
     const roomSeg = sanitizeSegment(room);
     const basepath = `recordings/${userSeg}/${roomSeg}/${timestamp}`;
     const filepath = `${basepath}.mp4`;
-    const audioFilepath = `${basepath}.ogg`;
+    // Audio sidecar: MP4 container, audio-only (AAC). RoomComposite on
+    // LiveKit Cloud rejects OGG output with "no supported codec is
+    // compatible" — its pipeline produces AAC, which only fits MP4. .m4a
+    // is the conventional extension for an audio-only MP4 container.
+    const audioFilepath = `${basepath}.m4a`;
 
     const s3Upload = new S3Upload({
       accessKey: s3AccessKey,
@@ -82,7 +86,7 @@ export async function POST(req: Request) {
     });
 
     const audioFileOutput = new EncodedFileOutput({
-      fileType: EncodedFileType.OGG,
+      fileType: EncodedFileType.MP4,
       filepath: audioFilepath,
       output: { case: "s3", value: s3Upload },
     });
