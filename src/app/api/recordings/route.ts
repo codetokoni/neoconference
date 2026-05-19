@@ -58,18 +58,38 @@ export async function GET(req: Request) {
       .filter((o) => o.size > 0)
       .filter((o) => o.key.startsWith(base));
 
+    // Pair each .mp4 with its .ogg audio sidecar (same basename). Old
+    // recordings have no .ogg sibling and surface audio: null, which the
+    // dashboard renders as a disabled "Audio" item in the download dropdown.
+    const videos = filtered.filter((o) => /\.mp4$/i.test(o.key));
+    const audioByBase = new Map<string, { key: string; size: number }>();
+    for (const o of filtered) {
+      if (/\.ogg$/i.test(o.key)) {
+        audioByBase.set(o.key.slice(0, -4), { key: o.key, size: o.size });
+      }
+    }
+
     // Look up persisted transcripts in one parallel batch keyed by recordingKey.
-    const keys = filtered.map((o) => o.key);
+    const keys = videos.map((o) => o.key);
     const jobsByKey = await transcribeStore.getByRecordingKeys(keys);
 
     const recordings = await Promise.all(
-      filtered.map(async (o) => {
+      videos.map(async (o) => {
         const job = jobsByKey.get(o.key);
+        const baseNoExt = o.key.slice(0, -4);
+        const audioMatch = audioByBase.get(baseNoExt);
         return {
           key: o.key,
           size: o.size,
           lastModified: o.lastModified,
           downloadUrl: await signGetUrl(o.key, 3600),
+          audio: audioMatch
+            ? {
+                key: audioMatch.key,
+                size: audioMatch.size,
+                downloadUrl: await signGetUrl(audioMatch.key, 3600),
+              }
+            : null,
           transcript: job
             ? {
                 jobId: job.id,

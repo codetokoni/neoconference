@@ -23,9 +23,11 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as {
       egressId?: string;
       filepath?: string;
+      audioEgressId?: string | null;
     };
     const egressId = (body.egressId || "").trim();
     const filepath = (body.filepath || "").trim();
+    const audioEgressId = (body.audioEgressId || "").trim();
     if (!egressId) {
       return NextResponse.json({ error: "Missing egressId" }, { status: 400 });
     }
@@ -36,7 +38,25 @@ export async function POST(req: Request) {
     const httpUrl = wsUrl.replace(/^ws/, "http");
 
     const egressClient = new EgressClient(httpUrl, apiKey, apiSecret);
-    const info = await egressClient.stopEgress(egressId);
+
+    // Stop both video and audio egresses. The video stop is required; if the
+    // audio sidecar exists, stop it in parallel via allSettled so an already-
+    // stopped or failed audio egress doesn't break the video stop response.
+    const stops: Promise<unknown>[] = [egressClient.stopEgress(egressId)];
+    if (audioEgressId) {
+      stops.push(egressClient.stopEgress(audioEgressId));
+    }
+    const [videoSettled, audioSettled] = await Promise.allSettled(stops);
+    if (videoSettled.status === "rejected") {
+      throw videoSettled.reason;
+    }
+    if (audioSettled && audioSettled.status === "rejected") {
+      console.warn(
+        "[egress/stop] audio sidecar stop failed; ignoring",
+        audioSettled.reason,
+      );
+    }
+    const info = videoSettled.value as { egressId?: string; status?: number | string };
 
     let downloadUrl: string | null = null;
     if (filepath) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 
 type PersistedTranscript = {
@@ -13,11 +13,18 @@ type PersistedTranscript = {
   updatedAt?: string;
 };
 
+type AudioSidecar = {
+  key: string;
+  size: number;
+  downloadUrl: string;
+};
+
 type Recording = {
   key: string;
   size: number;
   lastModified?: string;
   downloadUrl: string;
+  audio?: AudioSidecar | null;
   transcript?: PersistedTranscript | null;
 };
 
@@ -45,6 +52,122 @@ type TranscribeState =
   | { status: 'running'; jobId: string; provider: string }
   | { status: 'done'; jobId: string; provider: string; text: string; summary?: string }
   | { status: 'error'; error: string };
+
+function basenameNoExt(key: string): string {
+  const last = key.split('/').pop() || key;
+  const dot = last.lastIndexOf('.');
+  return dot > 0 ? last.slice(0, dot) : last;
+}
+
+type DownloadMenuProps = {
+  recordingKey: string;
+  videoUrl: string;
+  audioUrl?: string;
+  transcriptReady: boolean;
+};
+
+function DownloadMenu({ recordingKey, videoUrl, audioUrl, transcriptReady }: DownloadMenuProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const baseName = basenameNoExt(recordingKey);
+  const transcriptHref = `/api/recordings/transcript?key=${encodeURIComponent(recordingKey)}`;
+
+  return (
+    <div ref={ref} className="relative inline-block text-left">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 text-cyan-100 px-3 py-1.5 text-xs hover:bg-cyan-400/20 transition"
+      >
+        Download
+        <span className="text-[10px] opacity-70">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 z-30 mt-1 w-56 rounded-xl border border-white/10 bg-black/85 backdrop-blur-xl shadow-[0_8px_24px_rgba(0,0,0,0.5)] overflow-hidden"
+          style={{ borderWidth: '0.5px' }}
+        >
+          <a
+            href={videoUrl}
+            download={`${baseName}.mp4`}
+            role="menuitem"
+            onClick={() => setOpen(false)}
+            className="flex items-center justify-between px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-400/15 transition"
+          >
+            <span>Download video</span>
+            <span className="text-[10px] text-white/40">.mp4</span>
+          </a>
+          {audioUrl ? (
+            <a
+              href={audioUrl}
+              download={`${baseName}.ogg`}
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="flex items-center justify-between px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-400/15 transition border-t border-white/5"
+            >
+              <span>Download audio</span>
+              <span className="text-[10px] text-white/40">.ogg</span>
+            </a>
+          ) : (
+            <div
+              role="menuitem"
+              aria-disabled="true"
+              title="Audio not available — this recording was made before audio sidecar was enabled."
+              className="flex items-center justify-between px-3 py-2 text-xs text-white/35 border-t border-white/5 cursor-not-allowed"
+            >
+              <span>Download audio</span>
+              <span className="text-[10px] opacity-60">unavailable</span>
+            </div>
+          )}
+          {transcriptReady ? (
+            <a
+              href={transcriptHref}
+              download={`${baseName}.txt`}
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="flex items-center justify-between px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-400/15 transition border-t border-white/5"
+            >
+              <span>Download transcript</span>
+              <span className="text-[10px] text-white/40">.txt</span>
+            </a>
+          ) : (
+            <div
+              role="menuitem"
+              aria-disabled="true"
+              title="Transcript not yet generated. Click the Transcribe button on this row to create one."
+              className="flex items-center justify-between px-3 py-2 text-xs text-white/35 border-t border-white/5 cursor-not-allowed"
+            >
+              <span>Download transcript</span>
+              <span className="text-[10px] opacity-60">unavailable</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function fmtBytes(n: number) {
   if (n < 1024) return n + ' B';
@@ -309,11 +432,14 @@ export default function RecordingsPage() {
                             >
                               {state.status === 'submitting' ? '…' : state.status === 'queued' ? '✓ Queued' : state.status === 'running' ? '… Running' : state.status === 'done' ? '↻ Re-run' : 'Transcribe'}
                             </button>
-                            <a
-                              href={r.downloadUrl}
-                              download
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 text-cyan-100 px-3 py-1.5 text-xs hover:bg-cyan-400/20 transition"
-                            >Download</a>
+                            <DownloadMenu
+                              recordingKey={r.key}
+                              videoUrl={r.downloadUrl}
+                              audioUrl={r.audio?.downloadUrl}
+                              transcriptReady={
+                                !!(r.transcript && r.transcript.status === 'done' && r.transcript.text)
+                              }
+                            />
                             <button
                               onClick={async () => {
                                 if (!confirm('Delete this recording permanently? This cannot be undone.')) return;
