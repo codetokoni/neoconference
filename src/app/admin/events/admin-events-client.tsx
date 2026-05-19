@@ -18,6 +18,8 @@ import {
   Link as LinkIcon,
 } from "lucide-react";
 import type { AdminEventView, EventState, EventVisibility } from "@/types/event";
+import EventActions from "./EventActions";
+import { useToaster, type ToastKind } from "./Toaster";
 
 type DateRange = "today" | "week" | "month" | "all";
 type SortKey = "createdAt" | "updatedAt" | "name" | "ownerEmail";
@@ -109,6 +111,7 @@ export default function AdminEventsClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reqIdRef = useRef(0);
+  const { pushToast, Toaster } = useToaster();
 
   // Reset to page 1 whenever a filter/sort/pageSize change would shift results.
   useEffect(() => {
@@ -237,19 +240,22 @@ export default function AdminEventsClient() {
                 <SortableTh label="Created" col="createdAt" sort={sort} order={order} onClick={toggleSort} />
                 <SortableTh label="Last updated" col="updatedAt" sort={sort} order={order} onClick={toggleSort} />
                 <th className="px-4 py-3">Flags</th>
+                <th className="px-2 py-3 w-10">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {error && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-red-400">
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-red-400">
                     Failed to load events: {error}
                   </td>
                 </tr>
               )}
               {!error && data && data.events.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-zinc-500">
+                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-zinc-500">
                     {debouncedQ || state || visibility || dateRange !== "all"
                       ? "No events match these filters."
                       : "No events yet."}
@@ -258,10 +264,17 @@ export default function AdminEventsClient() {
               )}
               {!error &&
                 data &&
-                data.events.map((ev) => <EventRow key={ev.id} ev={ev} />)}
+                data.events.map((ev) => (
+                  <EventRow
+                    key={ev.id}
+                    ev={ev}
+                    onActionComplete={fetchEvents}
+                    pushToast={pushToast}
+                  />
+                ))}
               {!error && !data && loading && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-zinc-500">
+                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-zinc-500">
                     <Loader2 className="mx-auto h-5 w-5 animate-spin text-cyan-300" aria-hidden="true" />
                     <div className="mt-2">Loading events...</div>
                   </td>
@@ -271,6 +284,8 @@ export default function AdminEventsClient() {
           </table>
         </div>
       </div>
+
+      <Toaster />
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div className="text-xs text-zinc-500">
@@ -376,7 +391,15 @@ function SortableTh({
   );
 }
 
-function EventRow({ ev }: { ev: AdminEventView }) {
+function EventRow({
+  ev,
+  onActionComplete,
+  pushToast,
+}: {
+  ev: AdminEventView;
+  onActionComplete: () => void;
+  pushToast: (t: { kind: ToastKind; text: string }) => void;
+}) {
   const created = formatRelative(ev.createdAt);
   const updated = formatRelative(ev.updatedAt);
   const owner = ev.ownerEmail || ev.ownerName || ev.ownerUserId;
@@ -457,6 +480,9 @@ function EventRow({ ev }: { ev: AdminEventView }) {
               </span>
             )}
         </div>
+      </td>
+      <td className="px-2 py-3 align-top text-right">
+        <EventActions ev={ev} onActionComplete={onActionComplete} pushToast={pushToast} />
       </td>
     </tr>
   );

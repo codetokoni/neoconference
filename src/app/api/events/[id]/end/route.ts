@@ -4,6 +4,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { RoomServiceClient } from "livekit-server-sdk";
 import { eventStore } from "@/lib/eventStore";
 import { assertOwnerOrAdmin } from "@/lib/roles";
 
@@ -30,6 +31,22 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     endedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }));
+
+  // Force-disconnect any active LiveKit participants. Abrupt (no graceful
+  // "meeting ended" message) — adding a graceful toast/redirect requires a
+  // parallel sendData + client handler in the room page. Out of scope here.
+  try {
+    const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || process.env.LIVEKIT_URL;
+    const apiKey = process.env.LIVEKIT_API_KEY;
+    const apiSecret = process.env.LIVEKIT_API_SECRET;
+    if (wsUrl && apiKey && apiSecret) {
+      const httpUrl = wsUrl.replace(/^ws:/, "http:").replace(/^wss:/, "https:");
+      const svc = new RoomServiceClient(httpUrl, apiKey, apiSecret);
+      await svc.deleteRoom(ev.livekitRoom);
+    }
+  } catch (e) {
+    console.warn("[events/end] deleteRoom failed:", e);
+  }
 
   // Fire-and-forget: ask the summary endpoint to generate a recap.
   // We intentionally do not await this so the response stays fast.
