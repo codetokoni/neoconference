@@ -62,34 +62,70 @@ export async function POST(req: Request) {
     // own recordings on the dashboard.
     const userSeg = sanitizeSegment(userId);
     const roomSeg = sanitizeSegment(room);
-    const filepath = `recordings/${userSeg}/${roomSeg}/${timestamp}.mp4`;
+    const basepath = `recordings/${userSeg}/${roomSeg}/${timestamp}`;
+    const filepath = `${basepath}.mp4`;
+    const audioFilepath = `${basepath}.ogg`;
+
+    const s3Upload = new S3Upload({
+      accessKey: s3AccessKey,
+      secret: s3SecretKey,
+      bucket: s3Bucket,
+      region: s3Region,
+      endpoint: s3Endpoint,
+      forcePathStyle: true,
+    });
 
     const fileOutput = new EncodedFileOutput({
       fileType: EncodedFileType.MP4,
       filepath,
-      output: {
-        case: "s3",
-        value: new S3Upload({
-          accessKey: s3AccessKey,
-          secret: s3SecretKey,
-          bucket: s3Bucket,
-          region: s3Region,
-          endpoint: s3Endpoint,
-          forcePathStyle: true,
-        }),
-      },
+      output: { case: "s3", value: s3Upload },
+    });
+
+    const audioFileOutput = new EncodedFileOutput({
+      fileType: EncodedFileType.OGG,
+      filepath: audioFilepath,
+      output: { case: "s3", value: s3Upload },
     });
 
     const egressClient = new EgressClient(httpUrl, apiKey, apiSecret);
 
-    const info = await egressClient.startRoomCompositeEgress(room, {
-      file: fileOutput,
-      layout: "grid",
-    });
+    // Run the video and audio-only egress requests in parallel. The video
+    // call is required; the audio sidecar is best-effort. If the audio
+    // egress fails (LiveKit rejects, network blip, quota), we log and
+    // continue with video-only — the recording UX matches today.
+    const [videoSettled, audioSettled] = await Promise.allSettled([
+      egressClient.startRoomCompositeEgress(room, {
+        file: fileOutput,
+        layout: "grid",
+      }),
+      egressClient.startRoomCompositeEgress(room, {
+        file: audioFileOutput,
+        audioOnly: true,
+      }),
+    ]);
+
+    if (videoSettled.status === "rejected") {
+      throw videoSettled.reason;
+    }
+    const info = videoSettled.value;
+
+    let audioEgressId: string | null = null;
+    let audioFilepathOut: string | null = null;
+    if (audioSettled.status === "fulfilled") {
+      audioEgressId = audioSettled.value.egressId ?? null;
+      audioFilepathOut = audioFilepath;
+    } else {
+      console.warn(
+        "[egress/start] audio sidecar failed; continuing video-only",
+        audioSettled.reason,
+      );
+    }
 
     return NextResponse.json({
       egressId: info.egressId,
       filepath,
+      audioEgressId,
+      audioFilepath: audioFilepathOut,
       startedAt: Date.now(),
     });
   } catch (e: any) {

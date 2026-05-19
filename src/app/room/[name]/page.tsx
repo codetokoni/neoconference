@@ -874,9 +874,12 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
 
-  // Local recording state (this client started/stopped)
+  // Local recording state (this client started/stopped). audioEgressId is
+  // the parallel audio-only egress (.ogg sidecar) and may be null if that
+  // sidecar failed to start — the video egress is still authoritative.
   const [egressId, setEgressId] = useState<string | null>(null);
   const [filepath, setFilepath] = useState<string | null>(null);
+  const [audioEgressId, setAudioEgressId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Globally observed recording state (any participant is recording)
@@ -1030,6 +1033,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
       setEgressId(data.egressId);
       setFilepath(data.filepath);
+      setAudioEgressId(data.audioEgressId ?? null);
       setRemoteRecording({
         by: localParticipant.name || localParticipant.identity || "You",
       });
@@ -1113,12 +1117,13 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       const res = await fetch("/api/livekit/egress/stop", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ egressId, filepath }),
+        body: JSON.stringify({ egressId, filepath, audioEgressId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
       setEgressId(null);
       setFilepath(null);
+      setAudioEgressId(null);
       setRemoteRecording(null);
       await broadcast(false);
       if (data.downloadUrl) {

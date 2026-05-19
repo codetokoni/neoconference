@@ -131,6 +131,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, skipped: 'no file path on egress' });
     }
 
+    // Each recording produces two egress_ended events: one for the .mp4
+    // video and one for the .ogg audio sidecar. Only transcribe off the
+    // video file so we don't queue a duplicate Deepgram job per recording.
+    if (!filename.toLowerCase().endsWith('.mp4')) {
+      return NextResponse.json({ ok: true, skipped: 'audio_sidecar', filename });
+    }
+
     // egress writes 'recordings/user_xxx/event-slug/timestamp.mp4'. We pass
     // the full key as the recordingKey. Try to extract the event slug from
     // the path so we can later attach the transcript to the event.
