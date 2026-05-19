@@ -1,16 +1,24 @@
 // src/app/api/events/delete/route.ts
-// Owner-only: permanently delete an event.
-// Removes the event record, all slugs (primary + aliases), the owner index,
-// and the global ALL set. Broadcasts an event_deleted data packet so any
-// participants currently in the room can be notified by the client.
+// Owner-or-admin event delete / archive.
 //
-// POST /api/events/delete body: { slug: string, confirm: string }
-// confirm MUST equal slug (typed-confirm gate, like the GitHub repo-delete UX).
-// -> 200 { ok: true }
-// -> 400 missing_slug | invalid_json | confirm_mismatch
-// -> 401 unauthenticated
-// -> 403 forbidden
-// -> 404 not_found
+// POST /api/events/delete body:
+//   { slug: string, mode?: "delete" | "archive", confirm?: string }
+//
+// mode === "delete" (default):
+//   Hard delete. Removes the event record, all slugs (primary + aliases),
+//   the owner index, and the global ALL set. Broadcasts an event_deleted
+//   data packet so participants currently in the room can self-redirect.
+//   Requires `confirm === slug` (typed-confirm gate, GitHub repo-delete UX).
+//   -> 200 { ok: true }
+//   -> 400 missing_slug | invalid_json | confirm_mismatch
+//
+// mode === "archive":
+//   Soft delete. Flips event state to "archived". Event hidden from public
+//   explore page and dashboards but record + recordings preserved. No
+//   typed-confirm required (action is reversible). No LiveKit broadcast.
+//   -> 200 { ok: true, event: NeoEvent }
+//
+// Shared: -> 401 unauthenticated | 403 forbidden | 404 not_found
 
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
@@ -25,24 +33,37 @@ export async function POST(req: Request) {
     const { userId } = await auth();
     if (!userId) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
-    let body: { slug?: string; confirm?: string };
+    let body: { slug?: string; confirm?: string; mode?: string };
     try {
-          body = (await req.json()) as { slug?: string; confirm?: string };
+          body = (await req.json()) as { slug?: string; confirm?: string; mode?: string };
         } catch {
           return NextResponse.json({ error: 'invalid_json' }, { status: 400 });
         }
     const slug = (body.slug || '').trim().toLowerCase();
-    const confirm = (body.confirm || '').trim().toLowerCase();
+    const mode = body.mode === 'archive' ? 'archive' : 'delete';
     if (!slug) return NextResponse.json({ error: 'missing_slug' }, { status: 400 });
-    if (confirm !== slug) {
-          return NextResponse.json({ error: 'confirm_mismatch' }, { status: 400 });
-        }
 
     const ev = await eventStore.bySlug(slug);
     if (!ev) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
     const check = await assertOwnerOrAdmin(ev, userId);
     if (!check.ok) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+
+    // Archive: flip state, no typed-confirm, no LiveKit broadcast, no purge.
+    if (mode === 'archive') {
+      const next = await eventStore.update(ev.id, (prev) => ({
+        ...prev,
+        state: 'archived',
+        updatedAt: new Date().toISOString(),
+      }));
+      return NextResponse.json({ ok: true, event: next });
+    }
+
+    // Hard delete: enforce typed-confirm gate.
+    const confirm = (body.confirm || '').trim().toLowerCase();
+    if (confirm !== slug) {
+          return NextResponse.json({ error: 'confirm_mismatch' }, { status: 400 });
+        }
 
     const oldLivekitRoom = ev.livekitRoom;
 
