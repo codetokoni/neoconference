@@ -1,83 +1,9 @@
-import Link from "next/link";
-import TierCheckoutButton from "@/components/TierCheckoutButton";
+import PricingTiers from "@/components/PricingTiers";
 
 export const metadata = {
   title: "Pricing — NeoConference",
-  description: "Simple, host-based pricing. Free forever for casual calls. Upgrade for unlimited length, recording, breakouts, and branding.",
+  description: "Simple, host-based pricing. Free forever for casual calls. Five plans from Starter to Enterprise — choose the participant cap, recording, and branding that fit you.",
 };
-
-
-type Tier = {
-  id: "free" | "pro" | "business";
-  name: string;
-  tagline: string;
-  price: { monthly: number; annual: number };
-  cta: string;
-  ctaHref: string;
-  highlight?: boolean;
-  features: { label: string; included: boolean | string }[];
-};
-
-const TIERS: Tier[] = [
-  {
-    id: "free",
-    name: "Free",
-    tagline: "For quick chats and trying things out.",
-    price: { monthly: 0, annual: 0 },
-    cta: "Get started free",
-    ctaHref: "/dashboard",
-    features: [
-      { label: "30-minute meeting cap", included: true },
-      { label: "Up to 20 participants", included: true },
-      { label: "HD video & crystal-clear audio", included: true },
-      { label: "Live captions", included: true },
-      { label: "Polls, chat, reactions, raise hand", included: true },
-      { label: "Waiting room", included: true },
-      { label: "Cloud recording", included: false },
-      { label: "Breakout rooms", included: false },
-      { label: "Custom branding", included: false },
-      { label: "Community support", included: true },
-    ],
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    tagline: "For freelancers, teachers, and small teams.",
-    price: { monthly: 20, annual: 240 },
-    cta: "Upgrade to Pro",
-    ctaHref: "/api/billing/checkout?plan=pro",
-    highlight: true,
-    features: [
-      { label: "Unlimited meeting length", included: true },
-      { label: "Up to 100 participants", included: true },
-      { label: "Everything in Free", included: true },
-      { label: "Cloud recording (10 hrs/mo)", included: true },
-      { label: "Breakout rooms", included: true },
-      { label: "Email support", included: true },
-      { label: "Custom branding", included: false },
-    ],
-  },
-  {
-    id: "business",
-    name: "Business",
-    tagline: "For organizations that need polish and scale.",
-    price: { monthly: 30, annual: 360 },
-    cta: "Go Business",
-    ctaHref: "/api/billing/checkout?plan=business",
-    features: [
-      { label: "Up to 300 participants", included: true },
-      { label: "Everything in Pro", included: true },
-      { label: "Cloud recording (50 hrs/mo)", included: true },
-      { label: "Custom branding (logo + room URL)", included: true },
-      { label: "Priority email support", included: true },
-    ],
-  },
-];
-
-function formatPrice(amount: number) {
-  if (amount === 0) return "0 Espees";
-  return amount + " Espees";
-}
 
 export default function PricingPage() {
   return (
@@ -103,100 +29,14 @@ export default function PricingPage() {
             <span className="neo-gradient-text neo-text-glow">scales with you.</span>
           </h1>
           <p className="mt-6 text-lg text-cyan-100/70">
-            Free forever for quick chats. Upgrade only when you need unlimited length, recording, or breakouts.
+            Free forever for quick chats. Upgrade for longer meetings, bigger rooms, recording, and branding.
           </p>
           <p className="mt-2 text-xs text-cyan-100/50">
             Billing is per host. Guests join free.
           </p>
         </div>
 
-        {/* Tier cards */}
-        <div className="mt-14 grid gap-6 lg:grid-cols-3">
-          {TIERS.map((tier) => {
-            const monthly = tier.price.monthly;
-            const annual = tier.price.annual;
-            const annualSaved = monthly * 12 - annual;
-            return (
-              <div
-                key={tier.id}
-                className={
-                  "relative rounded-2xl p-7 border transition " +
-                  (tier.highlight
-                    ? "bg-gradient-to-b from-cyan-500/10 to-indigo-500/5 border-cyan-300/40 shadow-[0_0_60px_rgba(34,211,238,0.15)]"
-                    : "neo-glass border-white/10")
-                }
-              >
-                {tier.highlight && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-cyan-400 text-slate-900 text-[11px] font-bold px-3 py-1 tracking-wide">
-                    MOST POPULAR
-                  </div>
-                )}
-                <h3 className="text-xl font-semibold text-white">{tier.name}</h3>
-                <p className="mt-1 text-sm text-cyan-100/60">{tier.tagline}</p>
-
-                <div className="mt-6 flex items-baseline gap-1">
-                  <span className="text-5xl font-bold text-white">
-                    {formatPrice(monthly)}
-                  </span>
-                  {monthly > 0 && (
-                    <span className="text-sm text-cyan-100/60">/mo</span>
-                  )}
-                </div>
-                {annual > 0 && (
-                  <p className="mt-1 text-xs text-cyan-100/60">
-                    or <span className="text-white">{formatPrice(annual)}</span>/yr
-                    {annualSaved > 0 && (
-                      <span className="ml-1 text-emerald-300">
-                        — save {formatPrice(annualSaved)}
-                      </span>
-                    )}
-                  </p>
-                )}
-
-                {tier.id === "free" ? (
-                  <Link
-                    href={tier.ctaHref}
-                    className={
-                      "mt-8 inline-flex w-full items-center justify-center rounded-xl px-5 py-3 text-sm font-semibold transition " +
-                      (tier.highlight
-                        ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
-                        : "bg-white/10 text-white ring-1 ring-white/20 hover:bg-white/15")
-                    }
-                  >
-                    {tier.cta}
-                  </Link>
-                ) : (
-                  <div className="mt-8">
-                    <TierCheckoutButton
-                      plan={tier.id as "pro" | "business"}
-                      label={tier.cta}
-                      highlight={tier.highlight}
-                    />
-                  </div>
-                )}
-
-                <ul className="mt-6 space-y-2.5">
-                  {tier.features.map((f, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm">
-                      {f.included ? (
-                        <svg viewBox="0 0 24 24" className="mt-0.5 h-4 w-4 flex-none text-cyan-300" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M5 12l5 5L20 7" />
-                        </svg>
-                      ) : (
-                        <svg viewBox="0 0 24 24" className="mt-0.5 h-4 w-4 flex-none text-white/30" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M6 6l12 12M18 6L6 18" />
-                        </svg>
-                      )}
-                      <span className={f.included ? "text-cyan-100/90" : "text-white/40"}>
-                        {f.label}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-        </div>
+        <PricingTiers />
       </section>
 
       {/* FAQ */}
@@ -206,14 +46,20 @@ export default function PricingPage() {
           <Faq q="What counts as a host?">
             A host is anyone who creates or starts a meeting. Guests who only join meetings never need a paid plan.
           </Faq>
-          <Faq q="What happens after 20 minutes on Free?">
-            The meeting ends automatically. You can immediately start a new one — but for uninterrupted long calls, upgrade to Pro.
+          <Faq q="What happens after 60 minutes on Free?">
+            The meeting ends automatically. You can immediately start a new one — but for uninterrupted long calls, upgrade to Starter or Pro.
+          </Faq>
+          <Faq q="What is the 5-lifetime-meeting cap?">
+            The Free plan lets you create up to 5 meetings ever (across the lifetime of the account). Once you hit that, you'll need to upgrade to keep hosting. Joining other people's meetings stays free.
+          </Faq>
+          <Faq q="Do existing paid users get the new participant limits?">
+            Yes. The new caps (Starter 100 / Pro 200 / Business 500) apply to every paid user on their next session — nothing to do, no migration needed.
           </Faq>
           <Faq q="Can I cancel anytime?">
             Yes. Cancel from your dashboard and you keep your plan until the end of the billing period.
           </Faq>
           <Faq q="What payment methods do you accept?">
-            We accept Espees. All plans are billed in Espees through the eSPees payment network.
+            All paid plans are billed in Espees through the eSPees payment network.
           </Faq>
           <Faq q="Is there a refund policy?">
             Cancel within 14 days of your first paid charge for a full refund, no questions asked.
@@ -226,9 +72,9 @@ export default function PricingPage() {
         <div className="mt-16 rounded-2xl neo-glass border border-white/10 p-8 sm:p-10 text-center">
           <h3 className="text-2xl font-semibold text-white">Need a custom plan?</h3>
           <p className="mt-2 text-cyan-100/70 text-sm max-w-xl mx-auto">
-            Schools, churches, and large organizations can get volume discounts, SSO, and custom limits. Tell us what you need.
+            Schools, churches, and large organizations can get volume discounts and custom limits. Tell us what you need.
           </p>
-          <a href="mailto:hello@neoconference.app" className="mt-5 inline-flex neo-btn text-sm">
+          <a href="mailto:info@neoconference.app" className="mt-5 inline-flex neo-btn text-sm">
             Contact us
           </a>
         </div>

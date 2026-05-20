@@ -8,7 +8,7 @@
 // record expires and they need to start over.
 
 import { kv } from "@vercel/kv";
-import type { EspeesPlan } from "./espees";
+import type { EspeesPlan, BillingCycle } from "./espees";
 
 const KEY_PREFIX = "billing:pending:";
 const TTL_SECONDS = 60 * 60; // 1 hour
@@ -19,6 +19,7 @@ export type PendingPayment = {
   nonce: string;
   userId: string;
   plan: EspeesPlan;
+  billingCycle: BillingCycle;
   status: PendingPaymentStatus;
   paymentRef: string;
   createdAt: number;
@@ -46,12 +47,14 @@ export async function createPendingPayment(input: {
   nonce: string;
   userId: string;
   plan: EspeesPlan;
+  billingCycle: BillingCycle;
   paymentRef?: string;
 }): Promise<void> {
   const record: PendingPayment = {
     nonce: input.nonce,
     userId: input.userId,
     plan: input.plan,
+    billingCycle: input.billingCycle,
     status: "pending",
     paymentRef: input.paymentRef || "",
     createdAt: Date.now(),

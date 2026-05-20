@@ -30,6 +30,37 @@ export function isPlan(value: unknown): value is Plan {
 }
 
 /**
+ * Shape of plan-related fields we read/write on Clerk publicMetadata.
+ * Other fields (e.g. meetingsCreated) live alongside but are owned by
+ * different helpers.
+ */
+export type PlanMetadata = {
+    plan?: Plan;
+    planExpiresAt?: number; // unix ms; absent or null means "no expiry / permanent"
+};
+
+/**
+ * Returns true if metadata has a planExpiresAt that is in the past.
+ * Absent or null planExpiresAt means permanent (never expired).
+ */
+export function isPlanExpired(metadata: unknown): boolean {
+    if (!metadata || typeof metadata !== "object") return false;
+    const m = metadata as Record<string, unknown>;
+    const expiresAt = m.planExpiresAt;
+    if (typeof expiresAt !== "number") return false;
+    return Date.now() > expiresAt;
+}
+
+/**
+ * Compute a future expiry timestamp (unix ms) for a billing cycle.
+ * 30 days for monthly, 365 days for annual.
+ */
+export function computePlanExpiry(billingCycle: "monthly" | "annual"): number {
+    const ms = billingCycle === "annual" ? 365 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+    return Date.now() + ms;
+}
+
+/**
  * Per-plan feature limits. Use these to drive both server-side gates and
  * UI affordances. Numbers are intentional — see /pricing for the source-of-truth.
  */
@@ -109,7 +140,12 @@ export function getPlanLimits(plan: Plan): PlanLimits {
 export function readPlanFromMetadata(metadata: unknown): Plan {
     if (metadata && typeof metadata === "object" && "plan" in metadata) {
           const p = (metadata as Record<string, unknown>).plan;
-          if (isPlan(p)) return p;
+          if (isPlan(p)) {
+                  // Expired paid plans behave as free until the daily downgrade cron
+                  // catches up and resets the metadata.
+              if (isPlanExpired(metadata)) return "free";
+                  return p;
+          }
     }
     return "free";
 }
