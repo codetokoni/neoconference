@@ -14,6 +14,7 @@
 import { NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { readPendingPayment, updatePaymentStatus } from "@/lib/billingStore";
+import { computePlanExpiry } from "@/lib/plan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,12 +46,15 @@ export async function GET(req: Request): Promise<Response> {
     return NextResponse.redirect(origin + "/pricing?error=already_resolved", { status: 303 });
   }
 
-  // Promote the user. Preserve any existing publicMetadata.
+  // Promote the user. Preserve any existing publicMetadata. planExpiresAt
+  // is computed from the billing cycle stored on the pending record (30d
+  // monthly / 365d annual) and is what the daily downgrade cron sweeps on.
   try {
     const client = await clerkClient();
     const user = await client.users.getUser(record.userId);
+    const planExpiresAt = computePlanExpiry(record.billingCycle);
     await client.users.updateUserMetadata(record.userId, {
-      publicMetadata: { ...(user.publicMetadata ?? {}), plan: record.plan },
+      publicMetadata: { ...(user.publicMetadata ?? {}), plan: record.plan, planExpiresAt },
     });
   } catch (e) {
     // Mark failed so user can retry; surface error to /pricing.

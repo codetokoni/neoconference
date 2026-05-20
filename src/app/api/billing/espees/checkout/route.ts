@@ -1,8 +1,9 @@
 // src/app/api/billing/espees/checkout/route.ts
 //
 // POST /api/billing/espees/checkout
-// Body: { plan: "starter" | "pro" | "business" }
-// Response on success: 200 { url: string }   (client should window.location to it)
+// Body: { plan: "starter" | "pro" | "business", billingCycle: "monthly" | "annual" }
+// Response on success: 200 { url, plan, billingCycle, amountEspees }
+//   (client should window.location to `url`)
 // Response on auth fail: 401 { error: "unauthenticated" }
 // Response on validation fail: 400 { error: string }
 // Response on eSPees fail: 502 { error: string }
@@ -13,7 +14,7 @@
 import { NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
-import { initiatePayment, ESPEES_PRODUCTS, type EspeesPlan } from "@/lib/espees";
+import { initiatePayment, ESPEES_AMOUNTS, type EspeesPlan, type BillingCycle } from "@/lib/espees";
 import { createPendingPayment, attachPaymentRef, generateNonce } from "@/lib/billingStore";
 
 export const runtime = "nodejs";
@@ -21,6 +22,10 @@ export const dynamic = "force-dynamic";
 
 function isEspeesPlan(p: unknown): p is EspeesPlan {
     return p === "starter" || p === "pro" || p === "business";
+}
+
+function isBillingCycle(c: unknown): c is BillingCycle {
+    return c === "monthly" || c === "annual";
 }
 
 function originFromHeaders(h: Headers): string {
@@ -47,6 +52,11 @@ export async function POST(req: Request): Promise<Response> {
           return NextResponse.json({ error: "invalid_plan" }, { status: 400 });
     }
 
+  const cycle = (body && typeof body === "object" ? (body as Record<string, unknown>).billingCycle : undefined);
+    if (!isBillingCycle(cycle)) {
+          return NextResponse.json({ error: "invalid_billing_cycle" }, { status: 400 });
+    }
+
   // Look up display name (best-effort) for user_data.fullname.
   let fullname = "";
     try {
@@ -63,13 +73,14 @@ export async function POST(req: Request): Promise<Response> {
 
   // Persist the pending record BEFORE calling eSPees so a network race
   // cannot leave us with a paid record we can't map back to a user.
-  await createPendingPayment({ nonce, userId, plan });
+  await createPendingPayment({ nonce, userId, plan, billingCycle: cycle });
 
   const successUrl = origin + "/api/billing/espees/return?nonce=" + encodeURIComponent(nonce);
     const failUrl = origin + "/api/billing/espees/fail?nonce=" + encodeURIComponent(nonce);
 
   const result = await initiatePayment({
         plan,
+        billingCycle: cycle,
         nonce,
         successUrl,
         failUrl,
@@ -88,6 +99,7 @@ export async function POST(req: Request): Promise<Response> {
   return NextResponse.json({
         url: result.url,
         plan,
-        priceEsp: ESPEES_PRODUCTS[plan].priceEsp,
+        billingCycle: cycle,
+        amountEspees: ESPEES_AMOUNTS[plan][cycle],
   });
 }

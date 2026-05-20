@@ -5,12 +5,16 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 
 type Plan = "starter" | "pro" | "business";
+type BillingCycle = "monthly" | "annual";
+
 export default function TierCheckoutButton({
   plan,
+  billingCycle,
   label,
   highlight,
 }: {
   plan: Plan;
+  billingCycle: BillingCycle;
   label: string;
   highlight?: boolean;
 }) {
@@ -38,7 +42,7 @@ export default function TierCheckoutButton({
       const res = await fetch("/api/billing/espees/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, billingCycle }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.url) {
