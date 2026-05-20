@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 
-type Plan = "pro" | "business";
-
+type Plan = "starter" | "pro" | "business";
 export default function TierCheckoutButton({
   plan,
   label,
