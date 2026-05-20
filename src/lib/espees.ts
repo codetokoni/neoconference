@@ -137,6 +137,10 @@ export async function initiatePayment(input: InitiateInput): Promise<InitiateRes
   const url = paymentRef ? `https://payment.espees.org/pay/${paymentRef}` : (typeof obj.url === "string" ? obj.url : "");
   const message = typeof obj.message === "string" ? obj.message : "Unknown eSPees error";
 
+  console.log("[espees] request body:", JSON.stringify(body));
+  console.log("[espees] response status:", res.status);
+  console.log("[espees] response body:", JSON.stringify(obj));
+
   if (!res.ok || !url) {
     return { ok: false, error: message };
   }
