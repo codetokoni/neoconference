@@ -7,6 +7,7 @@ const isPublicRoute = createRouteMatcher([
   '/sign-up(.*)',
   '/room/(.*)',
   '/explore',
+  '/pricing',
   '/e/(.*)',
   '/embed/(.*)',
   '/share/(.*)',
@@ -59,7 +60,7 @@ async function maybeRewriteCustomDomain(req: NextRequest): Promise<NextResponse 
   const host = (req.headers.get('host') || '').toLowerCase();
   if (!host || CANONICAL_HOST_RE.test(host)) return null;
   const p = req.nextUrl.pathname;
-  if (p.startsWith('/_next') || p.startsWith('/api') || p.startsWith('/sign-in') || p.startsWith('/sign-up') || p.startsWith('/dashboard')) {
+  if (p.startsWith('/_next') || p.startsWith('/api') || p.startsWith('/sign-in') || p.startsWith('/sign-up') || p.startsWith('/dashboard') || p.startsWith('/pricing')) {
     return null;
   }
   const slug = await resolveDomain(host, req.nextUrl.origin);
