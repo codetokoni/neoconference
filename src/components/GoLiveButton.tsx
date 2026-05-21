@@ -74,8 +74,8 @@ export default function GoLiveButton({
         className={
           'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition active:scale-[0.98] ' +
           (stream
-            ? 'border-red-500 bg-red-600/90 text-white hover:bg-red-500'
-            : 'border-red-500 bg-red-600 text-white hover:bg-red-500')
+            ? 'border-red-500 bg-red-600 text-white hover:bg-red-500'
+            : 'border-red-500 bg-transparent text-red-400 hover:bg-red-500/10')
         }
         title="Provision RTMP livestream for this room"
       >
