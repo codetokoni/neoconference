@@ -16,6 +16,7 @@
 // webkitSetPresentationMode for older iOS WebKit.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Pin } from 'lucide-react';
 
 type RankedVideo = {
   v: HTMLVideoElement;
@@ -228,11 +229,13 @@ export default function FloatingVideoButton() {
       <button
         type='button'
         data-toolbar-item='true'
+        data-room-chrome='true'
         onClick={toggle}
-        className='px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm'
+        className='inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-white/10 hover:border-white/25 active:scale-[0.98] transition'
         title={active ? 'Exit floating video' : 'Float video so it stays visible while you do other things'}
         aria-pressed={active}
       >
+        <Pin size={16} aria-hidden />
         {active ? 'Unfloat' : 'Float'}
       </button>
       {hint ? (

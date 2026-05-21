@@ -35,6 +35,25 @@ import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
 import SpeakerBadge from "@/components/SpeakerBadge"; import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel"; import ManageParticipantsPanel from "@/components/ParticipantsPanel"; import TileRoleBadges from "@/components/TileRoleBadges"; import WaitingRoomPanel from "@/components/WaitingRoomPanel"; import BreakoutsPanel from "@/components/BreakoutsPanel";
 import PlanGateOverlay from "@/components/PlanGateOverlay";
+import {
+  Users,
+  MessageSquare,
+  Eye,
+  EyeOff,
+  Presentation,
+  ChartBar,
+  LayoutGrid,
+  DoorOpen,
+  Link as LinkIcon,
+  Maximize,
+  Minimize,
+} from "lucide-react";
+
+// Shared toolbar button style — flat, transparent, lucide-icon + text label.
+// Used by inline buttons in this file and mirrored in FloatingVideoButton,
+// ParticipantCountBadge, GoLiveButton, and the RecordingControls button.
+const TOOLBAR_BTN_CLASS =
+  "inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-white/10 hover:border-white/25 active:scale-[0.98] transition";
 
 type TokenResponse = { token: string; wsUrl: string };
 
@@ -637,92 +656,139 @@ function RoomContainer({
         <ApplyPrejoinChoices choices={choices} />
         <MobileMoreMenu />
         <div
-          data-room-chrome="true" className="room-toolbar" style={{ position: "absolute", top: 8, left: "50%", transform: "translateX(-50%)", zIndex: 12, display: "flex", gap: 8, alignItems: "center" }}
+          data-room-chrome="true"
+          className="room-toolbar"
+          style={{
+            position: "absolute",
+            top: 8,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 12,
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 6,
+            padding: "6px 8px",
+            borderRadius: 12,
+            background: "rgba(17,17,17,0.85)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+            maxWidth: "calc(100vw - 24px)",
+          }}
         >
+          {/* Cluster 1: Communication */}
           <button
             type="button"
+            data-room-chrome="true"
             onClick={() => setShowParticipants((v) => !v)}
-            className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+            className={TOOLBAR_BTN_CLASS}
             title="Show participants"
           >
+            <Users size={16} aria-hidden />
             People
           </button>
           <button
             type="button"
             data-room-chrome="true"
-            onClick={() => setHideSelf((v) => !v)}
-            className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
-            title="Hide your own video"
+            onClick={() => setShowChat(true)}
+            className={TOOLBAR_BTN_CLASS}
+            title="Toggle chat"
           >
-            {hideSelf ? "Show me" : "Hide me"}
+            <MessageSquare size={16} aria-hidden />
+            Chat
           </button>
           <button
             type="button"
             data-room-chrome="true"
+            onClick={() => setHideSelf((v) => !v)}
+            className={TOOLBAR_BTN_CLASS}
+            title="Hide your own video"
+          >
+            {hideSelf ? <Eye size={16} aria-hidden /> : <EyeOff size={16} aria-hidden />}
+            {hideSelf ? "Show me" : "Hide me"}
+          </button>
+
+          <div className="self-stretch w-px bg-white/15" aria-hidden />
+
+          {/* Cluster 2: Engagement */}
+          <button
+            type="button"
+            data-room-chrome="true"
             onClick={() => setShowWhiteboard((v) => !v)}
-            className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+            className={TOOLBAR_BTN_CLASS}
             title="Toggle whiteboard"
           >
+            <Presentation size={16} aria-hidden />
             {showWhiteboard ? "Close whiteboard" : "Whiteboard"}
           </button>
           <button
             type="button"
             data-room-chrome="true"
-            onClick={() => setShowChat(true)}
-            className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
-            title="Toggle chat"
-          >
-            Chat
-          </button>
-          <FloatingVideoButton />
-          <button
-            type="button"
-            data-room-chrome="true"
             onClick={() => setShowPolls((v) => !v)}
-            className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+            className={TOOLBAR_BTN_CLASS}
             title="Toggle polls"
           >
+            <ChartBar size={16} aria-hidden />
             {showPolls ? "Close polls" : "Polls"}
           </button>
-
-          {(roomRole === "host" || roomRole === "cohost") && (
-            <button
-              type="button"
-              data-room-chrome="true"
-              onClick={() => setShowWaitingRoom((v) => !v)}
-              className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
-              title="Toggle waiting room"
-            >
-              {showWaitingRoom ? "Close waiting" : (pendingKnockCount > 0 ? `Waiting (${pendingKnockCount})` : "Waiting")}
-            </button>
-          )}
+          <FloatingVideoButton />
           {(roomRole === "host" || roomRole === "cohost") && (
             <button
               type="button"
               data-room-chrome="true"
               onClick={() => setShowBreakouts((v) => !v)}
-              className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+              className={TOOLBAR_BTN_CLASS}
               title="Toggle breakouts"
             >
+              <LayoutGrid size={16} aria-hidden />
               {showBreakouts ? "Close breakouts" : "Breakouts"}
+            </button>
+          )}
+
+          <div className="self-stretch w-px bg-white/15" aria-hidden />
+
+          {/* Cluster 3: Room management */}
+          {(roomRole === "host" || roomRole === "cohost") && (
+            <button
+              type="button"
+              data-room-chrome="true"
+              onClick={() => setShowWaitingRoom((v) => !v)}
+              className={TOOLBAR_BTN_CLASS}
+              title="Toggle waiting room"
+            >
+              <DoorOpen size={16} aria-hidden />
+              {showWaitingRoom ? "Close waiting" : (pendingKnockCount > 0 ? `Waiting (${pendingKnockCount})` : "Waiting")}
             </button>
           )}
           <button
             type="button"
+            data-room-chrome="true"
             onClick={copyLink}
-            className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+            className={TOOLBAR_BTN_CLASS}
             title="Copy room link"
           >
+            <LinkIcon size={16} aria-hidden />
             {copied ? "Link copied!" : "Copy link"}
           </button>
           <button
             type="button"
+            data-room-chrome="true"
             onClick={toggleFullscreen}
-            className="px-3 py-1.5 text-xs rounded bg-black text-white hover:bg-zinc-800 border border-white/30 shadow-sm"
+            className={TOOLBAR_BTN_CLASS}
             title="Toggle fullscreen"
           >
+            {isFullscreen ? <Minimize size={16} aria-hidden /> : <Maximize size={16} aria-hidden />}
             {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
           </button>
+
+          <div className="self-stretch w-px bg-white/15" aria-hidden />
+
+          {/* Cluster 4: Status + primary actions.
+              Record + Go Live are NOT gated to host/cohost — preserves existing
+              behavior where non-hosts can press Record to send a request-to-host
+              approval (see RecordingControls.requestRecord). */}
           <ParticipantCountBadge />
           <RecordingControls roomName={roomName} roomRole={roomRole} />
           <GoLiveButton roomName={roomName} eventSlug={eventSlug} />
@@ -1306,34 +1372,37 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
           </div>
         </div>
       )}
-      {/* Record button: bottom-right floating */}
+      {/* Record button — sits in the room toolbar cluster 4 alongside Go Live.
+          When idle: secondary style with a small red dot. When recording:
+          red filled style with a white stop square. Behavior unchanged. */}
       <button
         type="button"
         data-room-chrome="true"
         onClick={egressId ? stop : start}
         disabled={busy || recordPending === "asking"}
         title={egressId ? "Stop recording" : recordPending === "asking" ? "Waiting for host approval…" : "Start recording"}
-        style={{
-          position: "relative",
-          padding: "6px 12px",
-          borderRadius: 999,
-          border: "none",
-          background: egressId ? "#dc2626" : "#000",
-          color: egressId ? "#fff" : "#fff",
-          fontSize: 12,
-          fontWeight: 600,
-          cursor: busy ? "wait" : "pointer",
-          opacity: busy ? 0.6 : 1,
-          boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
-        }}
+        className={
+          (egressId
+            ? "inline-flex items-center gap-1.5 rounded-lg border border-red-500 bg-red-600/90 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-500 active:scale-[0.98] transition"
+            : "inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-white/10 hover:border-white/25 active:scale-[0.98] transition") +
+          (busy ? " opacity-60 cursor-wait" : "")
+        }
       >
-        {busy
-          ? "…"
-          : recordPending === "asking"
-            ? "⏳ Waiting…"
-            : egressId
-              ? "■ Stop recording"
-              : "● Record"}
+        {busy ? (
+          "…"
+        ) : recordPending === "asking" ? (
+          <>⏳ Waiting…</>
+        ) : egressId ? (
+          <>
+            <span className="inline-block h-2 w-2 bg-white" aria-hidden />
+            Stop recording
+          </>
+        ) : (
+          <>
+            <span className="inline-block h-2 w-2 rounded-full bg-red-500" aria-hidden />
+            Record
+          </>
+        )}
       </button>
 
       {/* Toast (e.g. download URL) */}
