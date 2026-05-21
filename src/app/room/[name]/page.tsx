@@ -47,6 +47,8 @@ import {
   Link as LinkIcon,
   Maximize,
   Minimize,
+  Sparkles,
+  X,
 } from "lucide-react";
 
 // Shared toolbar button style — flat, transparent, lucide-icon + text label.
@@ -481,7 +483,7 @@ function RoomContainer({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [showChat, setShowChat] = useState(false); const [showWhiteboard, setShowWhiteboard] = useState(false); const [showPolls, setShowPolls] = useState(false); const [showParticipants, setShowParticipants] = useState(false); const [showWaitingRoom, setShowWaitingRoom] = useState(false);
+  const [showChat, setShowChat] = useState(false); const [showWhiteboard, setShowWhiteboard] = useState(false); const [showPolls, setShowPolls] = useState(false); const [showBackgroundPicker, setShowBackgroundPicker] = useState(false); const [showParticipants, setShowParticipants] = useState(false); const [showWaitingRoom, setShowWaitingRoom] = useState(false);
   const [showBreakouts, setShowBreakouts] = useState(false);
   const [hideSelf, setHideSelf] = useState(false);
   const [roomRole, setRoomRole] = useState<string>("guest");
@@ -733,6 +735,16 @@ function RoomContainer({
             <ChartBar size={16} aria-hidden />
             {showPolls ? "Close polls" : "Polls"}
           </button>
+          <button
+            type="button"
+            data-room-chrome="true"
+            onClick={() => setShowBackgroundPicker(true)}
+            className={TOOLBAR_BTN_CLASS}
+            title="Change your background"
+          >
+            <Sparkles size={16} aria-hidden />
+            Background
+          </button>
           <FloatingVideoButton />
           {(roomRole === "host" || roomRole === "cohost") && (
             <button
@@ -812,6 +824,52 @@ function RoomContainer({
         <SpeakerBadge />
         <RenameRedirectListener />
         <RenameUrlButton roomRole={roomRole} eventSlug={eventSlug} />
+        {showBackgroundPicker && (
+          <div
+            className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowBackgroundPicker(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="bg-picker-title"
+              className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#0b1020]/95 p-6 md:p-8 backdrop-blur-xl shadow-[0_0_80px_-20px_rgba(168,85,247,0.45)]"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={18} className="text-purple-300" />
+                  <h3 id="bg-picker-title" className="text-lg font-semibold text-white">Background</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowBackgroundPicker(false)}
+                  aria-label="Close dialog"
+                  className="rounded-full p-1.5 text-white/50 hover:text-white hover:bg-white/10 transition"
+                >
+                  <X size={18} aria-hidden />
+                </button>
+              </div>
+              <p className="mt-3 text-sm text-white/60">
+                Replace or blur your background. Coming in the next update — pick the option you want and we'll save it for when MediaPipe segmentation ships.
+              </p>
+              <div className="mt-5 grid grid-cols-3 gap-3">
+                <button type="button" className="aspect-video rounded-xl border border-white/15 bg-white/5 text-xs text-white/70 hover:bg-white/10 transition">
+                  None
+                </button>
+                <button type="button" className="aspect-video rounded-xl border border-white/15 bg-gradient-to-br from-slate-700/40 to-slate-900/40 text-xs text-white/70 hover:from-slate-700/60 hover:to-slate-900/60 transition" style={{ backdropFilter: 'blur(4px)' }}>
+                  Blur
+                </button>
+                <button type="button" disabled className="aspect-video rounded-xl border border-white/10 bg-white/5 text-xs text-white/30 cursor-not-allowed">
+                  Soon
+                </button>
+              </div>
+              <p className="mt-4 text-[11px] text-white/40">
+                Tip: Background effects can slow down older devices. We'll auto-disable if performance drops.
+              </p>
+            </div>
+          </div>
+        )}
       </LiveKitRoom>
     </div>
   );
