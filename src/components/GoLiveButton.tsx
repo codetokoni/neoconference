@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Radio } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Radio, X } from 'lucide-react';
 
 type Stream = {
   id: string;
@@ -35,6 +35,16 @@ export default function GoLiveButton({
   const [stream, setStream] = useState<Stream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+
+  // Close panel on Escape key
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
 
   async function start() {
     setLoading(true);
@@ -90,14 +100,24 @@ export default function GoLiveButton({
         >
           <div
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="golive-title"
             className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#0b1020]/95 p-6 md:p-8 backdrop-blur-xl shadow-[0_0_80px_-20px_rgba(34,211,238,0.45)]"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="inline-flex h-2 w-2 rounded-full bg-rose-400 shadow-[0_0_12px_2px_rgba(244,63,94,0.8)] animate-pulse" />
-                <h3 className="text-lg font-semibold text-white">Livestream this room</h3>
+                <h3 id="golive-title" className="text-lg font-semibold text-white">Livestream this room</h3>
               </div>
-              <button onClick={() => setOpen(false)} className="text-white/40 hover:text-white/80 transition text-sm">Close</button>
+              <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Close dialog"
+              className="rounded-full p-1.5 text-white/50 hover:text-white hover:bg-white/10 transition"
+            >
+              <X size={18} aria-hidden />
+            </button>
             </div>
 
             {eventSlug && (
@@ -139,6 +159,13 @@ export default function GoLiveButton({
                 <p className="text-[11px] text-white/45 leading-relaxed pt-2">
                   Open OBS → Settings → Stream. Service: <span className="text-white/70">Custom</span>. Server: paste RTMP ingest. Stream key: paste stream key. Hit &quot;Start streaming&quot;.
                 </p>
+              <button
+                type="button"
+                onClick={() => { setStream(null); setError(null); setOpen(false); }}
+                className="mt-3 w-full rounded-2xl border border-red-500/40 bg-red-500/10 px-5 py-3 text-sm font-semibold text-red-200 hover:bg-red-500/20 transition"
+              >
+                End broadcast
+              </button>
               </div>
             )}
           </div>
