@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Radio } from 'lucide-react';
 
 type Stream = {
   id: string;
@@ -67,11 +68,18 @@ export default function GoLiveButton({
   return (
     <>
       <button
+        type="button"
+        data-room-chrome="true"
         onClick={() => setOpen((v) => !v)}
-        className={'inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-medium border transition shadow-[0_0_24px_-8px_rgba(244,63,94,0.6)] ' + (stream ? 'border-rose-400/50 bg-rose-500/15 text-rose-100' : 'border-white/15 bg-black/40 text-white/80 hover:bg-white/10')}
+        className={
+          'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition active:scale-[0.98] ' +
+          (stream
+            ? 'border-red-500 bg-red-600/90 text-white hover:bg-red-500'
+            : 'border-red-500 bg-red-600 text-white hover:bg-red-500')
+        }
         title="Provision RTMP livestream for this room"
       >
-        <span className={'inline-flex h-1.5 w-1.5 rounded-full ' + (stream ? 'bg-rose-400 animate-pulse' : 'bg-cyan-300')} />
+        <Radio size={16} aria-hidden className={stream ? 'animate-pulse' : ''} />
         {stream ? 'LIVE' : 'Go Live'}
       </button>
 
