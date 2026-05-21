@@ -71,7 +71,7 @@ export async function createStream(input: {
   latency?: 'ultra' | 'low' | 'hls';
 }): Promise<StreamLabStream> {
   const r = await call<{ stream: StreamLabStream } | StreamLabStream>(
-    '/streams/create',
+    '/streams/create.php',
     {
       method: 'POST',
       body: JSON.stringify({
@@ -87,7 +87,7 @@ export async function createStream(input: {
 
 export async function getStreamStatus(streamId: string): Promise<StreamLabStream> {
   const r = await call<{ stream: StreamLabStream } | StreamLabStream>(
-    '/streams/status?id=' + encodeURIComponent(streamId)
+    '/streams/status.php?id=' + encodeURIComponent(streamId)
   );
   return (r as { stream?: StreamLabStream }).stream ?? (r as StreamLabStream);
 }
