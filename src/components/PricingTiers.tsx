@@ -153,25 +153,37 @@ export default function PricingTiers() {
       </div>
 
       {/* Tier cards */}
-      <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {TIERS.map((tier) => {
+      <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-6">
+        {TIERS.map((tier, idx) => {
           const isEnterprise = tier.id === "enterprise";
           const isFree = tier.id === "free";
           const monthly = tier.price.monthly;
           const annual = tier.price.annual;
+          // Desktop bottom-row centering on a 6-col grid: every card spans 2 cols.
+          // Cards 1-3 flow into row 1 cols 1-2, 3-4, 5-6. Card 4 (Business) starts at
+          // col 2 (cols 2-3); card 5 (Enterprise) starts at col 4 (cols 4-5) — same
+          // card width as row 1, centered pair in row 2.
+          // Tablet (sm: 2-col grid): Enterprise spans both cols so the lone 5th card
+          // isn't orphaned in row 3.
+          const gridPos =
+            idx === 3 ? "lg:col-start-2" :
+            idx === 4 ? "sm:col-span-2 lg:col-start-4" :
+            "";
 
           return (
             <div
               key={tier.id}
+              aria-label={tier.highlight ? "Most popular plan" : undefined}
               className={
-                "relative rounded-2xl p-7 border transition " +
+                "relative rounded-2xl p-7 border transition-transform lg:col-span-2 " +
+                gridPos + " " +
                 (tier.highlight
-                  ? "bg-gradient-to-b from-cyan-500/10 to-indigo-500/5 border-cyan-300/40 shadow-[0_0_60px_rgba(34,211,238,0.15)]"
+                  ? "bg-gradient-to-b from-cyan-500/10 to-indigo-500/5 border-2 border-cyan-400/50 shadow-2xl shadow-cyan-500/20 lg:scale-105"
                   : "neo-glass border-white/10")
               }
             >
               {tier.highlight && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-cyan-400 text-slate-900 text-[11px] font-bold px-3 py-1 tracking-wide">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-cyan-400 to-purple-500 text-white text-[11px] font-bold px-3 py-1 tracking-wide shadow-lg">
                   MOST POPULAR
                 </div>
               )}
