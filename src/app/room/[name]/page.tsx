@@ -834,7 +834,7 @@ function RoomContainer({
               role="dialog"
               aria-modal="true"
               aria-labelledby="bg-picker-title"
-              className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#0b1020]/95 p-6 md:p-8 backdrop-blur-xl shadow-[0_0_80px_-20px_rgba(168,85,247,0.45)]"
+              className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1020]/95 p-6 md:p-8 backdrop-blur-xl shadow-[0_0_80px_-20px_rgba(168,85,247,0.45)]"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
