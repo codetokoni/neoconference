@@ -1,3 +1,8 @@
+// Preset background images sourced from Unsplash under the Unsplash License:
+// - office.jpg — Photo by Nastuh Abootalebi (unsplash.com/photos/rSpMla5RItA)
+// - library.jpg — Photo by Robert | Visual Diary (unsplash.com/photos/grand-library-interior-with-tall-bookshelves-and-arched-windows-I9lIqAQGnu0)
+// - gradient.jpg — Photo by Luke Chesser (unsplash.com/photos/blue-to-purple-gradient-eICUFSeirc0)
+
 import { BackgroundBlur, VirtualBackground } from '@livekit/track-processors';
 import { LocalParticipant, Track } from 'livekit-client';
 
