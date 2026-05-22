@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Radio, X } from 'lucide-react';
 
 type Stream = {
@@ -102,7 +103,7 @@ export default function GoLiveButton({
         {stream ? 'LIVE' : 'Go Live'}
       </button>
 
-      {open && (
+      {open && typeof document !== 'undefined' && createPortal(
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
           onClick={() => setOpen(false)}
@@ -179,7 +180,8 @@ export default function GoLiveButton({
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
