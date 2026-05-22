@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser, RedirectToSignIn } from "@clerk/nextjs";
 import {
@@ -26,6 +26,14 @@ import { RoomNameEntry } from "@/components/RoomNameEntry";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import RoomIdleController from "@/components/RoomIdleController";
 import GoLiveButton from "@/components/GoLiveButton";
+import {
+  applyBackground,
+  loadBackgroundMode,
+  saveBackgroundMode,
+  clearCustomBackground,
+  getCustomBackgroundDataUrl,
+  type BackgroundMode,
+} from "@/lib/backgroundEffects";
 import LiveCaptions from "@/components/LiveCaptions";
 import CaptionsToggle from "@/components/CaptionsToggle";
 import ReactionsBar from "@/components/ReactionsBar";
@@ -48,6 +56,7 @@ import {
   Maximize,
   Minimize,
   Sparkles,
+  Upload,
   X,
 } from "lucide-react";
 
@@ -492,14 +501,6 @@ function RoomContainer({
   const [pendingKnockCount, setPendingKnockCount] = useState(0);
   const prevKnockCountRef = useRef(0);
   const knockAudioCtxRef = useRef<AudioContext | null>(null);
-  const bgPickerRef = useRef<HTMLDivElement>(null);
-
-  // Reset scroll to top when Background picker modal opens
-  useEffect(() => {
-    if (showBackgroundPicker && bgPickerRef.current) {
-      bgPickerRef.current.scrollTop = 0;
-    }
-  }, [showBackgroundPicker]);
 
   useEffect(() => {
     const isHostOrCohost = roomRole === "host" || roomRole === "cohost";
@@ -832,53 +833,11 @@ function RoomContainer({
         <SpeakerBadge />
         <RenameRedirectListener />
         <RenameUrlButton roomRole={roomRole} eventSlug={eventSlug} />
-        {showBackgroundPicker && (
-          <div
-            className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-            onClick={() => setShowBackgroundPicker(false)}
-          >
-            <div
-              ref={bgPickerRef}
-              onClick={(e) => e.stopPropagation()}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="bg-picker-title"
-              className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1020]/95 p-6 md:p-8 backdrop-blur-xl shadow-[0_0_80px_-20px_rgba(168,85,247,0.45)]"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Sparkles size={18} className="text-purple-300" />
-                  <h3 id="bg-picker-title" className="text-lg font-semibold text-white">Background</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowBackgroundPicker(false)}
-                  aria-label="Close dialog"
-                  className="rounded-full p-1.5 text-white/50 hover:text-white hover:bg-white/10 transition"
-                >
-                  <X size={18} aria-hidden />
-                </button>
-              </div>
-              <p className="mt-3 text-sm text-white/60">
-                Replace or blur your background. Coming in the next update — pick the option you want and we'll save it for when MediaPipe segmentation ships.
-              </p>
-              <div className="mt-5 grid grid-cols-3 gap-3">
-                <button type="button" className="aspect-video rounded-xl border border-white/15 bg-white/5 text-xs text-white/70 hover:bg-white/10 transition">
-                  None
-                </button>
-                <button type="button" className="aspect-video rounded-xl border border-white/15 bg-gradient-to-br from-slate-700/40 to-slate-900/40 text-xs text-white/70 hover:from-slate-700/60 hover:to-slate-900/60 transition" style={{ backdropFilter: 'blur(4px)' }}>
-                  Blur
-                </button>
-                <button type="button" disabled className="aspect-video rounded-xl border border-white/10 bg-white/5 text-xs text-white/30 cursor-not-allowed">
-                  Soon
-                </button>
-              </div>
-              <p className="mt-4 text-[11px] text-white/40">
-                Tip: Background effects can slow down older devices. We'll auto-disable if performance drops.
-              </p>
-            </div>
-          </div>
-        )}
+        <BackgroundPickerPanel
+          open={showBackgroundPicker}
+          onClose={() => setShowBackgroundPicker(false)}
+          roomSlug={roomName}
+        />
       </LiveKitRoom>
     </div>
   );
@@ -1531,6 +1490,241 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
         @keyframes lk-rec-soft-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
       `}</style>
     </>
+  );
+}
+
+/**
+ * BackgroundPickerPanel
+ *
+ * Inside <LiveKitRoom>: renders the background-effects modal with 6 tiles
+ * (None, Blur, Office, Library, Gradient, Upload/Custom) wired to LiveKit's
+ * @livekit/track-processors. Persists selection in localStorage and restores
+ * it on mount. Custom uploads are keyed per room slug.
+ */
+function BackgroundPickerPanel({
+  open,
+  onClose,
+  roomSlug,
+}: {
+  open: boolean;
+  onClose: () => void;
+  roomSlug: string;
+}) {
+  const { localParticipant } = useLocalParticipant();
+  const [bgMode, setBgMode] = useState<BackgroundMode>({ type: "none" });
+  const [customDataUrl, setCustomDataUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  // Restore saved background on mount (once local participant is available).
+  useEffect(() => {
+    if (!localParticipant || !roomSlug) return;
+    const saved = loadBackgroundMode(roomSlug);
+    setBgMode(saved);
+    setCustomDataUrl(getCustomBackgroundDataUrl(roomSlug));
+    if (saved.type !== "none") {
+      applyBackground(localParticipant as any, saved).catch((e) =>
+        console.warn("Failed to restore background:", e),
+      );
+    }
+  }, [localParticipant, roomSlug]);
+
+  // Reset scroll to top when modal opens — kept from prior fix.
+  useEffect(() => {
+    if (open && cardRef.current) {
+      cardRef.current.scrollTop = 0;
+    }
+  }, [open]);
+
+  async function handleSelect(mode: BackgroundMode) {
+    setBgMode(mode);
+    saveBackgroundMode(mode, roomSlug);
+    if (mode.type === "custom") setCustomDataUrl(mode.dataUrl);
+    if (localParticipant) {
+      try {
+        await applyBackground(localParticipant as any, mode);
+      } catch (e) {
+        console.error("Failed to apply background:", e);
+      }
+    }
+  }
+
+  function handleUploadClick() {
+    fileInputRef.current?.click();
+  }
+
+  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      e.target.value = "";
+      return;
+    }
+    try {
+      const img = await createImageBitmap(file);
+      const MAX = 1920;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx?.drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      await handleSelect({ type: "custom", dataUrl });
+    } catch (err) {
+      console.error("Failed to read uploaded image:", err);
+    } finally {
+      e.target.value = "";
+    }
+  }
+
+  function handleClearCustom() {
+    clearCustomBackground(roomSlug);
+    setCustomDataUrl(null);
+    if (bgMode.type === "custom") {
+      handleSelect({ type: "none" });
+    }
+  }
+
+  if (!open) return null;
+
+  const isActive = (m: BackgroundMode) => {
+    if (m.type !== bgMode.type) return false;
+    if (m.type === "preset" && bgMode.type === "preset") return m.key === bgMode.key;
+    return true;
+  };
+
+  const tileBase =
+    "relative aspect-square rounded-xl border border-white/15 text-xs transition flex items-end justify-center pb-2 overflow-hidden";
+  const ring = (active: boolean) =>
+    active ? " ring-2 ring-purple-300 ring-offset-2 ring-offset-[#0b1020]" : "";
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        ref={cardRef}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bg-picker-title"
+        className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1020]/95 p-6 md:p-8 backdrop-blur-xl shadow-[0_0_80px_-20px_rgba(168,85,247,0.45)]"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles size={18} className="text-purple-300" />
+            <h3 id="bg-picker-title" className="text-lg font-semibold text-white">Background</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close dialog"
+            className="rounded-full p-1.5 text-white/50 hover:text-white hover:bg-white/10 transition"
+          >
+            <X size={18} aria-hidden />
+          </button>
+        </div>
+
+        <p className="mt-3 text-sm text-white/60">
+          Replace or blur your background. Pick a preset or upload your own.
+        </p>
+
+        <div className="mt-5 grid grid-cols-3 gap-3">
+          <button
+            type="button"
+            onClick={() => handleSelect({ type: "none" })}
+            className={tileBase + " bg-gradient-to-br from-slate-800/40 to-slate-900/60 text-white/70 hover:bg-white/10" + ring(isActive({ type: "none" }))}
+          >
+            None
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSelect({ type: "blur" })}
+            className={tileBase + " bg-gradient-to-br from-slate-700/40 to-slate-900/40 text-white/70 hover:from-slate-700/60 hover:to-slate-900/60" + ring(isActive({ type: "blur" }))}
+            style={{ backdropFilter: "blur(4px)" }}
+          >
+            Blur
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSelect({ type: "preset", key: "office" })}
+            className={tileBase + " bg-cover bg-center text-white hover:opacity-90" + ring(isActive({ type: "preset", key: "office" }))}
+            style={{ backgroundImage: "url('/backgrounds/office.jpg')" }}
+          >
+            <span className="bg-black/40 px-1.5 py-0.5 rounded">Office</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSelect({ type: "preset", key: "library" })}
+            className={tileBase + " bg-cover bg-center text-white hover:opacity-90" + ring(isActive({ type: "preset", key: "library" }))}
+            style={{ backgroundImage: "url('/backgrounds/library.jpg')" }}
+          >
+            <span className="bg-black/40 px-1.5 py-0.5 rounded">Library</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSelect({ type: "preset", key: "gradient" })}
+            className={tileBase + " bg-cover bg-center text-white hover:opacity-90" + ring(isActive({ type: "preset", key: "gradient" }))}
+            style={{ backgroundImage: "url('/backgrounds/gradient.jpg')" }}
+          >
+            <span className="bg-black/40 px-1.5 py-0.5 rounded">Gradient</span>
+          </button>
+
+          {customDataUrl ? (
+            <div
+              className={tileBase + " bg-cover bg-center text-white" + ring(isActive({ type: "custom", dataUrl: customDataUrl }))}
+              style={{ backgroundImage: `url('${customDataUrl}')` }}
+            >
+              <button
+                type="button"
+                onClick={() => handleSelect({ type: "custom", dataUrl: customDataUrl })}
+                className="absolute inset-0 flex items-end justify-center pb-2 hover:opacity-90 transition"
+                aria-label="Use custom background"
+              >
+                <span className="bg-black/40 px-1.5 py-0.5 rounded">Custom</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleClearCustom}
+                aria-label="Remove custom background"
+                className="absolute top-1 right-1 rounded-full bg-black/60 p-1 text-white/80 hover:text-white hover:bg-black/80 transition"
+              >
+                <X size={12} aria-hidden />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleUploadClick}
+              className="aspect-square rounded-xl border border-dashed border-white/30 bg-white/5 text-xs text-white/70 hover:bg-white/10 hover:border-white/50 transition flex flex-col items-center justify-center gap-1"
+            >
+              <Upload size={20} aria-hidden />
+              Upload
+            </button>
+          )}
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+
+        <p className="mt-4 text-[11px] text-white/40">
+          Tip: Background effects can slow down older devices. We'll auto-disable if performance drops.
+        </p>
+      </div>
+    </div>
   );
 }
 
