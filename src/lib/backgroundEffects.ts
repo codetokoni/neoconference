@@ -21,16 +21,19 @@ export async function applyBackground(
     }
     return;
   }
+  // segmenterOptions maps to MediaPipe ImageSegmenter baseOptions. `delegate: 'GPU'`
+  // requests the WebGL path; MediaPipe transparently falls back to CPU when WebGL
+  // isn't available. Blur radius bumped 10 -> 15 for stronger smoothing.
   if (mode.type === 'blur') {
-    await track.setProcessor(BackgroundBlur(10));
+    await track.setProcessor(BackgroundBlur(15, { delegate: 'GPU' as const }));
     return;
   }
   if (mode.type === 'preset') {
-    await track.setProcessor(VirtualBackground(`/backgrounds/${mode.key}.jpg`));
+    await track.setProcessor(VirtualBackground(`/backgrounds/${mode.key}.jpg`, { delegate: 'GPU' as const }));
     return;
   }
   if (mode.type === 'custom') {
-    await track.setProcessor(VirtualBackground(mode.dataUrl));
+    await track.setProcessor(VirtualBackground(mode.dataUrl, { delegate: 'GPU' as const }));
     return;
   }
 }
