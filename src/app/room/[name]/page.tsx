@@ -492,6 +492,14 @@ function RoomContainer({
   const [pendingKnockCount, setPendingKnockCount] = useState(0);
   const prevKnockCountRef = useRef(0);
   const knockAudioCtxRef = useRef<AudioContext | null>(null);
+  const bgPickerRef = useRef<HTMLDivElement>(null);
+
+  // Reset scroll to top when Background picker modal opens
+  useEffect(() => {
+    if (showBackgroundPicker && bgPickerRef.current) {
+      bgPickerRef.current.scrollTop = 0;
+    }
+  }, [showBackgroundPicker]);
 
   useEffect(() => {
     const isHostOrCohost = roomRole === "host" || roomRole === "cohost";
@@ -830,6 +838,7 @@ function RoomContainer({
             onClick={() => setShowBackgroundPicker(false)}
           >
             <div
+              ref={bgPickerRef}
               onClick={(e) => e.stopPropagation()}
               role="dialog"
               aria-modal="true"

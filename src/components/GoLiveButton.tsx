@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Radio, X } from 'lucide-react';
 
 type Stream = {
@@ -45,6 +45,15 @@ export default function GoLiveButton({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
+
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  // Reset scroll to top when modal opens or stream content changes
+  useEffect(() => {
+    if (open && cardRef.current) {
+      cardRef.current.scrollTop = 0;
+    }
+  }, [open, stream]);
 
   async function start() {
     setLoading(true);
@@ -99,6 +108,7 @@ export default function GoLiveButton({
           onClick={() => setOpen(false)}
         >
           <div
+            ref={cardRef}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
