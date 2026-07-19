@@ -150,7 +150,8 @@ export default async function Home() {
       </section>
 
       <footer className="relative mx-auto max-w-7xl px-6 pb-10 text-center text-xs text-cyan-100/35">
-        © {new Date().getFullYear()} NeoConference — Crafted for premium real-time experiences.
+        <div className="mb-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-cyan-100/50"><Link href="/docs" className="hover:text-cyan-200 transition-colors">Docs</Link>Link><Link href="/openapi.json" className="hover:text-cyan-200 transition-colors">API Reference</Link>Link><Link href="/pricing" className="hover:text-cyan-200 transition-colors">Pricing</Link>Link><Link href="/dashboard/developers" className="hover:text-cyan-200 transition-colors">Developers</Link>Link></div>div>
+      </div>© {new Date().getFullYear()} NeoConference — Crafted for premium real-time experiences.
       </footer>
     </div>
   );
