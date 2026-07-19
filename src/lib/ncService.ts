@@ -45,12 +45,18 @@ export interface Recording {
   lastModified: string;
 }
 
+function livekitUrl(): string {
+  const url = process.env.NEXT_PUBLIC_LIVEKIT_URL;
+  if (!url) throw new Error('NEXT_PUBLIC_LIVEKIT_URL is not configured.');
+  return url;
+}
+
 function roomClient(): RoomServiceClient {
-  const url = process.env.LIVEKIT_URL;
+  const url = livekitUrl();
   const key = process.env.LIVEKIT_API_KEY;
   const secret = process.env.LIVEKIT_API_SECRET;
-  if (!url || !key || !secret) {
-    throw new Error('LiveKit environment is not configured.');
+  if (!key || !secret) {
+    throw new Error('LiveKit API credentials are not configured.');
   }
   const httpUrl = url.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:');
   return new RoomServiceClient(httpUrl, key, secret);
@@ -58,24 +64,24 @@ function roomClient(): RoomServiceClient {
 
 function r2Client(): { client: S3Client; bucket: string } {
   const {
-    STORAGE_ACCESS_KEY,
-    STORAGE_SECRET_KEY,
-    STORAGE_ENDPOINT,
-    STORAGE_BUCKET,
-    STORAGE_REGION,
+    S3_ACCESS_KEY,
+    S3_SECRET_KEY,
+    S3_ENDPOINT,
+    S3_BUCKET,
+    S3_REGION,
   } = process.env;
-  if (!STORAGE_ACCESS_KEY || !STORAGE_SECRET_KEY || !STORAGE_ENDPOINT || !STORAGE_BUCKET) {
-    throw new Error('Storage environment is not configured.');
+  if (!S3_ACCESS_KEY || !S3_SECRET_KEY || !S3_ENDPOINT || !S3_BUCKET) {
+    throw new Error('Storage (S3/R2) environment is not configured.');
   }
   const client = new S3Client({
-    region: STORAGE_REGION || 'auto',
-    endpoint: STORAGE_ENDPOINT,
+    region: S3_REGION || 'auto',
+    endpoint: S3_ENDPOINT,
     credentials: {
-      accessKeyId: STORAGE_ACCESS_KEY,
-      secretAccessKey: STORAGE_SECRET_KEY,
+      accessKeyId: S3_ACCESS_KEY,
+      secretAccessKey: S3_SECRET_KEY,
     },
   });
-  return { client, bucket: STORAGE_BUCKET };
+  return { client, bucket: S3_BUCKET };
 }
 
 function slugify(name: string): string {
@@ -170,7 +176,7 @@ export async function createJoinToken(input: {
   const token = await at.toJwt();
   return {
     token,
-    url: process.env.LIVEKIT_URL!,
+    url: livekitUrl(),
     expiresAt: Math.floor(Date.now() / 1000) + ttlSeconds,
   };
 }
