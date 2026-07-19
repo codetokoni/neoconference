@@ -20,7 +20,6 @@ import "@livekit/components-styles";
  *   token (required) - LiveKit access token returned by the API
  *   url   (optional) - LiveKit server ws URL; falls back to
  *                       NEXT_PUBLIC_LIVEKIT_URL baked at build time
- *   theme (optional) - "dark" (default) or "light"
  */
 export default function MeetingEmbedPage() {
   const params = useSearchParams();
@@ -28,8 +27,20 @@ export default function MeetingEmbedPage() {
   const urlParam = params.get("url") || "";
   const [mounted, setMounted] = useState(false);
 
+  // Strip the global site chrome so the embed is bare inside the iframe.
   useEffect(() => {
     setMounted(true);
+    const header = document.querySelector("header");
+    if (header) (header as HTMLElement).style.display = "none";
+    const footer = document.querySelector("footer");
+    if (footer) (footer as HTMLElement).style.display = "none";
+    const main = document.querySelector("main");
+    if (main) {
+      (main as HTMLElement).style.minHeight = "0";
+      (main as HTMLElement).style.margin = "0";
+    }
+    document.body.style.margin = "0";
+    document.body.style.background = "#03050a";
   }, []);
 
   const serverUrl = useMemo(() => {
