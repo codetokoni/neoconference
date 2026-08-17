@@ -1,5 +1,11 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse, type NextRequest } from 'next/server';
+import {
+  SESSION_COOKIE,
+  generateDeviceFingerprint,
+  getClientIp,
+  validateSession,
+} from '@/lib/sessionStore';
 
 const isPublicRoute = createRouteMatcher([
   '/',
@@ -74,12 +80,61 @@ async function maybeRewriteCustomDomain(req: NextRequest): Promise<NextResponse 
   return NextResponse.rewrite(url);
 }
 
+// Routes that must never be bounced by the persistent-session check:
+// create-session mints the cookie, logout clears it, and /sign-out needs to
+// run its cleanup even when the session has already been revoked elsewhere.
+const isSessionExemptRoute = createRouteMatcher([
+  '/api/auth/create-session',
+  '/api/auth/logout',
+  '/api/auth/sessions',
+  '/sign-out',
+]);
+
+/**
+ * Validates the persistent device session cookie.
+ *
+ * Returns a response only when the session is definitively bad (revoked from
+ * another device, expired, or presented from a different device) — in that case
+ * the user is signed out. A KV outage returns 'error' and we deliberately fall
+ * through: Clerk has already authenticated the request, and an infrastructure
+ * blip must not sign the whole app out.
+ */
+async function enforcePersistentSession(req: NextRequest): Promise<NextResponse | null> {
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  // No cookie yet — <SessionBootstrap /> will mint one on the next paint.
+  if (!token) return null;
+
+  const fingerprint = await generateDeviceFingerprint(
+    req.headers.get('user-agent') || '',
+    req.headers.get('accept-language') || '',
+  );
+
+  const result = await validateSession(token, getClientIp(req.headers), fingerprint);
+  if (result.status !== 'invalid') return null;
+
+  if (req.nextUrl.pathname.startsWith('/api/')) {
+    const res = NextResponse.json({ error: 'Session revoked' }, { status: 401 });
+    res.cookies.delete(SESSION_COOKIE);
+    return res;
+  }
+
+  const signIn = new URL('/sign-in', req.url);
+  signIn.searchParams.set('session_ended', '1');
+  const res = NextResponse.redirect(signIn);
+  res.cookies.delete(SESSION_COOKIE);
+  return res;
+}
+
 export default clerkMiddleware(
   async (auth, req) => {
     const rewrite = await maybeRewriteCustomDomain(req as unknown as NextRequest);
     if (rewrite) return rewrite;
     if (!isPublicRoute(req)) {
       await auth.protect();
+      if (!isSessionExemptRoute(req)) {
+        const revoked = await enforcePersistentSession(req as unknown as NextRequest);
+        if (revoked) return revoked;
+      }
     }
   },
   {
