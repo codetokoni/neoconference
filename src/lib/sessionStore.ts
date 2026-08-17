@@ -38,6 +38,15 @@ export interface SessionRecord {
   ipLastSeen: string | null;
   createdAt: number;
   lastActivityAt: number;
+  /**
+   * The Clerk session this device session was minted from. Lets the device list
+   * reconcile against Clerk: a session revoked in the Clerk dashboard, or via
+   * the "Sign out of this device" link in Clerk's new-device email, is already
+   * blocked by auth.protect(), but without this we could not tell WHICH of our
+   * KV records it corresponded to, so the device lingered in the list.
+   * Optional: records written before this field existed simply won't reconcile.
+   */
+  clerkSessionId?: string | null;
 }
 
 export interface ActiveSession {
@@ -143,7 +152,12 @@ function newToken(): string {
  */
 export async function createSession(
   userId: string,
-  opts: { ip: string | null; fingerprint: string; userAgent: string | null },
+  opts: {
+    ip: string | null;
+    fingerprint: string;
+    userAgent: string | null;
+    clerkSessionId?: string | null;
+  },
 ): Promise<string> {
   if (!userId) throw new Error('createSession: userId is required');
 
@@ -159,6 +173,7 @@ export async function createSession(
     ipLastSeen: opts.ip,
     createdAt: now,
     lastActivityAt: now,
+    clerkSessionId: opts.clerkSessionId ?? null,
   };
 
   const deviceKey = `${DEVICE_PREFIX}${userId}:${opts.fingerprint}`;
@@ -352,9 +367,18 @@ async function readRecord(tokenHash: string): Promise<SessionRecord | null> {
   }
 }
 
+/**
+ * @param activeClerkSessionIds When supplied, any record whose Clerk session is
+ *   no longer in this set is dropped from the list AND deleted. That keeps the
+ *   device list honest when a session was ended on Clerk's side rather than
+ *   through our own sign-out — the Clerk dashboard, or the "Sign out of this
+ *   device" link in Clerk's new-device email. Records with no clerkSessionId
+ *   (written before that field existed) are left alone rather than guessed at.
+ */
 export async function getActiveSessions(
   userId: string,
   currentToken?: string | null,
+  activeClerkSessionIds?: ReadonlySet<string> | null,
 ): Promise<ActiveSession[]> {
   if (!userId) return [];
 
@@ -364,6 +388,17 @@ export async function getActiveSessions(
   const records = await Promise.all(
     hashes.map(async (hash) => {
       const record = await readRecord(hash);
+
+      if (
+        record &&
+        activeClerkSessionIds &&
+        record.clerkSessionId &&
+        !activeClerkSessionIds.has(record.clerkSessionId)
+      ) {
+        await destroy(hash, userId, record.fingerprint);
+        return null;
+      }
+
       if (!record) {
         // Expired out from under the index — tidy up.
         if (isKvConfigured()) {
