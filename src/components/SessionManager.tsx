@@ -89,8 +89,9 @@ export default function SessionManager() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.error ?? `Sign out failed (${res.status})`);
       }
-      // Revoke server-side first, then drop the Clerk session.
-      await signOut({ redirectUrl: "/sign-in" });
+      // Revoke server-side first, then drop the Clerk session. The scope rides
+      // along so the sign-in page can say which kind of sign-out happened.
+      await signOut({ redirectUrl: `/sign-in?signed_out=${scope}` });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Sign out failed";
       console.error("[SessionManager]", err);
