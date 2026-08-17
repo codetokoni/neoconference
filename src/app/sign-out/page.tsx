@@ -8,6 +8,15 @@ export default function SignOutPage() {
   const router = useRouter();
   useEffect(() => {
     (async () => {
+      // Revoke the persistent device session BEFORE dropping the Clerk session —
+      // /api/auth/logout needs the Clerk auth to identify the user. Without this
+      // the neoconf-session cookie would survive a sign-out.
+      try {
+        await fetch("/api/auth/logout?scope=device", {
+          method: "POST",
+          credentials: "same-origin",
+        });
+      } catch (e) { console.error("session revoke failed", e); }
       try { await signOut(); } catch (e) { console.error("signOut failed", e); }
       try {
         if (typeof window !== "undefined") {

@@ -5,6 +5,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import Link from "next/link";
 import { getCurrentRole } from "@/lib/roles";
 import HeaderNav from "@/components/HeaderNav";
+import SessionBootstrap from "@/components/SessionBootstrap";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -45,6 +46,7 @@ export default async function RootLayout({
           </header>
 
           <main className="min-h-[calc(100vh-65px)]">{children}</main>
+          <SessionBootstrap />
           <SpeedInsights />
         </body>
       </html>
