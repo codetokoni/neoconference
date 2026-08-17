@@ -10,14 +10,23 @@
 // Renders nothing and no-ops while signed out.
 
 import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
+
+// Never mint a session on the auth pages. Clerk's session JWT stays valid for
+// up to a minute after its session is revoked, so a browser bounced here by
+// middleware would otherwise immediately mint a fresh persistent session and
+// walk straight back in — defeating "sign out everywhere".
+const NO_BOOTSTRAP_PREFIXES = ["/sign-in", "/sign-up", "/sign-out"];
 
 export default function SessionBootstrap() {
   const { isLoaded, isSignedIn, userId } = useAuth();
+  const pathname = usePathname();
   const doneFor = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !userId) return;
+    if (NO_BOOTSTRAP_PREFIXES.some((p) => pathname?.startsWith(p))) return;
     if (doneFor.current === userId) return;
     doneFor.current = userId;
 
@@ -38,7 +47,7 @@ export default function SessionBootstrap() {
       });
 
     return () => controller.abort();
-  }, [isLoaded, isSignedIn, userId]);
+  }, [isLoaded, isSignedIn, userId, pathname]);
 
   return null;
 }
