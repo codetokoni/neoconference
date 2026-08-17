@@ -23,7 +23,9 @@ export async function POST(request: NextRequest) {
     // The user id comes from the verified Clerk session and NOWHERE else.
     // Reading it from the request body would let anyone mint a session cookie
     // for any account by guessing a user id.
-    const { userId } = await auth();
+    // sessionId is recorded so the device list can later tell which of our
+    // records a Clerk-side revocation corresponds to.
+    const { userId, sessionId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -42,7 +44,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const token = await createSession(userId, { ip, fingerprint, userAgent });
+    const token = await createSession(userId, {
+      ip,
+      fingerprint,
+      userAgent,
+      clerkSessionId: sessionId ?? null,
+    });
 
     // The token goes out ONLY as an httpOnly cookie. Returning it in the JSON
     // body would expose it to any script on the page and defeat httpOnly.
