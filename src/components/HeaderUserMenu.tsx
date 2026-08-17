@@ -55,7 +55,7 @@ export function HeaderUserMenu() {
             <div className="font-semibold truncate">{display}</div>
             {email ? <div className="text-xs text-zinc-400 truncate">{email}</div> : null}
           </div>
-          <Link href="/" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-white/5">Home</Link><Link href="/dashboard" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-white/5">Dashboard</Link><Link href="/dashboard/recordings" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-white/5">Recordings</Link>
+          <Link href="/" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-white/5">Home</Link><Link href="/dashboard" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-white/5">Dashboard</Link><Link href="/dashboard/recordings" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-white/5">Recordings</Link><Link href="/dashboard/settings" onClick={() => setOpen(false)} className="block px-4 py-2 text-sm hover:bg-white/5">Account &amp; security</Link>
           <a href="/sign-out" className="block px-4 py-2 text-sm text-red-400 hover:bg-red-400/10 border-t border-white/10">Sign out</a>
         </div>
       )}
