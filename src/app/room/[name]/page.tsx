@@ -808,16 +808,13 @@ function RoomContainer({
 
           {/* Cluster 4: Status + primary actions.
               FRS §2 hides recording/go-live *controls* from non-hosts, but
-              non-hosts still need to see the "Recording started" flash and
-              persistent red dot (privacy indicator). Those live inside
-              RecordingControls, so the component stays mounted for all roles
-              and the toolbar button is gated internally. GoLiveButton has no
-              receive-side rendering yet, so it can be hidden outright. */}
+              non-hosts still need to see the receive-side indicators (flash
+              + dot for recording, flash + dot for go-live). Both components
+              stay mounted for all roles and gate the toolbar buttons
+              internally on roomRole === 'host'. */}
           <ParticipantCountBadge />
           <RecordingControls roomName={roomName} roomRole={roomRole} />
-          {roomRole === 'host' && (
-            <GoLiveButton roomName={roomName} eventSlug={eventSlug} />
-          )}
+          <GoLiveButton roomName={roomName} eventSlug={eventSlug} roomRole={roomRole} />
         </div>
         <RaiseHandButton isHost={roomRole === "host" || roomRole === "cohost"} />
         <SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
