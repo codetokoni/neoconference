@@ -14,15 +14,17 @@ function httpUrlFromWs(ws: string | undefined): string {
 
 /**
  * POST /api/livekit/mute
- * Body: { roomName: string; participantIdentity: string; trackSid: string; muted: boolean }
+ * Body: { roomName: string; participantIdentity: string; trackSid: string; muted: true }
  *
- * Mutes/unmutes one published track. Requires 'participant:mute' on the event
- * that owns the room — owner, host or moderator, plus platform admins.
+ * Mutes ONE published track. Requires 'participant:mute' on the event that
+ * owns the room — owner, host or moderator, plus platform admins.
  *
- * Previously this was requireRole(["admin"]), i.e. platform admins only, which
- * meant the host of a meeting could not call the one endpoint that can mute a
- * specific track (F-5). /api/livekit/moderate remains the coarse path that
- * mutes a participant wholesale.
+ * Force-unmuting a specific participant's track is refused (400
+ * remote_unmute_forbidden) per FRS §5.3: "administrators should not be able to
+ * remotely activate someone's microphone without that person's permission."
+ * To ask a participant to unmute, send requestUnmuteAudio / requestCameraOn
+ * via /api/livekit/moderate — the target's client approves before their
+ * track is enabled.
  */
 export async function POST(req: Request) {
   const { userId } = await auth();
@@ -45,11 +47,22 @@ export async function POST(req: Request) {
   const roomName = body.roomName?.trim();
   const identity = body.participantIdentity?.trim();
   const trackSid = body.trackSid?.trim();
-  const muted = !!body.muted;
 
   if (!roomName || !identity || !trackSid) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
   }
+
+  // FRS §5.3: no remote force-unmute. Ask-to-unmute lives on /moderate.
+  if (body.muted === false) {
+    return NextResponse.json(
+      {
+        error: "remote_unmute_forbidden",
+        message: "Send requestUnmuteAudio via /api/livekit/moderate; the target approves client-side.",
+      },
+      { status: 400 }
+    );
+  }
+  const muted = true;
 
   const ev = await eventStore.bySlug(roomName);
   if (!ev) {
