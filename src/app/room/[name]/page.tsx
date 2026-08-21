@@ -312,8 +312,8 @@ export default function RoomPage({ params }: { params: { name: string } }) {
  * RoleMetadataListener
  *
  * Subscribes to ParticipantMetadataChanged events on the local participant so that
- * server-side role changes (via /api/livekit/moderate makeCohost / demoteToAttendee)
- * are reflected in the room UI without a rejoin. Must be rendered INSIDE <LiveKitRoom>.
+ * server-side role changes (via POST /api/events/[id]/roles) are reflected
+ * in the room UI without a rejoin. Must be rendered INSIDE <LiveKitRoom>.
  */
 function RoleMetadataListener({ onRoleChange }: { onRoleChange: (role: string) => void }) {
   const room = useRoomContext();

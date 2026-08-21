@@ -22,6 +22,7 @@
 //   layers a second guard against the *requested* role via canManageRole().
 
 import { NextResponse, type NextRequest } from "next/server";
+import { RoomServiceClient } from "livekit-server-sdk";
 import { authorize } from "@/lib/authz";
 import { eventStore } from "@/lib/eventStore";
 import {
@@ -31,7 +32,7 @@ import {
   getMeetingRoleByEmail,
   MeetingRoleError,
 } from "@/lib/meeting-roles";
-import { isMeetingRole, RANK, type MeetingRole } from "@/lib/permissions";
+import { isMeetingRole, RANK, toLegacyRole, type MeetingRole } from "@/lib/permissions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,7 +65,10 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   if (!userId && !email) return bad("missing_target");
 
-  const event = await eventStore.byId(id);
+  // Path param may be either the event id or the event slug — mirrors the
+  // fallthrough in authz.ts defaultResolveEvent so existing callers that only
+  // hold the slug (like ParticipantsPanel) don't have to look up an id first.
+  const event = (await eventStore.byId(id)) ?? (await eventStore.bySlug(id));
   if (!event) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   const permission = role === "participant" ? "role:revoke" : "role:grant";
@@ -110,12 +114,59 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }
 
+  // Best-effort live update so the room UI flips role badges and capability
+  // gates without a rejoin. Failure here is non-fatal: the persisted role
+  // still applies the next time the target joins.
+  await broadcastRoleToLiveKit(event.slug, {
+    userId: userId || undefined,
+    emails: email ? [email] : [],
+  }, role);
+
   return NextResponse.json({
     ok: true,
     eventId: event.id,
     target: { userId: userId || null, email: email || null },
     role,
   });
+}
+
+async function broadcastRoleToLiveKit(
+  roomName: string,
+  target: { userId?: string; emails?: string[] },
+  role: MeetingRole
+): Promise<void> {
+  const apiKey = process.env.LIVEKIT_API_KEY;
+  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  const wsUrl = process.env.LIVEKIT_WS_URL || process.env.NEXT_PUBLIC_LIVEKIT_URL;
+  if (!roomName || !apiKey || !apiSecret || !wsUrl) return;
+
+  const wireRole = toLegacyRole(role); // "host" | "cohost" | "attendee"
+  const idLc = target.userId?.toLowerCase() || null;
+  const emailSet = new Set((target.emails || []).map((e) => e.toLowerCase()));
+
+  try {
+    const svc = new RoomServiceClient(wsUrl.replace(/^ws/, "http"), apiKey, apiSecret);
+    const list = await svc.listParticipants(roomName);
+
+    // LiveKit may append a "#..." suffix to the identity — match on the base.
+    const matches = list.filter((p) => {
+      const base = (p.identity || "").split("#")[0].toLowerCase();
+      if (idLc && base === idLc) return true;
+      if (emailSet.size && emailSet.has(base)) return true;
+      return false;
+    });
+
+    await Promise.all(
+      matches.map(async (p) => {
+        let md: Record<string, unknown> = {};
+        try { md = p.metadata ? JSON.parse(p.metadata) : {}; } catch { md = {}; }
+        md.role = wireRole;
+        await svc.updateParticipant(roomName, p.identity, JSON.stringify(md));
+      })
+    );
+  } catch (err) {
+    console.warn("[events/roles] livekit metadata push failed", err);
+  }
 }
 
 /**

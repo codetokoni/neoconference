@@ -75,7 +75,7 @@ export default function ParticipantsPanel({
 
   const call = useCallback(
     async (
-      action: 'muteAudio' | 'muteVideo' | 'kick' | 'requestUnmuteAudio' | 'requestCameraOn' | 'makeCohost' | 'demoteToAttendee',
+      action: 'muteAudio' | 'muteVideo' | 'kick' | 'requestUnmuteAudio' | 'requestCameraOn',
       identity: string,
     ) => {
       setError(null);
@@ -85,6 +85,35 @@ export default function ParticipantsPanel({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slug, action, participantIdentity: identity }),
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          setError(j.error || 'request_failed');
+          return;
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setPending(null);
+      }
+    },
+    [slug],
+  );
+
+  // Role assign/demote goes through the RBAC-aware /roles route rather than
+  // /api/livekit/moderate so the write lands in the Redis membership hash and
+  // the server enforces the rank ladder. The LiveKit metadata push happens
+  // inside the route so the badge still flips live.
+  const assignRole = useCallback(
+    async (role: 'moderator' | 'participant', identity: string) => {
+      setError(null);
+      setPending(identity + ':role:' + role);
+      try {
+        const targetUserId = identity.split('#')[0];
+        const r = await fetch(`/api/events/${encodeURIComponent(slug)}/roles`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: targetUserId, role }),
         });
         if (!r.ok) {
           const j = await r.json().catch(() => ({}));
@@ -261,18 +290,18 @@ export default function ParticipantsPanel({
                 <button
                   type="button"
                   disabled={!!pending}
-                  onClick={() => call('makeCohost', id)}
+                  onClick={() => assignRole('moderator', id)}
                   style={{ flex: '1 1 auto', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(120,200,140,0.45)', background: 'rgba(120,200,140,0.12)', color: '#cdeacd', cursor: 'pointer' }}
                 >
-                  {busy('makeCohost') ? '...' : 'Make co-host'}
+                  {busy('role:moderator') ? '...' : 'Make co-host'}
                 </button>
                 <button
                   type="button"
                   disabled={!!pending}
-                  onClick={() => call('demoteToAttendee', id)}
+                  onClick={() => assignRole('participant', id)}
                   style={{ flex: '1 1 auto', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(255,200,90,0.45)', background: 'rgba(255,200,90,0.12)', color: '#ffe6b8', cursor: 'pointer' }}
                 >
-                  {busy('demoteToAttendee') ? '...' : 'Demote'}
+                  {busy('role:participant') ? '...' : 'Demote'}
                 </button>
                 </div>
               )}
