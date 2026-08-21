@@ -172,10 +172,32 @@ export default function GoLiveButton({
                 </p>
               <button
                 type="button"
-                onClick={() => { setStream(null); setError(null); setOpen(false); }}
-                className="mt-3 w-full rounded-2xl border border-red-500/40 bg-red-500/10 px-5 py-3 text-sm font-semibold text-red-200 hover:bg-red-500/20 transition"
+                disabled={loading}
+                onClick={async () => {
+                  setLoading(true);
+                  setError(null);
+                  try {
+                    const res = await fetch('/api/golive/stop', {
+                      method: 'POST',
+                      headers: { 'content-type': 'application/json' },
+                      body: JSON.stringify({ eventSlug: eventSlug || roomName, roomName }),
+                    });
+                    const j = await res.json().catch(() => ({}));
+                    if (!j.ok) {
+                      setError(j.error || 'Could not end broadcast.');
+                      return;
+                    }
+                    setStream(null);
+                    setOpen(false);
+                  } catch (e: unknown) {
+                    setError(e instanceof Error ? e.message : 'Network error');
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="mt-3 w-full rounded-2xl border border-red-500/40 bg-red-500/10 px-5 py-3 text-sm font-semibold text-red-200 hover:bg-red-500/20 transition disabled:opacity-60"
               >
-                End broadcast
+                {loading ? 'Ending…' : 'End broadcast'}
               </button>
               </div>
             )}
