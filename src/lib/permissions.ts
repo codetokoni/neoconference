@@ -105,7 +105,7 @@ export const PERMISSIONS = {
 
   /* --- moderation --- */
   "participant:mute": RANK.moderator,
-  "participant:muteAll": RANK.moderator,
+  "participant:muteAll": RANK.host,
   "participant:requestUnmute": RANK.moderator,
   "participant:kick": RANK.host,
   "participant:spotlight": RANK.moderator,
