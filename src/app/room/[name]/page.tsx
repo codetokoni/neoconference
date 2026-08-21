@@ -807,12 +807,17 @@ function RoomContainer({
           <div className="self-stretch w-px bg-white/15" aria-hidden />
 
           {/* Cluster 4: Status + primary actions.
-              Record + Go Live are NOT gated to host/cohost — preserves existing
-              behavior where non-hosts can press Record to send a request-to-host
-              approval (see RecordingControls.requestRecord). */}
+              FRS §2: recording and go-live controls are visible only to
+              owner+host. Cohost (moderator), speaker, and viewer see nothing
+              here — the server refuses those calls anyway, so the previous
+              always-render behavior only produced non-actionable buttons. */}
           <ParticipantCountBadge />
-          <RecordingControls roomName={roomName} roomRole={roomRole} />
-          <GoLiveButton roomName={roomName} eventSlug={eventSlug} />
+          {roomRole === 'host' && (
+            <>
+              <RecordingControls roomName={roomName} roomRole={roomRole} />
+              <GoLiveButton roomName={roomName} eventSlug={eventSlug} />
+            </>
+          )}
         </div>
         <RaiseHandButton isHost={roomRole === "host" || roomRole === "cohost"} />
         <SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
