@@ -807,16 +807,16 @@ function RoomContainer({
           <div className="self-stretch w-px bg-white/15" aria-hidden />
 
           {/* Cluster 4: Status + primary actions.
-              FRS §2: recording and go-live controls are visible only to
-              owner+host. Cohost (moderator), speaker, and viewer see nothing
-              here — the server refuses those calls anyway, so the previous
-              always-render behavior only produced non-actionable buttons. */}
+              FRS §2 hides recording/go-live *controls* from non-hosts, but
+              non-hosts still need to see the "Recording started" flash and
+              persistent red dot (privacy indicator). Those live inside
+              RecordingControls, so the component stays mounted for all roles
+              and the toolbar button is gated internally. GoLiveButton has no
+              receive-side rendering yet, so it can be hidden outright. */}
           <ParticipantCountBadge />
+          <RecordingControls roomName={roomName} roomRole={roomRole} />
           {roomRole === 'host' && (
-            <>
-              <RecordingControls roomName={roomName} roomRole={roomRole} />
-              <GoLiveButton roomName={roomName} eventSlug={eventSlug} />
-            </>
+            <GoLiveButton roomName={roomName} eventSlug={eventSlug} />
           )}
         </div>
         <RaiseHandButton isHost={roomRole === "host" || roomRole === "cohost"} />
@@ -1404,37 +1404,40 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
         </div>
       )}
       {/* Record button — sits in the room toolbar cluster 4 alongside Go Live.
-          When idle: secondary style with a small red dot. When recording:
-          red filled style with a white stop square. Behavior unchanged. */}
-      <button
-        type="button"
-        data-room-chrome="true"
-        onClick={egressId ? stop : start}
-        disabled={busy || recordPending === "asking"}
-        title={egressId ? "Stop recording" : recordPending === "asking" ? "Waiting for host approval…" : "Start recording"}
-        className={
-          (egressId
-            ? "inline-flex items-center gap-1.5 rounded-lg border border-red-500 bg-red-600/90 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-500 active:scale-[0.98] transition"
-            : "inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-white/10 hover:border-white/25 active:scale-[0.98] transition") +
-          (busy ? " opacity-60 cursor-wait" : "")
-        }
-      >
-        {busy ? (
-          "…"
-        ) : recordPending === "asking" ? (
-          <>⏳ Waiting…</>
-        ) : egressId ? (
-          <>
-            <span className="inline-block h-2 w-2 bg-white" aria-hidden />
-            Stop recording
-          </>
-        ) : (
-          <>
-            <span className="inline-block h-2 w-2 rounded-full bg-red-500" aria-hidden />
-            Record
-          </>
-        )}
-      </button>
+          FRS §2: gated to owner+host only (roomRole === 'host' after the
+          wire-format collapse in toLegacyRole). Moderators (cohost) still
+          see the passive REC banner above but no start/stop control. */}
+      {roomRole === 'host' && (
+        <button
+          type="button"
+          data-room-chrome="true"
+          onClick={egressId ? stop : start}
+          disabled={busy || recordPending === "asking"}
+          title={egressId ? "Stop recording" : recordPending === "asking" ? "Waiting for host approval…" : "Start recording"}
+          className={
+            (egressId
+              ? "inline-flex items-center gap-1.5 rounded-lg border border-red-500 bg-red-600/90 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-500 active:scale-[0.98] transition"
+              : "inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-white/10 hover:border-white/25 active:scale-[0.98] transition") +
+            (busy ? " opacity-60 cursor-wait" : "")
+          }
+        >
+          {busy ? (
+            "…"
+          ) : recordPending === "asking" ? (
+            <>⏳ Waiting…</>
+          ) : egressId ? (
+            <>
+              <span className="inline-block h-2 w-2 bg-white" aria-hidden />
+              Stop recording
+            </>
+          ) : (
+            <>
+              <span className="inline-block h-2 w-2 rounded-full bg-red-500" aria-hidden />
+              Record
+            </>
+          )}
+        </button>
+      )}
 
       {/* Toast (e.g. download URL) */}
       {toast && (
