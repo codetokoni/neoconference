@@ -55,11 +55,13 @@ t("anonymous holds nothing, not even participant permissions", () => {
   assert.deepEqual(grantsFor(a), []);
 });
 
-t("moderator moderates but cannot end or record", () => {
+t("moderator moderates but cannot kick, dispatch captions, end, or record", () => {
   const a = actor("x", ["mod@example.com"]);
-  assert.equal(can(a, "participant:kick"), true);
+  assert.equal(can(a, "participant:mute"), true);
   assert.equal(can(a, "participant:muteAll"), true);
   assert.equal(can(a, "waitingRoom:admit"), true);
+  assert.equal(can(a, "participant:kick"), false);
+  assert.equal(can(a, "captions:dispatch"), false);
   assert.equal(can(a, "meeting:end"), false);
   assert.equal(can(a, "recording:start"), false);
 });
@@ -69,6 +71,8 @@ t("host runs the meeting but cannot delete or bill it", () => {
   assert.equal(can(a, "meeting:end"), true);
   assert.equal(can(a, "recording:start"), true);
   assert.equal(can(a, "stream:golive"), true);
+  assert.equal(can(a, "participant:kick"), true);
+  assert.equal(can(a, "captions:dispatch"), true);
   assert.equal(can(a, "meeting:delete"), false);
   assert.equal(can(a, "ticket:manage"), false);
 });

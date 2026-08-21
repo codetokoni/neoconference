@@ -107,7 +107,7 @@ export const PERMISSIONS = {
   "participant:mute": RANK.moderator,
   "participant:muteAll": RANK.moderator,
   "participant:requestUnmute": RANK.moderator,
-  "participant:kick": RANK.moderator,
+  "participant:kick": RANK.host,
   "participant:spotlight": RANK.moderator,
 
   /* --- role administration --- */
@@ -121,7 +121,7 @@ export const PERMISSIONS = {
   "recording:read": RANK.host,
   "recording:delete": RANK.owner,
   "stream:golive": RANK.host,
-  "captions:dispatch": RANK.moderator,
+  "captions:dispatch": RANK.host,
   "transcript:read": RANK.host,
   "summary:generate": RANK.host,
 
