@@ -241,7 +241,14 @@ export default function EmailPasswordSignUp() {
 
       <div className='text-sm text-center'>
         Already have an account?{' '}
-        <Link href='/sign-in' className='text-blue-600 hover:underline'>
+        <Link
+          href={
+            redirectUrl && redirectUrl !== '/'
+              ? `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`
+              : '/sign-in'
+          }
+          className='text-blue-600 hover:underline'
+        >
           Sign in
         </Link>
       </div>

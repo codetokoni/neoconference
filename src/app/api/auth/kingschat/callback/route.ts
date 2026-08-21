@@ -10,10 +10,18 @@ export const dynamic = 'force-dynamic';
 
 const PROFILE_URL = 'https://connect.kingsch.at/developer/api/profile';
 
+function safeRelayRedirect(req: Request): string {
+  // Only relay same-origin relative paths, matching the guard in /start.
+  const raw = (new URL(req.url).searchParams.get('redirect_url') || '').trim();
+  return raw.startsWith('/') && !raw.startsWith('//') ? raw : '';
+}
+
 function errorRedirect(req: Request, code: string, debug?: string) {
   const url = new URL('/sign-in', req.url);
   url.searchParams.set('kc_error', code);
   if (debug) url.searchParams.set('kc_debug', debug.slice(0, 500));
+  const relay = safeRelayRedirect(req);
+  if (relay && relay !== '/') url.searchParams.set('redirect_url', relay);
   return NextResponse.redirect(url, { status: 303 });
 }
 
@@ -168,6 +176,8 @@ async function handle(req: Request) {
 
   const dest = new URL('/sign-in', req.url);
   dest.searchParams.set('__clerk_ticket', ticket);
+  const relay = safeRelayRedirect(req);
+  if (relay && relay !== '/') dest.searchParams.set('redirect_url', relay);
   return NextResponse.redirect(dest, { status: 303 });
 }
 
