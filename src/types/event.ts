@@ -191,6 +191,14 @@ export interface NeoEvent {
   /** Role assignments by identifier. */
   roles: RoleAssignment[];
 
+  /**
+   * Per-event permission overrides, keyed by permission id from
+   * src/lib/permissions.ts. Values are minimum ranks (see RANK). Clamped
+   * server-side — an override can never lower an owner-only permission.
+   * Absent means "use the catalog defaults".
+   */
+  permissionOverrides?: Record<string, number>;
+
   /** Pending / processed waiting-room queue. */
   waitingRoom: WaitingRoomEntry[];
 
