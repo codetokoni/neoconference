@@ -149,21 +149,27 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
         background: 'radial-gradient(ellipse at top, #0a1a24 0%, #000 60%)',
       }}
     >
-      {activeShare && activeShare.publication?.track && (
+      {activeShare && (
         <div className="px-3 pt-3 pb-2">
           <div
             className="relative w-full overflow-hidden rounded-xl border border-white/10 bg-black"
             style={{ aspectRatio: '16 / 9' }}
           >
-            <VideoTrack
-              trackRef={activeShare}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'contain',
-                background: '#000',
-              }}
-            />
+            {activeShare.publication?.track ? (
+              <VideoTrack
+                trackRef={activeShare}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  background: '#000',
+                }}
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-white/50 text-xs">
+                Loading screen share…
+              </div>
+            )}
             <div
               className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] uppercase tracking-wider text-cyan-200 border border-cyan-300/40"
               style={{ pointerEvents: 'none' }}
