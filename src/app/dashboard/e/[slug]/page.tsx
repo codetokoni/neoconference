@@ -19,6 +19,7 @@ import InvitesPanel from "./InvitesPanel";
 import RecordingsPanel from "./RecordingsPanel";
 import SummaryPanel from "./SummaryPanel";
 import AttendancePanel from "./AttendancePanel";
+import TranscriptsPanel from "./TranscriptsPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -287,6 +288,17 @@ export default async function EventAdminPage({
         <InvitesPanel eventId={ev.id} initialRedemptions={ev.recentRedemptions || []} />
         <RecordingsPanel prefix={ev.slug} />
         <AttendancePanel eventId={ev.id} eventSlug={ev.slug} />
+        <TranscriptsPanel
+          eventId={ev.id}
+          eventSlug={ev.slug}
+          transcripts={(ev.recordings || [])
+            .filter((r) => r.kind === "transcript")
+            .map((r) => ({
+              key: r.key,
+              createdAt: r.createdAt,
+              textPreview: (r.label || "").slice(0, 240),
+            }))}
+        />
         <SummaryPanel eventId={ev.id} initial={ev.summary || null} />
         </section>
 

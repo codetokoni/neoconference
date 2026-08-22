@@ -17,6 +17,7 @@
     "@livekit/track-processors": "^0.7.2",
     "@vercel/kv": "^3.0.0",
     "@vercel/speed-insights": "^1.0.12",
+    "docx": "^9.7.1",
     "exceljs": "^4.4.0",
     "framer-motion": "^12.38.0",
     "jose": "^5.9.6",
