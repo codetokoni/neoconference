@@ -7,9 +7,10 @@
 
 import { useEffect, useState } from "react";
 
-type Role = "host" | "cohost" | "speaker" | "viewer" | "guest";
+type Role = "owner" | "host" | "cohost" | "speaker" | "viewer" | "guest";
 
 const COLORS: Record<Role, string> = {
+  owner: "bg-violet-500/25 text-violet-100 border-violet-300/60",
   host: "bg-cyan-500/20 text-cyan-100 border-cyan-300/50",
   cohost: "bg-emerald-500/20 text-emerald-100 border-emerald-300/50",
   speaker: "bg-violet-500/20 text-violet-100 border-violet-300/50",
@@ -17,9 +18,14 @@ const COLORS: Record<Role, string> = {
   guest: "bg-slate-700/40 text-slate-300 border-slate-500/40",
 };
 
+// FRS §1 display: the wire-format role from /api/events/role is still
+// "host" for both Owner and Host — the response also carries isOwner so
+// the client can promote a "host" wire value to the "Owner" display when
+// the caller is the actual event owner. "cohost" surfaces as "Moderator".
 const LABEL: Record<Role, string> = {
+  owner: "Owner",
   host: "Host",
-  cohost: "Co-host",
+  cohost: "Moderator",
   speaker: "Speaker",
   viewer: "Viewer",
   guest: "Guest",
@@ -51,9 +57,13 @@ export default function SpeakerBadge() {
         .then((j) => {
           if (abort) return;
           if (j && typeof j.role === "string") {
-            setRole(j.role as Role);
+            // Owner distinction: the API returns role="host" for the owner
+            // (via toLegacyRole collapse) plus isOwner=true. Promote the
+            // display to "Owner" when both hold.
+            const promoted: Role = j.isOwner === true && j.role === "host" ? "owner" : (j.role as Role);
+            setRole(promoted);
             setPreApproved(Boolean(j.preApproved));
-            const isElevated = j.role === "host" || j.role === "cohost" || j.role === "speaker";
+            const isElevated = promoted === "owner" || promoted === "host" || promoted === "cohost" || promoted === "speaker";
             if (!isElevated && attempt < delays.length - 1) {
               attempt += 1;
               setTimeout(tick, delays[attempt]);
@@ -89,7 +99,7 @@ export default function SpeakerBadge() {
       >
         {LABEL[role]}
       </span>
-      {preApproved && role !== "host" ? (
+      {preApproved && role !== "host" && role !== "owner" ? (
         <span className="px-2 py-0.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-200 text-[10px] uppercase tracking-wider">
           Approved
         </span>
