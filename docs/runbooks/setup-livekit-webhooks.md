@@ -1,104 +1,134 @@
-# Setup: LiveKit Cloud webhook subscriptions
+# Setup: LiveKit Cloud webhook delivery
+
+> **Verified against the live LiveKit Cloud dashboard on 2026-08-22.**
+> An earlier revision of this runbook described a per-event subscription
+> checklist that does not exist. See "What changed" at the bottom.
 
 ## Purpose
 
 FRS §4 requires attendance capture across the entire meeting. The
-NeoConference codebase already handles the `participant_joined` and
-`participant_left` webhook events (see `src/app/api/livekit/webhook/route.ts`)
-but LiveKit Cloud only delivers events that the project owner has
-explicitly subscribed to. This runbook enables those two subscriptions
-so the belt-and-suspenders attendance capture the codebase is written
-for actually engages.
+NeoConference codebase handles the `participant_joined` and
+`participant_left` webhook events (see
+`src/app/api/livekit/webhook/route.ts`), and client-side beacons cover
+most cases. The webhooks exist to catch what beacons miss: users who
+close their laptop mid-meeting, kill the browser process, or lose
+network before `beforeunload` can fire.
 
-Client-side beacons already cover most cases. What this runbook fixes:
-users who close their laptop mid-meeting, kill their browser process,
-or lose network before the `beforeunload` beacon can fire. LiveKit's
-server-side webhook catches those.
+**There is nothing to subscribe to.** LiveKit Cloud has no per-event
+subscription model. A registered webhook endpoint receives *every*
+event type the project emits. So the only questions this runbook can
+answer are:
+
+1. Is an endpoint registered, and does it point at production?
+2. Are events actually arriving and being counted?
+
+If both are yes, FRS §4 is closed on the LiveKit side.
 
 ## Prerequisites
 
 - A browser tool is available (`claude-in-chrome` preferred; see
-  `docs/runbooks/README.md` for the selection guidance).
+  `docs/runbooks/README.md`).
 - The user is signed in to https://cloud.livekit.io — or is prepared
   to sign in when prompted. Do not attempt to enter credentials on
   their behalf.
-- The user knows which LiveKit project powers NeoConference. If
-  unsure, ask them before proceeding — the wrong project will silently
-  configure webhooks for something unrelated.
+- The user knows which LiveKit project powers NeoConference. **Ask
+  them by name; do not infer it from the project name.** As of
+  2026-08-22 the production endpoint lives in a project named
+  `neoconference-dev` (`p_gsua63jiy5v`) — the name is misleading and
+  there is no separate "prod" project.
 
 ## Steps
 
 1. **Navigate to the LiveKit Cloud console.**
    - URL: `https://cloud.livekit.io/`
-   - After sign-in the console lands on the projects list. If the user
-     has more than one project, they will need to pick the correct one
-     — ask them by name rather than guessing.
+   - After sign-in the console lands on the projects list.
 
 2. **Open the target project.**
-   - Look for the tile or row matching the project the user names
-     (typically "neoconference" or similar).
-   - Click it. The project overview page loads.
+   - Click the tile matching the project the user named.
 
-3. **Open the Webhooks settings page.**
-   - Look for a left-hand nav item labeled **Settings** (gear icon),
-     then a sub-item labeled **Webhooks**. On some plans it may be a
-     top-level tab labeled **Webhooks** directly.
-   - The Webhooks page lists existing endpoints (URL + subscribed
-     events). NeoConference should already have one endpoint pointing
-     at `https://www.neoconference.app/api/livekit/webhook`; if it
-     doesn't, this runbook cannot finish — bail out and tell the user.
+3. **Open the Webhooks page.**
+   - Left nav: **Settings**, then **Webhooks** in the settings sidebar.
+   - Direct URL: `https://cloud.livekit.io/projects/<project_id>/settings/webhooks`
 
-4. **Edit the existing NeoConference endpoint.**
-   - Click the row whose URL contains `neoconference.app`.
-   - LiveKit opens an edit panel with a checklist of event types.
+4. **Confirm the production endpoint is registered.**
+   - Expect one entry named `neoconference`, with URL
+     `https://www.neoconference.app/api/livekit/webhook` and a signing
+     API key.
+   - **If it is present, there is nothing to configure.** Skip to
+     step 6.
+   - If it is absent, continue to step 5.
 
-5. **Enable the missing event types.**
-   - Ensure the following boxes are **checked**:
-     - `room_started`
-     - `room_finished`
-     - `egress_ended`
-     - **`participant_joined`** — this is the important one this runbook
-       exists to enable.
-     - **`participant_left`** — this is the other important one.
-   - Do NOT uncheck anything that was already ticked; some of them
-     (`room_started` in particular) are load-bearing for other features.
+5. **(Only if missing) Register the endpoint.**
+   - Click **Create new webhook**. The dialog has exactly three
+     fields: **Name**, **URL**, **Signing API key**. There is no event
+     selection — this is expected.
+   - Name: `neoconference`
+   - URL: `https://www.neoconference.app/api/livekit/webhook`
+   - Signing API key: select the project key the app is configured
+     with. The app verifies the signature, so a mismatch here means
+     every delivery is rejected.
+   - Click **Create**.
 
-6. **Save the endpoint.**
-   - Click **Save** / **Update endpoint** / whatever the action label
-     is. LiveKit briefly shows a success toast.
-
-7. **Verify with a test meeting.**
-   - In a separate tab, open the NeoConference app
-     (`https://www.neoconference.app/`), sign in as any user, start a
-     new meeting, join, then leave. That triggers exactly one
-     `room_started`, one `participant_joined`, one `participant_left`,
-     and one `room_finished` on the LiveKit side.
-
-8. **Confirm the events landed.**
-   - Have the user hit `https://www.neoconference.app/api/admin/verify-webhooks`
+6. **Confirm events are landing.**
+   - Have the user hit
+     `https://www.neoconference.app/api/admin/verify-webhooks`
      while signed in as a platform admin (email in `ADMIN_EMAILS`).
-   - Expected response body: `"healthy": true` with non-null `lastAtMs`
-     values for `participant_joined` and `participant_left` in the
-     `metrics` array.
-   - If those two events still show `count: 0` after a two-minute wait,
-     go back to step 5 — LiveKit occasionally silently rejects a save
-     when the endpoint URL doesn't respond quickly enough.
+   - Expect `"healthy": true` with non-null `lastAtMs` for
+     `room_started`, `room_finished`, `participant_joined` and
+     `participant_left`.
+   - **Counters only reflect traffic since the telemetry deploy.** All
+     zeros on a freshly deployed build means "no meetings yet", not
+     "misconfigured". Run a real meeting before concluding anything.
 
 ## Verification (external)
 
-- `GET /api/admin/verify-webhooks` returns `"healthy": true` and the
-  `missing` array is empty.
-- The `metrics` entry for `participant_joined` shows `count` incrementing
-  each time a participant joins a meeting.
+Run one real meeting on `https://www.neoconference.app/` — sign in,
+start a meeting, join, leave, end — then re-check
+`GET /api/admin/verify-webhooks`. That exercises all four required
+events in one pass.
+
+- `"healthy": true` and the `missing` array is empty.
+- The `participant_joined` counter increments on each subsequent join.
 - The attendance XLSX from `GET /api/events/[id]/attendance` shows both
-  `webhook` and `beacon` sources represented (visible in the raw journal
-  via a KV inspection or by joining and leaving multiple times).
+  `webhook` and `beacon` sources represented.
+
+> **The green light is weaker than it looks.** `verify-webhooks` counts
+> anything that POSTs to the route, including LiveKit's dashboard
+> **Actions → Send a test event**. A `healthy: true` produced by test
+> events proves the route and the KV counters work; it does not prove
+> that real meetings emit the events. Only a real meeting proves that.
+
+## Troubleshooting
+
+- **All counters at 0 after a real meeting.** Check that the endpoint's
+  signing API key matches the key pair the app verifies with — a
+  signature mismatch is rejected before `recordWebhookEvent` runs.
+  Check the route's logs for `[webhook-metrics] KV write failed`.
+- **Counters reset or never move despite deliveries.** `webhookMetrics.ts`
+  falls back to a module-level in-memory `Map` when `KV_REST_API_URL` /
+  `KV_REST_API_TOKEN` are unset. On serverless, the instance handling
+  the LiveKit POST is rarely the one serving the admin GET, so with KV
+  unconfigured the endpoint reads 0 forever. Confirm those vars are set
+  on the Vercel project. (Verified set and working on 2026-08-22.)
+- **A single event type is silent.** Use **Actions → Send a test event**
+  on the endpoint and pick that event type. If the counter moves, the
+  delivery path is fine and the event simply isn't being emitted by real
+  traffic.
 
 ## Rollback
 
-- Reopen the endpoint from step 3.
-- Uncheck `participant_joined` and `participant_left`.
-- Save.
-- The codebase silently degrades to beacon-only attendance capture
-  (which was the state before this runbook ran). No further cleanup
-  needed on the app side.
+Nothing in steps 1-4 changes anything, so there is normally nothing to
+roll back. If step 5 registered an endpoint that shouldn't exist, delete
+it via **Actions → Delete webhook**. The codebase degrades to
+beacon-only attendance capture; no app-side cleanup is needed.
+
+## What changed (2026-08-22)
+
+The previous revision instructed the operator to open the endpoint's
+edit panel and tick `participant_joined` / `participant_left` in "a
+checklist of event types". No such checklist exists: **Edit webhook
+endpoint** exposes only Name and URL, and **New webhook endpoint** only
+Name, URL and Signing API key. A dashboard test event of type
+`participant_joined` was delivered and counted with zero configuration
+changes, confirming LiveKit already sends it. The FRS §4 "dashboard-only
+gap" was a false premise.
