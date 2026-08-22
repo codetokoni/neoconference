@@ -46,18 +46,23 @@ export async function GET(req: Request) {
     return NextResponse.json({ role: "guest", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
   }
 
-  // Permanent admins (ADMIN_EMAILS env var) are treated as host of any room
-  // they join. Keep isOwner=false — they are *acting as* host, not the actual
-  // owner of the event record.
-  if (userEmails.some((e) => isAdmin(e))) {
-    return NextResponse.json({ role: "host", preApproved: true, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
-  }
-
+  // Owner check runs BEFORE the platform-admin branch. Previously they were
+  // in the opposite order, so a user who was both an ADMIN_EMAILS admin AND
+  // the actual event owner got isOwner:false — which then hid the FRS §1.1
+  // "Make Host" button from the person who's supposed to see it, because
+  // that button is gated on isOwner (not just role==="host").
   const ownerEmail = (ev.ownerEmail || "").toLowerCase();
   const isOwner = ev.ownerUserId === userId
     || (ownerEmail !== "" && userEmails.includes(ownerEmail));
   if (isOwner) {
     return NextResponse.json({ role: "host", preApproved: true, isOwner: true, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
+  }
+
+  // Permanent admins (ADMIN_EMAILS env var) who are NOT the actual event
+  // owner are treated as host of any room they join. Keep isOwner=false —
+  // they are *acting as* host, not the actual owner of the event record.
+  if (userEmails.some((e) => isAdmin(e))) {
+    return NextResponse.json({ role: "host", preApproved: true, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
   }
 
   // Match role assignment: by Clerk user id, primary email, or any verified email.
