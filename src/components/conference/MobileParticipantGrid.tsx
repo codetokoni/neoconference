@@ -2,11 +2,14 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { LayoutGroup } from 'framer-motion';
-import { useParticipants, useLocalParticipant } from '@livekit/components-react';
-import type { Participant } from 'livekit-client';
+import {
+  useParticipants,
+  useLocalParticipant,
+  useTracks,
+  VideoTrack,
+} from '@livekit/components-react';
+import { Track, type Participant, type TrackPublication } from 'livekit-client';
 import { MobileParticipantTile } from './MobileParticipantTile';
-
-// TODO: dedicated screen-share tiles — see follow-up issue
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -50,6 +53,19 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
   const localIsHost = isHostRole(localParticipant);
+
+  // Screen-share subscription. useTracks lets us treat screen shares as a
+  // separate source without polling participants for their track publications
+  // by hand. LiveKit's Track.Source.ScreenShare is the standard identifier;
+  // withPlaceholder:false means we don't get placeholder rows for participants
+  // who *could* share but currently aren't.
+  const screenShareTracks = useTracks(
+    [{ source: Track.Source.ScreenShare, withPlaceholder: false }],
+    { onlySubscribed: true },
+  );
+  const activeShare = screenShareTracks.find(
+    (t) => t.publication && (t.publication as TrackPublication).isSubscribed,
+  ) || screenShareTracks[0];
 
   /* ---------- IntersectionObserver visibility tracking ---------- */
   const [visibilityMap, setVisibilityMap] = useState<Map<string, boolean>>(new Map());
@@ -133,6 +149,30 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
         background: 'radial-gradient(ellipse at top, #0a1a24 0%, #000 60%)',
       }}
     >
+      {activeShare && activeShare.publication?.track && (
+        <div className="px-3 pt-3 pb-2">
+          <div
+            className="relative w-full overflow-hidden rounded-xl border border-white/10 bg-black"
+            style={{ aspectRatio: '16 / 9' }}
+          >
+            <VideoTrack
+              trackRef={activeShare}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                background: '#000',
+              }}
+            />
+            <div
+              className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] uppercase tracking-wider text-cyan-200 border border-cyan-300/40"
+              style={{ pointerEvents: 'none' }}
+            >
+              Sharing · {activeShare.participant.name || activeShare.participant.identity}
+            </div>
+          </div>
+        </div>
+      )}
       <LayoutGroup>
         <div className={`grid ${cols} gap-2 px-3 pb-4`}>
           {participants.map((p) => (
