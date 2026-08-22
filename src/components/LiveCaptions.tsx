@@ -131,9 +131,9 @@ export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) 
           onClick={() => setLocallyHidden(false)}
           aria-label="Show captions on this screen"
           title="Show captions on this screen"
-          className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-cyan-300/40 bg-black/60 backdrop-blur-xl px-3 py-1.5 text-[11px] font-medium text-cyan-200 hover:bg-black/75 hover:border-cyan-300/70 transition shadow-[0_0_30px_-15px_rgba(34,211,238,0.6)]"
+          className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-cyan-300/40 bg-black/60 backdrop-blur-xl px-4 py-2.5 text-sm font-medium text-cyan-200 hover:bg-black/75 hover:border-cyan-300/70 active:bg-black/85 transition shadow-[0_0_30px_-15px_rgba(34,211,238,0.6)] sm:px-3 sm:py-1.5 sm:text-[11px]"
         >
-          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_2px_rgba(34,211,238,0.7)]" />
+          <span className="inline-flex h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_8px_2px_rgba(34,211,238,0.7)] sm:h-1.5 sm:w-1.5" />
           Show captions
         </button>
       </div>
@@ -147,21 +147,21 @@ export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) 
       className="pointer-events-none fixed inset-x-0 bottom-40 sm:bottom-44 z-50 flex justify-center px-4"
     >
       <div className="max-w-3xl w-full rounded-2xl border border-white/10 bg-black/55 backdrop-blur-xl shadow-[0_0_60px_-20px_rgba(34,211,238,0.4)] px-4 sm:px-5 py-3">
-        <div className="pointer-events-auto flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-cyan-200/80">
-          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_2px_rgba(34,211,238,0.7)] animate-pulse" />
-          Live captions
+        <div className="pointer-events-auto flex items-center gap-2 text-[11px] sm:text-[10px] uppercase tracking-[0.2em] sm:tracking-[0.22em] text-cyan-200/80">
+          <span className="inline-flex h-2 w-2 sm:h-1.5 sm:w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_2px_rgba(34,211,238,0.7)] animate-pulse" />
+          <span className="truncate">Live captions</span>
           <span className="text-white/30">{'\u2026'}</span>
           <button
             type="button"
             onClick={() => setLocallyHidden(true)}
             aria-label="Hide captions on this screen"
             title="Hide captions on this screen"
-            className="ml-auto text-white/50 hover:text-white/90 text-base leading-none px-1"
+            className="ml-auto -mr-1 sm:mr-0 inline-flex items-center justify-center rounded-full w-9 h-9 sm:w-6 sm:h-6 text-lg sm:text-base leading-none text-white/60 hover:text-white/90 hover:bg-white/5 active:bg-white/10 transition"
           >
             {'\u00d7'}
           </button>
         </div>
-        <ul className="mt-2 space-y-1 text-sm sm:text-base text-white/90 leading-snug">
+        <ul className="mt-2 space-y-1 text-[15px] sm:text-base text-white/90 leading-snug">
           {lines.map((l) => (
             <li key={l.id} className={l.final ? '' : 'text-white/70'}>
               <span className="text-white/55 mr-2 text-xs">{l.speaker}:</span>
