@@ -566,6 +566,55 @@ function RoomContainer({
   const prevKnockCountRef = useRef(0);
   const knockAudioCtxRef = useRef<AudioContext | null>(null);
 
+  // Attendance beacon (FRS §4). Fires "join" when the room mounts and "leave"
+  // on unload or unmount. The LiveKit participant_joined/_left webhooks are
+  // the authoritative source when configured; this beacon is the client-side
+  // backstop. Deduped by a local flag so a hard nav that triggers both
+  // beforeunload and cleanup doesn't emit two "leave" entries.
+  useEffect(() => {
+    if (!eventSlug) return;
+    fetch("/api/attendance/beacon", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slug: eventSlug, action: "join" }),
+      keepalive: true,
+    }).catch(() => {});
+
+    let leaveFired = false;
+    const fireLeave = (preferSendBeacon: boolean) => {
+      if (leaveFired) return;
+      leaveFired = true;
+      const payload = JSON.stringify({ slug: eventSlug, action: "leave" });
+      if (
+        preferSendBeacon &&
+        typeof navigator !== "undefined" &&
+        typeof navigator.sendBeacon === "function"
+      ) {
+        try {
+          navigator.sendBeacon(
+            "/api/attendance/beacon",
+            new Blob([payload], { type: "application/json" }),
+          );
+          return;
+        } catch {
+          // fall through to fetch below
+        }
+      }
+      fetch("/api/attendance/beacon", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: payload,
+        keepalive: true,
+      }).catch(() => {});
+    };
+    const onBeforeUnload = () => fireLeave(true);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      fireLeave(false);
+    };
+  }, [eventSlug]);
+
   useEffect(() => {
     const isHostOrCohost = roomRole === "host" || roomRole === "cohost";
     if (!isHostOrCohost || !eventSlug || showWaitingRoom) {
