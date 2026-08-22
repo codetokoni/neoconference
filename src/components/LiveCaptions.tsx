@@ -54,8 +54,9 @@ export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) 
   const [hasEverReceived, setHasEverReceived] = useState(false);
   // FRS §8.2 per-participant preference: even when the host has captions
   // available and the worker is emitting segments, a participant can hide
-  // the display on their own screen. Session-only for now — a refresh
-  // restores; explicit re-show would need a floating "show captions" pill.
+  // the display on their own screen. Session-only (no persistence across
+  // reloads); a floating "Show captions" pill lets them bring the panel
+  // back without a refresh.
   const [locallyHidden, setLocallyHidden] = useState(false);
   const cleanupTimer = useRef
 <ReturnType<typeof setInterval> | null>(null);
@@ -118,7 +119,26 @@ export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) 
 
   if (!enabled) return null;
   if (!hasEverReceived || lines.length === 0) return null;
-  if (locallyHidden) return null;
+  if (locallyHidden) {
+    // Hidden by the user for this session. Render a small "Show captions"
+    // pill so they can bring the panel back without refreshing.
+    return (
+      <div
+        className="pointer-events-none fixed inset-x-0 bottom-40 sm:bottom-44 z-50 flex justify-center px-4"
+      >
+        <button
+          type="button"
+          onClick={() => setLocallyHidden(false)}
+          aria-label="Show captions on this screen"
+          title="Show captions on this screen"
+          className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-cyan-300/40 bg-black/60 backdrop-blur-xl px-3 py-1.5 text-[11px] font-medium text-cyan-200 hover:bg-black/75 hover:border-cyan-300/70 transition shadow-[0_0_30px_-15px_rgba(34,211,238,0.6)]"
+        >
+          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_2px_rgba(34,211,238,0.7)]" />
+          Show captions
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -130,7 +150,7 @@ export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) 
         <div className="pointer-events-auto flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-cyan-200/80">
           <span className="inline-flex h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_2px_rgba(34,211,238,0.7)] animate-pulse" />
           Live captions
-          <span className="text-white/30">\u2026</span>
+          <span className="text-white/30">{'\u2026'}</span>
           <button
             type="button"
             onClick={() => setLocallyHidden(true)}
@@ -138,7 +158,7 @@ export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) 
             title="Hide captions on this screen"
             className="ml-auto text-white/50 hover:text-white/90 text-base leading-none px-1"
           >
-            \u00d7
+            {'\u00d7'}
           </button>
         </div>
         <ul className="mt-2 space-y-1 text-sm sm:text-base text-white/90 leading-snug">
