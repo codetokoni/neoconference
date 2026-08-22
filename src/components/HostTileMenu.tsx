@@ -196,7 +196,12 @@ export function HostTileMenu({
             />
           )}
 
-          {!confirmKick ? (
+          {/* FRS §1.3: Moderator must NOT remove participants. Server already
+              refuses (participant:kick at RANK.host after PR #68 catalog fix);
+              this gate is the UI half so a Moderator doesn't see a button
+              that will silently 403. canMuteOthers doubles as the "host+
+              only" gate here — same rank threshold. */}
+          {canMuteOthers && (!confirmKick ? (
             <MenuItem
               label="Remove from room"
               icon="X"
@@ -236,7 +241,7 @@ export function HostTileMenu({
                 </button>
               </div>
             </div>
-          )}
+          ))}
 
           {error && (
             <div
