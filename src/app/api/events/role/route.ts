@@ -43,21 +43,21 @@ export async function GET(req: Request) {
   }
 
   if (!userId) {
-    return NextResponse.json({ role: "guest", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null });
+    return NextResponse.json({ role: "guest", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked) });
   }
 
   // Permanent admins (ADMIN_EMAILS env var) are treated as host of any room
   // they join. Keep isOwner=false — they are *acting as* host, not the actual
   // owner of the event record.
   if (userEmails.some((e) => isAdmin(e))) {
-    return NextResponse.json({ role: "host", preApproved: true, isOwner: false, ownerUserId: ev.ownerUserId || null });
+    return NextResponse.json({ role: "host", preApproved: true, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked) });
   }
 
   const ownerEmail = (ev.ownerEmail || "").toLowerCase();
   const isOwner = ev.ownerUserId === userId
     || (ownerEmail !== "" && userEmails.includes(ownerEmail));
   if (isOwner) {
-    return NextResponse.json({ role: "host", preApproved: true, isOwner: true, ownerUserId: ev.ownerUserId || null });
+    return NextResponse.json({ role: "host", preApproved: true, isOwner: true, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked) });
   }
 
   // Match role assignment: by Clerk user id, primary email, or any verified email.
@@ -68,12 +68,13 @@ export async function GET(req: Request) {
     return id === userId.toLowerCase() || emails.includes(id);
   });
   if (!match) {
-    return NextResponse.json({ role: "viewer", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null });
+    return NextResponse.json({ role: "viewer", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked) });
   }
   return NextResponse.json({
     role: match.role,
     preApproved: Boolean(match.preApproved),
     isOwner: false,
     ownerUserId: ev.ownerUserId || null,
+    isLocked: Boolean(ev.isLocked),
   });
 }

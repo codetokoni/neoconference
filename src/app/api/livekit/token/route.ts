@@ -268,6 +268,27 @@ export async function GET(req: NextRequest) {
     } catch (roleErr) {
       console.error("[livekit/token] role resolve error:", roleErr);
     }
+    // FRS §12.8: refuse new tokens for ordinary participants when the meeting
+    // is locked. Owner, host, and cohost still get through so someone remains
+    // able to unlock or admit specific people.
+    try {
+      if (eventSlug) {
+        const { eventStore: __esLock } = await import("@/lib/eventStore");
+        const __evLock = await __esLock.bySlug(eventSlug);
+        if (__evLock?.isLocked) {
+          const elevated = participantRole === "host" || participantRole === "cohost";
+          if (!elevated) {
+            return NextResponse.json(
+              { error: "meeting_locked", message: "This meeting is locked. Ask the host to admit you." },
+              { status: 403 }
+            );
+          }
+        }
+      }
+    } catch (lockErr) {
+      console.error("[livekit/token] lock check error:", lockErr);
+    }
+
     at.metadata = JSON.stringify({ planLimits, hostPlan, role: participantRole });
 
     const token = await at.toJwt();

@@ -558,6 +558,7 @@ function RoomContainer({
   const [hideSelf, setHideSelf] = useState(false);
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
+  const [isMeetingLocked, setIsMeetingLocked] = useState(false);
 
   const [pendingKnockCount, setPendingKnockCount] = useState(0);
   const prevKnockCountRef = useRef(0);
@@ -643,6 +644,7 @@ function RoomContainer({
           if (j && typeof j.role === "string") {
             setRoomRole(j.role);
             setOwnerUserId(typeof j.ownerUserId === "string" ? j.ownerUserId : null);
+            setIsMeetingLocked(Boolean(j.isLocked));
             const isElevated = j.role === "host" || j.role === "cohost" || j.role === "speaker";
             if (!isElevated && attempt < delays.length - 1) {
               attempt += 1;
@@ -892,7 +894,7 @@ function RoomContainer({
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} isHost={roomRole === 'host' || roomRole === 'cohost'} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
-        <ManageParticipantsPanel open={showParticipants} onClose={() => setShowParticipants(false)} isHost={roomRole === "host" || roomRole === "cohost"} roomRole={roomRole} slug={eventSlug} ownerUserId={ownerUserId} />
+        <ManageParticipantsPanel open={showParticipants} onClose={() => setShowParticipants(false)} isHost={roomRole === "host" || roomRole === "cohost"} roomRole={roomRole} slug={eventSlug} ownerUserId={ownerUserId} isLocked={isMeetingLocked} onLockChanged={setIsMeetingLocked} />
         <WaitingRoomPanel open={showWaitingRoom} onClose={() => setShowWaitingRoom(false)} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          <BreakoutsPanel open={showBreakouts} onClose={() => setShowBreakouts(false)} isHost={roomRole === "host" || roomRole === "cohost"} eventSlug={eventSlug} /><PlanGateOverlay />
         <SpeakerBadge />
         <RenameRedirectListener />
