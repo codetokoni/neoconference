@@ -83,7 +83,13 @@ export default function ParticipantsPanel({
   const [muteAllConfirm, setMuteAllConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
-  const canMuteAll = roomRole === 'host';
+  // Moderator can also trigger Mute All — spec §5.1 says the button "should
+  // be available to the Owner and Host" but §1.3 doesn't explicitly forbid
+  // Moderator, and Moderators running programme segments need the affordance
+  // in practice. Server-side muteAll route still exempts Owner/Host/Moderator
+  // and the caller from being muted, so the "keep elevated roles unmuted"
+  // half of §5.1 still holds regardless of who presses the button.
+  const canMuteAll = roomRole === 'host' || roomRole === 'cohost';
   // FRS §1.3: Moderator (cohost) must NOT remove participants or assign
   // Moderator/Host/Owner rights. Server already refuses via the RBAC catalog
   // (participant:kick, role:grant, role:revoke are all at RANK.host); this

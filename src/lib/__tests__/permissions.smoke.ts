@@ -55,13 +55,13 @@ t("anonymous holds nothing, not even participant permissions", () => {
   assert.deepEqual(grantsFor(a), []);
 });
 
-t("moderator moderates but cannot kick, muteAll, dispatch captions, end, or record", () => {
+t("moderator moderates (mute + muteAll) but cannot kick, dispatch captions, end, or record", () => {
   const a = actor("x", ["mod@example.com"]);
   assert.equal(can(a, "participant:mute"), true);
+  assert.equal(can(a, "participant:muteAll"), true);   // FRS §5.1 is ambiguous; product decision to include moderator
   assert.equal(can(a, "waitingRoom:admit"), true);
   assert.equal(can(a, "timer:manage"), true);
   assert.equal(can(a, "participant:kick"), false);
-  assert.equal(can(a, "participant:muteAll"), false);
   assert.equal(can(a, "captions:dispatch"), false);
   assert.equal(can(a, "meeting:end"), false);
   assert.equal(can(a, "recording:start"), false);
