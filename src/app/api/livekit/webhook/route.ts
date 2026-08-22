@@ -20,6 +20,7 @@ import { WebhookReceiver } from 'livekit-server-sdk';
 import { submitTranscribeJob, isTranscribeConfigured } from '@/lib/transcribe';
 import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
+import { recordWebhookEvent } from '@/lib/webhookMetrics';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -77,6 +78,12 @@ export async function POST(req: Request) {
     };
 
     const event = (await receiver.receive(body, authHeader)) as unknown as LKWebhookEvent;
+
+    // Telemetry: bump per-event counters so /api/admin/verify-webhooks can
+    // report which subscriptions are actually landing. Fire-and-forget.
+    if (event?.event) {
+      void recordWebhookEvent(event.event);
+    }
 
     // ----- participant_joined / participant_left: attendance capture (§4) --
     if (event?.event === 'participant_joined' || event?.event === 'participant_left') {
