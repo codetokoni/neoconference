@@ -223,20 +223,45 @@ export async function GET(req: NextRequest) {
           __evRole = await __adoptRoom(eventSlug, userId, __primaryEmail || undefined);
         }
         if (__evRole) {
-          const uRole = await currentUser().catch(() => null);
-          const emailsRole = (uRole?.emailAddresses || []).map(
-            (e: { emailAddress: string }) => e.emailAddress.toLowerCase()
-          );
-          const isAdminCallerRole = emailsRole.some((e) => isAdmin(e));
-          if (isAdminCallerRole || __evRole.ownerUserId === userId) {
-            participantRole = "host";
+          // FRS §7.4: role restoration continues only until the meeting is
+          // formally ended. Once state==='ended', a rejoin drops to attendee
+          // regardless of any persisted assignment.
+          if (__evRole.state === 'ended') {
+            participantRole = "attendee";
           } else {
-            const matched = (__evRole.roles || []).find((r: { role: string; identifier: string }) => {
-              const id = r.identifier.toLowerCase();
-              return id === userId.toLowerCase() || emailsRole.includes(id);
-            });
-            if (matched?.role) participantRole = matched.role;
-            else participantRole = "attendee";
+            const uRole = await currentUser().catch(() => null);
+            const emailsRole = (uRole?.emailAddresses || []).map(
+              (e: { emailAddress: string }) => e.emailAddress.toLowerCase()
+            );
+            const isAdminCallerRole = emailsRole.some((e) => isAdmin(e));
+            if (isAdminCallerRole || __evRole.ownerUserId === userId) {
+              participantRole = "host";
+            } else {
+              // Prefer the Redis membership hash — assignments made via
+              // /api/events/[id]/roles land there and are the current source
+              // of truth. getMeetingRole / getMeetingRoleByEmail also fall
+              // back to the legacy event.roles[] array internally, so
+              // pre-migration assignments continue to work without an
+              // additional lookup here.
+              const { getMeetingRole: __getMR, getMeetingRoleByEmail: __getMRByEmail } = await import("@/lib/meeting-roles");
+              const { RANK: __RANK, toLegacyRole: __toLegacy } = await import("@/lib/permissions");
+              const __lookups = await Promise.all([
+                __getMR(__evRole.id, userId),
+                ...emailsRole.map((e) => __getMRByEmail(__evRole!.id, e)),
+              ]);
+              const __hashRoles = __lookups.filter((r): r is NonNullable<typeof r> => !!r);
+              if (__hashRoles.length > 0) {
+                const __best = __hashRoles.reduce((a, b) => (__RANK[b] > __RANK[a] ? b : a));
+                participantRole = __toLegacy(__best);
+              } else {
+                const matched = (__evRole.roles || []).find((r: { role: string; identifier: string }) => {
+                  const id = r.identifier.toLowerCase();
+                  return id === userId.toLowerCase() || emailsRole.includes(id);
+                });
+                if (matched?.role) participantRole = matched.role;
+                else participantRole = "attendee";
+              }
+            }
           }
         }
       }
