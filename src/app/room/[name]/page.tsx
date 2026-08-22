@@ -315,24 +315,50 @@ export default function RoomPage({ params }: { params: { name: string } }) {
  * Subscribes to ParticipantMetadataChanged events on the local participant so that
  * server-side role changes (via POST /api/events/[id]/roles) are reflected
  * in the room UI without a rejoin. Must be rendered INSIDE <LiveKitRoom>.
+ *
+ * FRS §12.11: when the role actually transitions (not the initial resolution
+ * that fires on connect) surface a toast so the user knows they were promoted
+ * or demoted.
  */
+function wireRoleLabel(role: string): string {
+  if (role === "host") return "Host";
+  if (role === "cohost") return "Moderator";
+  return "Participant";
+}
+
 function RoleMetadataListener({ onRoleChange }: { onRoleChange: (role: string) => void }) {
   const room = useRoomContext();
+  const prevRoleRef = useRef<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     if (!room) return;
+    const notifyIfChanged = (newRole: string) => {
+      const prev = prevRoleRef.current;
+      if (prev && prev !== newRole) {
+        setToast(`You're now a ${wireRoleLabel(newRole)}`);
+      }
+      prevRoleRef.current = newRole;
+    };
     const apply = (_metadata: string | undefined, participant: Participant) => {
       try {
         if (participant.identity !== room.localParticipant.identity) return;
         const md = participant.metadata ? JSON.parse(participant.metadata) : null;
-        if (md && typeof md.role === "string") onRoleChange(md.role);
+        if (md && typeof md.role === "string") {
+          onRoleChange(md.role);
+          notifyIfChanged(md.role);
+        }
       } catch {
         // ignore malformed metadata
       }
     };
     try {
       const md = room.localParticipant.metadata ? JSON.parse(room.localParticipant.metadata) : null;
-      if (md && typeof md.role === "string") onRoleChange(md.role);
+      if (md && typeof md.role === "string") {
+        onRoleChange(md.role);
+        // Seed prev without firing a toast — this is the initial resolution.
+        prevRoleRef.current = md.role;
+      }
     } catch { }
     room.on(RoomEvent.ParticipantMetadataChanged, apply);
     return () => {
@@ -340,7 +366,41 @@ function RoleMetadataListener({ onRoleChange }: { onRoleChange: (role: string) =
     };
   }, [room, onRoleChange]);
 
-  return null;
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  if (!toast) return null;
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      data-room-chrome="true"
+      style={{
+        position: "fixed",
+        top: 24,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 90,
+        padding: "8px 16px",
+        borderRadius: 999,
+        background: "rgba(17,17,24,0.9)",
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
+        border: "1px solid rgba(34,211,238,0.35)",
+        color: "#e5f8ff",
+        fontSize: 13,
+        fontWeight: 600,
+        letterSpacing: 0.2,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.4), 0 0 30px -10px rgba(34,211,238,0.5)",
+        pointerEvents: "none",
+      }}
+    >
+      {toast}
+    </div>
+  );
 }
 
 /**
