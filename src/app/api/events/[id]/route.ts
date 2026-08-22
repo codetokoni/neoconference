@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { assertOwnerOrAdmin } from "@/lib/roles";
+import { hashMeetingPassword } from "@/lib/eventPassword";
 import type { EventVisibility, NeoEvent } from "@/types/event";
 
 export const runtime = "nodejs";
@@ -48,7 +49,9 @@ export async function PATCH(
   if (typeof body.visibility === "string" && VISIBILITIES.includes(body.visibility)) {
     patch.visibility = body.visibility;
   }
-  if (typeof body.password === "string") patch.password = body.password.slice(0, 80);
+  // FRS §12.2: password persisted as an scrypt hash, not plaintext. An empty
+  // input clears the field (hashMeetingPassword returns undefined).
+  if (typeof body.password === "string") patch.password = hashMeetingPassword(body.password.slice(0, 80));
   if (typeof body.waitingRoomEnabled === "boolean") patch.waitingRoomEnabled = body.waitingRoomEnabled;
 
   if (Object.keys(patch).length === 0) {

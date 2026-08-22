@@ -49,6 +49,8 @@ export default function ParticipantsPanel({
   roomRole,
   ownerUserId,
   slug,
+  isLocked,
+  onLockChanged,
 }: {
   open: boolean;
   onClose: () => void;
@@ -59,6 +61,10 @@ export default function ParticipantsPanel({
   roomRole?: string;
   ownerUserId?: string | null;
   slug: string;
+  /** FRS §12.8 meeting lock state — reflected on the toggle button. */
+  isLocked?: boolean;
+  /** Called after a successful toggle so the room page can sync its copy. */
+  onLockChanged?: (locked: boolean) => void;
 }) {
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
@@ -112,6 +118,33 @@ export default function ParticipantsPanel({
     },
     [slug],
   );
+
+  // Panel-wide action: toggle meeting lock (FRS §12.8). Server refuses new
+  // tokens for ordinary participants when locked; elevated roles can still
+  // enter to unlock. Toggle is instant — no confirmation, since the action
+  // is reversible with a single click.
+  const toggleLock = useCallback(async () => {
+    setError(null);
+    setPending('lock');
+    const next = !isLocked;
+    try {
+      const r = await fetch(`/api/events/${encodeURIComponent(slug)}/lock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ locked: next }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        setError(j.error || 'request_failed');
+        return;
+      }
+      onLockChanged?.(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPending(null);
+    }
+  }, [slug, isLocked, onLockChanged]);
 
   // Panel-wide action: Mute All (FRS §5.1). Confirmation lives in the panel
   // body; server keeps host/cohost/self unmuted.
@@ -249,7 +282,27 @@ export default function ParticipantsPanel({
       )}
 
       {canMuteAll && (
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button
+            type="button"
+            disabled={!!pending}
+            onClick={toggleLock}
+            style={{
+              width: '100%',
+              padding: '8px 10px',
+              fontSize: 12,
+              fontWeight: 600,
+              borderRadius: 6,
+              border: '1px solid ' + (isLocked ? 'rgba(244,63,94,0.55)' : 'rgba(148,163,184,0.35)'),
+              background: isLocked ? 'rgba(244,63,94,0.15)' : 'rgba(148,163,184,0.08)',
+              color: isLocked ? '#fecaca' : '#e2e8f0',
+              cursor: 'pointer',
+              opacity: pending === 'lock' ? 0.5 : 1,
+            }}
+            title={isLocked ? 'Meeting is locked — click to unlock new joiners' : 'Lock this meeting so new ordinary participants cannot join'}
+          >
+            {pending === 'lock' ? '…' : isLocked ? 'Meeting locked · Unlock' : 'Lock meeting'}
+          </button>
           {muteAllConfirm ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ fontSize: 12, color: '#ddd', lineHeight: 1.4 }}>

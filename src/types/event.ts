@@ -163,6 +163,11 @@ export interface NeoEvent {
   /** When true, every join request must be approved by host/cohost. */
   waitingRoomEnabled: boolean;
 
+  /** FRS §12.8 meeting lock. When true, new ordinary-participant tokens are
+   *  refused; elevated roles (owner, host, cohost) can still enter so
+   *  someone remains able to unlock or promote. */
+  isLocked?: boolean;
+
   /** When true, non-host attendees are blocked from joining the LiveKit room until a host or co-host is present. Default true. */
   waitForHost?: boolean;
 

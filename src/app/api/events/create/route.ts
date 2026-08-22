@@ -13,6 +13,7 @@ import { eventStore, generateId, generateSlug, generateQrSeed } from '@/lib/even
 import { streamlab } from '@/lib/streamlab';
 import { hsmoh } from '@/lib/hsmoh';
 import { checkLifetimeCap, incrementMeetingsCreated } from '@/lib/plan';
+import { hashMeetingPassword } from '@/lib/eventPassword';
 import type { NeoEvent, RoleAssignment } from '@/types/event';
 
 export const runtime = 'nodejs';
@@ -133,7 +134,7 @@ export async function POST(req: NextRequest) {
         ownerUserId: userId,
         ownerEmail,
         visibility: body.visibility ?? 'unlisted',
-        password: body.password,
+        password: hashMeetingPassword((body.password || "").slice(0, 80)),
         waitingRoomEnabled: Boolean(body.waitingRoomEnabled),
         waitForHost: body.waitForHost === false ? false : true,
         scheduledAt: body.scheduledAt,
