@@ -78,6 +78,12 @@ export default function ParticipantsPanel({
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
   const canMuteAll = roomRole === 'host';
+  // FRS §1.3: Moderator (cohost) must NOT remove participants or assign
+  // Moderator/Host/Owner rights. Server already refuses via the RBAC catalog
+  // (participant:kick, role:grant, role:revoke are all at RANK.host); this
+  // is the UI-side gate so the button doesn't leak to Moderator and
+  // silently 403 on click.
+  const canRemoveOrPromote = roomRole === 'host';
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -392,7 +398,7 @@ export default function ParticipantsPanel({
                   >
                     {busy('muteVideo') ? '...' : 'Mute cam'}
                   </button>
-                  {confirmKick === id ? (
+                  {canRemoveOrPromote && (confirmKick === id ? (
                     <>
                       <button
                         type="button"
@@ -419,24 +425,28 @@ export default function ParticipantsPanel({
                     >
                       Kick
                     </button>
-                  )}
+                  ))}
 
-                <button
-                  type="button"
-                  disabled={!!pending}
-                  onClick={() => assignRole('moderator', id)}
-                  style={{ flex: '1 1 auto', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(120,200,140,0.45)', background: 'rgba(120,200,140,0.12)', color: '#cdeacd', cursor: 'pointer' }}
-                >
-                  {busy('role:moderator') ? '...' : 'Make Moderator'}
-                </button>
-                <button
-                  type="button"
-                  disabled={!!pending}
-                  onClick={() => assignRole('participant', id)}
-                  style={{ flex: '1 1 auto', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(255,200,90,0.45)', background: 'rgba(255,200,90,0.12)', color: '#ffe6b8', cursor: 'pointer' }}
-                >
-                  {busy('role:participant') ? '...' : 'Demote'}
-                </button>
+                {canRemoveOrPromote && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={!!pending}
+                      onClick={() => assignRole('moderator', id)}
+                      style={{ flex: '1 1 auto', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(120,200,140,0.45)', background: 'rgba(120,200,140,0.12)', color: '#cdeacd', cursor: 'pointer' }}
+                    >
+                      {busy('role:moderator') ? '...' : 'Make Moderator'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!!pending}
+                      onClick={() => assignRole('participant', id)}
+                      style={{ flex: '1 1 auto', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(255,200,90,0.45)', background: 'rgba(255,200,90,0.12)', color: '#ffe6b8', cursor: 'pointer' }}
+                    >
+                      {busy('role:participant') ? '...' : 'Demote'}
+                    </button>
+                  </>
+                )}
                 </div>
               )}
             </div>
