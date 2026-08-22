@@ -52,6 +52,7 @@ export default function ParticipantsPanel({
   isHost,
   roomRole,
   ownerUserId,
+  isOwner,
   slug,
   isLocked,
   onLockChanged,
@@ -64,6 +65,11 @@ export default function ParticipantsPanel({
    *  cannot see it, even though they can mute individuals). */
   roomRole?: string;
   ownerUserId?: string | null;
+  /** True only for the actual event creator (from /api/events/role). Used to
+   *  gate the FRS §1.1 "Make Host" action — canManageRole in permissions.ts
+   *  refuses to grant a Host role from a Host actor (needs strictly higher
+   *  rank), so only the Owner may promote to Host. */
+  isOwner?: boolean;
   slug: string;
   /** FRS §12.8 meeting lock state — reflected on the toggle button. */
   isLocked?: boolean;
@@ -84,6 +90,10 @@ export default function ParticipantsPanel({
   // is the UI-side gate so the button doesn't leak to Moderator and
   // silently 403 on click.
   const canRemoveOrPromote = roomRole === 'host';
+  // FRS §1.1: only the Owner may appoint Hosts. canManageRole in
+  // permissions.ts refuses to grant a Host role from a Host actor because
+  // it requires strictly higher rank, so this is server-enforced too.
+  const canMakeHost = Boolean(isOwner);
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -183,7 +193,7 @@ export default function ParticipantsPanel({
   // the server enforces the rank ladder. The LiveKit metadata push happens
   // inside the route so the badge still flips live.
   const assignRole = useCallback(
-    async (role: 'moderator' | 'participant', identity: string) => {
+    async (role: 'host' | 'moderator' | 'participant', identity: string) => {
       setError(null);
       setPending(identity + ':role:' + role);
       try {
@@ -429,6 +439,17 @@ export default function ParticipantsPanel({
 
                 {canRemoveOrPromote && (
                   <>
+                    {canMakeHost && (
+                      <button
+                        type="button"
+                        disabled={!!pending}
+                        onClick={() => assignRole('host', id)}
+                        style={{ flex: '1 1 auto', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(80,140,220,0.45)', background: 'rgba(80,140,220,0.12)', color: '#cfe1ff', cursor: 'pointer' }}
+                        title="Appoint this participant as Host (Owner only per FRS §1.1)"
+                      >
+                        {busy('role:host') ? '...' : 'Make Host'}
+                      </button>
+                    )}
                     <button
                       type="button"
                       disabled={!!pending}
