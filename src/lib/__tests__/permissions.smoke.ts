@@ -59,6 +59,7 @@ t("moderator moderates but cannot kick, muteAll, dispatch captions, end, or reco
   const a = actor("x", ["mod@example.com"]);
   assert.equal(can(a, "participant:mute"), true);
   assert.equal(can(a, "waitingRoom:admit"), true);
+  assert.equal(can(a, "timer:manage"), true);
   assert.equal(can(a, "participant:kick"), false);
   assert.equal(can(a, "participant:muteAll"), false);
   assert.equal(can(a, "captions:dispatch"), false);

@@ -21,14 +21,20 @@ import { X, LogOut } from 'lucide-react';
 export default function EndMeetingButton({
   slug,
   roomRole,
+  endPinRequired,
 }: {
   slug: string;
   roomRole?: string;
+  /** FRS §6: when the event has an End Meeting PIN, the modal renders a
+   *  PIN input and includes it in the POST body; server verifies before
+   *  ending the meeting. */
+  endPinRequired?: boolean;
 }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pin, setPin] = useState('');
 
   if (roomRole !== 'host') return null;
 
@@ -36,6 +42,7 @@ export default function EndMeetingButton({
     if (pending) return;
     setConfirming(false);
     setError(null);
+    setPin('');
   };
 
   async function handleEnd() {
@@ -44,10 +51,12 @@ export default function EndMeetingButton({
     try {
       const res = await fetch(`/api/events/${encodeURIComponent(slug)}/end`, {
         method: 'POST',
+        headers: endPinRequired ? { 'content-type': 'application/json' } : undefined,
+        body: endPinRequired ? JSON.stringify({ pin }) : undefined,
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        setError(j.error || 'failed_to_end');
+        setError(j.message || j.error || 'failed_to_end');
         return;
       }
       router.replace('/');
@@ -100,6 +109,20 @@ export default function EndMeetingButton({
             <p className="mt-4 text-sm text-white/70">
               Are you sure you want to end this meeting for everyone? This action will disconnect all attendees.
             </p>
+            {endPinRequired && (
+              <label className="mt-4 block text-xs text-white/60 space-y-1">
+                <span>End Meeting PIN</span>
+                <input
+                  type="password"
+                  autoFocus
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  className="w-full rounded-xl border border-white/15 bg-black/40 px-3 py-2 text-sm text-white focus:border-cyan-400/60 focus:outline-none"
+                  placeholder="Required to end this meeting"
+                  autoComplete="off"
+                />
+              </label>
+            )}
             {error && (
               <div className="mt-4 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-xs text-red-200">
                 {error}
@@ -115,7 +138,7 @@ export default function EndMeetingButton({
               </button>
               <button
                 onClick={handleEnd}
-                disabled={pending}
+                disabled={pending || (endPinRequired && pin.length === 0)}
                 className="flex-1 rounded-2xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_0_30px_-10px_rgba(220,38,38,0.8)] hover:brightness-110 transition disabled:opacity-60"
               >
                 {pending ? 'Ending…' : 'End meeting'}

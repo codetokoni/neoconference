@@ -19,6 +19,7 @@ import { NextResponse } from 'next/server';
 import { WebhookReceiver } from 'livekit-server-sdk';
 import { submitTranscribeJob, isTranscribeConfigured } from '@/lib/transcribe';
 import { eventStore } from '@/lib/eventStore';
+import { recordAttendance } from '@/lib/attendance';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -62,14 +63,53 @@ export async function POST(req: Request) {
       file?: { filename?: string; location?: string };
       fileResults?: Array<{ filename?: string; location?: string }>;
     };
+    type LKParticipant = {
+      identity?: string;
+      name?: string;
+      metadata?: string;
+    };
     type LKWebhookEvent = {
       event?: string;
       egressInfo?: LKEgressInfo;
       room?: { name?: string };
+      participant?: LKParticipant;
       createdAt?: number;
     };
 
     const event = (await receiver.receive(body, authHeader)) as unknown as LKWebhookEvent;
+
+    // ----- participant_joined / participant_left: attendance capture (§4) --
+    if (event?.event === 'participant_joined' || event?.event === 'participant_left') {
+      const roomName = event.room?.name;
+      const participant = event.participant;
+      if (!roomName || !participant?.identity) {
+        return NextResponse.json({ ok: true, ignored: 'participant_event_missing_fields' });
+      }
+      const ev = await eventStore.bySlug(roomName);
+      if (!ev) {
+        return NextResponse.json({ ok: true, ignored: 'event_not_found', roomName });
+      }
+      let role = '';
+      try {
+        const md = participant.metadata ? JSON.parse(participant.metadata) : null;
+        if (md && typeof (md as { role?: unknown }).role === 'string') {
+          role = (md as { role: string }).role;
+        }
+      } catch {
+        // metadata is optional
+      }
+      const ts = Date.parse(isoFromWebhookCreatedAt(event.createdAt));
+      const baseIdentity = participant.identity.split('#')[0];
+      await recordAttendance(ev.id, {
+        ts: Number.isFinite(ts) ? ts : Date.now(),
+        action: event.event === 'participant_joined' ? 'join' : 'leave',
+        userId: baseIdentity || null,
+        name: participant.name || baseIdentity || '',
+        role,
+        source: 'webhook',
+      });
+      return NextResponse.json({ ok: true, recorded: event.event, eventId: ev.id });
+    }
 
     // ----- room_finished: transition NeoEvent state 'live' -> 'ended' -----
     if (event?.event === 'room_finished') {

@@ -52,6 +52,15 @@ export async function PATCH(
   // FRS §12.2: password persisted as an scrypt hash, not plaintext. An empty
   // input clears the field (hashMeetingPassword returns undefined).
   if (typeof body.password === "string") patch.password = hashMeetingPassword(body.password.slice(0, 80));
+  // FRS §6: optional End Meeting PIN. Same hash treatment as password.
+  // Enforce a 4-char minimum when set — anything shorter isn't a barrier.
+  if (typeof body.endPin === "string") {
+    const rawPin = body.endPin.trim().slice(0, 64);
+    if (rawPin.length > 0 && rawPin.length < 4) {
+      return NextResponse.json({ error: "pin_too_short" }, { status: 400 });
+    }
+    patch.endPin = hashMeetingPassword(rawPin);
+  }
   if (typeof body.waitingRoomEnabled === "boolean") patch.waitingRoomEnabled = body.waitingRoomEnabled;
 
   if (Object.keys(patch).length === 0) {

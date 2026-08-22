@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdmin } from "@/lib/roles";
 import { eventStore } from "@/lib/eventStore";
+import { appendAuditEntry } from "@/lib/auditLog";
 import type { NeoEvent } from "@/types/event";
 import {
   ANONYMOUS_ACTOR,
@@ -73,9 +74,10 @@ export interface AuthzDecision {
 }
 
 /**
- * Every decision passes through here. Today it writes a structured line to the
- * Vercel log drain; swap the body for a KV append or a real audit sink without
- * touching a single call site.
+ * Every decision passes through here. Writes the same structured line to the
+ * Vercel log drain that it always did (for tail -f), and fire-and-forgets an
+ * append into the KV-backed audit log so promotions, demotions, kicks, mutes,
+ * recordings, and meeting-ends are all queryable after the fact (FRS §12.4).
  */
 export function recordDecision(d: AuthzDecision): void {
   const verb = d.allowed ? "allow" : "DENY";
@@ -83,6 +85,17 @@ export function recordDecision(d: AuthzDecision): void {
     `[authz] ${verb} ${d.permission} user=${d.userId ?? "anon"} role=${d.role} via=${d.reason}` +
       (d.eventId ? ` event=${d.eventId}` : "")
   );
+  // Fire-and-forget. appendAuditEntry catches its own errors — an audit sink
+  // must never be able to break the request it audits.
+  void appendAuditEntry({
+    ts: Date.now(),
+    permission: d.permission,
+    allowed: d.allowed,
+    userId: d.userId,
+    role: d.role,
+    reason: d.reason,
+    eventId: d.eventId,
+  });
 }
 
 /* -------------------------------------------------------------------------- */

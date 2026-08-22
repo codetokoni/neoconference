@@ -42,6 +42,9 @@ import FloatingVideoButton from "@/components/FloatingVideoButton";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
 import EndMeetingButton from "@/components/EndMeetingButton";
+import TranscriptNoticeBanner from "@/components/TranscriptNoticeBanner";
+import MeetingTimer from "@/components/MeetingTimer";
+import InactivityDetector from "@/components/InactivityDetector";
 import SpeakerBadge from "@/components/SpeakerBadge"; import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel"; import ManageParticipantsPanel from "@/components/ParticipantsPanel"; import TileRoleBadges from "@/components/TileRoleBadges"; import WaitingRoomPanel from "@/components/WaitingRoomPanel"; import BreakoutsPanel from "@/components/BreakoutsPanel";
 import PlanGateOverlay from "@/components/PlanGateOverlay";
 import {
@@ -559,10 +562,60 @@ function RoomContainer({
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
   const [isMeetingLocked, setIsMeetingLocked] = useState(false);
+  const [endPinRequired, setEndPinRequired] = useState(false);
 
   const [pendingKnockCount, setPendingKnockCount] = useState(0);
   const prevKnockCountRef = useRef(0);
   const knockAudioCtxRef = useRef<AudioContext | null>(null);
+
+  // Attendance beacon (FRS §4). Fires "join" when the room mounts and "leave"
+  // on unload or unmount. The LiveKit participant_joined/_left webhooks are
+  // the authoritative source when configured; this beacon is the client-side
+  // backstop. Deduped by a local flag so a hard nav that triggers both
+  // beforeunload and cleanup doesn't emit two "leave" entries.
+  useEffect(() => {
+    if (!eventSlug) return;
+    fetch("/api/attendance/beacon", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slug: eventSlug, action: "join" }),
+      keepalive: true,
+    }).catch(() => {});
+
+    let leaveFired = false;
+    const fireLeave = (preferSendBeacon: boolean) => {
+      if (leaveFired) return;
+      leaveFired = true;
+      const payload = JSON.stringify({ slug: eventSlug, action: "leave" });
+      if (
+        preferSendBeacon &&
+        typeof navigator !== "undefined" &&
+        typeof navigator.sendBeacon === "function"
+      ) {
+        try {
+          navigator.sendBeacon(
+            "/api/attendance/beacon",
+            new Blob([payload], { type: "application/json" }),
+          );
+          return;
+        } catch {
+          // fall through to fetch below
+        }
+      }
+      fetch("/api/attendance/beacon", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: payload,
+        keepalive: true,
+      }).catch(() => {});
+    };
+    const onBeforeUnload = () => fireLeave(true);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      fireLeave(false);
+    };
+  }, [eventSlug]);
 
   useEffect(() => {
     const isHostOrCohost = roomRole === "host" || roomRole === "cohost";
@@ -645,6 +698,7 @@ function RoomContainer({
             setRoomRole(j.role);
             setOwnerUserId(typeof j.ownerUserId === "string" ? j.ownerUserId : null);
             setIsMeetingLocked(Boolean(j.isLocked));
+            setEndPinRequired(Boolean(j.endPinRequired));
             const isElevated = j.role === "host" || j.role === "cohost" || j.role === "speaker";
             if (!isElevated && attempt < delays.length - 1) {
               attempt += 1;
@@ -878,7 +932,7 @@ function RoomContainer({
           <ParticipantCountBadge />
           <RecordingControls roomName={roomName} roomRole={roomRole} />
           <GoLiveButton roomName={roomName} eventSlug={eventSlug} roomRole={roomRole} />
-          <EndMeetingButton slug={eventSlug} roomRole={roomRole} />
+          <EndMeetingButton slug={eventSlug} roomRole={roomRole} endPinRequired={endPinRequired} />
         </div>
         <RaiseHandButton isHost={roomRole === "host" || roomRole === "cohost"} />
         <SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
@@ -889,6 +943,9 @@ function RoomContainer({
         <MediaRequestPrompt />
         <RoomAudioRenderer />
         <LiveCaptions />
+        <TranscriptNoticeBanner />
+        <MeetingTimer slug={eventSlug} roomRole={roomRole} />
+        <InactivityDetector roomRole={roomRole} />
         <CaptionsToggle roomRole={roomRole} roomName={roomName} eventSlug={eventSlug} />
         <ReactionsBar />
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} isHost={roomRole === 'host' || roomRole === 'cohost'} />

@@ -16,6 +16,7 @@ export default function EditMetadata({
     scheduledAt?: string;
     visibility: Visibility;
     waitingRoomEnabled: boolean;
+    endPinIsSet?: boolean;
   };
 }) {
   const router = useRouter();
@@ -26,6 +27,8 @@ export default function EditMetadata({
   const [scheduledAt, setScheduledAt] = useState(toLocalInput(initial.scheduledAt));
   const [visibility, setVisibility] = useState<Visibility>(initial.visibility);
   const [waitingRoomEnabled, setWaitingRoomEnabled] = useState(initial.waitingRoomEnabled);
+  const [endPin, setEndPin] = useState("");
+  const [clearEndPin, setClearEndPin] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -52,6 +55,13 @@ export default function EditMetadata({
         if (!isNaN(d.getTime())) body.scheduledAt = d.toISOString();
       } else {
         body.scheduledAt = "";
+      }
+      // FRS §6: only send endPin when the user actually intends to change it.
+      // Typing a new value takes precedence over the clear checkbox.
+      if (endPin.trim().length > 0) {
+        body.endPin = endPin.trim();
+      } else if (clearEndPin && initial.endPinIsSet) {
+        body.endPin = "";
       }
       const res = await fetch("/api/events/" + eventId, {
         method: "PATCH",
@@ -142,6 +152,34 @@ export default function EditMetadata({
           />
           Waiting room
         </label>
+      </div>
+      <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-300">End Meeting PIN</span>
+          <span className="text-[10px] text-slate-500">FRS §6 · optional</span>
+        </div>
+        <p className="text-[11px] text-slate-500">
+          When set, ending the meeting for everyone requires the PIN. Min 4 characters. Leave blank to keep the current PIN unchanged.
+        </p>
+        <input
+          type="password"
+          value={endPin}
+          onChange={(e) => setEndPin(e.target.value)}
+          placeholder={initial.endPinIsSet ? "PIN currently set — type new to change" : "Set a PIN (optional)"}
+          autoComplete="off"
+          className="w-full bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-cyan-400/60 focus:outline-none"
+        />
+        {initial.endPinIsSet && endPin.length === 0 && (
+          <label className="flex items-center gap-2 text-[11px] text-slate-400">
+            <input
+              type="checkbox"
+              checked={clearEndPin}
+              onChange={(e) => setClearEndPin(e.target.checked)}
+              className="accent-rose-400"
+            />
+            Remove the current PIN entirely
+          </label>
+        )}
       </div>
       {err ? <p className="text-xs text-rose-300">{err}</p> : null}
       <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
