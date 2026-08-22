@@ -45,8 +45,13 @@ const ACTIVITY_EVENTS: Array<keyof WindowEventMap> = [
 
 export default function InactivityDetector({
   roomRole,
+  eventSlug,
 }: {
   roomRole?: string;
+  /** Optional — when provided the timeout also fires an "inactive" attendance
+   *  beacon so the report captures the timeout event (FRS §11). Silent
+   *  degrade when omitted: modal still works, nothing is persisted. */
+  eventSlug?: string;
 }) {
   const room = useRoomContext();
   const [promptOpen, setPromptOpen] = useState(false);
@@ -150,14 +155,22 @@ export default function InactivityDetector({
           setResponseCountdown(Math.ceil(remaining / 1000));
         }, 500);
         dismissTimeoutRef.current = setTimeout(() => {
-          // No response — quietly dismiss. Auto-remove and attendance-report
-          // integration are follow-ups.
+          // No response — record it in the attendance journal so the report
+          // reflects the timeout (FRS §11), then quietly dismiss.
+          if (eventSlug) {
+            fetch("/api/attendance/beacon", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ slug: eventSlug, action: "inactive" }),
+              keepalive: true,
+            }).catch(() => {});
+          }
           dismissPrompt();
         }, RESPONSE_WINDOW_MS);
       }
     }, POLL_INTERVAL_MS);
     return () => clearInterval(iv);
-  }, [isExempt, promptOpen, dismissPrompt]);
+  }, [isExempt, promptOpen, dismissPrompt, eventSlug]);
 
   useEffect(() => {
     return () => {

@@ -43,7 +43,7 @@ export async function POST(req: Request) {
   const slug = typeof body.slug === "string" ? body.slug.trim() : "";
   const rawAction = typeof body.action === "string" ? body.action : "";
   if (!slug) return NextResponse.json({ error: "missing_slug" }, { status: 400 });
-  if (rawAction !== "join" && rawAction !== "leave") {
+  if (rawAction !== "join" && rawAction !== "leave" && rawAction !== "inactive") {
     return NextResponse.json({ error: "invalid_action" }, { status: 400 });
   }
 

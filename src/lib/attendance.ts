@@ -23,7 +23,7 @@ import type { NeoEvent } from "@/types/event";
 
 const RETENTION_SECONDS = 90 * 24 * 60 * 60; // 90 days
 
-export type AttendanceAction = "join" | "leave";
+export type AttendanceAction = "join" | "leave" | "inactive";
 export type AttendanceSource = "webhook" | "beacon";
 
 export interface AttendanceEntry {
@@ -132,6 +132,11 @@ export interface AttendanceReportRow {
   numberOfEntries: number;
   role: string;
   attendanceStatus: AttendanceStatus;
+  /** FRS §11: number of times the "Are you still here?" prompt timed out
+   *  without a response. A non-zero count is what the spec means by
+   *  "recorded in the attendance report" — the participant stayed connected
+   *  but stopped responding to activity checks. */
+  inactivityWarnings: number;
   intervals: AttendanceInterval[];
 }
 
@@ -222,6 +227,7 @@ export function buildAttendanceReport(
   for (const b of buckets.values()) {
     const intervals: AttendanceInterval[] = [];
     let openJoin: number | null = null;
+    let inactivityWarnings = 0;
     for (const e of b.events) {
       if (e.action === "join") {
         if (openJoin !== null) {
@@ -238,6 +244,8 @@ export function buildAttendanceReport(
           // Leave without a matching join — beacon fired after a race.
           intervals.push({ joinedAt: e.ts, leftAt: e.ts });
         }
+      } else if (e.action === "inactive") {
+        inactivityWarnings += 1;
       }
     }
     if (openJoin !== null) {
@@ -256,7 +264,10 @@ export function buildAttendanceReport(
     }, 0);
 
     const status: AttendanceStatus = (() => {
-      const lastEvent = b.events[b.events.length - 1];
+      // Filter out inactivity markers when deciding attendance status —
+      // an inactive event doesn't imply the person left the room.
+      const eventsForStatus = b.events.filter((e) => e.action !== "inactive");
+      const lastEvent = eventsForStatus[eventsForStatus.length - 1];
       if (!lastEvent) return "disconnected";
       if (lastEvent.action === "leave") return "left";
       // No leave observed. If the meeting has ended treat as disconnected.
@@ -278,6 +289,7 @@ export function buildAttendanceReport(
       numberOfEntries: intervals.length,
       role: b.role,
       attendanceStatus: status,
+      inactivityWarnings,
       intervals,
     });
   }

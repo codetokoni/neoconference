@@ -945,7 +945,7 @@ function RoomContainer({
         <LiveCaptions />
         <TranscriptNoticeBanner />
         <MeetingTimer slug={eventSlug} roomRole={roomRole} />
-        <InactivityDetector roomRole={roomRole} />
+        <InactivityDetector roomRole={roomRole} eventSlug={eventSlug} />
         <CaptionsToggle roomRole={roomRole} roomName={roomName} eventSlug={eventSlug} />
         <ReactionsBar />
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} isHost={roomRole === 'host' || roomRole === 'cohost'} />

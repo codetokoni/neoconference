@@ -49,6 +49,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     { header: "Number of Entries", key: "numberOfEntries", width: 16 },
     { header: "Role", key: "role", width: 12 },
     { header: "Attendance Status", key: "attendanceStatus", width: 16 },
+    { header: "Inactivity Warnings", key: "inactivityWarnings", width: 16 },
   ];
   sheet.getRow(1).font = { bold: true };
   sheet.getRow(1).alignment = { vertical: "middle" };
@@ -68,6 +69,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       numberOfEntries: row.numberOfEntries,
       role: row.role,
       attendanceStatus: row.attendanceStatus,
+      inactivityWarnings: row.inactivityWarnings,
     });
   }
 
