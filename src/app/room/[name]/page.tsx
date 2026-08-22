@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useUser, RedirectToSignIn } from "@clerk/nextjs";
+import { useUser } from "@clerk/nextjs";
 import {
   LiveKitRoom,
   VideoConference,
@@ -216,13 +216,18 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   if (!isLoaded) return <div className="p-8">Loading…</div>;
 
   if (!isSignedIn) {
-    return (
-      <RedirectToSignIn
-        redirectUrl={
-          typeof window !== "undefined" ? window.location.pathname : "/"
-        }
-      />
-    );
+    // FRS §9: send the user to our custom /sign-in with redirect_url as a
+    // query string param. Clerk's <RedirectToSignIn> uses hash-based routing
+    // (URL becomes /sign-in#/?redirect_url=...), which server-rendered
+    // page.tsx cannot read via searchParams — so the KingsChat href and the
+    // ticket-processing handler both lost redirect_url and the user ended
+    // up on the home page after auth.
+    if (typeof window !== "undefined") {
+      const target = window.location.pathname + (window.location.search || "");
+      const url = "/sign-in?redirect_url=" + encodeURIComponent(target);
+      window.location.replace(url);
+    }
+    return <div className="p-8">Redirecting…</div>;
   }
 
   if (error) {
