@@ -22,6 +22,7 @@ import {
   isTranscribeConfigured,
 } from '@/lib/transcribe';
 import { eventStore } from '@/lib/eventStore';
+import { authorize } from '@/lib/authz';
 import type { NeoEvent, RecordingArtifact } from '@/types/event';
 
 export const runtime = 'nodejs';
@@ -54,6 +55,20 @@ export async function POST(req: NextRequest) {
       { ok: false, error: 'recordingKey required' },
       { status: 400 }
     );
+  }
+
+  // FRS §8: generating a transcript is Owner+Host per the "transcript access
+  // controlled by the Owner or Host" clause. When the caller supplies an
+  // eventSlug we gate on the RBAC catalog; without one there is no event
+  // context to authz against so we fall back to authenticated-only (the
+  // recording key itself is scoped by userId prefix on R2).
+  const eventSlug = (body.eventSlug || '').trim();
+  if (eventSlug) {
+    const ev = await eventStore.bySlug(eventSlug);
+    if (ev) {
+      const gate = await authorize(ev, 'summary:generate');
+      if (!gate.ok) return gate.response;
+    }
   }
 
   try {
@@ -133,6 +148,19 @@ export async function GET(req: NextRequest) {
       { status: 404 }
     );
   }
+
+  // FRS §8.7: transcript access controlled by Owner+Host. Gate on the RBAC
+  // catalog when the job is tied to an event; older jobs without eventSlug
+  // fall back to authenticated-only (the recording key is scoped by userId
+  // prefix, so a caller can only see their own).
+  if (job.eventSlug) {
+    const ev = await eventStore.bySlug(job.eventSlug);
+    if (ev) {
+      const gate = await authorize(ev, 'transcript:read');
+      if (!gate.ok) return gate.response;
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     configured: isTranscribeConfigured(),
