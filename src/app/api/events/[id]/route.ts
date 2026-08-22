@@ -63,6 +63,24 @@ export async function PATCH(
   }
   if (typeof body.waitingRoomEnabled === "boolean") patch.waitingRoomEnabled = body.waitingRoomEnabled;
 
+  // FRS §11 inactivity config: whole object PATCH-able. Individual fields
+  // are validated so the client can't stash arbitrary data; unset means the
+  // client falls through to its defaults.
+  if (body.inactivity && typeof body.inactivity === "object") {
+    const raw = body.inactivity as Record<string, unknown>;
+    const next: NonNullable<NeoEvent["inactivity"]> = {};
+    if (typeof raw.enabled === "boolean") next.enabled = raw.enabled;
+    if (typeof raw.warningMs === "number" && Number.isFinite(raw.warningMs)) {
+      next.warningMs = Math.max(30_000, Math.min(3_600_000, Math.floor(raw.warningMs)));
+    }
+    if (typeof raw.responseMs === "number" && Number.isFinite(raw.responseMs)) {
+      next.responseMs = Math.max(10_000, Math.min(300_000, Math.floor(raw.responseMs)));
+    }
+    if (typeof raw.autoRemove === "boolean") next.autoRemove = raw.autoRemove;
+    if (typeof raw.exemptAdmins === "boolean") next.exemptAdmins = raw.exemptAdmins;
+    patch.inactivity = Object.keys(next).length > 0 ? next : undefined;
+  }
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "no_fields" }, { status: 400 });
   }

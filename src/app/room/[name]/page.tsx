@@ -563,6 +563,13 @@ function RoomContainer({
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
   const [isMeetingLocked, setIsMeetingLocked] = useState(false);
   const [endPinRequired, setEndPinRequired] = useState(false);
+  const [inactivityConfig, setInactivityConfig] = useState<{
+    enabled?: boolean;
+    warningMs?: number;
+    responseMs?: number;
+    autoRemove?: boolean;
+    exemptAdmins?: boolean;
+  } | null>(null);
 
   const [pendingKnockCount, setPendingKnockCount] = useState(0);
   const prevKnockCountRef = useRef(0);
@@ -699,6 +706,9 @@ function RoomContainer({
             setOwnerUserId(typeof j.ownerUserId === "string" ? j.ownerUserId : null);
             setIsMeetingLocked(Boolean(j.isLocked));
             setEndPinRequired(Boolean(j.endPinRequired));
+            setInactivityConfig(
+              j.inactivity && typeof j.inactivity === "object" ? j.inactivity : null,
+            );
             const isElevated = j.role === "host" || j.role === "cohost" || j.role === "speaker";
             if (!isElevated && attempt < delays.length - 1) {
               attempt += 1;
@@ -945,7 +955,7 @@ function RoomContainer({
         <LiveCaptions />
         <TranscriptNoticeBanner />
         <MeetingTimer slug={eventSlug} roomRole={roomRole} />
-        <InactivityDetector roomRole={roomRole} eventSlug={eventSlug} />
+        <InactivityDetector roomRole={roomRole} eventSlug={eventSlug} config={inactivityConfig} />
         <CaptionsToggle roomRole={roomRole} roomName={roomName} eventSlug={eventSlug} />
         <ReactionsBar />
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} isHost={roomRole === 'host' || roomRole === 'cohost'} />

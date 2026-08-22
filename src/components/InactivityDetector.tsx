@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRoomContext } from "@livekit/components-react";
 import { RoomEvent, type Participant, type TrackPublication } from "livekit-client";
 
@@ -28,9 +28,17 @@ import { RoomEvent, type Participant, type TrackPublication } from "livekit-clie
  * FRS §11 also asks that admins be exempt — done via the roomRole prop.
  */
 
-const IDLE_THRESHOLD_MS = 5 * 60 * 1000;   // 5 minutes -> show prompt
-const RESPONSE_WINDOW_MS = 60 * 1000;      // 60 seconds to respond
-const POLL_INTERVAL_MS = 15 * 1000;        // recheck every 15s
+const DEFAULT_IDLE_THRESHOLD_MS = 5 * 60 * 1000;   // 5 minutes -> show prompt
+const DEFAULT_RESPONSE_WINDOW_MS = 60 * 1000;      // 60 seconds to respond
+const POLL_INTERVAL_MS = 15 * 1000;                // recheck every 15s
+
+export interface InactivityConfig {
+  enabled?: boolean;
+  warningMs?: number;
+  responseMs?: number;
+  autoRemove?: boolean;
+  exemptAdmins?: boolean;
+}
 
 const ACTIVITY_EVENTS: Array<keyof WindowEventMap> = [
   "mousemove",
@@ -46,25 +54,36 @@ const ACTIVITY_EVENTS: Array<keyof WindowEventMap> = [
 export default function InactivityDetector({
   roomRole,
   eventSlug,
+  config,
 }: {
   roomRole?: string;
   /** Optional — when provided the timeout also fires an "inactive" attendance
    *  beacon so the report captures the timeout event (FRS §11). Silent
    *  degrade when omitted: modal still works, nothing is persisted. */
   eventSlug?: string;
+  /** FRS §11 per-event configuration. Any field left undefined falls through
+   *  to the module-level defaults so older events keep their existing UX. */
+  config?: InactivityConfig | null;
 }) {
   const room = useRoomContext();
+  const resolved = useMemo(() => ({
+    enabled: config?.enabled ?? true,
+    warningMs: config?.warningMs ?? DEFAULT_IDLE_THRESHOLD_MS,
+    responseMs: config?.responseMs ?? DEFAULT_RESPONSE_WINDOW_MS,
+    autoRemove: config?.autoRemove ?? false,
+    exemptAdmins: config?.exemptAdmins ?? true,
+  }), [config]);
+
   const [promptOpen, setPromptOpen] = useState(false);
   const [responseCountdown, setResponseCountdown] = useState<number>(
-    Math.floor(RESPONSE_WINDOW_MS / 1000),
+    Math.floor(resolved.responseMs / 1000),
   );
   const lastActivityRef = useRef<number>(Date.now());
   const responseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dismissTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Admins never see the prompt — they run the meeting and often watch
-  // silently for extended stretches.
-  const isExempt = roomRole === "host" || roomRole === "cohost";
+  const adminExempt = resolved.exemptAdmins && (roomRole === "host" || roomRole === "cohost");
+  const isExempt = !resolved.enabled || adminExempt;
 
   const markActivity = useCallback(() => {
     lastActivityRef.current = Date.now();
@@ -85,9 +104,9 @@ export default function InactivityDetector({
       clearTimeout(dismissTimeoutRef.current);
       dismissTimeoutRef.current = null;
     }
-    setResponseCountdown(Math.floor(RESPONSE_WINDOW_MS / 1000));
+    setResponseCountdown(Math.floor(resolved.responseMs / 1000));
     lastActivityRef.current = Date.now();
-  }, []);
+  }, [resolved.responseMs]);
 
   // Wire global DOM activity listeners.
   useEffect(() => {
@@ -141,22 +160,24 @@ export default function InactivityDetector({
     const iv = setInterval(() => {
       if (promptOpen) return; // already prompting
       const idle = Date.now() - lastActivityRef.current;
-      if (idle >= IDLE_THRESHOLD_MS) {
+      if (idle >= resolved.warningMs) {
         setPromptOpen(true);
-        setResponseCountdown(Math.floor(RESPONSE_WINDOW_MS / 1000));
+        setResponseCountdown(Math.floor(resolved.responseMs / 1000));
 
         // Start the response countdown.
         const startedAt = Date.now();
         responseTimerRef.current = setInterval(() => {
           const remaining = Math.max(
             0,
-            RESPONSE_WINDOW_MS - (Date.now() - startedAt),
+            resolved.responseMs - (Date.now() - startedAt),
           );
           setResponseCountdown(Math.ceil(remaining / 1000));
         }, 500);
         dismissTimeoutRef.current = setTimeout(() => {
           // No response — record it in the attendance journal so the report
-          // reflects the timeout (FRS §11), then quietly dismiss.
+          // reflects the timeout (FRS §11), then quietly dismiss OR (when
+          // configured) disconnect the participant from the LiveKit room so
+          // the "Auto-remove" setting actually removes them.
           if (eventSlug) {
             fetch("/api/attendance/beacon", {
               method: "POST",
@@ -165,12 +186,21 @@ export default function InactivityDetector({
               keepalive: true,
             }).catch(() => {});
           }
+          if (resolved.autoRemove && room) {
+            // onDisconnected in page.tsx handles the redirect away from the
+            // room — we just tear down the LiveKit session.
+            try {
+              room.disconnect();
+            } catch {
+              // fall through to the dismiss below; better than being stuck
+            }
+          }
           dismissPrompt();
-        }, RESPONSE_WINDOW_MS);
+        }, resolved.responseMs);
       }
     }, POLL_INTERVAL_MS);
     return () => clearInterval(iv);
-  }, [isExempt, promptOpen, dismissPrompt, eventSlug]);
+  }, [isExempt, promptOpen, dismissPrompt, eventSlug, resolved.warningMs, resolved.responseMs, resolved.autoRemove, room]);
 
   useEffect(() => {
     return () => {

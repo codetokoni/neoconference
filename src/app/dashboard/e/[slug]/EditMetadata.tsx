@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation";
 
 type Visibility = "public" | "unlisted" | "private";
 
+interface InactivityInitial {
+  enabled?: boolean;
+  warningMs?: number;
+  responseMs?: number;
+  autoRemove?: boolean;
+  exemptAdmins?: boolean;
+}
+
 export default function EditMetadata({
   eventId,
   initial,
@@ -17,6 +25,7 @@ export default function EditMetadata({
     visibility: Visibility;
     waitingRoomEnabled: boolean;
     endPinIsSet?: boolean;
+    inactivity?: InactivityInitial | null;
   };
 }) {
   const router = useRouter();
@@ -29,6 +38,15 @@ export default function EditMetadata({
   const [waitingRoomEnabled, setWaitingRoomEnabled] = useState(initial.waitingRoomEnabled);
   const [endPin, setEndPin] = useState("");
   const [clearEndPin, setClearEndPin] = useState(false);
+  const [inactivityEnabled, setInactivityEnabled] = useState<boolean>(initial.inactivity?.enabled ?? true);
+  const [inactivityWarningMin, setInactivityWarningMin] = useState<string>(
+    String(Math.max(1, Math.round((initial.inactivity?.warningMs ?? 300_000) / 60_000))),
+  );
+  const [inactivityResponseSec, setInactivityResponseSec] = useState<string>(
+    String(Math.max(10, Math.round((initial.inactivity?.responseMs ?? 60_000) / 1000))),
+  );
+  const [inactivityAutoRemove, setInactivityAutoRemove] = useState<boolean>(initial.inactivity?.autoRemove ?? false);
+  const [inactivityExemptAdmins, setInactivityExemptAdmins] = useState<boolean>(initial.inactivity?.exemptAdmins ?? true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -63,6 +81,19 @@ export default function EditMetadata({
       } else if (clearEndPin && initial.endPinIsSet) {
         body.endPin = "";
       }
+      // FRS §11 inactivity config. Always send the whole object so a host
+      // who flips a knob without touching the numbers still gets a durable
+      // record. Values are validated server-side (30 s .. 60 min for
+      // warning; 10 s .. 5 min for response).
+      const warningMin = Math.max(1, Math.min(60, parseInt(inactivityWarningMin, 10) || 5));
+      const responseSec = Math.max(10, Math.min(300, parseInt(inactivityResponseSec, 10) || 60));
+      body.inactivity = {
+        enabled: inactivityEnabled,
+        warningMs: warningMin * 60_000,
+        responseMs: responseSec * 1000,
+        autoRemove: inactivityAutoRemove,
+        exemptAdmins: inactivityExemptAdmins,
+      };
       const res = await fetch("/api/events/" + eventId, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
@@ -179,6 +210,67 @@ export default function EditMetadata({
             />
             Remove the current PIN entirely
           </label>
+        )}
+      </div>
+      <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-wide text-slate-300">Inactivity detection</span>
+          <span className="text-[10px] text-slate-500">FRS §11</span>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-slate-300">
+          <input
+            type="checkbox"
+            checked={inactivityEnabled}
+            onChange={(e) => setInactivityEnabled(e.target.checked)}
+            className="accent-cyan-400"
+          />
+          Show "Are you still here?" prompt to idle participants
+        </label>
+        {inactivityEnabled && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-xs text-slate-400 space-y-1">
+                <span>Warn after (minutes)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={inactivityWarningMin}
+                  onChange={(e) => setInactivityWarningMin(e.target.value)}
+                  className="w-full bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-cyan-400/60 focus:outline-none"
+                />
+              </label>
+              <label className="text-xs text-slate-400 space-y-1">
+                <span>Response window (seconds)</span>
+                <input
+                  type="number"
+                  min={10}
+                  max={300}
+                  value={inactivityResponseSec}
+                  onChange={(e) => setInactivityResponseSec(e.target.value)}
+                  className="w-full bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-cyan-400/60 focus:outline-none"
+                />
+              </label>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={inactivityAutoRemove}
+                onChange={(e) => setInactivityAutoRemove(e.target.checked)}
+                className="accent-rose-400"
+              />
+              Auto-remove participants who don&apos;t respond
+            </label>
+            <label className="flex items-center gap-2 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={inactivityExemptAdmins}
+                onChange={(e) => setInactivityExemptAdmins(e.target.checked)}
+                className="accent-cyan-400"
+              />
+              Exempt Host and Moderator from this check
+            </label>
+          </>
         )}
       </div>
       {err ? <p className="text-xs text-rose-300">{err}</p> : null}

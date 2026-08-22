@@ -172,6 +172,25 @@ export interface NeoEvent {
    *  someone remains able to unlock or promote. */
   isLocked?: boolean;
 
+  /** FRS §11 inactivity detection — per-meeting configuration. Every field
+   *  is optional; unset values fall through to the client-side defaults so
+   *  older events continue to behave exactly as they did. */
+  inactivity?: {
+    /** false disables the "Are you still here?" prompt entirely. */
+    enabled?: boolean;
+    /** Idle threshold in ms before the prompt fires (default 5 min). */
+    warningMs?: number;
+    /** How long the user has to respond before the prompt auto-closes
+     *  (default 60 s). If autoRemove is true, the timeout also disconnects. */
+    responseMs?: number;
+    /** When true, an unanswered prompt disconnects the participant from the
+     *  LiveKit room and marks them "removed" in the attendance report. */
+    autoRemove?: boolean;
+    /** When false, hosts and moderators also see the prompt (default true —
+     *  admins run the meeting and shouldn't be timed out). */
+    exemptAdmins?: boolean;
+  };
+
   /** When true, non-host attendees are blocked from joining the LiveKit room until a host or co-host is present. Default true. */
   waitForHost?: boolean;
 
