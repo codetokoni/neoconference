@@ -36,7 +36,15 @@ export default function RecordingsPanel({ prefix }: Props) {
     setLoading(true);
     setErr(null);
     try {
-      const r = await fetch(`/api/recordings?prefix=${encodeURIComponent(prefix)}&max=200`, { cache: "no-store" });
+      // Prefer eventSlug so Owner+Host on the dashboard event page sees
+      // every recording of the meeting, not just the ones this account
+      // initiated. Falls back to prefix mode when this component is used
+      // outside an event context (there is no such call site today, but
+      // the API still supports the older shape).
+      const r = await fetch(
+        `/api/recordings?eventSlug=${encodeURIComponent(prefix)}&max=200`,
+        { cache: "no-store" },
+      );
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || "Failed to load recordings");
       setConfigured(j.configured !== false);

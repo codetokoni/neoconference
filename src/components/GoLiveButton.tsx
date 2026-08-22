@@ -41,6 +41,15 @@ export default function GoLiveButton({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
+  // FRS §2: multi-destination fan-out. StreamLab's addDestination primitive
+  // is wired via /api/golive/destination; UI state lives here.
+  const [destPlatform, setDestPlatform] = useState<'rtmp' | 'youtube' | 'facebook' | 'twitch'>('rtmp');
+  const [destUrl, setDestUrl] = useState('');
+  const [destKey, setDestKey] = useState('');
+  const [destLabel, setDestLabel] = useState('');
+  const [destBusy, setDestBusy] = useState(false);
+  const [addedDests, setAddedDests] = useState<Array<{ platform: string; label?: string }>>([]);
+
   // Receive-side: another host started/stopped a broadcast for this room.
   const [remoteBroadcast, setRemoteBroadcast] = useState<{ by: string } | null>(null);
   const [showStartFlash, setShowStartFlash] = useState(false);
@@ -328,6 +337,94 @@ export default function GoLiveButton({
                 <p className="text-[11px] text-white/45 leading-relaxed pt-2">
                   Open OBS → Settings → Stream. Service: <span className="text-white/70">Custom</span>. Server: paste RTMP ingest. Stream key: paste stream key. Hit &quot;Start streaming&quot;.
                 </p>
+
+                {/* FRS §2 destination selection — fan the same broadcast out
+                    to YouTube Live, Facebook Live, Twitch, or a custom RTMP
+                    endpoint alongside the primary StreamLab ingest. */}
+                <div className="mt-3 rounded-xl border border-white/10 bg-black/40 p-3 space-y-2">
+                  <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">Fan out to another destination</div>
+                  <select
+                    value={destPlatform}
+                    onChange={(e) => setDestPlatform(e.target.value as 'rtmp' | 'youtube' | 'facebook' | 'twitch')}
+                    className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 text-xs text-white/85 focus:outline-none focus:border-cyan-400/50"
+                  >
+                    <option value="rtmp">Custom RTMP</option>
+                    <option value="youtube">YouTube Live</option>
+                    <option value="facebook">Facebook Live</option>
+                    <option value="twitch">Twitch</option>
+                  </select>
+                  {destPlatform === 'rtmp' && (
+                    <input
+                      value={destUrl}
+                      onChange={(e) => setDestUrl(e.target.value)}
+                      placeholder="rtmp://ingest.example.com/live"
+                      className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-mono text-white/85 focus:outline-none focus:border-cyan-400/50"
+                    />
+                  )}
+                  <input
+                    value={destKey}
+                    onChange={(e) => setDestKey(e.target.value)}
+                    type="password"
+                    autoComplete="off"
+                    placeholder={destPlatform === 'rtmp' ? 'Stream key' : 'Stream key (from destination provider)'}
+                    className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-mono text-white/85 focus:outline-none focus:border-cyan-400/50"
+                  />
+                  <input
+                    value={destLabel}
+                    onChange={(e) => setDestLabel(e.target.value)}
+                    placeholder="Label (optional)"
+                    className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 text-xs text-white/85 focus:outline-none focus:border-cyan-400/50"
+                  />
+                  <button
+                    type="button"
+                    disabled={destBusy || (destPlatform === 'rtmp' && (!destUrl.trim() || !destKey.trim())) || (destPlatform !== 'rtmp' && !destKey.trim())}
+                    onClick={async () => {
+                      setDestBusy(true);
+                      setError(null);
+                      try {
+                        const res = await fetch('/api/golive/destination', {
+                          method: 'POST',
+                          headers: { 'content-type': 'application/json' },
+                          body: JSON.stringify({
+                            eventSlug: eventSlug || roomName,
+                            destination: {
+                              platform: destPlatform,
+                              rtmp_url: destUrl.trim() || undefined,
+                              stream_key: destKey.trim() || undefined,
+                              label: destLabel.trim() || undefined,
+                            },
+                          }),
+                        });
+                        const j = await res.json().catch(() => ({}));
+                        if (!j.ok) {
+                          setError(j.error || 'Could not add destination.');
+                          return;
+                        }
+                        setAddedDests((prev) => [...prev, { platform: destPlatform, label: destLabel.trim() || undefined }]);
+                        setDestUrl('');
+                        setDestKey('');
+                        setDestLabel('');
+                      } catch (e: unknown) {
+                        setError(e instanceof Error ? e.message : 'Network error');
+                      } finally {
+                        setDestBusy(false);
+                      }
+                    }}
+                    className="w-full rounded-lg bg-cyan-500/20 border border-cyan-400/40 px-3 py-1.5 text-xs font-medium text-cyan-100 hover:bg-cyan-500/30 transition disabled:opacity-60"
+                  >
+                    {destBusy ? 'Adding…' : 'Add destination'}
+                  </button>
+                  {addedDests.length > 0 && (
+                    <ul className="pt-1 space-y-0.5">
+                      {addedDests.map((d, i) => (
+                        <li key={i} className="text-[11px] text-emerald-300/85">
+                          + {d.label ? `${d.label} · ` : ''}{d.platform}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
               <button
                 type="button"
                 disabled={loading}

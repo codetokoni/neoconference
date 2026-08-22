@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { isR2Configured, listRecordings, signGetUrl, deleteObject, renameObject } from '@/lib/r2';
 import { transcribeStore } from '@/lib/transcribeStore';
+import { eventStore } from '@/lib/eventStore';
+import { authorize } from '@/lib/authz';
+import { getMeetingParticipants } from '@/lib/meeting-roles';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -35,9 +38,18 @@ function stripAudioExt(k: string): string {
 /**
  * GET /api/recordings
  *
- * Lists ONLY the authenticated user's recordings from R2 and signs a fresh
- * download URL for each (1 hour expiry). Also enriches each recording with
- * its transcript (and AI summary) when one exists in the transcribeStore.
+ * Two modes:
+ *
+ *   Default (no eventSlug) — returns ONLY the authenticated user's recordings
+ *   from R2. The dashboard recordings page uses this.
+ *
+ *   eventSlug=<slug> — FRS §2: recordings scoped by event role. Loads the
+ *   event, authorizes recording:read (RANK.host), then unions recordings
+ *   under every elevated participant's R2 prefix so Owner+Host see every
+ *   recording of the meeting regardless of who initiated it.
+ *
+ * Enriches each row with a signed download URL (1 h expiry), its audio
+ * sidecar if paired, and its transcript / AI summary when one exists.
  */
 export async function GET(req: Request) {
     const { userId } = await auth();
@@ -57,18 +69,56 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
     const rawSub = url.searchParams.get('subPrefix') || url.searchParams.get('prefix') || '';
     const sub = rawSub.replace(/^\/+/, '');
-    const base = userPrefix(userId);
-    const effectivePrefix = sub.startsWith(base) ? sub : base + sub;
+    const eventSlug = url.searchParams.get('eventSlug') || '';
     const max = Math.min(
           Math.max(parseInt(url.searchParams.get('max') || '100', 10) || 100, 1),
           500
         );
 
   try {
-        const items = await listRecordings(effectivePrefix, max);
-        const filtered = items
-          .filter((o) => o.size > 0)
-          .filter((o) => o.key.startsWith(base));
+        let filtered: Array<{ key: string; size: number; lastModified?: string }>;
+
+        if (eventSlug) {
+              // Event-scoped mode (FRS §2). Authorize on the event, then union
+              // across every plausible R2 prefix a host might have written to.
+              const ev = await eventStore.bySlug(eventSlug);
+              if (!ev) return NextResponse.json({ ok: false, error: 'event_not_found' }, { status: 404 });
+              const gate = await authorize(ev, 'recording:read');
+              if (!gate.ok) return gate.response;
+
+              const eventSeg = sanitizeSegment(eventSlug);
+              const candidateIds = new Set<string>();
+              if (ev.ownerUserId?.startsWith('user_')) candidateIds.add(ev.ownerUserId);
+              // Everyone in the meeting-roles hash with rank >= moderator is a
+              // plausible recorder. Skip anyone who isn't a Clerk user id
+              // (email rows can't have written R2 keys).
+              const participants = await getMeetingParticipants(ev.id, ev);
+              for (const p of participants) {
+                  if (!p.userId?.startsWith('user_')) continue;
+                  if (p.role === 'owner' || p.role === 'host' || p.role === 'moderator') {
+                        candidateIds.add(p.userId);
+                  }
+              }
+
+              const perPrefixMax = Math.max(20, Math.floor(max / Math.max(1, candidateIds.size)));
+              const collected = new Map<string, { key: string; size: number; lastModified?: string }>();
+              for (const uid of candidateIds) {
+                  const prefix = 'recordings/' + sanitizeSegment(uid) + '/' + eventSeg + '/';
+                  const items = await listRecordings(prefix, perPrefixMax);
+                  for (const o of items) {
+                        if (o.size > 0 && !collected.has(o.key)) collected.set(o.key, o);
+                  }
+              }
+              filtered = Array.from(collected.values());
+        } else {
+              // Default mode — caller's own recordings only.
+              const base = userPrefix(userId);
+              const effectivePrefix = sub.startsWith(base) ? sub : base + sub;
+              const items = await listRecordings(effectivePrefix, max);
+              filtered = items
+                .filter((o) => o.size > 0)
+                .filter((o) => o.key.startsWith(base));
+        }
 
       // Pair each .mp4 video with its audio sidecar (same basename). Sidecars
       // may be named "<basename>.m4a" OR "<basename>.m4a.mp4" depending on the
