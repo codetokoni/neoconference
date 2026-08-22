@@ -160,6 +160,10 @@ export interface NeoEvent {
   visibility: EventVisibility;
   /** When set, attendees must enter this password before joining. */
   password?: string;
+  /** FRS §6 optional PIN for End Meeting for Everyone. Stored as a scrypt
+   *  hash (same `s1$…` format as `password`). When set, the End Meeting
+   *  route requires the caller to submit the matching plaintext. */
+  endPin?: string;
   /** When true, every join request must be approved by host/cohost. */
   waitingRoomEnabled: boolean;
 

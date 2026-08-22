@@ -125,6 +125,7 @@ export default async function EventAdminPage({
               scheduledAt: ev.scheduledAt,
               visibility: ev.visibility,
               waitingRoomEnabled: ev.waitingRoomEnabled,
+              endPinIsSet: Boolean(ev.endPin),
             }}
           />
         </section>

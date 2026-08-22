@@ -11,6 +11,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { RoomServiceClient } from "livekit-server-sdk";
 import { eventStore } from "@/lib/eventStore";
 import { authorize } from "@/lib/authz";
+import { verifyMeetingPassword } from "@/lib/eventPassword";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   }
   const gate = await authorize(ev, "meeting:end");
   if (!gate.ok) return gate.response;
+
+  // FRS §6: when the meeting has an End Meeting PIN configured, require the
+  // caller to submit the matching plaintext. Body is optional — a body-less
+  // POST from a room without a PIN keeps the historical behaviour.
+  if (ev.endPin) {
+    let submittedPin = "";
+    try {
+      const bodyText = await req.text();
+      if (bodyText) {
+        const parsed = JSON.parse(bodyText) as { pin?: unknown };
+        if (typeof parsed?.pin === "string") submittedPin = parsed.pin.trim();
+      }
+    } catch {
+      // Empty body / malformed JSON both fall through to the missing-pin path.
+    }
+    if (!submittedPin || !verifyMeetingPassword(submittedPin, ev.endPin)) {
+      return NextResponse.json(
+        { error: "invalid_pin", message: "End Meeting PIN required." },
+        { status: 403 }
+      );
+    }
+  }
   const next = await eventStore.update(ev.id, (prev) => ({
     ...prev,
     state: "ended",

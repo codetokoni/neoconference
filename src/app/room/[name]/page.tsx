@@ -559,6 +559,7 @@ function RoomContainer({
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
   const [isMeetingLocked, setIsMeetingLocked] = useState(false);
+  const [endPinRequired, setEndPinRequired] = useState(false);
 
   const [pendingKnockCount, setPendingKnockCount] = useState(0);
   const prevKnockCountRef = useRef(0);
@@ -645,6 +646,7 @@ function RoomContainer({
             setRoomRole(j.role);
             setOwnerUserId(typeof j.ownerUserId === "string" ? j.ownerUserId : null);
             setIsMeetingLocked(Boolean(j.isLocked));
+            setEndPinRequired(Boolean(j.endPinRequired));
             const isElevated = j.role === "host" || j.role === "cohost" || j.role === "speaker";
             if (!isElevated && attempt < delays.length - 1) {
               attempt += 1;
@@ -878,7 +880,7 @@ function RoomContainer({
           <ParticipantCountBadge />
           <RecordingControls roomName={roomName} roomRole={roomRole} />
           <GoLiveButton roomName={roomName} eventSlug={eventSlug} roomRole={roomRole} />
-          <EndMeetingButton slug={eventSlug} roomRole={roomRole} />
+          <EndMeetingButton slug={eventSlug} roomRole={roomRole} endPinRequired={endPinRequired} />
         </div>
         <RaiseHandButton isHost={roomRole === "host" || roomRole === "cohost"} />
         <SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
