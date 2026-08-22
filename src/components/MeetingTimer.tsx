@@ -83,6 +83,13 @@ export default function MeetingTimer({
 
   const canManage = roomRole === "host" || roomRole === "cohost";
   const canSee = state.visibility === "everyone" || canManage;
+  // Admin card collapses to a compact icon when the timer is idle so it
+  // doesn't hog screen real estate for the vast majority of the meeting.
+  // Expands automatically the moment the timer starts running (or is paused
+  // partway through). Click the icon to open the controls without starting.
+  const [expanded, setExpanded] = useState(false);
+  const isActive = state.status === "running" || state.status === "paused";
+  const showFullCard = !canManage || isActive || expanded;
 
   // Sound preference — admins default to on, participants default to off.
   useEffect(() => {
@@ -205,6 +212,41 @@ export default function MeetingTimer({
   if (!canSee) return null;
   if (!canManage && state.status === "idle" && state.durationMs === 0) return null;
 
+  // Compact icon mode: admin, timer idle, admin hasn't opened the panel.
+  if (canManage && !showFullCard) {
+    return (
+      <button
+        type="button"
+        data-room-chrome="true"
+        onClick={() => setExpanded(true)}
+        title="Meeting timer"
+        aria-label="Open meeting timer"
+        style={{
+          position: "fixed",
+          top: 68,
+          right: 20,
+          zIndex: 60,
+          width: 36,
+          height: 36,
+          borderRadius: 999,
+          background: "rgba(11,16,32,0.9)",
+          backdropFilter: "blur(10px)",
+          WebkitBackdropFilter: "blur(10px)",
+          border: "1px solid rgba(34,211,238,0.35)",
+          color: "#cdeafd",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.4), 0 0 20px -10px rgba(34,211,238,0.35)",
+          cursor: "pointer",
+          padding: 0,
+        }}
+      >
+        <TimerIcon size={16} aria-hidden />
+      </button>
+    );
+  }
+
   const warn = shouldWarn(remaining, state.durationMs);
   const expired = state.status === "running" && remaining === 0;
   const display = expired ? "00:00" : formatMs(remaining);
@@ -248,7 +290,6 @@ export default function MeetingTimer({
         </div>
         <span
           style={{
-            marginLeft: "auto",
             fontSize: 10,
             letterSpacing: 0.5,
             textTransform: "uppercase",
@@ -257,6 +298,27 @@ export default function MeetingTimer({
         >
           {state.status}
         </span>
+        {canManage && !isActive && (
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            aria-label="Collapse timer"
+            title="Collapse"
+            style={{
+              marginLeft: "auto",
+              padding: "2px 6px",
+              fontSize: 12,
+              lineHeight: 1,
+              borderRadius: 6,
+              border: "1px solid rgba(148,163,184,0.35)",
+              background: "transparent",
+              color: "rgba(226,232,240,0.8)",
+              cursor: "pointer",
+            }}
+          >
+            ×
+          </button>
+        )}
       </div>
 
       {canManage && (
