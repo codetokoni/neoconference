@@ -2,13 +2,18 @@
 //
 // POST — mute the microphone of every ordinary participant in a room.
 //
-// Body: { roomName: string }
+// Body: { roomName: string; exceptIdentity?: string }
 //
-// FRS §5.1: keep Owner, Host, and active Moderators unmuted; mute everyone
-// else. Role classification comes from the LiveKit participant metadata's
-// "role" field (host/cohost/attendee), stamped by the token grant and
-// updated live by /api/events/[id]/roles when someone is promoted/demoted
-// mid-meeting.
+// FRS §5.1 "Mute All": keep Owner, Host, and active Moderators unmuted;
+// mute everyone else.
+//
+// FRS §5.2 "Mute Everyone Else" is the same call with `exceptIdentity`
+// set to the spotlighted speaker's identity — that participant additionally
+// stays unmuted alongside the elevated roles.
+//
+// Role classification comes from the LiveKit participant metadata's "role"
+// field (host/cohost/attendee), stamped by the token grant and updated live
+// by /api/events/[id]/roles when someone is promoted/demoted mid-meeting.
 //
 // Authorization: participant:muteAll — RANK.host (raised from moderator to
 // match §5.1's Owner+Host phrasing).
@@ -28,6 +33,7 @@ function httpUrlFromWs(ws: string | undefined): string {
 
 interface Body {
   roomName?: unknown;
+  exceptIdentity?: unknown;
 }
 
 export async function POST(req: Request) {
@@ -39,6 +45,11 @@ export async function POST(req: Request) {
   }
   const roomName = typeof body.roomName === "string" ? body.roomName.trim() : "";
   if (!roomName) return NextResponse.json({ error: "missing_room" }, { status: 400 });
+
+  const exceptBase =
+    typeof body.exceptIdentity === "string"
+      ? body.exceptIdentity.trim().split("#")[0].toLowerCase()
+      : "";
 
   const event = await eventStore.bySlug(roomName);
   if (!event) return NextResponse.json({ error: "event_not_found" }, { status: 404 });
@@ -72,6 +83,12 @@ export async function POST(req: Request) {
 
     // Never mute the caller — defensive belt-and-suspenders with the role check.
     if (actorId && base === actorId) {
+      skipped++;
+      continue;
+    }
+
+    // §5.2: keep the exempted speaker unmuted.
+    if (exceptBase && base === exceptBase) {
       skipped++;
       continue;
     }

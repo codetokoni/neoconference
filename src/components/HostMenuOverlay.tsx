@@ -15,9 +15,13 @@ import { useIsMobile } from '@/hooks/useIsMobile';
  */
 export default function HostMenuOverlay({
   isHost,
+  roomRole,
   slug,
 }: {
   isHost: boolean;
+  /** Wire-format role. Threaded through to HostTileMenu so the §5.2
+   *  "Mute everyone else" option is gated on owner+host. */
+  roomRole?: string;
   slug: string;
 }) {
   const participants = useParticipants();
@@ -72,6 +76,7 @@ export default function HostMenuOverlay({
             participantIdentity={p.identity}
             participantName={displayName}
             isHost={true}
+            roomRole={roomRole}
             slug={slug}
           />,
           tile,

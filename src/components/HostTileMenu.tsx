@@ -19,11 +19,15 @@ export function HostTileMenu({
   participantIdentity,
   participantName,
   isHost,
+  roomRole,
   slug,
 }: {
   participantIdentity: string;
   participantName: string;
   isHost: boolean;
+  /** Wire-format role — 'host' covers owner+host after toLegacyRole. Used to
+   *  gate the FRS §5.2 "Mute everyone else" option, which is Owner+Host only. */
+  roomRole?: string;
   slug: string;
 }) {
   const { localParticipant } = useLocalParticipant();
@@ -35,6 +39,7 @@ export function HostTileMenu({
   const [error, setError] = useState<string | null>(null);
 
   const isSelf = localParticipant?.identity === participantIdentity;
+  const canMuteOthers = roomRole === 'host';
 
   const call = useCallback(
     async (action: 'muteAudio' | 'muteVideo' | 'kick' | 'requestUnmuteAudio' | 'requestCameraOn') => {
@@ -61,6 +66,28 @@ export function HostTileMenu({
     },
     [slug, participantIdentity],
   );
+
+  const muteEveryoneElse = useCallback(async () => {
+    setError(null);
+    setPending('muteOthers');
+    try {
+      const r = await fetch('/api/livekit/muteAll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomName: slug, exceptIdentity: participantIdentity }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        setError(j.error || 'request_failed');
+        return;
+      }
+      setOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPending(null);
+    }
+  }, [slug, participantIdentity]);
 
   if (!isHost || isSelf || !slug) return null;
 
@@ -158,6 +185,16 @@ export function HostTileMenu({
             onClick={() => call('requestCameraOn')}
             pending={pending === 'requestCameraOn'}
           />
+
+          {canMuteOthers && (
+            <MenuItem
+              label="Mute everyone else"
+              icon="MA"
+              disabled={pending !== null}
+              onClick={muteEveryoneElse}
+              pending={pending === 'muteOthers'}
+            />
+          )}
 
           {!confirmKick ? (
             <MenuItem
