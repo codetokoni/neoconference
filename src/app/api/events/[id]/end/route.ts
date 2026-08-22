@@ -1,30 +1,28 @@
 // src/app/api/events/[id]/end/route.ts
-// Owner-only POST. Marks an event as ended, then fires a best-effort
-// background AI-summary generation so the host gets a recap automatically.
+// FRS §6: Owner+Host may end the meeting for everyone. Marks the event ended,
+// force-disconnects any active LiveKit participants, then kicks off a best-
+// effort background AI summary so the host gets a recap automatically.
+//
+// Path param may be either the event id or the event slug — mirrors the same
+// fallthrough used by /api/events/[id]/roles so in-room controls that only
+// hold the slug can hit this route without a lookup.
 
 import { NextResponse, type NextRequest } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { RoomServiceClient } from "livekit-server-sdk";
 import { eventStore } from "@/lib/eventStore";
-import { assertOwnerOrAdmin } from "@/lib/roles";
+import { authorize } from "@/lib/authz";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
   const { id } = await ctx.params;
-  const ev = await eventStore.byId(id);
+  const ev = (await eventStore.byId(id)) ?? (await eventStore.bySlug(id));
   if (!ev) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
-  const check = await assertOwnerOrAdmin(ev, userId);
-  if (!check.ok) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const gate = await authorize(ev, "meeting:end");
+  if (!gate.ok) return gate.response;
   const next = await eventStore.update(ev.id, (prev) => ({
     ...prev,
     state: "ended",

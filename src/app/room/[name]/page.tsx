@@ -41,6 +41,7 @@ import ChatPanel from "@/components/ChatPanel";
 import FloatingVideoButton from "@/components/FloatingVideoButton";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
+import EndMeetingButton from "@/components/EndMeetingButton";
 import SpeakerBadge from "@/components/SpeakerBadge"; import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel"; import ManageParticipantsPanel from "@/components/ParticipantsPanel"; import TileRoleBadges from "@/components/TileRoleBadges"; import WaitingRoomPanel from "@/components/WaitingRoomPanel"; import BreakoutsPanel from "@/components/BreakoutsPanel";
 import PlanGateOverlay from "@/components/PlanGateOverlay";
 import {
@@ -815,6 +816,7 @@ function RoomContainer({
           <ParticipantCountBadge />
           <RecordingControls roomName={roomName} roomRole={roomRole} />
           <GoLiveButton roomName={roomName} eventSlug={eventSlug} roomRole={roomRole} />
+          <EndMeetingButton slug={eventSlug} roomRole={roomRole} />
         </div>
         <RaiseHandButton isHost={roomRole === "host" || roomRole === "cohost"} />
         <SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
