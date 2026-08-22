@@ -13,13 +13,17 @@ import { useParticipants, useLocalParticipant } from '@livekit/components-react'
  *
  * Calls /api/livekit/moderate which already exists.
  */
-function RoleBadge({ role }: { role: 'host' | 'cohost' | null }) {
+type PanelRole = 'owner' | 'host' | 'moderator';
+
+const PANEL_BADGE_STYLE: Record<PanelRole, { bg: string; border: string; fg: string; label: string }> = {
+  owner: { bg: 'rgba(168,85,247,0.18)', border: 'rgba(168,85,247,0.55)', fg: '#e8d7ff', label: 'Owner' },
+  host: { bg: 'rgba(80,140,220,0.18)', border: 'rgba(80,140,220,0.55)', fg: '#cfe1ff', label: 'Host' },
+  moderator: { bg: 'rgba(120,200,140,0.18)', border: 'rgba(120,200,140,0.55)', fg: '#cdeacd', label: 'Moderator' },
+};
+
+function RoleBadge({ role }: { role: PanelRole | null }) {
   if (!role) return null;
-  const isHost = role === 'host';
-  const label = isHost ? 'host' : 'co-host';
-  const bg = isHost ? 'rgba(80,140,220,0.18)' : 'rgba(120,200,140,0.18)';
-  const border = isHost ? 'rgba(80,140,220,0.55)' : 'rgba(120,200,140,0.55)';
-  const fg = isHost ? '#cfe1ff' : '#cdeacd';
+  const style = PANEL_BADGE_STYLE[role];
   return (
     <span
       data-role-badge={role}
@@ -31,13 +35,13 @@ function RoleBadge({ role }: { role: 'host' | 'cohost' | null }) {
         fontWeight: 600,
         lineHeight: '14px',
         borderRadius: 999,
-        background: bg,
-        border: '1px solid ' + border,
-        color: fg,
+        background: style.bg,
+        border: '1px solid ' + style.border,
+        color: style.fg,
         verticalAlign: 'middle',
       }}
     >
-      {label}
+      {style.label}
     </span>
   );
 }
@@ -229,14 +233,17 @@ export default function ParticipantsPanel({
 
   const localIdentity = localParticipant?.identity || '';
 
-  function roleOf(p: { identity?: string; metadata?: string } | null | undefined): 'host' | 'cohost' | null {
+  function roleOf(p: { identity?: string; metadata?: string } | null | undefined): PanelRole | null {
     if (!p) return null;
-    if (ownerUserId && p.identity === ownerUserId) return 'host';
+    // FRS §1 four-role display: recover the Owner distinction that
+    // toLegacyRole collapses into "host" on the wire.
+    if (ownerUserId && p.identity && (p.identity === ownerUserId || p.identity.startsWith(ownerUserId + '#'))) return 'owner';
     const md = p.metadata;
     if (!md) return null;
     try {
       const j = JSON.parse(md);
-      if (j && (j.role === 'host' || j.role === 'cohost')) return j.role;
+      if (j && j.role === 'host') return 'host';
+      if (j && j.role === 'cohost') return 'moderator';
     } catch {}
     return null;
   }
@@ -420,7 +427,7 @@ export default function ParticipantsPanel({
                   onClick={() => assignRole('moderator', id)}
                   style={{ flex: '1 1 auto', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(120,200,140,0.45)', background: 'rgba(120,200,140,0.12)', color: '#cdeacd', cursor: 'pointer' }}
                 >
-                  {busy('role:moderator') ? '...' : 'Make co-host'}
+                  {busy('role:moderator') ? '...' : 'Make Moderator'}
                 </button>
                 <button
                   type="button"
