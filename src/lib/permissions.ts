@@ -130,6 +130,7 @@ export const PERMISSIONS = {
   "waitingRoom:admit": RANK.moderator,
   "breakout:manage": RANK.moderator,
   "poll:manage": RANK.moderator,
+  "timer:manage": RANK.moderator,
 
   /* --- commerce --- */
   "ticket:manage": RANK.owner,
