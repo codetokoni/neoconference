@@ -2,7 +2,7 @@
 //
 // StreamLab Cloud REST client.
 // Base: https://streamlab.cloud/api/v1
-// Auth: Authorization: Bearer <STREAMLAB_API_KEY>
+// Auth: X-API-Key: <STREAMLAB_API_KEY>  (Bearer is stripped by cPanel's Apache)
 // Limit: 300 req/min
 
 const BASE = (process.env.STREAMLAB_BASE_URL || 'https://streamlab.cloud/api/v1').replace(/\/+$/, '');
@@ -44,7 +44,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + KEY,
+      'X-API-Key': KEY, 'Authorization': 'Bearer ' + KEY, 'User-Agent': 'NeoConference/1.0 (+https://neoconference.app)',
       ...(init.headers || {}),
     },
     cache: 'no-store',
