@@ -65,19 +65,31 @@ export async function GET(req: Request) {
     return NextResponse.json({ role: "host", preApproved: true, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
   }
 
-  // Match role assignment: by Clerk user id, primary email, or any verified email.
-  const emails = userEmails;
-  const roles = ev.roles || [];
-  const match = roles.find((r) => {
-    const id = r.identifier.toLowerCase();
-    return id === userId.toLowerCase() || emails.includes(id);
-  });
-  if (!match) {
+  // Prefer the Redis membership hash. Assignments made through the RBAC
+  // route (POST /api/events/[id]/roles) land there, and the token route
+  // already consults it — but this endpoint used to only read the legacy
+  // NeoEvent.roles[] array, so a Moderator promoted via the RBAC route
+  // reported here as "viewer" and lost every host/cohost capability the
+  // room page derives from this response (including the mute action row
+  // and the Mute All button).
+  //
+  // getMeetingRole / getMeetingRoleByEmail fall back to the legacy array
+  // internally, so this replaces the previous per-role loop rather than
+  // running alongside it.
+  const { getMeetingRole, getMeetingRoleByEmail } = await import("@/lib/meeting-roles");
+  const { RANK, toLegacyRole } = await import("@/lib/permissions");
+  const lookups = await Promise.all([
+    getMeetingRole(ev.id, userId),
+    ...userEmails.map((e) => getMeetingRoleByEmail(ev.id, e)),
+  ]);
+  const hashRoles = lookups.filter((r): r is NonNullable<typeof r> => r !== null);
+  if (hashRoles.length === 0) {
     return NextResponse.json({ role: "viewer", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
   }
+  const best = hashRoles.reduce((a, b) => (RANK[b] > RANK[a] ? b : a));
   return NextResponse.json({
-    role: match.role,
-    preApproved: Boolean(match.preApproved),
+    role: toLegacyRole(best),
+    preApproved: true,
     isOwner: false,
     ownerUserId: ev.ownerUserId || null,
     isLocked: Boolean(ev.isLocked),
