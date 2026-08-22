@@ -25,7 +25,7 @@ export default function TranscriptsPanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  async function download(format: "txt" | "rtf" | "docx", key?: string) {
+  async function download(format: "txt" | "rtf" | "docx" | "pdf", key?: string) {
     const label = key ? `${key}:${format}` : `latest:${format}`;
     setBusy(label);
     setErr(null);
@@ -92,7 +92,7 @@ export default function TranscriptsPanel({
                 </p>
               )}
               <div className="flex gap-2 pt-1">
-                {(["txt", "rtf", "docx"] as const).map((fmt) => (
+                {(["txt", "rtf", "docx", "pdf"] as const).map((fmt) => (
                   <button
                     key={fmt}
                     onClick={() => download(fmt, t.key)}

@@ -22,6 +22,22 @@ import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { r2Client, isR2Configured, signGetUrl } from '@/lib/r2';
 import { transcribeStore } from '@/lib/transcribeStore';
 
+/**
+ * One diarized utterance from the provider — a stretch of speech attributed
+ * to a single speaker, with millisecond offsets from the start of the
+ * recording. FRS §8.5 wants speaker names, timestamps, and paragraph
+ * separation by speaker; segments are the shape that gets us all three
+ * on a single pass. `speaker` is a raw label (0, 1, 2… from Deepgram; "A",
+ * "B"… from AssemblyAI) — the export step turns those into "Speaker 1",
+ * "Speaker 2" for display so downstream consumers stay provider-agnostic.
+ */
+export interface TranscriptSegment {
+  startMs: number;
+  endMs: number;
+  text: string;
+  speaker?: string | number;
+}
+
 export type TranscribeJob = {
   /** Unique job id (used for polling / cancellation). */
   id: string;
@@ -37,6 +53,9 @@ export type TranscribeJob = {
   status: 'queued' | 'running' | 'done' | 'error';
   /** Final transcript text (only set when status === 'done'). */
   text?: string;
+  /** Diarized utterances with millisecond offsets and speaker labels. Empty
+   *  or absent when the provider didn't return them or diarization was off. */
+  segments?: TranscriptSegment[];
   /** Optional provider-generated summary (Deepgram summarize=v2; others may add). */
   summary?: string;
   /** Provider-specific error message. */
@@ -163,7 +182,29 @@ async function runAssemblyAI(job: TranscribeJob): Promise<TranscribeJob> {
       const pollRes = await fetch('https://api.assemblyai.com/v2/transcript/' + externalId, { headers: { Authorization: apiKey } });
       if (!pollRes.ok) continue;
       const j = (await pollRes.json()) as { status?: string; text?: string; error?: string };
-      if (j.status === 'completed') return { ...job, status: 'done', text: j.text || '', externalId, updatedAt: new Date().toISOString() };
+      if (j.status === 'completed') {
+        // AssemblyAI's utterances carry ms offsets (not seconds) and a
+        // string speaker label ("A", "B", ...). Shape is otherwise
+        // equivalent to Deepgram's.
+        type AAUtt = { start?: number; end?: number; speaker?: string; text?: string };
+        const utterances = ((j as { utterances?: AAUtt[] }).utterances || []) as AAUtt[];
+        const segments: TranscriptSegment[] = utterances
+          .filter((u) => typeof u.text === 'string' && u.text.trim().length > 0)
+          .map((u) => ({
+            startMs: typeof u.start === 'number' ? u.start : 0,
+            endMs: typeof u.end === 'number' ? u.end : 0,
+            text: (u.text || '').trim(),
+            speaker: typeof u.speaker === 'string' ? u.speaker : undefined,
+          }));
+        return {
+          ...job,
+          status: 'done',
+          text: j.text || '',
+          segments: segments.length > 0 ? segments : undefined,
+          externalId,
+          updatedAt: new Date().toISOString(),
+        };
+      }
       if (j.status === 'error') return { ...job, status: 'error', externalId, error: 'AssemblyAI: ' + (j.error || 'unknown'), updatedAt: new Date().toISOString() };
     }
     return { ...job, status: 'running', externalId, error: undefined, updatedAt: new Date().toISOString() };
@@ -222,7 +263,8 @@ async function runDeepgram(job: TranscribeJob): Promise<TranscribeJob> {
     type DGAlt = { transcript?: string };
     type DGChannel = { alternatives?: DGAlt[] };
     type DGSummary = { short?: string; result?: string };
-    type DGResults = { channels?: DGChannel[]; summary?: DGSummary };
+    type DGUtterance = { start?: number; end?: number; speaker?: number | string; transcript?: string };
+    type DGResults = { channels?: DGChannel[]; summary?: DGSummary; utterances?: DGUtterance[] };
     type DGResponse = { results?: DGResults; metadata?: { request_id?: string } };
 
     const j = (await res.json()) as DGResponse;
@@ -230,11 +272,30 @@ async function runDeepgram(job: TranscribeJob): Promise<TranscribeJob> {
     const summary = j.results?.summary?.short || j.results?.summary?.result;
     const externalId = j.metadata?.request_id;
 
+    // Deepgram returns start/end in seconds. Preserve to millisecond precision.
+    const utterances = j.results?.utterances || [];
+    const segments: TranscriptSegment[] = utterances
+      .filter((u) => typeof u.transcript === 'string' && u.transcript.trim().length > 0)
+      .map((u) => ({
+        startMs: Math.round((typeof u.start === 'number' ? u.start : 0) * 1000),
+        endMs: Math.round((typeof u.end === 'number' ? u.end : 0) * 1000),
+        text: (u.transcript || '').trim(),
+        speaker: typeof u.speaker === 'number' || typeof u.speaker === 'string' ? u.speaker : undefined,
+      }));
+
     if (!transcript) {
       return { ...job, status: 'error', externalId, error: 'Deepgram returned empty transcript (silent audio?)', updatedAt: new Date().toISOString() };
     }
 
-    return { ...job, status: 'done', text: transcript, summary: summary || undefined, externalId, updatedAt: new Date().toISOString() };
+    return {
+      ...job,
+      status: 'done',
+      text: transcript,
+      segments: segments.length > 0 ? segments : undefined,
+      summary: summary || undefined,
+      externalId,
+      updatedAt: new Date().toISOString(),
+    };
   } catch (e: unknown) {
     return { ...job, status: 'error', error: e instanceof Error ? e.message : 'Unknown Deepgram error', updatedAt: new Date().toISOString() };
   }

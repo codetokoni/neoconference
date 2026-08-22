@@ -14,6 +14,7 @@ const TABS: Tab[] = [
   { label: "Users", href: "/admin" },
   { label: "Events", href: "/admin/events" },
   { label: "Metrics", href: "/admin/metrics" },
+  { label: "Audit log", href: "/admin/audit-log" },
 ];
 
 export default function AdminTabs() {
