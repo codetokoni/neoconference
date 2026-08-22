@@ -52,6 +52,11 @@ export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) 
   }, []);
   const [lines, setLines] = useState<CaptionLine[]>([]);
   const [hasEverReceived, setHasEverReceived] = useState(false);
+  // FRS §8.2 per-participant preference: even when the host has captions
+  // available and the worker is emitting segments, a participant can hide
+  // the display on their own screen. Session-only for now — a refresh
+  // restores; explicit re-show would need a floating "show captions" pill.
+  const [locallyHidden, setLocallyHidden] = useState(false);
   const cleanupTimer = useRef
 <ReturnType<typeof setInterval> | null>(null);
 
@@ -113,6 +118,7 @@ export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) 
 
   if (!enabled) return null;
   if (!hasEverReceived || lines.length === 0) return null;
+  if (locallyHidden) return null;
 
   return (
     <div
@@ -121,10 +127,19 @@ export default function LiveCaptions({ enabled = true }: { enabled?: boolean }) 
       className="pointer-events-none fixed inset-x-0 bottom-40 sm:bottom-44 z-50 flex justify-center px-4"
     >
       <div className="max-w-3xl w-full rounded-2xl border border-white/10 bg-black/55 backdrop-blur-xl shadow-[0_0_60px_-20px_rgba(34,211,238,0.4)] px-4 sm:px-5 py-3">
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-cyan-200/80">
+        <div className="pointer-events-auto flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-cyan-200/80">
           <span className="inline-flex h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_8px_2px_rgba(34,211,238,0.7)] animate-pulse" />
           Live captions
           <span className="text-white/30">\u2026</span>
+          <button
+            type="button"
+            onClick={() => setLocallyHidden(true)}
+            aria-label="Hide captions on this screen"
+            title="Hide captions on this screen"
+            className="ml-auto text-white/50 hover:text-white/90 text-base leading-none px-1"
+          >
+            \u00d7
+          </button>
         </div>
         <ul className="mt-2 space-y-1 text-sm sm:text-base text-white/90 leading-snug">
           {lines.map((l) => (

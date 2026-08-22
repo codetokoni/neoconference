@@ -39,7 +39,7 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canControl = roomRole === 'host' || roomRole === 'cohost';
+  const canControl = roomRole === 'host';
 
   // Listen for room-wide captions state changes.
   useEffect(() => {

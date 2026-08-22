@@ -5,12 +5,14 @@
 //   neo:slug:<slug>         -> id   (slug -> id index)
 //   neo:owner:<userId>      -> Set of event ids
 //   neo:events:all          -> Set of all event ids (for admin/list)
+//   neo:meeting:<id>:roles  -> role assignments (owned by src/lib/meeting-roles.ts)
 //
 // When KV env vars are missing (preview/local), falls back to an in-process
 // Map so the app still runs and the developer sees clear console warnings.
 
 import { kv } from '@vercel/kv';
 import type { NeoEvent } from '@/types/event';
+import { deleteAllMeetingRoles } from '@/lib/meeting-roles';
 
 const PREFIX = 'neo:event:';
 const SLUG = 'neo:slug:';
@@ -199,12 +201,16 @@ export const eventStore = {
       memEvents.delete(id);
       for (const s of allSlugs) memSlug.delete(s);
       memOwner.get(prev.ownerUserId)?.delete(id);
+      await deleteAllMeetingRoles(id);
       return true;
     }
     await kv.del(PREFIX + id);
     for (const s of allSlugs) await kv.del(SLUG + s);
     await kv.srem(OWNER + prev.ownerUserId, id);
     await kv.srem(ALL, id);
+    // Role assignments live outside the event JSON; without this the hash
+    // outlives the event and leaks forever.
+    await deleteAllMeetingRoles(id);
     return true;
   },
 };

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { eventStore } from "@/lib/eventStore";
+import { authorize } from "@/lib/authz";
 import {
   EgressClient,
   EncodedFileType,
@@ -37,6 +39,18 @@ export async function POST(req: Request) {
     if (!room) {
       return NextResponse.json({ error: "Missing room" }, { status: 400 });
     }
+
+    // ---- Authz (F-2) ----
+    // The LiveKit room name is the event slug. The room page always resolves
+    // /api/events/role on mount, which adopts orphan rooms, so a room anybody
+    // is actually sitting in always has an event record by the time this runs.
+    // No record means the caller invented a room name: refuse rather than adopt.
+    const ev = await eventStore.bySlug(room);
+    if (!ev) {
+      return NextResponse.json({ error: "event_not_found" }, { status: 404 });
+    }
+    const gate = await authorize(ev, "recording:start");
+    if (!gate.ok) return gate.response;
 
     const apiKey = requiredEnv("LIVEKIT_API_KEY");
     const apiSecret = requiredEnv("LIVEKIT_API_SECRET");

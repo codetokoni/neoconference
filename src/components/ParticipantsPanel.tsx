@@ -46,12 +46,17 @@ export default function ParticipantsPanel({
   open,
   onClose,
   isHost,
+  roomRole,
   ownerUserId,
   slug,
 }: {
   open: boolean;
   onClose: () => void;
   isHost: boolean;
+  /** Wire-format role — 'host' covers owner+host after toLegacyRole. Used to
+   *  gate the FRS §5.1 Mute All button, which is Owner+Host only (moderator
+   *  cannot see it, even though they can mute individuals). */
+  roomRole?: string;
   ownerUserId?: string | null;
   slug: string;
 }) {
@@ -59,8 +64,10 @@ export default function ParticipantsPanel({
   const { localParticipant } = useLocalParticipant();
   const [pending, setPending] = useState<string | null>(null);
   const [confirmKick, setConfirmKick] = useState<string | null>(null);
+  const [muteAllConfirm, setMuteAllConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
+  const canMuteAll = roomRole === 'host';
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -71,11 +78,17 @@ export default function ParticipantsPanel({
     return () => mq.removeEventListener("change", apply);
   }, []);
 
-  useEffect(() => { if (!open) { setError(null); setConfirmKick(null); } }, [open]);
+  useEffect(() => {
+    if (!open) {
+      setError(null);
+      setConfirmKick(null);
+      setMuteAllConfirm(false);
+    }
+  }, [open]);
 
   const call = useCallback(
     async (
-      action: 'muteAudio' | 'muteVideo' | 'kick' | 'requestUnmuteAudio' | 'requestCameraOn' | 'makeCohost' | 'demoteToAttendee',
+      action: 'muteAudio' | 'muteVideo' | 'kick' | 'requestUnmuteAudio' | 'requestCameraOn',
       identity: string,
     ) => {
       setError(null);
@@ -85,6 +98,57 @@ export default function ParticipantsPanel({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slug, action, participantIdentity: identity }),
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          setError(j.error || 'request_failed');
+          return;
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setPending(null);
+      }
+    },
+    [slug],
+  );
+
+  // Panel-wide action: Mute All (FRS §5.1). Confirmation lives in the panel
+  // body; server keeps host/cohost/self unmuted.
+  const muteAll = useCallback(async () => {
+    setError(null);
+    setPending('muteAll');
+    try {
+      const r = await fetch('/api/livekit/muteAll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomName: slug }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        setError(j.error || 'request_failed');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPending(null);
+    }
+  }, [slug]);
+
+  // Role assign/demote goes through the RBAC-aware /roles route rather than
+  // /api/livekit/moderate so the write lands in the Redis membership hash and
+  // the server enforces the rank ladder. The LiveKit metadata push happens
+  // inside the route so the badge still flips live.
+  const assignRole = useCallback(
+    async (role: 'moderator' | 'participant', identity: string) => {
+      setError(null);
+      setPending(identity + ':role:' + role);
+      try {
+        const targetUserId = identity.split('#')[0];
+        const r = await fetch(`/api/events/${encodeURIComponent(slug)}/roles`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: targetUserId, role }),
         });
         if (!r.ok) {
           const j = await r.json().catch(() => ({}));
@@ -184,6 +248,45 @@ export default function ParticipantsPanel({
         </div>
       )}
 
+      {canMuteAll && (
+        <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          {muteAllConfirm ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 12, color: '#ddd', lineHeight: 1.4 }}>
+                Mute all Participants? Owners, Hosts and Moderators will remain unmuted.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  disabled={!!pending}
+                  onClick={async () => { await muteAll(); setMuteAllConfirm(false); }}
+                  style={{ flex: '1 1 auto', padding: '8px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, border: '1px solid rgba(255,180,60,0.55)', background: 'rgba(255,180,60,0.18)', color: '#ffe6b8', cursor: 'pointer', opacity: pending === 'muteAll' ? 0.5 : 1 }}
+                >
+                  {pending === 'muteAll' ? 'Muting…' : 'Mute all'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMuteAllConfirm(false)}
+                  style={{ padding: '8px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(255,255,255,0.18)', background: 'transparent', color: 'white', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={!!pending}
+              onClick={() => setMuteAllConfirm(true)}
+              style={{ width: '100%', padding: '8px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, border: '1px solid rgba(255,180,60,0.45)', background: 'rgba(255,180,60,0.10)', color: '#ffe6b8', cursor: 'pointer' }}
+              title="Mute every ordinary participant. Owners, Hosts and Moderators stay unmuted."
+            >
+              Mute All
+            </button>
+          )}
+        </div>
+      )}
+
       <div style={{ flex: 1, overflowY: 'auto', padding: '6px 0' }}>
         <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -261,18 +364,18 @@ export default function ParticipantsPanel({
                 <button
                   type="button"
                   disabled={!!pending}
-                  onClick={() => call('makeCohost', id)}
+                  onClick={() => assignRole('moderator', id)}
                   style={{ flex: '1 1 auto', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(120,200,140,0.45)', background: 'rgba(120,200,140,0.12)', color: '#cdeacd', cursor: 'pointer' }}
                 >
-                  {busy('makeCohost') ? '...' : 'Make co-host'}
+                  {busy('role:moderator') ? '...' : 'Make co-host'}
                 </button>
                 <button
                   type="button"
                   disabled={!!pending}
-                  onClick={() => call('demoteToAttendee', id)}
+                  onClick={() => assignRole('participant', id)}
                   style={{ flex: '1 1 auto', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(255,200,90,0.45)', background: 'rgba(255,200,90,0.12)', color: '#ffe6b8', cursor: 'pointer' }}
                 >
-                  {busy('demoteToAttendee') ? '...' : 'Demote'}
+                  {busy('role:participant') ? '...' : 'Demote'}
                 </button>
                 </div>
               )}

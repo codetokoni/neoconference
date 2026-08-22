@@ -8,6 +8,10 @@ type SP = {
   signed_out?: string;
   /** Set by middleware when a persistent session was revoked or expired. */
   session_ended?: string;
+  /** Meeting URL the caller was headed for before hitting sign-in — must
+   *  survive across the KingsChat round trip too, or the user lands on
+   *  the home page after auth instead of the room they clicked. */
+  redirect_url?: string;
 };
 
 /**
@@ -28,6 +32,11 @@ export default function Page({ searchParams }: { searchParams: SP }) {
   const kcError = searchParams?.kc_error;
   const kcDebug = searchParams?.kc_debug;
   const notice = sessionNotice(searchParams);
+  const redirectUrl = searchParams?.redirect_url;
+  const kcHref =
+    redirectUrl && redirectUrl !== '/'
+      ? `/api/auth/kingschat/start?redirect_url=${encodeURIComponent(redirectUrl)}`
+      : '/api/auth/kingschat/start';
 
   return (
     <div className='flex flex-col items-center py-16 gap-4'>
@@ -56,7 +65,7 @@ export default function Page({ searchParams }: { searchParams: SP }) {
       <div className='text-sm text-gray-500'>or</div>
 
       <Link
-        href='/api/auth/kingschat/start'
+        href={kcHref}
         className='inline-flex items-center justify-center w-72 px-4 py-2 rounded bg-[#1f8feb] hover:bg-[#1976c4] text-white font-medium transition-colors'
       >
         Continue with KingsChat

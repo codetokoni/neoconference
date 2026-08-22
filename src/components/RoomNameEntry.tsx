@@ -56,8 +56,11 @@ export function RoomNameEntry({
   eventSlug?: string;
 }) {
   const [name, setName] = useState(() => getSavedDisplayName() || defaultName);
-  const [video, setVideo] = useState(true);
-  const [audio, setAudio] = useState(true);
+  // FRS §3.1/§3.2: camera and microphone are OFF by default on join. The
+  // preview stays empty until the user opts in, which also matches how OS
+  // permission prompts work — no capture until the user asks for it.
+  const [video, setVideo] = useState(false);
+  const [audio, setAudio] = useState(false);
   const [joining, setJoining] = useState(false);
   const [permError, setPermError] = useState<string | null>(null);
   const [micLevel, setMicLevel] = useState(0); // 0..1

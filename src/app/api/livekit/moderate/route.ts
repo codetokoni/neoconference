@@ -1,12 +1,18 @@
 // /src/app/api/livekit/moderate/route.ts
-// Host-only moderation: mute audio, mute video, or remove a remote participant.
+// Host-only moderation: mute audio, mute video, remove a remote participant,
+// or send an "ask to unmute" data message.
 //
 // Auth model: caller must be the event owner (role "host") OR have role "cohost"
 // in event.roles. This mirrors the client-side check used by /api/events/role.
 //
+// Role administration (makeCohost / demoteToAttendee) lives on the RBAC-aware
+// /api/events/[id]/roles route instead, so writes land in the Redis membership
+// hash and the rank ladder is enforced.
+//
 // POST body: {
 //   slug: string;                                     // event slug == room name
-//   action: "muteAudio" | "muteVideo" | "kick";
+//   action: "muteAudio" | "muteVideo" | "kick"
+//         | "requestUnmuteAudio" | "requestCameraOn";
 //   participantIdentity: string;
 // }
 import { NextResponse } from "next/server";
@@ -18,7 +24,7 @@ import { assertOwnerOrAdmin } from "@/lib/roles";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Action = "muteAudio" | "muteVideo" | "kick" | "requestUnmuteAudio" | "requestCameraOn" | "makeCohost" | "demoteToAttendee";
+type Action = "muteAudio" | "muteVideo" | "kick" | "requestUnmuteAudio" | "requestCameraOn";
 
 export async function POST(req: Request) {
   let body: { slug?: string; action?: string; participantIdentity?: string };
@@ -35,7 +41,7 @@ export async function POST(req: Request) {
   if (!slug || !action || !identity) {
     return NextResponse.json({ error: "missing_fields" }, { status: 400 });
   }
-  if (action !== "muteAudio" && action !== "muteVideo" && action !== "kick" && action !== "requestUnmuteAudio" && action !== "requestCameraOn" && action !== "makeCohost" && action !== "demoteToAttendee") {
+  if (action !== "muteAudio" && action !== "muteVideo" && action !== "kick" && action !== "requestUnmuteAudio" && action !== "requestCameraOn") {
     return NextResponse.json({ error: "invalid_action" }, { status: 400 });
   }
 
@@ -73,13 +79,12 @@ export async function POST(req: Request) {
   const svc = new RoomServiceClient(apiUrl, apiKey, apiSecret);
 
   try {
-        if (action === "kick" || action === "demoteToAttendee") {
-      // For both: also strip any persisted role entry so the target cannot rejoin elevated.
-      // For "kick" we additionally remove them from the live LiveKit room.
+    if (action === "kick") {
       // Guard: cannot target the event owner.
       if (ev.ownerUserId && ev.ownerUserId.toLowerCase() === identity.toLowerCase()) {
         return NextResponse.json({ error: "cannot_target_owner" }, { status: 400 });
       }
+      // Strip any persisted role entry so the target cannot rejoin elevated.
       try {
         const idLc = identity.toLowerCase();
         const prevRoles = (ev.roles || []) as Array<{ role: string; identifier: string; preApproved?: boolean }>;
@@ -90,53 +95,8 @@ export async function POST(req: Request) {
       } catch {
         // Non-fatal: persistence failure should not prevent the live action.
       }
-      if (action === "kick") {
-        await svc.removeParticipant(slug, identity);
-        return NextResponse.json({ ok: true, action: "kick" });
-      }
-      // demoteToAttendee: push fresh metadata so the room UI flips live.
-      try {
-        const list = await svc.listParticipants(slug);
-        const target = list.find((p) => (p.identity || "").toLowerCase() === identity.toLowerCase() || ((p.identity || "").split("#")[0].toLowerCase() === identity.toLowerCase()));
-        if (target) {
-          let md: Record<string, unknown> = {};
-          try { md = target.metadata ? JSON.parse(target.metadata) : {}; } catch { md = {}; }
-          md.role = "attendee";
-          await svc.updateParticipant(slug, target.identity, JSON.stringify(md));
-        }
-      } catch {
-        // Non-fatal: if not currently in the live room, persisted change still takes effect on rejoin.
-      }
-      return NextResponse.json({ ok: true, action: "demoteToAttendee" });
-    }
-
-    if (action === "makeCohost") {
-      // Guard: cannot target the event owner (already the host).
-      if (ev.ownerUserId && ev.ownerUserId.toLowerCase() === identity.toLowerCase()) {
-        return NextResponse.json({ error: "cannot_target_owner" }, { status: 400 });
-      }
-      try {
-        const idLc = identity.toLowerCase();
-        const prevRoles = (ev.roles || []) as Array<{ role: string; identifier: string; preApproved?: boolean }>;
-        const filtered = prevRoles.filter((r) => (r.identifier || "").toLowerCase() !== idLc);
-        filtered.push({ role: "cohost", identifier: identity, preApproved: true });
-        await eventStore.update(ev.id, { roles: filtered });
-      } catch {
-        // Non-fatal for the live update below.
-      }
-      try {
-        const list = await svc.listParticipants(slug);
-        const target = list.find((p) => (p.identity || "").toLowerCase() === identity.toLowerCase() || ((p.identity || "").split("#")[0].toLowerCase() === identity.toLowerCase()));
-        if (target) {
-          let md: Record<string, unknown> = {};
-          try { md = target.metadata ? JSON.parse(target.metadata) : {}; } catch { md = {}; }
-          md.role = "cohost";
-          await svc.updateParticipant(slug, target.identity, JSON.stringify(md));
-        }
-      } catch {
-        // Non-fatal: persistence already wrote the role for next rejoin.
-      }
-      return NextResponse.json({ ok: true, action: "makeCohost" });
+      await svc.removeParticipant(slug, identity);
+      return NextResponse.json({ ok: true, action: "kick" });
     }
 
     // Request unmute mic / turn on camera: send a data message to the participant

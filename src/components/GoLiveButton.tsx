@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Radio, X } from 'lucide-react';
+import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
+import { RoomEvent, type Participant } from 'livekit-client';
 
 type Stream = {
   id: string;
@@ -27,15 +29,79 @@ type Resp = { ok: boolean; stream?: Stream; error?: string };
 export default function GoLiveButton({
   roomName,
   eventSlug,
+  roomRole,
 }: {
   roomName: string;
   eventSlug?: string;
+  roomRole?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [stream, setStream] = useState<Stream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+
+  // Receive-side: another host started/stopped a broadcast for this room.
+  const [remoteBroadcast, setRemoteBroadcast] = useState<{ by: string } | null>(null);
+  const [showStartFlash, setShowStartFlash] = useState(false);
+  const wasBroadcastingRef = useRef(false);
+
+  const room = useRoomContext();
+  const { localParticipant } = useLocalParticipant();
+
+  const isHost = roomRole === 'host';
+  const isBroadcasting = !!stream || !!remoteBroadcast;
+
+  // Subscribe to golive state messages from other participants.
+  useEffect(() => {
+    if (!room) return;
+    const onData = (payload: Uint8Array, participant?: Participant) => {
+      try {
+        const msg = JSON.parse(new TextDecoder().decode(payload));
+        if (msg?.type === 'golive') {
+          if (msg.active) {
+            setRemoteBroadcast({
+              by: msg.by || participant?.name || participant?.identity || 'Someone',
+            });
+          } else {
+            setRemoteBroadcast(null);
+          }
+        }
+      } catch {
+        // ignore non-JSON
+      }
+    };
+    room.on(RoomEvent.DataReceived, onData);
+    return () => {
+      room.off(RoomEvent.DataReceived, onData);
+    };
+  }, [room]);
+
+  // Brief "Live started" flash for non-hosts on the false→true edge.
+  useEffect(() => {
+    const was = wasBroadcastingRef.current;
+    wasBroadcastingRef.current = isBroadcasting;
+    if (!isHost && isBroadcasting && !was) {
+      setShowStartFlash(true);
+      const t = setTimeout(() => setShowStartFlash(false), 2500);
+      return () => clearTimeout(t);
+    }
+  }, [isBroadcasting, isHost]);
+
+  const broadcastState = useCallback(
+    async (active: boolean) => {
+      try {
+        const me = localParticipant?.name || localParticipant?.identity || 'Someone';
+        const payload = new TextEncoder().encode(
+          JSON.stringify({ type: 'golive', active, by: me })
+        );
+        await localParticipant.publishData(payload, { reliable: true });
+      } catch (e) {
+        console.error('publishData golive failed', e);
+      }
+    },
+    [localParticipant]
+  );
 
   // Close panel on Escape key
   useEffect(() => {
@@ -70,6 +136,7 @@ export default function GoLiveButton({
         setError(j.error || 'Could not start broadcast.');
       } else {
         setStream(j.stream);
+        broadcastState(true);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Network error');
@@ -87,23 +154,114 @@ export default function GoLiveButton({
 
   return (
     <>
-      <button
-        type="button"
-        data-room-chrome="true"
-        onClick={() => setOpen((v) => !v)}
-        className={
-          'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition active:scale-[0.98] ' +
-          (stream
-            ? 'border-red-500 bg-red-600 text-white hover:bg-red-500'
-            : 'border-red-500 bg-transparent text-red-400 hover:bg-red-500/10')
-        }
-        title="Provision RTMP livestream for this room"
-      >
-        <Radio size={16} aria-hidden className={stream ? 'animate-pulse' : ''} />
-        {stream ? 'LIVE' : 'Go Live'}
-      </button>
+      {/* Host: persistent LIVE pill (offset below REC so both can co-exist). */}
+      {isHost && isBroadcasting && (
+        <div
+          data-room-chrome="true"
+          style={{
+            position: 'absolute',
+            top: 40,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 11,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '4px 10px',
+            borderRadius: 999,
+            background: 'rgba(244, 63, 94, 0.95)',
+            color: '#fff',
+            fontSize: 12,
+            fontWeight: 700,
+            letterSpacing: 0.5,
+            boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+          }}
+        >
+          <Radio size={12} aria-hidden />
+          LIVE
+          {remoteBroadcast?.by && !stream ? (
+            <span style={{ fontWeight: 400, opacity: 0.9 }}>· {remoteBroadcast.by}</span>
+          ) : null}
+        </div>
+      )}
 
-      {open && typeof document !== 'undefined' && createPortal(
+      {/* Non-host: brief "Live started" flash on the false→true edge. */}
+      {!isHost && isBroadcasting && (
+        <div
+          data-room-chrome="true"
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'absolute',
+            top: 80,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 11,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '6px 14px',
+            borderRadius: 999,
+            background: 'rgba(17,17,24,0.85)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            border: '1px solid rgba(244,63,94,0.4)',
+            color: 'rgb(253,164,175)',
+            fontSize: 12,
+            fontWeight: 600,
+            letterSpacing: 0.3,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+            pointerEvents: 'none',
+            opacity: showStartFlash ? 1 : 0,
+            transition: showStartFlash ? 'opacity 200ms ease-out' : 'opacity 300ms ease-in',
+          }}
+        >
+          <Radio size={12} aria-hidden />
+          Broadcast started
+        </div>
+      )}
+
+      {/* Non-host: persistent discreet rose dot for continuous notice. */}
+      {!isHost && isBroadcasting && (
+        <div
+          data-room-chrome="true"
+          aria-label="Broadcast in progress"
+          title="Broadcast in progress"
+          style={{
+            position: 'absolute',
+            top: 14,
+            left: 14,
+            zIndex: 11,
+            width: 10,
+            height: 10,
+            borderRadius: '50%',
+            background: '#f43f5e',
+            boxShadow: '0 0 6px rgba(244,63,94,0.7)',
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+
+      {/* Sender UI — owner+host only per FRS §2. */}
+      {isHost && (
+        <button
+          type="button"
+          data-room-chrome="true"
+          onClick={() => setOpen((v) => !v)}
+          className={
+            'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition active:scale-[0.98] ' +
+            (stream
+              ? 'border-red-500 bg-red-600 text-white hover:bg-red-500'
+              : 'border-red-500 bg-transparent text-red-400 hover:bg-red-500/10')
+          }
+          title="Provision RTMP livestream for this room"
+        >
+          <Radio size={16} aria-hidden className={stream ? 'animate-pulse' : ''} />
+          {stream ? 'LIVE' : 'Go Live'}
+        </button>
+      )}
+
+      {isHost && open && typeof document !== 'undefined' && createPortal(
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
           onClick={() => setOpen(false)}
@@ -172,10 +330,33 @@ export default function GoLiveButton({
                 </p>
               <button
                 type="button"
-                onClick={() => { setStream(null); setError(null); setOpen(false); }}
-                className="mt-3 w-full rounded-2xl border border-red-500/40 bg-red-500/10 px-5 py-3 text-sm font-semibold text-red-200 hover:bg-red-500/20 transition"
+                disabled={loading}
+                onClick={async () => {
+                  setLoading(true);
+                  setError(null);
+                  try {
+                    const res = await fetch('/api/golive/stop', {
+                      method: 'POST',
+                      headers: { 'content-type': 'application/json' },
+                      body: JSON.stringify({ eventSlug: eventSlug || roomName, roomName }),
+                    });
+                    const j = await res.json().catch(() => ({}));
+                    if (!j.ok) {
+                      setError(j.error || 'Could not end broadcast.');
+                      return;
+                    }
+                    setStream(null);
+                    setOpen(false);
+                    broadcastState(false);
+                  } catch (e: unknown) {
+                    setError(e instanceof Error ? e.message : 'Network error');
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="mt-3 w-full rounded-2xl border border-red-500/40 bg-red-500/10 px-5 py-3 text-sm font-semibold text-red-200 hover:bg-red-500/20 transition disabled:opacity-60"
               >
-                End broadcast
+                {loading ? 'Ending…' : 'End broadcast'}
               </button>
               </div>
             )}

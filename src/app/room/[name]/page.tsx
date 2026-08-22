@@ -41,6 +41,7 @@ import ChatPanel from "@/components/ChatPanel";
 import FloatingVideoButton from "@/components/FloatingVideoButton";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
+import EndMeetingButton from "@/components/EndMeetingButton";
 import SpeakerBadge from "@/components/SpeakerBadge"; import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel"; import ManageParticipantsPanel from "@/components/ParticipantsPanel"; import TileRoleBadges from "@/components/TileRoleBadges"; import WaitingRoomPanel from "@/components/WaitingRoomPanel"; import BreakoutsPanel from "@/components/BreakoutsPanel";
 import PlanGateOverlay from "@/components/PlanGateOverlay";
 import {
@@ -312,8 +313,8 @@ export default function RoomPage({ params }: { params: { name: string } }) {
  * RoleMetadataListener
  *
  * Subscribes to ParticipantMetadataChanged events on the local participant so that
- * server-side role changes (via /api/livekit/moderate makeCohost / demoteToAttendee)
- * are reflected in the room UI without a rejoin. Must be rendered INSIDE <LiveKitRoom>.
+ * server-side role changes (via POST /api/events/[id]/roles) are reflected
+ * in the room UI without a rejoin. Must be rendered INSIDE <LiveKitRoom>.
  */
 function RoleMetadataListener({ onRoleChange }: { onRoleChange: (role: string) => void }) {
   const room = useRoomContext();
@@ -807,19 +808,22 @@ function RoomContainer({
           <div className="self-stretch w-px bg-white/15" aria-hidden />
 
           {/* Cluster 4: Status + primary actions.
-              Record + Go Live are NOT gated to host/cohost — preserves existing
-              behavior where non-hosts can press Record to send a request-to-host
-              approval (see RecordingControls.requestRecord). */}
+              FRS §2 hides recording/go-live *controls* from non-hosts, but
+              non-hosts still need to see the receive-side indicators (flash
+              + dot for recording, flash + dot for go-live). Both components
+              stay mounted for all roles and gate the toolbar buttons
+              internally on roomRole === 'host'. */}
           <ParticipantCountBadge />
           <RecordingControls roomName={roomName} roomRole={roomRole} />
-          <GoLiveButton roomName={roomName} eventSlug={eventSlug} />
+          <GoLiveButton roomName={roomName} eventSlug={eventSlug} roomRole={roomRole} />
+          <EndMeetingButton slug={eventSlug} roomRole={roomRole} />
         </div>
         <RaiseHandButton isHost={roomRole === "host" || roomRole === "cohost"} />
         <SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
         <ChatTranscriptDownloader roomName={roomName} />
         <InitialsOverlay />
         <RoomIdleController /><MobileVideoConference />
-        <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} slug={eventSlug} />
+        <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} roomRole={roomRole} slug={eventSlug} />
         <MediaRequestPrompt />
         <RoomAudioRenderer />
         <LiveCaptions />
@@ -828,7 +832,7 @@ function RoomContainer({
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} isHost={roomRole === 'host' || roomRole === 'cohost'} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
-        <ManageParticipantsPanel open={showParticipants} onClose={() => setShowParticipants(false)} isHost={roomRole === "host" || roomRole === "cohost"} slug={eventSlug} ownerUserId={ownerUserId} />
+        <ManageParticipantsPanel open={showParticipants} onClose={() => setShowParticipants(false)} isHost={roomRole === "host" || roomRole === "cohost"} roomRole={roomRole} slug={eventSlug} ownerUserId={ownerUserId} />
         <WaitingRoomPanel open={showWaitingRoom} onClose={() => setShowWaitingRoom(false)} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          <BreakoutsPanel open={showBreakouts} onClose={() => setShowBreakouts(false)} isHost={roomRole === "host" || roomRole === "cohost"} eventSlug={eventSlug} /><PlanGateOverlay />
         <SpeakerBadge />
         <RenameRedirectListener />
@@ -1399,37 +1403,40 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
         </div>
       )}
       {/* Record button — sits in the room toolbar cluster 4 alongside Go Live.
-          When idle: secondary style with a small red dot. When recording:
-          red filled style with a white stop square. Behavior unchanged. */}
-      <button
-        type="button"
-        data-room-chrome="true"
-        onClick={egressId ? stop : start}
-        disabled={busy || recordPending === "asking"}
-        title={egressId ? "Stop recording" : recordPending === "asking" ? "Waiting for host approval…" : "Start recording"}
-        className={
-          (egressId
-            ? "inline-flex items-center gap-1.5 rounded-lg border border-red-500 bg-red-600/90 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-500 active:scale-[0.98] transition"
-            : "inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-white/10 hover:border-white/25 active:scale-[0.98] transition") +
-          (busy ? " opacity-60 cursor-wait" : "")
-        }
-      >
-        {busy ? (
-          "…"
-        ) : recordPending === "asking" ? (
-          <>⏳ Waiting…</>
-        ) : egressId ? (
-          <>
-            <span className="inline-block h-2 w-2 bg-white" aria-hidden />
-            Stop recording
-          </>
-        ) : (
-          <>
-            <span className="inline-block h-2 w-2 rounded-full bg-red-500" aria-hidden />
-            Record
-          </>
-        )}
-      </button>
+          FRS §2: gated to owner+host only (roomRole === 'host' after the
+          wire-format collapse in toLegacyRole). Moderators (cohost) still
+          see the passive REC banner above but no start/stop control. */}
+      {roomRole === 'host' && (
+        <button
+          type="button"
+          data-room-chrome="true"
+          onClick={egressId ? stop : start}
+          disabled={busy || recordPending === "asking"}
+          title={egressId ? "Stop recording" : recordPending === "asking" ? "Waiting for host approval…" : "Start recording"}
+          className={
+            (egressId
+              ? "inline-flex items-center gap-1.5 rounded-lg border border-red-500 bg-red-600/90 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-500 active:scale-[0.98] transition"
+              : "inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-white/10 hover:border-white/25 active:scale-[0.98] transition") +
+            (busy ? " opacity-60 cursor-wait" : "")
+          }
+        >
+          {busy ? (
+            "…"
+          ) : recordPending === "asking" ? (
+            <>⏳ Waiting…</>
+          ) : egressId ? (
+            <>
+              <span className="inline-block h-2 w-2 bg-white" aria-hidden />
+              Stop recording
+            </>
+          ) : (
+            <>
+              <span className="inline-block h-2 w-2 rounded-full bg-red-500" aria-hidden />
+              Record
+            </>
+          )}
+        </button>
+      )}
 
       {/* Toast (e.g. download URL) */}
       {toast && (
