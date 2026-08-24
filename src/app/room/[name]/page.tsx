@@ -40,6 +40,8 @@ import ReactionsBar from "@/components/ReactionsBar";
 import ChatPanel from "@/components/ChatPanel";
 import MeetingPiP from "@/components/MeetingPiP";
 import BackgroundContinuity from "@/components/BackgroundContinuity";
+import { HiddenVideosProvider } from "@/components/HiddenVideosProvider";
+import HiddenVideoOverlay from "@/components/HiddenVideoOverlay";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
 import EndMeetingButton from "@/components/EndMeetingButton";
@@ -797,6 +799,7 @@ function RoomContainer({
         video={choices.videoDeviceId ? { deviceId: { ideal: choices.videoDeviceId } } : true}
         onDisconnected={onLeave}
       >
+        <HiddenVideosProvider slug={eventSlug}>
         <RoleMetadataListener onRoleChange={setRoomRole} />
         <TileRoleBadges ownerUserId={ownerUserId} />
         <ApplyPrejoinChoices choices={choices} />
@@ -961,6 +964,7 @@ function RoomContainer({
         <MediaRequestPrompt />
         <RoomAudioRenderer />
         <BackgroundContinuity eventName={roomName} eventSlug={eventSlug} />
+        <HiddenVideoOverlay />
         <LiveCaptions />
         <TranscriptNoticeBanner />
         <MeetingTimer slug={eventSlug} roomRole={roomRole} />
@@ -980,6 +984,7 @@ function RoomContainer({
           onClose={() => setShowBackgroundPicker(false)}
           roomSlug={roomName}
         />
+        </HiddenVideosProvider>
       </LiveKitRoom>
     </div>
   );

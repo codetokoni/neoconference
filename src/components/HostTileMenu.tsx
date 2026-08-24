@@ -2,15 +2,24 @@
 
 import { useState, useCallback } from 'react';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
+import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 
 /**
  * HostTileMenu
  *
- * Per-tile overlay menu shown only when the local user is a host (or cohost)
- * and the tile belongs to a remote participant. Provides:
+ * Per-tile overlay menu. The kebab affordance is shown to every viewer so
+ * they can hide a tile on their own screen (FRS §5.x display-only hide);
+ * host / moderator actions and the broadcast-hide are conditionally added
+ * below.
+ *
+ * Provides (for hosts + cohosts):
  *  - Mute mic
  *  - Mute camera
  *  - Remove from room (with confirm)
+ *  - Hide/show video for everyone
+ *
+ * Provides (for anyone):
+ *  - Hide/show on my screen
  *
  * The actual tile content is rendered separately; this component is positioned
  * absolutely over the tile.
@@ -33,6 +42,7 @@ export function HostTileMenu({
   const { localParticipant } = useLocalParticipant();
   // useRoomContext call kept for hook stability (must be called before early return)
   useRoomContext();
+  const hiddenVideos = useHiddenVideos();
   const [open, setOpen] = useState(false);
   const [confirmKick, setConfirmKick] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
@@ -40,6 +50,12 @@ export function HostTileMenu({
 
   const isSelf = localParticipant?.identity === participantIdentity;
   const canMuteOthers = roomRole === 'host';
+  // Broadcast hide is the same rank as Mute All / kick / etc — moderator+
+  // (`participant:hideVideo` in the permissions catalog). host and cohost
+  // both hold it. Everyone else only sees "Hide on my screen".
+  const canHideForEveryone = roomRole === 'host' || roomRole === 'cohost';
+  const isHiddenLocally = hiddenVideos.isHiddenLocally(participantIdentity);
+  const isHiddenGlobally = hiddenVideos.isHiddenGlobally(participantIdentity);
 
   const call = useCallback(
     async (action: 'muteAudio' | 'muteVideo' | 'kick' | 'requestUnmuteAudio' | 'requestCameraOn') => {
@@ -67,6 +83,24 @@ export function HostTileMenu({
     [slug, participantIdentity],
   );
 
+  const toggleHideLocal = useCallback(() => {
+    hiddenVideos.toggleLocal(participantIdentity, !isHiddenLocally);
+    setOpen(false);
+  }, [hiddenVideos, participantIdentity, isHiddenLocally]);
+
+  const toggleHideGlobal = useCallback(async () => {
+    setError(null);
+    setPending('hideGlobal');
+    try {
+      await hiddenVideos.toggleGlobal(participantIdentity, !isHiddenGlobally);
+      setOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPending(null);
+    }
+  }, [hiddenVideos, participantIdentity, isHiddenGlobally]);
+
   const muteEveryoneElse = useCallback(async () => {
     setError(null);
     setPending('muteOthers');
@@ -89,7 +123,11 @@ export function HostTileMenu({
     }
   }, [slug, participantIdentity]);
 
-  if (!isHost || isSelf || !slug) return null;
+  // Kebab menu is available to any viewer on any remote tile — the local
+  // hide option is unconditional. Host/moderator actions are added below
+  // conditionally.
+  if (isSelf || !slug) return null;
+  const showHostActions = isHost;
 
   return (
     <div
@@ -154,39 +192,62 @@ export function HostTileMenu({
               marginBottom: 4,
             }}
           >
-            Host actions - {participantName}
+            {showHostActions ? `Host actions - ${participantName}` : participantName}
           </div>
 
           <MenuItem
-            label="Mute microphone"
-            icon="M"
+            label={isHiddenLocally ? 'Show on my screen' : 'Hide on my screen'}
+            icon={isHiddenLocally ? '⎚' : '⎠'}
             disabled={pending !== null}
-            onClick={() => call('muteAudio')}
-            pending={pending === 'muteAudio'}
-          />
-          <MenuItem
-            label="Turn off camera"
-            icon="V"
-            disabled={pending !== null}
-            onClick={() => call('muteVideo')}
-            pending={pending === 'muteVideo'}
-          />
-          <MenuItem
-            label="Ask to unmute mic"
-            icon="·M"
-            disabled={pending !== null}
-            onClick={() => call('requestUnmuteAudio')}
-            pending={pending === 'requestUnmuteAudio'}
-          />
-          <MenuItem
-            label="Ask to turn on camera"
-            icon="·V"
-            disabled={pending !== null}
-            onClick={() => call('requestCameraOn')}
-            pending={pending === 'requestCameraOn'}
+            onClick={toggleHideLocal}
           />
 
-          {canMuteOthers && (
+          {canHideForEveryone && (
+            <MenuItem
+              label={isHiddenGlobally ? 'Show video for everyone' : 'Hide video for everyone'}
+              icon="◪"
+              disabled={pending !== null}
+              onClick={toggleHideGlobal}
+              pending={pending === 'hideGlobal'}
+            />
+          )}
+
+          {showHostActions && (
+            <MenuItem
+              label="Mute microphone"
+              icon="M"
+              disabled={pending !== null}
+              onClick={() => call('muteAudio')}
+              pending={pending === 'muteAudio'}
+            />
+          )}
+          {showHostActions && (
+            <>
+              <MenuItem
+                label="Turn off camera"
+                icon="V"
+                disabled={pending !== null}
+                onClick={() => call('muteVideo')}
+                pending={pending === 'muteVideo'}
+              />
+              <MenuItem
+                label="Ask to unmute mic"
+                icon="·M"
+                disabled={pending !== null}
+                onClick={() => call('requestUnmuteAudio')}
+                pending={pending === 'requestUnmuteAudio'}
+              />
+              <MenuItem
+                label="Ask to turn on camera"
+                icon="·V"
+                disabled={pending !== null}
+                onClick={() => call('requestCameraOn')}
+                pending={pending === 'requestCameraOn'}
+              />
+            </>
+          )}
+
+          {showHostActions && canMuteOthers && (
             <MenuItem
               label="Mute everyone else"
               icon="MA"
@@ -201,7 +262,7 @@ export function HostTileMenu({
               this gate is the UI half so a Moderator doesn't see a button
               that will silently 403. canMuteOthers doubles as the "host+
               only" gate here — same rank threshold. */}
-          {canMuteOthers && (!confirmKick ? (
+          {showHostActions && canMuteOthers && (!confirmKick ? (
             <MenuItem
               label="Remove from room"
               icon="X"
