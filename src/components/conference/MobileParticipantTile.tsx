@@ -8,7 +8,7 @@ import React, {
 } from 'react';
 import { motion } from 'framer-motion';
 import { MicOff } from 'lucide-react';
-import { Track, type Participant } from 'livekit-client';
+import { ParticipantEvent, Track, type Participant } from 'livekit-client';
 import { useIsSpeaking, VideoTrack } from '@livekit/components-react';
 import {
   getAvatarColor,
@@ -102,7 +102,55 @@ function MobileParticipantTileInner({
   const avatarRGB = getAvatarColorRGB(seed);
   const initials = getInitials(seed);
 
-  /* ---------- camera track detection ---------- */
+  /* ---------- camera track detection ---------- *
+   *
+   * Two things conspire to leave remote tiles stuck on the avatar on
+   * mobile when subscription lags behind the first render:
+   *
+   *   1. `camPub.isSubscribed` is read at render time. Nothing here
+   *      subscribes to LiveKit's TrackSubscribed / TrackUnsubscribed
+   *      events, so a subscription that lands after the first commit
+   *      never triggers a re-derive.
+   *   2. The React.memo comparator below gates on the sender-side
+   *      `participant.isCameraEnabled`, which is already true when we
+   *      joined a room whose peers have their cameras on — so a later
+   *      subscribe event does not change any memoed prop, and the
+   *      parent's re-render from `useParticipants()` is skipped.
+   *
+   * `subTick` is a lightweight internal counter that increments on the
+   * participant's track-lifecycle events. Because it lives inside the
+   * memoed component it forces its own re-render regardless of memo
+   * gating, so `camPub` and `hasCam` get re-evaluated the moment the
+   * subscription completes.
+   */
+  const [subTick, setSubTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setSubTick((t) => t + 1);
+    participant.on(ParticipantEvent.TrackSubscribed, bump);
+    participant.on(ParticipantEvent.TrackUnsubscribed, bump);
+    participant.on(ParticipantEvent.TrackMuted, bump);
+    participant.on(ParticipantEvent.TrackUnmuted, bump);
+    participant.on(ParticipantEvent.TrackPublished, bump);
+    participant.on(ParticipantEvent.TrackUnpublished, bump);
+    participant.on(ParticipantEvent.LocalTrackPublished, bump);
+    participant.on(ParticipantEvent.LocalTrackUnpublished, bump);
+    participant.on(ParticipantEvent.TrackSubscriptionFailed, bump);
+    return () => {
+      participant.off(ParticipantEvent.TrackSubscribed, bump);
+      participant.off(ParticipantEvent.TrackUnsubscribed, bump);
+      participant.off(ParticipantEvent.TrackMuted, bump);
+      participant.off(ParticipantEvent.TrackUnmuted, bump);
+      participant.off(ParticipantEvent.TrackPublished, bump);
+      participant.off(ParticipantEvent.TrackUnpublished, bump);
+      participant.off(ParticipantEvent.LocalTrackPublished, bump);
+      participant.off(ParticipantEvent.LocalTrackUnpublished, bump);
+      participant.off(ParticipantEvent.TrackSubscriptionFailed, bump);
+    };
+  }, [participant]);
+  // Reference subTick so lint doesn't flag it — its purpose is the
+  // re-render, not the value.
+  void subTick;
+
   const camPub = participant.getTrackPublication(Track.Source.Camera);
   const hasCam = !!(camPub?.isSubscribed && !camPub.isMuted);
   const trackSid = camPub?.trackSid;
