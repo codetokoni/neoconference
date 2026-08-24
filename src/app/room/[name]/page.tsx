@@ -38,7 +38,7 @@ import LiveCaptions from "@/components/LiveCaptions";
 import CaptionsToggle from "@/components/CaptionsToggle";
 import ReactionsBar from "@/components/ReactionsBar";
 import ChatPanel from "@/components/ChatPanel";
-import FloatingVideoButton from "@/components/FloatingVideoButton";
+import MeetingPiP from "@/components/MeetingPiP";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
 import EndMeetingButton from "@/components/EndMeetingButton";
@@ -65,7 +65,7 @@ import {
 } from "lucide-react";
 
 // Shared toolbar button style — flat, transparent, lucide-icon + text label.
-// Used by inline buttons in this file and mirrored in FloatingVideoButton,
+// Used by inline buttons in this file and mirrored in MeetingPiP,
 // ParticipantCountBadge, GoLiveButton, and the RecordingControls button.
 const TOOLBAR_BTN_CLASS =
   "inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-white/10 hover:border-white/25 active:scale-[0.98] transition";
@@ -888,7 +888,7 @@ function RoomContainer({
             <Sparkles size={16} aria-hidden />
             Background
           </button>
-          <FloatingVideoButton />
+          <MeetingPiP slug={eventSlug} />
           {(roomRole === "host" || roomRole === "cohost") && (
             <button
               type="button"
