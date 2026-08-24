@@ -39,6 +39,7 @@ import CaptionsToggle from "@/components/CaptionsToggle";
 import ReactionsBar from "@/components/ReactionsBar";
 import ChatPanel from "@/components/ChatPanel";
 import MeetingPiP from "@/components/MeetingPiP";
+import BackgroundContinuity from "@/components/BackgroundContinuity";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
 import EndMeetingButton from "@/components/EndMeetingButton";
@@ -959,6 +960,7 @@ function RoomContainer({
         <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} roomRole={roomRole} slug={eventSlug} />
         <MediaRequestPrompt />
         <RoomAudioRenderer />
+        <BackgroundContinuity eventName={roomName} eventSlug={eventSlug} />
         <LiveCaptions />
         <TranscriptNoticeBanner />
         <MeetingTimer slug={eventSlug} roomRole={roomRole} />
