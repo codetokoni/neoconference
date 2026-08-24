@@ -443,23 +443,6 @@ function MobileParticipantTileInner({
             <span className="text-base font-medium text-white">{initials}</span>
           </div>
         </div>
-        {isHidden && (
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 30,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              fontSize: 9,
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
-              color: 'rgba(255,255,255,0.5)',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Video hidden
-          </div>
-        )}
       </div>
 
       {/* Reaction bursts */}

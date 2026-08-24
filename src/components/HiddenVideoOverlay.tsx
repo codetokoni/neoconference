@@ -43,28 +43,12 @@ export default function HiddenVideoOverlay() {
     .map((id) => `[data-lk-participant-identity="${cssEscape(id)}"]`)
     .join(', ');
 
-  const css = `
-    ${selector} { position: relative; }
-    ${selector.split(', ').map((s) => `${s}::after`).join(', ')} {
-      content: "Video hidden";
-      position: absolute;
-      inset: 0;
-      z-index: 6;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #0a0f1a;
-      color: rgba(255,255,255,0.6);
-      font-size: 12px;
-      font-weight: 500;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      pointer-events: none;
-    }
-    ${targets.map((id) => `[data-lk-participant-identity="${cssEscape(id)}"] video`).join(', ')} {
-      visibility: hidden;
-    }
-  `;
+  // Fully remove the tile from layout so the grid re-flows around it —
+  // a room of 3 with 1 hidden should look exactly like a room of 2, not
+  // like a 3-tile grid with a black hole in it. LiveKit's tile grid
+  // uses CSS grid auto-placement, so `display: none` collapses the
+  // cell cleanly.
+  const css = `${selector} { display: none !important; }`;
 
   return <style data-neo-hidden-videos>{css}</style>;
 }

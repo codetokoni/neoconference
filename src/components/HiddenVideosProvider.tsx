@@ -239,9 +239,13 @@ export function HiddenVideosProvider({
     localSet.forEach((id) => combined.add(id));
     globalSet.forEach((id) => combined.add(id));
 
+    // No self-exemption: if the local user hides themselves (locally
+    // or globally) their own tile disappears too. Matches the "when I
+    // hide myself my video should disappear" behaviour users expect.
+    // The identity check just gates on non-empty input.
+    void localIdentity;
     const isHidden = (identity: string) => {
       if (!identity) return false;
-      if (localIdentity && identity === localIdentity) return false;
       return combined.has(identity);
     };
     const isHiddenLocally = (identity: string) =>
