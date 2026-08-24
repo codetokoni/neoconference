@@ -109,6 +109,7 @@ export const PERMISSIONS = {
   "participant:requestUnmute": RANK.moderator,
   "participant:kick": RANK.host,
   "participant:spotlight": RANK.moderator,
+  "participant:hideVideo": RANK.moderator,
 
   /* --- role administration --- */
   "role:grant": RANK.host,

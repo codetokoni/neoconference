@@ -15,6 +15,7 @@ import {
   getAvatarColorRGB,
   getInitials,
 } from '@/lib/avatarColor';
+import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -152,7 +153,14 @@ function MobileParticipantTileInner({
   void subTick;
 
   const camPub = participant.getTrackPublication(Track.Source.Camera);
-  const hasCam = !!(camPub?.isSubscribed && !camPub.isMuted);
+  // FRS §5.x display-only hide. When the tile is either locally or
+  // globally hidden we short-circuit hasCam so the render path swaps to
+  // the avatar (the subscription stays alive so reveal is instant).
+  const hidden = useHiddenVideos();
+  const isHidden = hidden.isHidden(participant.identity);
+  const isHiddenLocally = hidden.isHiddenLocally(participant.identity);
+  const isHiddenGlobally = hidden.isHiddenGlobally(participant.identity);
+  const hasCam = !!(camPub?.isSubscribed && !camPub.isMuted) && !isHidden;
   const trackSid = camPub?.trackSid;
 
   /* ---------- first-frame tracking for cross-fade ---------- */
@@ -181,6 +189,24 @@ function MobileParticipantTileInner({
   const [menuOpen, setMenuOpen] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [menuError, setMenuError] = useState<string | null>(null);
+
+  const toggleHideLocal = useCallback(() => {
+    hidden.toggleLocal(participant.identity, !isHiddenLocally);
+    setMenuOpen(false);
+  }, [hidden, participant.identity, isHiddenLocally]);
+
+  const toggleHideGlobal = useCallback(async () => {
+    setMenuError(null);
+    setPending('hideGlobal');
+    try {
+      await hidden.toggleGlobal(participant.identity, !isHiddenGlobally);
+      setMenuOpen(false);
+    } catch (e) {
+      setMenuError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPending(null);
+    }
+  }, [hidden, participant.identity, isHiddenGlobally]);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressOrigin = useRef<{ x: number; y: number } | null>(null);
 
@@ -234,18 +260,25 @@ function MobileParticipantTileInner({
     }
   }, [localIsHost, onSpotlight, participant.identity]);
 
-  /* ---------- pointer handlers (long press + tap) ---------- */
+  /* ---------- pointer handlers (long press + tap) ----------
+   *
+   * Long-press opens the tile menu. Previously that was gated on
+   * localIsHost because the menu only had moderation actions; now
+   * everyone can hide a tile on their own screen, so the menu is
+   * available to any viewer looking at any remote tile. Self-tiles
+   * still don't get a menu (nothing to do). */
+  const canOpenMenu = !participant.isLocal;
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       pressOrigin.current = { x: e.clientX, y: e.clientY };
-      if (localIsHost) {
+      if (canOpenMenu) {
         pressTimer.current = setTimeout(() => {
           setMenuOpen(true);
           pressTimer.current = null;
         }, 500);
       }
     },
-    [localIsHost],
+    [canOpenMenu],
   );
 
   const onPointerMove = useCallback(
@@ -410,6 +443,23 @@ function MobileParticipantTileInner({
             <span className="text-base font-medium text-white">{initials}</span>
           </div>
         </div>
+        {isHidden && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 30,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              fontSize: 9,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: 'rgba(255,255,255,0.5)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Video hidden
+          </div>
+        )}
       </div>
 
       {/* Reaction bursts */}
@@ -482,8 +532,10 @@ function MobileParticipantTileInner({
         </span>
       </div>
 
-      {/* Host action menu (long-press) */}
-      {menuOpen && localIsHost && (
+      {/* Long-press action menu. Available to any viewer on any remote
+          tile — everyone gets Hide-on-my-screen; host / cohost also get
+          moderation actions and the broadcast Hide. */}
+      {menuOpen && canOpenMenu && (
         <div
           className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-1.5"
           style={{
@@ -495,19 +547,35 @@ function MobileParticipantTileInner({
           onClick={(e) => e.stopPropagation()}
         >
           <MenuBtn
-            label="Mute"
+            label={isHiddenLocally ? 'Show on my screen' : 'Hide on my screen'}
             disabled={pending !== null}
-            loading={pending === 'muteAudio'}
-            onClick={() => handleModerate('muteAudio')}
+            onClick={toggleHideLocal}
           />
-          {/* TODO: lower hand — blocked on neo-hand → metadata migration */}
-          <MenuBtn
-            label="Remove"
-            danger
-            disabled={pending !== null}
-            loading={pending === 'kick'}
-            onClick={() => handleModerate('kick')}
-          />
+          {localIsHost && (
+            <MenuBtn
+              label={isHiddenGlobally ? 'Show video for everyone' : 'Hide video for everyone'}
+              disabled={pending !== null}
+              loading={pending === 'hideGlobal'}
+              onClick={toggleHideGlobal}
+            />
+          )}
+          {localIsHost && (
+            <MenuBtn
+              label="Mute"
+              disabled={pending !== null}
+              loading={pending === 'muteAudio'}
+              onClick={() => handleModerate('muteAudio')}
+            />
+          )}
+          {localIsHost && (
+            <MenuBtn
+              label="Remove"
+              danger
+              disabled={pending !== null}
+              loading={pending === 'kick'}
+              onClick={() => handleModerate('kick')}
+            />
+          )}
           {menuError && (
             <span className="text-red-400" style={{ fontSize: 9 }}>
               {menuError}
