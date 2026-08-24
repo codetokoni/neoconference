@@ -10,6 +10,7 @@ import {
 } from '@livekit/components-react';
 import { Track, type Participant, type TrackPublication } from 'livekit-client';
 import { MobileParticipantTile } from './MobileParticipantTile';
+import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -50,9 +51,15 @@ function densityFor(count: number): { cols: string; aspect: 'square' | 'video' }
 /* ------------------------------------------------------------------ */
 
 export default function MobileParticipantGrid({ slug }: MobileParticipantGridProps) {
-  const participants = useParticipants();
+  const allParticipants = useParticipants();
   const { localParticipant } = useLocalParticipant();
   const localIsHost = isHostRole(localParticipant);
+
+  // Hidden tiles are dropped from the grid entirely — the layout re-flows
+  // so a room of 3 with 1 hidden looks exactly like a room of 2. Restoring
+  // is done from the top-of-room "N hidden" chip.
+  const { isHidden } = useHiddenVideos();
+  const participants = allParticipants.filter((p) => !isHidden(p.identity));
 
   // Screen-share subscription. useTracks lets us treat screen shares as a
   // separate source without polling participants for their track publications

@@ -42,6 +42,7 @@ import MeetingPiP from "@/components/MeetingPiP";
 import BackgroundContinuity from "@/components/BackgroundContinuity";
 import { HiddenVideosProvider } from "@/components/HiddenVideosProvider";
 import HiddenVideoOverlay from "@/components/HiddenVideoOverlay";
+import HiddenVideosBadge from "@/components/HiddenVideosBadge";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
 import EndMeetingButton from "@/components/EndMeetingButton";
@@ -965,6 +966,7 @@ function RoomContainer({
         <RoomAudioRenderer />
         <BackgroundContinuity eventName={roomName} eventSlug={eventSlug} />
         <HiddenVideoOverlay />
+        <HiddenVideosBadge roomRole={roomRole} />
         <LiveCaptions />
         <TranscriptNoticeBanner />
         <MeetingTimer slug={eventSlug} roomRole={roomRole} />
