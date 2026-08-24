@@ -611,6 +611,26 @@ export default function MeetingPiP({ slug }: { slug?: string }) {
   const [hint, setHint] = useState<string | null>(null);
   const autoEnteredRef = useRef<'doc' | 'video' | null>(null);
 
+  /* ----- refs mirror state so event handlers always read fresh values.
+   *
+   * The visibility handler used to close over `pipWindow` / `videoPiPActive`
+   * from state, with an effect that re-ran on every state change. That
+   * worked once but was racy on the second tab-switch: closing PiP on tab
+   * return schedules `setPipWindow(null)`, which is async — if the user
+   * switched away again before React committed, the OLD listener was still
+   * live with a stale `pipWindow` handle, so the guard
+   * `if (pipWindow || videoPiPActive) return` fired and auto-enter was
+   * suppressed. Refs are always current, and the effect can now mount
+   * once with stable callbacks. */
+  const pipWindowRef = useRef<Window | null>(null);
+  const videoPiPActiveRef = useRef(false);
+  const docSupportedRef = useRef(false);
+  const videoSupportedRef = useRef(false);
+  useEffect(() => { pipWindowRef.current = pipWindow; }, [pipWindow]);
+  useEffect(() => { videoPiPActiveRef.current = videoPiPActive; }, [videoPiPActive]);
+  useEffect(() => { docSupportedRef.current = docSupported; }, [docSupported]);
+  useEffect(() => { videoSupportedRef.current = videoSupported; }, [videoSupported]);
+
   useEffect(() => {
     setDocSupported(supportsDocumentPiP());
     setVideoSupported(supportsVideoElementPiP());
@@ -629,18 +649,27 @@ export default function MeetingPiP({ slug }: { slug?: string }) {
   }, []);
 
   const closeDocPiP = useCallback(() => {
-    if (pipWindow && !pipWindow.closed) {
+    const w = pipWindowRef.current;
+    if (w && !w.closed) {
       try {
-        pipWindow.close();
+        w.close();
       } catch {
         // ignore
       }
     }
+    pipWindowRef.current = null;
     setPipWindow(null);
-  }, [pipWindow]);
+  }, []);
 
   const openDocPiP = useCallback(async (): Promise<boolean> => {
-    if (!docSupported || !window.documentPictureInPicture) return false;
+    if (!docSupportedRef.current || !window.documentPictureInPicture) return false;
+    // If a previous PiP window is somehow still around, close it first so
+    // the API is in a clean state before we ask for a new one.
+    const existing = pipWindowRef.current;
+    if (existing && !existing.closed) {
+      try { existing.close(); } catch {}
+      pipWindowRef.current = null;
+    }
     try {
       const w = await window.documentPictureInPicture.requestWindow({
         width: PIP_WIDTH,
@@ -648,64 +677,72 @@ export default function MeetingPiP({ slug }: { slug?: string }) {
       });
       cloneStylesheetsInto(w.document, document);
       w.document.title = 'NEO Conference';
-      w.addEventListener('pagehide', () => setPipWindow(null));
+      w.addEventListener('pagehide', () => {
+        pipWindowRef.current = null;
+        setPipWindow(null);
+      });
+      pipWindowRef.current = w;
       setPipWindow(w);
       return true;
     } catch {
       return false;
     }
-  }, [docSupported]);
+  }, []);
 
   const openVideoPiP = useCallback(async (): Promise<boolean> => {
-    if (!videoSupported) return false;
+    if (!videoSupportedRef.current) return false;
     const v = pickBestPlainVideo();
     if (!v) return false;
     return await enterVideoElementPiP(v);
-  }, [videoSupported]);
+  }, []);
 
   /** User-initiated open. Prefers Document PiP for the richer UX. */
   const openFromUser = useCallback(async () => {
     setHint(null);
-    if (pipWindow || videoPiPActive) return;
+    if (pipWindowRef.current || videoPiPActiveRef.current) return;
     if (await openDocPiP()) return;
     if (await openVideoPiP()) return;
     setHint('Floating video is not supported in this browser.');
-  }, [pipWindow, videoPiPActive, openDocPiP, openVideoPiP]);
+  }, [openDocPiP, openVideoPiP]);
 
   const closeAll = useCallback(async () => {
-    if (pipWindow) closeDocPiP();
-    if (videoPiPActive) await exitAnyVideoElementPiP();
+    if (pipWindowRef.current) closeDocPiP();
+    if (videoPiPActiveRef.current) await exitAnyVideoElementPiP();
     autoEnteredRef.current = null;
-  }, [pipWindow, videoPiPActive, closeDocPiP]);
+  }, [closeDocPiP]);
 
   const toggle = useCallback(async () => {
-    if (pipWindow || videoPiPActive) {
+    if (pipWindowRef.current || videoPiPActiveRef.current) {
       await closeAll();
     } else {
       await openFromUser();
     }
-  }, [pipWindow, videoPiPActive, closeAll, openFromUser]);
+  }, [closeAll, openFromUser]);
 
-  /** Auto-enter on visibility hidden. Uses whichever path is supported. */
+  /** Auto-enter on visibility hidden. Mounts once — all state accessed via
+   *  refs so a rapid hide → visible → hide sequence never reads stale
+   *  values. Callbacks are stable (empty deps + ref reads) so this effect
+   *  doesn't churn on state changes. */
   useEffect(() => {
-    if (!docSupported && !videoSupported) return;
     const onVis = async () => {
       if (document.hidden) {
-        if (pipWindow || videoPiPActive) return;
-        if (docSupported) {
+        if (pipWindowRef.current || videoPiPActiveRef.current) return;
+        if (docSupportedRef.current) {
           const ok = await openDocPiP();
           if (ok) {
             autoEnteredRef.current = 'doc';
             return;
           }
         }
-        if (videoSupported) {
+        if (videoSupportedRef.current) {
           const ok = await openVideoPiP();
           if (ok) autoEnteredRef.current = 'video';
         }
       } else {
-        if (autoEnteredRef.current === 'doc' && pipWindow) closeDocPiP();
-        if (autoEnteredRef.current === 'video' && videoPiPActive) {
+        if (autoEnteredRef.current === 'doc' && pipWindowRef.current) {
+          closeDocPiP();
+        }
+        if (autoEnteredRef.current === 'video' && videoPiPActiveRef.current) {
           await exitAnyVideoElementPiP();
         }
         if (autoEnteredRef.current) autoEnteredRef.current = null;
@@ -713,15 +750,7 @@ export default function MeetingPiP({ slug }: { slug?: string }) {
     };
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
-  }, [
-    docSupported,
-    videoSupported,
-    pipWindow,
-    videoPiPActive,
-    openDocPiP,
-    openVideoPiP,
-    closeDocPiP,
-  ]);
+  }, [openDocPiP, openVideoPiP, closeDocPiP]);
 
   /** Fade hint messages. */
   useEffect(() => {
@@ -730,18 +759,21 @@ export default function MeetingPiP({ slug }: { slug?: string }) {
     return () => clearTimeout(id);
   }, [hint]);
 
-  /** Cleanup on unmount: close any window we opened. */
+  /** Cleanup on unmount: close any window we opened. Ref-based so it
+   *  fires exactly once at teardown, not on every pipWindow change. */
   useEffect(() => {
     return () => {
-      if (pipWindow && !pipWindow.closed) {
+      const w = pipWindowRef.current;
+      if (w && !w.closed) {
         try {
-          pipWindow.close();
+          w.close();
         } catch {
           // ignore
         }
       }
+      pipWindowRef.current = null;
     };
-  }, [pipWindow]);
+  }, []);
 
   const returnToMeeting = useCallback(() => {
     try {
