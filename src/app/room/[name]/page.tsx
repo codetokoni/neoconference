@@ -43,6 +43,7 @@ import BackgroundContinuity from "@/components/BackgroundContinuity";
 import { HiddenVideosProvider } from "@/components/HiddenVideosProvider";
 import HiddenVideoOverlay from "@/components/HiddenVideoOverlay";
 import HiddenVideosBadge from "@/components/HiddenVideosBadge";
+import DesktopMoreMenu from "@/components/DesktopMoreMenu";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
 import EndMeetingButton from "@/components/EndMeetingButton";
@@ -815,16 +816,16 @@ function RoomContainer({
             transform: "translateX(-50%)",
             zIndex: 12,
             display: "flex",
-            flexWrap: "wrap",
+            flexWrap: "nowrap",
             alignItems: "center",
             gap: 6,
             padding: "6px 8px",
             borderRadius: 12,
-            background: "rgba(17,17,17,0.85)",
-            backdropFilter: "blur(8px)",
-            WebkitBackdropFilter: "blur(8px)",
+            background: "rgba(11,16,32,0.75)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
             border: "1px solid rgba(255,255,255,0.08)",
-            boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+            boxShadow: "0 4px 20px rgba(0,0,0,0.45)",
             maxWidth: "calc(100vw - 24px)",
           }}
         >
@@ -852,6 +853,7 @@ function RoomContainer({
           <button
             type="button"
             data-room-chrome="true"
+            data-in-more="true"
             onClick={() => setHideSelf((v) => !v)}
             className={TOOLBAR_BTN_CLASS}
             title="Hide your own video"
@@ -886,6 +888,7 @@ function RoomContainer({
           <button
             type="button"
             data-room-chrome="true"
+            data-in-more="true"
             onClick={() => setShowBackgroundPicker(true)}
             className={TOOLBAR_BTN_CLASS}
             title="Change your background"
@@ -925,6 +928,7 @@ function RoomContainer({
           <button
             type="button"
             data-room-chrome="true"
+            data-in-more="true"
             onClick={copyLink}
             className={TOOLBAR_BTN_CLASS}
             title="Copy room link"
@@ -935,6 +939,7 @@ function RoomContainer({
           <button
             type="button"
             data-room-chrome="true"
+            data-in-more="true"
             onClick={toggleFullscreen}
             className={TOOLBAR_BTN_CLASS}
             title="Toggle fullscreen"
@@ -942,6 +947,7 @@ function RoomContainer({
             {isFullscreen ? <Minimize size={16} aria-hidden /> : <Maximize size={16} aria-hidden />}
             {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
           </button>
+          <DesktopMoreMenu />
 
           <div className="self-stretch w-px bg-white/15" aria-hidden />
 
