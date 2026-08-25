@@ -496,7 +496,7 @@ function humanizeRenameError(code?: string): string { switch ((code || "").toLow
     }
   };
   return (
-    <div className="fixed top-14 right-4 z-40 flex flex-col items-end gap-2">
+    <div className="fixed top-20 right-4 z-40 flex flex-col items-end gap-2">
       <button
         type="button"
         onClick={() => setOpen((x) => !x)}
