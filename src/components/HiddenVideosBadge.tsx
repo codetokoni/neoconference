@@ -24,6 +24,7 @@
 //     the spec (only the moderator staff can reveal a broadcast hide).
 
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useParticipants } from '@livekit/components-react';
 import { EyeOff } from 'lucide-react';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
@@ -101,11 +102,16 @@ export default function HiddenVideosBadge({
 
   return (
     <>
+      {/* First-class toolbar entry (no data-in-more): appears in the row
+          directly, so on desktop it inherits the toolbar's hover-to-
+          reveal behaviour. On mobile the row itself is collapsed to
+          zero size (see initials-overlay.css), and MobileMoreMenu's
+          runtime scan of `.room-toolbar > button` picks this up so the
+          entry still appears in the mobile More popover. */}
       <button
         type="button"
         data-toolbar-item="true"
         data-room-chrome="true"
-        data-in-more="true"
         onClick={() => setOpen(true)}
         aria-label={`${count} hidden video${count === 1 ? '' : 's'} — restore`}
         title="Restore a hidden video"
@@ -115,7 +121,12 @@ export default function HiddenVideosBadge({
         {count} hidden
       </button>
 
-      {open && (
+      {open && typeof document !== 'undefined' && createPortal(
+        // Portaled to document.body so the modal isn't a descendant of
+        // `.room-toolbar` — otherwise the toolbar's hover-driven
+        // opacity would cascade to the modal (CSS opacity flows to all
+        // descendants regardless of stacking context) and the modal
+        // would disappear the moment the cursor left the toolbar.
         <div
           role="dialog"
           aria-modal="true"
@@ -227,7 +238,8 @@ export default function HiddenVideosBadge({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
