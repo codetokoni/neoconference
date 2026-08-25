@@ -296,6 +296,15 @@
   .nc-mobile-more-backdrop {
     display: none !important;
   }
+
+  /* Secondary toolbar actions (Hide me, Background, Copy link, Fullscreen)
+     get collapsed into the DesktopMoreMenu dropdown so the top toolbar
+     fits on one row and stops wrapping over the video area. The buttons
+     stay in the DOM so MobileMoreMenu's scan on smaller viewports still
+     picks them up. */
+  .room-toolbar > [data-in-more="true"] {
+    display: none !important;
+  }
 }
 
 /* Hide LiveKit's built-in chat toggle button - we use our own ChatPanel via the room toolbar Chat button. */

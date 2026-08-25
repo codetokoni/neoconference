@@ -52,6 +52,10 @@ export default function MobileMoreMenu() {
       ".room-toolbar > button"
     );
     topBtns.forEach((b) => {
+      // Skip buttons the toolbar has explicitly opted out of the mobile
+      // menu (e.g. the desktop-only "More" dropdown trigger — surfacing
+      // that inside our own mobile More popover is nonsense).
+      if (b.hasAttribute("data-mobile-skip")) return;
       const label = (b.textContent || "").trim();
       if (!label) return;
       list.push({ label, target: b });
