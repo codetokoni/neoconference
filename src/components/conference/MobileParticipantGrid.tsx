@@ -55,6 +55,25 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
   const { localParticipant } = useLocalParticipant();
   const localIsHost = isHostRole(localParticipant);
 
+  // Fetch our owner flag once so the tile long-press menu can gate the
+  // "Make Host" action correctly (only owner may promote to host per
+  // FRS §1.1). Everything else in the menu is host/cohost-gated by the
+  // wire-format role already carried in localParticipant.metadata.
+  const [isOwner, setIsOwner] = useState(false);
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    fetch(`/api/events/role?slug=${encodeURIComponent(slug)}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j && j.isOwner === true) setIsOwner(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
   // Hidden tiles are dropped from the grid entirely — the layout re-flows
   // so a room of 3 with 1 hidden looks exactly like a room of 2. Restoring
   // is done from the top-of-room "N hidden" chip.
@@ -193,6 +212,7 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
               <MobileParticipantTile
                 participant={p}
                 localIsHost={localIsHost}
+                localIsOwner={isOwner}
                 participantIsHost={isHostRole(p)}
                 slug={slug}
                 isVisible={visibilityMap.get(p.identity) ?? true}
