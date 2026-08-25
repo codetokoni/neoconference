@@ -311,8 +311,8 @@ function MobileParticipantTileInner({
   const handleTap = useCallback(() => {
     const now = Date.now();
     if (now - lastTap.current < 300) {
-      // double-tap
-      if (localIsHost && rootRef.current) {
+      // double-tap — spotlight is a host-level action, so owner counts too.
+      if ((localIsHost || localIsOwner) && rootRef.current) {
         rootRef.current.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
         onSpotlight?.(participant.identity);
       }
@@ -320,7 +320,7 @@ function MobileParticipantTileInner({
     } else {
       lastTap.current = now;
     }
-  }, [localIsHost, onSpotlight, participant.identity]);
+  }, [localIsHost, localIsOwner, onSpotlight, participant.identity]);
 
   /* ---------- pointer handlers (long press + tap) ----------
    *
@@ -610,7 +610,7 @@ function MobileParticipantTileInner({
               onClick={toggleHideLocal}
             />
 
-            {localIsHost && (
+            {(localIsHost || localIsOwner) && (
               <>
                 <MenuSection label="For everyone" />
                 <MenuBtn
