@@ -8,9 +8,11 @@
 // who they're hiding and bring them back — otherwise a locally-hidden
 // participant is functionally gone.
 //
-// A single glassmorphic chip sits at the top of the room whenever the
-// combined hidden set is non-empty. Clicking it opens a compact list of
-// hidden participants with a Show button per row.
+// Renders as a normal toolbar entry (like Rename URL), with `data-in-more`
+// so it collapses into the DesktopMoreMenu on desktop and shows in the
+// MobileMoreMenu popover on mobile via the same runtime scan. Clicking
+// opens a centered modal listing hidden participants with a Show button
+// per row. No fixed floating chip.
 //
 // Show semantics:
 //   - Always clears the local hide (the viewer's own preference).
@@ -21,10 +23,13 @@
 //     for viewers who don't have the moderation right, which matches
 //     the spec (only the moderator staff can reveal a broadcast hide).
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParticipants } from '@livekit/components-react';
 import { EyeOff } from 'lucide-react';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
+
+const TOOLBAR_BTN_CLASS =
+  'inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-white/10 hover:border-white/25 active:scale-[0.98] transition';
 
 export default function HiddenVideosBadge({
   roomRole,
@@ -38,7 +43,6 @@ export default function HiddenVideosBadge({
   const [open, setOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
 
   const canManageGlobal = roomRole === 'host' || roomRole === 'cohost';
   const count = hiddenSet.size;
@@ -73,165 +77,158 @@ export default function HiddenVideosBadge({
     [toggleLocal, toggleGlobal, canManageGlobal],
   );
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('pointerdown', onDown, true);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onDown, true);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
+  // Close automatically once the last hidden entry is restored.
   useEffect(() => {
     if (count === 0 && open) setOpen(false);
   }, [count, open]);
 
+  const closeModal = useCallback(() => setOpen(false), []);
+
+  // Escape closes the modal.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeModal();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, closeModal]);
+
+  // No hidden entries → nothing to render (button disappears from the
+  // toolbar; the DesktopMoreMenu / MobileMoreMenu scans skip it too since
+  // it isn't in the DOM).
   if (count === 0) return null;
 
   return (
-    <div
-      ref={rootRef}
-      style={{
-        position: 'fixed',
-        top: 76,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 40,
-      }}
-    >
+    <>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-label={`${count} hidden video${count === 1 ? '' : 's'} — click to restore`}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '6px 12px',
-          borderRadius: 999,
-          background: 'rgba(11,16,32,0.85)',
-          border: '1px solid rgba(255,255,255,0.15)',
-          color: '#e5f8ff',
-          fontSize: 12,
-          fontWeight: 500,
-          letterSpacing: 0.2,
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          cursor: 'pointer',
-          boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
-        }}
+        data-toolbar-item="true"
+        data-room-chrome="true"
+        data-in-more="true"
+        onClick={() => setOpen(true)}
+        aria-label={`${count} hidden video${count === 1 ? '' : 's'} — restore`}
+        title="Restore a hidden video"
+        className={TOOLBAR_BTN_CLASS}
       >
-        <EyeOff size={13} aria-hidden />
+        <EyeOff size={16} aria-hidden />
         {count} hidden
       </button>
 
       {open && (
         <div
-          role="menu"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Restore hidden videos"
+          onClick={closeModal}
           style={{
-            marginTop: 6,
-            minWidth: 240,
-            maxWidth: 320,
-            padding: 6,
-            borderRadius: 12,
-            background: 'rgba(11,16,32,0.96)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
+            position: 'fixed',
+            inset: 0,
+            zIndex: 80,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(0,0,0,0.7)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            padding: 16,
           }}
         >
-          {entries.map((e) => {
-            const canRestoreGlobally = e.isGlobal ? canManageGlobal : true;
-            return (
-              <div
-                key={e.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '6px 8px',
-                  borderRadius: 8,
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="rounded-2xl border border-white/15 bg-zinc-900/98 backdrop-blur p-5 w-full max-w-sm shadow-2xl"
+          >
+            <div className="text-base font-semibold text-white mb-1">
+              Hidden videos
+            </div>
+            <div className="text-[12px] text-white/60 mb-3">
+              These tiles aren&apos;t showing right now. Tap Show to bring one back.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '50vh', overflowY: 'auto' }}>
+              {entries.map((e) => {
+                const canRestoreGlobally = e.isGlobal ? canManageGlobal : true;
+                return (
                   <div
+                    key={e.id}
                     style={{
-                      fontSize: 13,
-                      color: '#fff',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '6px 4px',
+                      borderRadius: 8,
                     }}
                   >
-                    {e.name}
-                  </div>
-                  {e.isGlobal && (
-                    <div
-                      style={{
-                        fontSize: 10,
-                        color: 'rgba(226,232,240,0.55)',
-                        letterSpacing: 0.3,
-                        textTransform: 'uppercase',
-                        marginTop: 1,
-                      }}
-                    >
-                      {canManageGlobal
-                        ? 'Hidden for everyone'
-                        : 'Hidden by moderator'}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: '#fff',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {e.name}
+                      </div>
+                      {e.isGlobal && (
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: 'rgba(226,232,240,0.55)',
+                            letterSpacing: 0.3,
+                            textTransform: 'uppercase',
+                            marginTop: 1,
+                          }}
+                        >
+                          {canManageGlobal
+                            ? 'Hidden for everyone'
+                            : 'Hidden by moderator'}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => showAgain(e.id, e.isGlobal)}
-                  disabled={!canRestoreGlobally || busyId === e.id}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 6,
-                    fontSize: 12,
-                    color: canRestoreGlobally ? '#0b1020' : 'rgba(226,232,240,0.4)',
-                    background: canRestoreGlobally
-                      ? 'rgba(34,211,238,0.9)'
-                      : 'rgba(255,255,255,0.08)',
-                    border: 'none',
-                    cursor: canRestoreGlobally ? 'pointer' : 'not-allowed',
-                    fontWeight: 600,
-                  }}
-                  title={
-                    canRestoreGlobally
-                      ? 'Show this video again'
-                      : 'Only a host or cohost can restore a globally hidden video'
-                  }
-                >
-                  {busyId === e.id ? '…' : 'Show'}
-                </button>
-              </div>
-            );
-          })}
-          {error && (
-            <div
-              style={{
-                fontSize: 11,
-                color: '#fca5a5',
-                padding: '4px 8px 2px',
-              }}
-            >
-              {error}
+                    <button
+                      type="button"
+                      onClick={() => showAgain(e.id, e.isGlobal)}
+                      disabled={!canRestoreGlobally || busyId === e.id}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: 6,
+                        fontSize: 12,
+                        color: canRestoreGlobally ? '#0b1020' : 'rgba(226,232,240,0.4)',
+                        background: canRestoreGlobally
+                          ? 'rgba(34,211,238,0.9)'
+                          : 'rgba(255,255,255,0.08)',
+                        border: 'none',
+                        cursor: canRestoreGlobally ? 'pointer' : 'not-allowed',
+                        fontWeight: 600,
+                      }}
+                      title={
+                        canRestoreGlobally
+                          ? 'Show this video again'
+                          : 'Only a host or cohost can restore a globally hidden video'
+                      }
+                    >
+                      {busyId === e.id ? '…' : 'Show'}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
-          )}
+            {error && (
+              <div className="text-[12px] text-rose-300 mt-2">{error}</div>
+            )}
+            <div className="flex justify-end mt-4">
+              <button
+                type="button"
+                onClick={closeModal}
+                className="px-3 py-1.5 rounded-lg text-[13px] text-white/70 hover:text-white hover:bg-white/5"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

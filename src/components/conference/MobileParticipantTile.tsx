@@ -593,9 +593,16 @@ function MobileParticipantTileInner({
             overflowY: 'auto',
             paddingBlock: 8,
           }}
-          onClick={(e) => e.stopPropagation()}
+          // Tap anywhere on the backdrop closes the menu — matches the
+          // native bottom-sheet gesture. Individual buttons stopPropagation
+          // via their own click handler (button clicks don't bubble to us
+          // because of the inner content wrapper's stopPropagation below).
+          onClick={() => setMenuOpen(false)}
         >
-          <div className="flex flex-col items-center gap-1 px-2">
+          <div
+            className="flex flex-col items-center gap-1 px-2"
+            onClick={(e) => e.stopPropagation()}
+          >
             <MenuSection label="My view" />
             <MenuBtn
               label={isHiddenLocally ? 'Show on my screen' : 'Hide on my screen'}
@@ -657,12 +664,6 @@ function MobileParticipantTileInner({
                   disabled={pending !== null}
                   loading={pending === 'role:moderator'}
                   onClick={() => assignRole('moderator')}
-                />
-                <MenuBtn
-                  label="Make Participant"
-                  disabled={pending !== null}
-                  loading={pending === 'role:participant'}
-                  onClick={() => assignRole('participant')}
                 />
 
                 <MenuSection label="Danger" />
