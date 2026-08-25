@@ -18,7 +18,7 @@
 // up the rule automatically, and no MutationObserver is required.
 
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
-import { useLocalParticipant } from '@livekit/components-react';
+import { useLocalParticipant, useParticipants } from '@livekit/components-react';
 
 /**
  * CSS.escape polyfill for identity strings that could contain characters
@@ -34,20 +34,49 @@ function cssEscape(v: string): string {
 export default function HiddenVideoOverlay() {
   const { hiddenSet } = useHiddenVideos();
   const { localParticipant } = useLocalParticipant();
+  const participants = useParticipants();
   const localIdentity = localParticipant?.identity ?? null;
 
-  const targets = Array.from(hiddenSet).filter((id) => id && id !== localIdentity);
-  if (targets.length === 0) return null;
+  // LiveKit's built-in ParticipantTile only exposes
+  // `data-lk-participant-name` in its DOM — never
+  // `data-lk-participant-identity` (verified against
+  // @livekit/components-react 2.9.20). So a selector keyed on identity
+  // matches nothing on desktop, which is why hidden tiles were staying
+  // visible even though the local state had flipped. Map identity →
+  // name here and hide by name via CSS `:has()`.
+  //
+  // Names aren't strictly unique in LiveKit, but if two participants
+  // share a display name and the moderator hides one, hiding both is
+  // acceptable — the alternative is a MutationObserver / class-toggle
+  // dance that fights every LiveKit re-render. `:has()` is available
+  // in every browser we support.
+  //
+  // Mobile is unaffected: MobileParticipantGrid filters its own
+  // participants array by isHidden(id) before mapping — the tile isn't
+  // rendered at all, so no CSS is needed there.
 
-  const selector = targets
-    .map((id) => `[data-lk-participant-identity="${cssEscape(id)}"]`)
+  const nameForId = new Map<string, string>();
+  for (const p of participants) {
+    nameForId.set(p.identity, (p.name || p.identity).trim());
+  }
+
+  const targetNames = Array.from(hiddenSet)
+    .filter((id) => id && id !== localIdentity)
+    .map((id) => nameForId.get(id))
+    .filter((n): n is string => Boolean(n));
+
+  if (targetNames.length === 0) return null;
+
+  const unique = Array.from(new Set(targetNames));
+  const selector = unique
+    .map(
+      (name) =>
+        `.lk-participant-tile:has([data-lk-participant-name="${cssEscape(name)}"])`,
+    )
     .join(', ');
 
-  // Fully remove the tile from layout so the grid re-flows around it —
-  // a room of 3 with 1 hidden should look exactly like a room of 2, not
-  // like a 3-tile grid with a black hole in it. LiveKit's tile grid
-  // uses CSS grid auto-placement, so `display: none` collapses the
-  // cell cleanly.
+  // display: none fully collapses the cell so LiveKit's CSS-grid
+  // layout re-flows — a room of 3 with 1 hidden looks like a room of 2.
   const css = `${selector} { display: none !important; }`;
 
   return <style data-neo-hidden-videos>{css}</style>;
