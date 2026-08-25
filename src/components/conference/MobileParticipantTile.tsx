@@ -24,6 +24,9 @@ import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 interface MobileParticipantTileProps {
   participant: Participant;
   localIsHost: boolean;
+  /** Whether the local viewer is the actual event owner — controls the
+   *  Make Host action gate in the long-press menu (FRS §1.1). */
+  localIsOwner?: boolean;
   participantIsHost: boolean;
   slug: string;
   onSpotlight?: (participantId: string) => void;
@@ -88,6 +91,7 @@ const BURST_DURATION = 2500;
 function MobileParticipantTileInner({
   participant,
   localIsHost,
+  localIsOwner = false,
   participantIsHost,
   slug,
   onSpotlight,
@@ -219,7 +223,14 @@ function MobileParticipantTileInner({
   }, []);
 
   const handleModerate = useCallback(
-    async (action: 'muteAudio' | 'muteVideo' | 'kick') => {
+    async (
+      action:
+        | 'muteAudio'
+        | 'muteVideo'
+        | 'kick'
+        | 'requestUnmuteAudio'
+        | 'requestCameraOn',
+    ) => {
       setMenuError(null);
       setPending(action);
       try {
@@ -227,6 +238,57 @@ function MobileParticipantTileInner({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slug, action, participantIdentity: participant.identity }),
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          setMenuError(j.error || 'request_failed');
+          return;
+        }
+        setMenuOpen(false);
+      } catch (e) {
+        setMenuError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setPending(null);
+      }
+    },
+    [slug, participant.identity],
+  );
+
+  const muteEveryoneElse = useCallback(async () => {
+    setMenuError(null);
+    setPending('muteAll');
+    try {
+      const r = await fetch('/api/livekit/muteAll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomName: slug, exceptIdentity: participant.identity }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        setMenuError(j.error || 'request_failed');
+        return;
+      }
+      setMenuOpen(false);
+    } catch (e) {
+      setMenuError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPending(null);
+    }
+  }, [slug, participant.identity]);
+
+  const assignRole = useCallback(
+    async (role: 'host' | 'moderator' | 'participant') => {
+      setMenuError(null);
+      setPending('role:' + role);
+      try {
+        // Identity often carries a "#nn" LiveKit disambiguation suffix
+        // that the roles route needs stripped, matching how the desktop
+        // ParticipantsPanel derives targetUserId.
+        const targetUserId = participant.identity.split('#')[0];
+        const r = await fetch(`/api/events/${encodeURIComponent(slug)}/roles`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: targetUserId, role }),
         });
         if (!r.ok) {
           const j = await r.json().catch(() => ({}));
@@ -515,66 +577,145 @@ function MobileParticipantTileInner({
         </span>
       </div>
 
-      {/* Long-press action menu. Available to any viewer on any remote
-          tile — everyone gets Hide-on-my-screen; host / cohost also get
-          moderation actions and the broadcast Hide. */}
+      {/* Long-press action menu. Full moderation surface so the host
+          never needs to leave the grid to promote, demote, or discipline
+          a participant. Grouped into sections: My view · For everyone ·
+          Role · Danger. Scrolls inside the tile when the tile is too
+          short to fit the full list. */}
       {menuOpen && canOpenMenu && (
         <div
-          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-1.5"
+          className="absolute inset-0 z-20"
           style={{
-            background: 'rgba(0,0,0,0.75)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
+            background: 'rgba(0,0,0,0.85)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
             transition: 'opacity 150ms ease-out',
+            overflowY: 'auto',
+            paddingBlock: 8,
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <MenuBtn
-            label={isHiddenLocally ? 'Show on my screen' : 'Hide on my screen'}
-            disabled={pending !== null}
-            onClick={toggleHideLocal}
-          />
-          {localIsHost && (
+          <div className="flex flex-col items-center gap-1 px-2">
+            <MenuSection label="My view" />
             <MenuBtn
-              label={isHiddenGlobally ? 'Show video for everyone' : 'Hide video for everyone'}
+              label={isHiddenLocally ? 'Show on my screen' : 'Hide on my screen'}
               disabled={pending !== null}
-              loading={pending === 'hideGlobal'}
-              onClick={toggleHideGlobal}
+              onClick={toggleHideLocal}
             />
-          )}
-          {localIsHost && (
-            <MenuBtn
-              label="Mute"
-              disabled={pending !== null}
-              loading={pending === 'muteAudio'}
-              onClick={() => handleModerate('muteAudio')}
-            />
-          )}
-          {localIsHost && (
-            <MenuBtn
-              label="Remove"
-              danger
-              disabled={pending !== null}
-              loading={pending === 'kick'}
-              onClick={() => handleModerate('kick')}
-            />
-          )}
-          {menuError && (
-            <span className="text-red-400" style={{ fontSize: 9 }}>
-              {menuError}
-            </span>
-          )}
-          <button
-            type="button"
-            className="text-white/50 mt-1"
-            style={{ fontSize: 10, background: 'none', border: 'none' }}
-            onClick={() => setMenuOpen(false)}
-          >
-            Cancel
-          </button>
+
+            {localIsHost && (
+              <>
+                <MenuSection label="For everyone" />
+                <MenuBtn
+                  label={isHiddenGlobally ? 'Show video for everyone' : 'Hide video for everyone'}
+                  disabled={pending !== null}
+                  loading={pending === 'hideGlobal'}
+                  onClick={toggleHideGlobal}
+                />
+                <MenuBtn
+                  label="Mute mic"
+                  disabled={pending !== null}
+                  loading={pending === 'muteAudio'}
+                  onClick={() => handleModerate('muteAudio')}
+                />
+                <MenuBtn
+                  label="Turn off camera"
+                  disabled={pending !== null}
+                  loading={pending === 'muteVideo'}
+                  onClick={() => handleModerate('muteVideo')}
+                />
+                <MenuBtn
+                  label="Ask to unmute"
+                  disabled={pending !== null}
+                  loading={pending === 'requestUnmuteAudio'}
+                  onClick={() => handleModerate('requestUnmuteAudio')}
+                />
+                <MenuBtn
+                  label="Ask to turn on camera"
+                  disabled={pending !== null}
+                  loading={pending === 'requestCameraOn'}
+                  onClick={() => handleModerate('requestCameraOn')}
+                />
+                <MenuBtn
+                  label="Mute everyone else"
+                  disabled={pending !== null}
+                  loading={pending === 'muteAll'}
+                  onClick={muteEveryoneElse}
+                />
+
+                <MenuSection label="Role" />
+                {localIsOwner && (
+                  <MenuBtn
+                    label="Make Host"
+                    disabled={pending !== null}
+                    loading={pending === 'role:host'}
+                    onClick={() => assignRole('host')}
+                  />
+                )}
+                <MenuBtn
+                  label="Make Moderator"
+                  disabled={pending !== null}
+                  loading={pending === 'role:moderator'}
+                  onClick={() => assignRole('moderator')}
+                />
+                <MenuBtn
+                  label="Make Participant"
+                  disabled={pending !== null}
+                  loading={pending === 'role:participant'}
+                  onClick={() => assignRole('participant')}
+                />
+
+                <MenuSection label="Danger" />
+                <MenuBtn
+                  label="Remove from room"
+                  danger
+                  disabled={pending !== null}
+                  loading={pending === 'kick'}
+                  onClick={() => handleModerate('kick')}
+                />
+              </>
+            )}
+
+            {menuError && (
+              <span className="text-red-400 mt-1" style={{ fontSize: 10 }}>
+                {menuError}
+              </span>
+            )}
+            <button
+              type="button"
+              className="text-white/50 mt-1.5"
+              style={{ fontSize: 11, background: 'none', border: 'none', padding: '4px 8px' }}
+              onClick={() => setMenuOpen(false)}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
     </motion.div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Menu section header (internal)                                      */
+/* ------------------------------------------------------------------ */
+
+function MenuSection({ label }: { label: string }) {
+  return (
+    <div
+      style={{
+        width: '100%',
+        maxWidth: 220,
+        marginTop: 6,
+        paddingLeft: 4,
+        fontSize: 9,
+        letterSpacing: '0.1em',
+        textTransform: 'uppercase',
+        color: 'rgba(255,255,255,0.42)',
+      }}
+    >
+      {label}
+    </div>
   );
 }
 
@@ -628,6 +769,7 @@ export const MobileParticipantTile = React.memo(
     prev.participant.isMicrophoneEnabled === next.participant.isMicrophoneEnabled &&
     prev.participant.isCameraEnabled === next.participant.isCameraEnabled &&
     prev.localIsHost === next.localIsHost &&
+    prev.localIsOwner === next.localIsOwner &&
     prev.participantIsHost === next.participantIsHost &&
     prev.slug === next.slug &&
     prev.isVisible === next.isVisible &&
