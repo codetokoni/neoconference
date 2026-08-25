@@ -998,6 +998,7 @@ function RoomContainer({
             {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
           </button>
           <RenameUrlButton roomRole={roomRole} eventSlug={eventSlug} />
+          <HiddenVideosBadge roomRole={roomRole} />
           <DesktopMoreMenu />
 
           <div className="self-stretch w-px bg-white/15" aria-hidden />
@@ -1023,7 +1024,6 @@ function RoomContainer({
         <RoomAudioRenderer />
         <BackgroundContinuity eventName={roomName} eventSlug={eventSlug} />
         <HiddenVideoOverlay />
-        <HiddenVideosBadge roomRole={roomRole} />
         <LiveCaptions />
         <TranscriptNoticeBanner />
         <MeetingTimer slug={eventSlug} roomRole={roomRole} />
