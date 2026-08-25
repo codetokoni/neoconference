@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, Video, VideoOff, MoreHorizontal } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, MoreHorizontal, EyeOff } from 'lucide-react';
 import { useLocalParticipant } from '@livekit/components-react';
+import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -25,6 +26,22 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
   const moreRef = useRef<HTMLDivElement>(null);
   const moreBtnRef = useRef<HTMLButtonElement>(null);
   const firstItemRef = useRef<HTMLButtonElement>(null);
+
+  // Direct access to the restore surface on mobile. The custom top toolbar
+  // where HiddenVideosBadge normally lives is CSS-collapsed to zero size on
+  // phones (see initials-overlay.css), so its button is invisible and the
+  // only way to reach the restore modal was to open More and hunt for
+  // "N hidden" in the list. We surface a visible chip inline with the
+  // other bottom-bar controls whenever someone is hidden; the chip clicks
+  // the invisible HiddenVideosBadge trigger, which opens the same modal.
+  const { hiddenSet } = useHiddenVideos();
+  const hiddenCount = hiddenSet.size;
+  const openHiddenRestore = useCallback(() => {
+    const trigger = document.querySelector<HTMLButtonElement>(
+      '.room-toolbar button[data-hidden-videos-trigger="true"]',
+    );
+    if (trigger) trigger.click();
+  }, []);
 
   /* ---- mic / cam ---- */
   const toggleMic = useCallback(() => {
@@ -155,6 +172,21 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
         )}
         Cam
       </button>
+
+      {/* Hidden-videos restore — visible only when someone is hidden.
+          Sits between Cam and More so it's discoverable at a glance. */}
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={openHiddenRestore}
+          aria-label={`${hiddenCount} hidden video${hiddenCount === 1 ? '' : 's'} — restore`}
+          className={`${pill} ${pillEnabled}`}
+          style={{ whiteSpace: 'nowrap' }}
+        >
+          <EyeOff className="w-4 h-4 text-cyan-300" />
+          {hiddenCount} hidden
+        </button>
+      )}
 
       {/* More */}
       <div className="relative" ref={moreRef}>

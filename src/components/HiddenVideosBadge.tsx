@@ -112,6 +112,7 @@ export default function HiddenVideosBadge({
         type="button"
         data-toolbar-item="true"
         data-room-chrome="true"
+        data-hidden-videos-trigger="true"
         onClick={() => setOpen(true)}
         aria-label={`${count} hidden video${count === 1 ? '' : 's'} — restore`}
         title="Restore a hidden video"
