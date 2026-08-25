@@ -222,9 +222,12 @@ export default function MeetingTimer({
         title="Meeting timer"
         aria-label="Open meeting timer"
         style={{
+          // Sits below the "Rename URL" chip that hosts see at top-20/right-4
+          // so the two don't stack on top of each other. Owners without a
+          // rename chip get a small vertical gap under the nav — trivial.
           position: "fixed",
-          top: 68,
-          right: 20,
+          top: 128,
+          right: 16,
           zIndex: 60,
           width: 36,
           height: 36,
@@ -255,9 +258,11 @@ export default function MeetingTimer({
     <div
       data-room-chrome="true"
       style={{
+        // Same slot as the compact icon above — sits below the Rename URL
+        // chip so the two right-rail elements don't stack.
         position: "fixed",
-        top: 68,
-        right: 20,
+        top: 128,
+        right: 16,
         zIndex: 60,
         display: "flex",
         flexDirection: "column",
