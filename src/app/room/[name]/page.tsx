@@ -14,7 +14,6 @@ import {
   useLocalParticipant,
 } from "@livekit/components-react";
 import MobileVideoConference from "@/components/MobileVideoConference";
-import { useIsMobile } from "@/hooks/useIsMobile";
 import HostMenuOverlay from "@/components/HostMenuOverlay";
 import MediaRequestPrompt from "@/components/MediaRequestPrompt";
 import { RoomEvent, Track, type Participant } from "livekit-client";
@@ -67,6 +66,7 @@ import {
   Sparkles,
   Upload,
   X,
+  PencilLine,
 } from "lucide-react";
 
 // Shared toolbar button style — flat, transparent, lucide-icon + text label.
@@ -456,22 +456,34 @@ function RenameRedirectListener() {
  * Old links keep working as aliases. Calling the API broadcasts an
  * event_renamed packet so all current participants redirect to the new URL.
  */
-function humanizeRenameError(code?: string): string { switch ((code || "").toLowerCase()) { case "slug_taken": return "That URL is already taken. Try another."; case "invalid_slug": return "Invalid URL. Use lowercase letters, numbers, and dashes."; case "forbidden": return "Only the host can rename this meeting."; case "network_error": return "Network error. Check your connection and try again."; case "rename_failed": return "Rename failed. Please try again."; case "not_found": return "This meeting doesn't exist."; default: return code ? "Rename failed (" + code + ")." : "Rename failed. Please try again."; } } function RenameUrlButton({
+function humanizeRenameError(code?: string): string { switch ((code || "").toLowerCase()) { case "slug_taken": return "That URL is already taken. Try another."; case "invalid_slug": return "Invalid URL. Use lowercase letters, numbers, and dashes."; case "forbidden": return "Only the host can rename this meeting."; case "network_error": return "Network error. Check your connection and try again."; case "rename_failed": return "Rename failed. Please try again."; case "not_found": return "This meeting doesn't exist."; default: return code ? "Rename failed (" + code + ")." : "Rename failed. Please try again."; } }
+
+/**
+ * RenameUrlButton
+ *
+ * Previously a fixed top-right pill that hovered over the video area — but
+ * that slot is where every participant tile's HostTileMenu kebab lives, so
+ * the pill was covering the ⋮ button on the top-right tile.
+ *
+ * Now: a normal toolbar entry that lives inside `.room-toolbar` alongside
+ * every other action, with `data-in-more="true"` so it collapses into the
+ * DesktopMoreMenu on desktop and shows up in the MobileMoreMenu popover on
+ * mobile via the same runtime scan. Clicking opens a centered modal — the
+ * modal decouples the dropdown UI from any button position, so it never
+ * has to anchor to a specific corner of the screen.
+ */
+function RenameUrlButton({
   roomRole,
   eventSlug,
 }: {
   roomRole: string;
   eventSlug?: string;
 }) {
-  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [next, setNext] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   if (roomRole !== "host" || !eventSlug) return null;
-  // Mobile hosts rename via the MobileMoreMenu — the fixed top-right chip
-  // bleeds through the mobile grid otherwise.
-  if (isMobile) return null;
   const submit = async () => {
     const cleaned = (next || "").trim().toLowerCase();
     if (!cleaned) return;
@@ -495,56 +507,94 @@ function humanizeRenameError(code?: string): string { switch ((code || "").toLow
       setBusy(false);
     }
   };
+  const close = () => {
+    if (busy) return;
+    setOpen(false);
+    setErr(null);
+  };
   return (
-    <div className="fixed top-20 right-4 z-40 flex flex-col items-end gap-2">
+    <>
       <button
         type="button"
-        onClick={() => setOpen((x) => !x)}
-        className="px-2.5 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/15 text-cyan-100 text-[11px] uppercase tracking-wider hover:bg-cyan-500/25 transition pointer-events-auto"
+        data-room-chrome="true"
+        data-toolbar-item="true"
+        data-in-more="true"
+        onClick={() => setOpen(true)}
+        className={TOOLBAR_BTN_CLASS}
         title="Rename this meeting's URL"
       >
+        <PencilLine size={16} aria-hidden />
         Rename URL
       </button>
       {open && (
-        <div className="rounded-xl border border-white/15 bg-zinc-900/95 backdrop-blur p-3 w-72 shadow-xl pointer-events-auto">
-          <div className="text-[11px] uppercase tracking-wider text-white/60 mb-1">
-            New slug
-          </div>
-          <input
-            type="text"
-            value={next}
-            onChange={(e) => setNext(e.target.value)}
-            placeholder="my-meeting"
-            className="w-full px-2 py-1.5 rounded bg-black/40 border border-white/10 text-sm text-white outline-none focus:border-cyan-300/50"
-            autoFocus
-          />
-          <div className="text-[10px] text-white/50 mt-1">
-            Lowercase letters, numbers, and dashes. Old link will keep working.
-          </div>
-          {err && (
-            <div className="text-[11px] text-rose-300 mt-2">{err}</div>
-          )}
-          <div className="flex justify-end gap-2 mt-2">
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="px-2 py-1 rounded text-[12px] text-white/70 hover:text-white"
-              disabled={busy}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={submit}
-              className="px-3 py-1 rounded bg-cyan-500/80 hover:bg-cyan-500 text-[12px] text-white"
-              disabled={busy || !next.trim()}
-            >
-              {busy ? "Renaming…" : "Rename"}
-            </button>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Rename meeting URL"
+          onClick={close}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 80,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,0.7)",
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="rounded-2xl border border-white/15 bg-zinc-900/98 backdrop-blur p-5 w-full max-w-sm shadow-2xl"
+          >
+            <div className="text-base font-semibold text-white mb-1">
+              Rename meeting URL
+            </div>
+            <div className="text-[12px] text-white/60 mb-3">
+              Lowercase letters, numbers, and dashes. The old link keeps working.
+            </div>
+            <div className="text-[11px] uppercase tracking-wider text-white/60 mb-1">
+              New slug
+            </div>
+            <input
+              type="text"
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") close();
+                if (e.key === "Enter" && next.trim()) submit();
+              }}
+              placeholder="my-meeting"
+              className="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-sm text-white outline-none focus:border-cyan-300/60"
+              autoFocus
+            />
+            {err && (
+              <div className="text-[12px] text-rose-300 mt-2">{err}</div>
+            )}
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                type="button"
+                onClick={close}
+                className="px-3 py-1.5 rounded-lg text-[13px] text-white/70 hover:text-white hover:bg-white/5"
+                disabled={busy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submit}
+                className="px-3.5 py-1.5 rounded-lg bg-cyan-500/85 hover:bg-cyan-500 text-[13px] font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={busy || !next.trim()}
+              >
+                {busy ? "Renaming…" : "Rename"}
+              </button>
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -947,6 +997,7 @@ function RoomContainer({
             {isFullscreen ? <Minimize size={16} aria-hidden /> : <Maximize size={16} aria-hidden />}
             {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
           </button>
+          <RenameUrlButton roomRole={roomRole} eventSlug={eventSlug} />
           <DesktopMoreMenu />
 
           <div className="self-stretch w-px bg-white/15" aria-hidden />
@@ -986,7 +1037,6 @@ function RoomContainer({
         <WaitingRoomPanel open={showWaitingRoom} onClose={() => setShowWaitingRoom(false)} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          <BreakoutsPanel open={showBreakouts} onClose={() => setShowBreakouts(false)} isHost={roomRole === "host" || roomRole === "cohost"} eventSlug={eventSlug} /><PlanGateOverlay />
         <SpeakerBadge />
         <RenameRedirectListener />
-        <RenameUrlButton roomRole={roomRole} eventSlug={eventSlug} />
         <BackgroundPickerPanel
           open={showBackgroundPicker}
           onClose={() => setShowBackgroundPicker(false)}
