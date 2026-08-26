@@ -156,6 +156,22 @@ function MobileParticipantTileInner({
   // re-render, not the value.
   void subTick;
 
+  // Target participant's wire-format role, read from LiveKit metadata that
+  // the room writes on assignment (see /api/events/[id]/roles broadcast).
+  // Used to conditionally show role-management items — e.g. "Demote to
+  // Participant" only makes sense when the target actually holds an
+  // elevated role right now.
+  const targetRole = (() => {
+    if (!participant?.metadata) return null;
+    try {
+      const j = JSON.parse(participant.metadata) as { role?: unknown };
+      return typeof j?.role === 'string' ? j.role : null;
+    } catch {
+      return null;
+    }
+  })();
+  const targetIsElevated = targetRole === 'host' || targetRole === 'cohost';
+
   const camPub = participant.getTrackPublication(Track.Source.Camera);
   // FRS §5.x display-only hide. When the tile is either locally or
   // globally hidden we short-circuit hasCam so the render path swaps to
@@ -193,6 +209,18 @@ function MobileParticipantTileInner({
   const [menuOpen, setMenuOpen] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [menuError, setMenuError] = useState<string | null>(null);
+
+  // Spotlight is host-level. Fire the same dblclick that
+  // SpotlightOverlay listens for at the document level (see
+  // src/components/SpotlightOverlay.tsx) so this menu item is exactly
+  // equivalent to the double-tap gesture we already ship — no duplicate
+  // data-channel wiring, no drift.
+  const spotlightTarget = useCallback(() => {
+    if (!rootRef.current) return;
+    rootRef.current.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    onSpotlight?.(participant.identity);
+    setMenuOpen(false);
+  }, [onSpotlight, participant.identity]);
 
   const toggleHideLocal = useCallback(() => {
     hidden.toggleLocal(participant.identity, !isHiddenLocally);
@@ -614,6 +642,11 @@ function MobileParticipantTileInner({
               <>
                 <MenuSection label="For everyone" />
                 <MenuBtn
+                  label="Spotlight"
+                  disabled={pending !== null}
+                  onClick={spotlightTarget}
+                />
+                <MenuBtn
                   label={isHiddenGlobally ? 'Show video for everyone' : 'Hide video for everyone'}
                   disabled={pending !== null}
                   loading={pending === 'hideGlobal'}
@@ -665,6 +698,16 @@ function MobileParticipantTileInner({
                   loading={pending === 'role:moderator'}
                   onClick={() => assignRole('moderator')}
                 />
+                {/* Only surfaces when the target actually holds an elevated
+                    role right now — otherwise there's nothing to demote. */}
+                {targetIsElevated && (
+                  <MenuBtn
+                    label="Demote to Participant"
+                    disabled={pending !== null}
+                    loading={pending === 'role:participant'}
+                    onClick={() => assignRole('participant')}
+                  />
+                )}
 
                 <MenuSection label="Danger" />
                 <MenuBtn
