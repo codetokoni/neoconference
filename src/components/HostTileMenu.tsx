@@ -28,15 +28,25 @@ export function HostTileMenu({
   participantIdentity,
   participantName,
   isHost,
+  isOwner = false,
   roomRole,
+  targetRole = null,
   slug,
 }: {
   participantIdentity: string;
   participantName: string;
   isHost: boolean;
+  /** Whether the local viewer is the actual event owner. Only the owner
+   *  may appoint a Host (FRS §1.1). */
+  isOwner?: boolean;
   /** Wire-format role — 'host' covers owner+host after toLegacyRole. Used to
    *  gate the FRS §5.2 "Mute everyone else" option, which is Owner+Host only. */
   roomRole?: string;
+  /** Wire-format role of the target this menu is opened on, read from
+   *  LiveKit metadata by HostMenuOverlay. Used to conditionally show
+   *  Demote (only meaningful when the target actually holds an
+   *  elevated role right now). */
+  targetRole?: string | null;
   slug: string;
 }) {
   const { localParticipant } = useLocalParticipant();
@@ -50,6 +60,35 @@ export function HostTileMenu({
 
   const isSelf = localParticipant?.identity === participantIdentity;
   const canMuteOthers = roomRole === 'host';
+  const targetIsElevated = targetRole === 'host' || targetRole === 'cohost';
+
+  const assignRole = useCallback(
+    async (role: 'host' | 'moderator' | 'participant') => {
+      setError(null);
+      setPending('role:' + role);
+      try {
+        // Strip LiveKit's disambiguation suffix ("#12345") the same way
+        // ParticipantsPanel does so the roles route stores by base userId.
+        const targetUserId = participantIdentity.split('#')[0];
+        const r = await fetch(`/api/events/${encodeURIComponent(slug)}/roles`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: targetUserId, role }),
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          setError(j.error || 'request_failed');
+          return;
+        }
+        setOpen(false);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setPending(null);
+      }
+    },
+    [slug, participantIdentity],
+  );
   // Broadcast hide is the same rank as Mute All / kick / etc — moderator+
   // (`participant:hideVideo` in the permissions catalog). host and cohost
   // both hold it. Everyone else only sees "Hide on my screen".
@@ -255,6 +294,51 @@ export function HostTileMenu({
               onClick={muteEveryoneElse}
               pending={pending === 'muteOthers'}
             />
+          )}
+
+          {/* Role — Owner-only Make Host (FRS §1.1), plus Make Moderator
+              for host+ and target-aware Demote. Same server route as the
+              ParticipantsPanel role controls (/api/events/[id]/roles), so
+              the rank ladder is enforced identically. */}
+          {showHostActions && canMuteOthers && (
+            <>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: 'rgba(255,255,255,0.4)',
+                  padding: '6px 10px 2px',
+                  letterSpacing: 0.5,
+                  textTransform: 'uppercase',
+                }}
+              >
+                Role
+              </div>
+              {isOwner && (
+                <MenuItem
+                  label="Make Host"
+                  icon="H"
+                  disabled={pending !== null}
+                  onClick={() => assignRole('host')}
+                  pending={pending === 'role:host'}
+                />
+              )}
+              <MenuItem
+                label="Make Moderator"
+                icon="M"
+                disabled={pending !== null}
+                onClick={() => assignRole('moderator')}
+                pending={pending === 'role:moderator'}
+              />
+              {targetIsElevated && (
+                <MenuItem
+                  label="Demote to Participant"
+                  icon="D"
+                  disabled={pending !== null}
+                  onClick={() => assignRole('participant')}
+                  pending={pending === 'role:participant'}
+                />
+              )}
+            </>
           )}
 
           {/* FRS §1.3: Moderator must NOT remove participants. Server already
