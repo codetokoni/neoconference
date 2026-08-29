@@ -22,6 +22,7 @@ const isPublicRoute = createRouteMatcher([
   '/api/livekit/token(.*)',
   '/api/livekit/webhook(.*)',
   '/api/auth/kingschat/(.*)',
+  '/api/auth/neoemail/(.*)',
   '/api/events/by-domain',
   '/api/stripe/webhook',
   '/api/events/(.*)/checkout',
