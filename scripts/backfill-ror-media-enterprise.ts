@@ -23,7 +23,10 @@
 //                           and expiry per the handoff. Pass "annual"
 //                           only if the grant was actually sold as annual
 //                           and the current Clerk expiry is a bug.)
-//   BACKFILL_PAID_AT_ISO   (default: 2026-08-29T00:00:00Z)
+//   BACKFILL_PAID_AT_ISO   (default: 2026-07-29T00:00:00Z — the operator
+//                           reported the payment was made "last month",
+//                           so paidAt sits ~30 days before the current
+//                           Clerk grant date of 29 Aug 2026)
 //   BACKFILL_PERIOD_END_MS (default: 1790636399000, from the handoff)
 //
 // Runs via tsx from the repo root:
@@ -50,7 +53,7 @@ const email = (process.env.BACKFILL_EMAIL || "rhapsodybrandsandcomms@gmail.com")
 const paymentRef = (process.env.BACKFILL_PAYMENT_REF || "MANUAL-ROR-2026-08").trim();
 const amountEsp = Number(process.env.BACKFILL_AMOUNT_ESP ?? "1000");
 const rawCycle = (process.env.BACKFILL_CYCLE || "monthly").trim() as BillingCycle;
-const paidAtIso = (process.env.BACKFILL_PAID_AT_ISO || "2026-08-29T00:00:00Z").trim();
+const paidAtIso = (process.env.BACKFILL_PAID_AT_ISO || "2026-07-29T00:00:00Z").trim();
 const paidAt = Date.parse(paidAtIso);
 const periodEnd = Number(process.env.BACKFILL_PERIOD_END_MS ?? "1790636399000");
 
