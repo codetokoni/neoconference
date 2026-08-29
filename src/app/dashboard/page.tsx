@@ -65,6 +65,9 @@ export default async function DashboardPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Link href="/dashboard/billing" className="neo-btn-ghost text-sm px-4 py-2.5">
+              Billing
+            </Link>
             <Link href="/dashboard/recordings" className="neo-btn-ghost text-sm px-4 py-2.5">
               All recordings
             </Link>
