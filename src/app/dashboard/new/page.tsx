@@ -28,7 +28,11 @@ export default function NewEventPage() {
   const [description, setDescription] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [password, setPassword] = useState('');
-  const [enableStream, setEnableStream] = useState(true);
+  // Off by default — provisioning a StreamLab RTMP + HLS pipeline is a
+  // paid opt-in and most meetings are private conversations that don't
+  // want the stream URLs minted. Users tick this when they actually need
+  // livestream/replay.
+  const [enableStream, setEnableStream] = useState(false);
   const [eventType, setEventType] = useState<'meeting' | 'webinar' | 'livestream'>('meeting');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CreateResult | null>(null);
