@@ -22,7 +22,7 @@ import { redirect } from "next/navigation";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdmin } from "@/lib/roles";
 import {
-  readPlanFromMetadata,
+  getCurrentPlan,
   getPlanLimits,
   type Plan,
 } from "@/lib/plan";
@@ -82,7 +82,14 @@ export default async function BillingPage() {
   );
   const viewerIsAdmin = emails.some((e) => isAdmin(e));
 
-  const plan = readPlanFromMetadata(user?.publicMetadata);
+  // Use the effective plan — same source the rest of the app uses for
+  // entitlement decisions. `getCurrentPlan()` returns "business" for
+  // ADMIN_EMAILS admins and BOOTSTRAP_BUSINESS_EMAIL matches, so this
+  // avoids the "signed in as admin but billing page says Free" bug
+  // that raw metadata reads produced. Falls back to "free" if the
+  // helper returns null (should be impossible after the auth() guard
+  // above, but stay safe).
+  const plan = (await getCurrentPlan()) ?? "free";
   const planExpiresAt = readPlanExpiresAt(user?.publicMetadata);
   const remainingDays = daysUntil(planExpiresAt);
   const limits = getPlanLimits(plan);
