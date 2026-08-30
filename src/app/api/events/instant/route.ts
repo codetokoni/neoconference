@@ -131,7 +131,11 @@ export async function POST(req: NextRequest) {
             slug: ev.slug,
             livekitRoom: ev.livekitRoom,
             eventUrl: '/e/' + ev.slug,
-            roomUrl: '/room/' + ev.livekitRoom + '?event=' + ev.slug,
+            // Short URL as the canonical share form (PR #117 wired the
+            // `/[slug]` catch-all that 307-redirects to the actual room).
+            // Kept the field name `roomUrl` so existing callers don't
+            // need updating.
+            roomUrl: '/' + ev.slug,
             shortUrl: ev.hsmoh?.shortUrl,
     },
     { status: 201 },

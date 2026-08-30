@@ -57,7 +57,10 @@ export async function POST(req: Request) {
         type: 'event_renamed',
         oldSlug: slug,
         newSlug,
-        roomUrl: '/room/' + newSlug + '?event=' + newSlug,
+        // Short URL — the same form the client-facing response returns
+        // below. Participants who receive this packet navigate to
+        // `/<newSlug>` and get 307-redirected to the room.
+        roomUrl: '/' + newSlug,
       });
       await svc.sendData(
         oldLivekitRoom,
@@ -74,6 +77,7 @@ export async function POST(req: Request) {
     ok: true,
     slug: result.event.slug,
     livekitRoom: result.event.livekitRoom,
-    roomUrl: '/room/' + result.event.slug + '?event=' + result.event.slug,
+    // Short URL — canonical share form after PR #117.
+    roomUrl: '/' + result.event.slug,
   });
 }
