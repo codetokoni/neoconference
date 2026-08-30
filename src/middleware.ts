@@ -63,6 +63,60 @@ async function resolveDomain(host: string, origin: string): Promise<string | nul
   }
 }
 
+/* -----------------------------------------------------------------------
+   Short-meeting-URL rewrite
+
+   Turns `neoconference.app/<slug>` into a server-side rewrite of
+   `/room/<slug>?event=<slug>`. The browser's address bar stays on the
+   short URL — a REDIRECT (like the /[slug]/page.tsx server component
+   shipped in PR #117) would bounce and the address bar would jump to
+   the long form; REWRITE is invisible to the client.
+
+   Skip conditions:
+     - path has more than one segment (e.g. /dashboard/billing)
+     - path segment is a reserved top-level route name
+     - path is exactly '/' (root landing page)
+
+   No KV lookup here — matches any single-segment slug that passes the
+   regex, and lets the room page handle unknown slugs (already does via
+   adoptOrphanRoom or 404, depending on auth state). Adding a lookup
+   would mean a KV round-trip on every request; not worth it for a UX
+   shortcut. The [slug]/page.tsx from PR #117 is kept as a fallback for
+   requests that skip middleware.
+
+   RESERVED_SHORT_URL_SLUGS covers every top-level route that exists
+   today. If a new one is added, extend this set — otherwise the new
+   route will be shadowed by this rewrite.
+   ----------------------------------------------------------------------- */
+
+const RESERVED_SHORT_URL_SLUGS = new Set([
+  'admin', 'api', 'dashboard', 'docs', 'e', 'embed', 'explore', 'fonts',
+  'i', 'pricing', 'room', 'share',
+  'sign-in', 'sign-up', 'sign-out',
+  '_next', '_vercel',
+]);
+
+// Matches a single URL segment shaped like a valid meeting slug — 1-64
+// chars, lowercase alphanumerics and dashes, no leading/trailing dash.
+// Mirrors SLUG_REGEX in /api/events/rename so the middleware and the
+// slug validators agree on what's shaped like a slug.
+const SHORT_URL_SLUG_RE = /^\/([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)\/?$/;
+
+function maybeRewriteShortMeetingUrl(req: NextRequest): NextResponse | null {
+  const match = req.nextUrl.pathname.match(SHORT_URL_SLUG_RE);
+  if (!match) return null;
+  const slug = match[1];
+  if (RESERVED_SHORT_URL_SLUGS.has(slug)) return null;
+  const url = req.nextUrl.clone();
+  url.pathname = '/room/' + slug;
+  // Only set ?event= when the caller hasn't already — a rewrite target
+  // that already carries the parameter shouldn't be overwritten.
+  if (!url.searchParams.has('event')) {
+    url.searchParams.set('event', slug);
+  }
+  return NextResponse.rewrite(url);
+}
+
 async function maybeRewriteCustomDomain(req: NextRequest): Promise<NextResponse | null> {
   const host = (req.headers.get('host') || '').toLowerCase();
   if (!host || CANONICAL_HOST_RE.test(host)) return null;
@@ -128,8 +182,14 @@ async function enforcePersistentSession(req: NextRequest): Promise<NextResponse 
 
 export default clerkMiddleware(
   async (auth, req) => {
-    const rewrite = await maybeRewriteCustomDomain(req as unknown as NextRequest);
-    if (rewrite) return rewrite;
+    const nextReq = req as unknown as NextRequest;
+    // Custom-domain rewrite runs first because it's tenant-scoped and
+    // consumes the whole path. Short-meeting-URL rewrite runs second so
+    // it only sees canonical-domain requests.
+    const domainRewrite = await maybeRewriteCustomDomain(nextReq);
+    if (domainRewrite) return domainRewrite;
+    const shortRewrite = maybeRewriteShortMeetingUrl(nextReq);
+    if (shortRewrite) return shortRewrite;
     if (!isPublicRoute(req)) {
       await auth.protect();
       if (!isSessionExemptRoute(req)) {
