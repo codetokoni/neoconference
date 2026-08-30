@@ -210,7 +210,13 @@ export default function RoomPage({ params }: { params: { name: string } }) {
 
   const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      // Prefer the short URL when we know the event slug — it's what we
+      // want people to share. Falls back to the current location for
+      // orphan rooms with no slug.
+      const shortUrl = eventSlug
+        ? window.location.origin + "/" + encodeURIComponent(eventSlug)
+        : window.location.href;
+      await navigator.clipboard.writeText(shortUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -828,7 +834,12 @@ function RoomContainer({
 
   const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      // Same short-URL preference as the pre-join copyLink above —
+      // want people to share `origin/<slug>`, not the current /room path.
+      const shortUrl = eventSlug
+        ? window.location.origin + "/" + encodeURIComponent(eventSlug)
+        : window.location.href;
+      await navigator.clipboard.writeText(shortUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
