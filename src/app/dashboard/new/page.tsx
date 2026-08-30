@@ -187,7 +187,14 @@ export default function NewEventPage() {
                 type="datetime-local"
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm sm:text-base outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 transition"
+                // Open the native picker on ANY click inside the field —
+                // not just the tiny calendar icon at the far right, which
+                // users don't realise is the only affordance. showPicker()
+                // is widely supported (Chrome 99+, Firefox 101+, Safari 16+);
+                // the optional chain silently no-ops on browsers that
+                // don't have it.
+                onClick={(e) => (e.currentTarget as HTMLInputElement).showPicker?.()}
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm sm:text-base outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 transition cursor-pointer"
               />
             </div>
             <div className="grid gap-2">
