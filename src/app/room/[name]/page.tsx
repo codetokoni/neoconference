@@ -35,6 +35,7 @@ import {
 } from "@/lib/backgroundEffects";
 import LiveCaptions from "@/components/LiveCaptions";
 import CaptionsToggle from "@/components/CaptionsToggle";
+import LiveTranslation from "@/components/LiveTranslation";
 import ReactionsBar from "@/components/ReactionsBar";
 import ChatPanel from "@/components/ChatPanel";
 import MeetingPiP from "@/components/MeetingPiP";
@@ -1010,6 +1011,7 @@ function RoomContainer({
           </button>
           <RenameUrlButton roomRole={roomRole} eventSlug={eventSlug} />
           <HiddenVideosBadge roomRole={roomRole} />
+          <LiveTranslation />
           <DesktopMoreMenu />
 
           <div className="self-stretch w-px bg-white/15" aria-hidden />
