@@ -38,6 +38,12 @@ type Props = {
   eventSlug?: string;
 };
 
+// A caption is "flowing" if we've received at least one transcript
+// segment within this window. Balances "recent silence is a bug" vs
+// "someone just paused speaking" — 45s covers a decent pause without
+// the pill flapping green→blue→green during a slow conversation.
+const CAPTIONS_FLOWING_WINDOW_MS = 45_000;
+
 export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props) {
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
@@ -46,6 +52,8 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [workerMissing, setWorkerMissing] = useState(false);
+  const [captionsFlowing, setCaptionsFlowing] = useState(false);
+  const lastCaptionAt = useRef<number>(0);
 
   const canControl = roomRole === 'host';
 
@@ -108,6 +116,41 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
       room.off(RoomEvent.DataReceived, onData);
     };
   }, [room]);
+
+  // Track whether transcripts are actively arriving. Turning this into
+  // a distinct "flowing" pill state (green vs blue) lets an operator
+  // see at a glance whether the failure is upstream ("worker present,
+  // no transcripts" = Deepgram / Railway problem) vs client-side
+  // ("transcripts arriving, translation not speaking" = TTS problem).
+  useEffect(() => {
+    if (!room) return;
+    const onTranscript = () => {
+      lastCaptionAt.current = Date.now();
+      setCaptionsFlowing(true);
+    };
+    room.on(RoomEvent.TranscriptionReceived, onTranscript);
+    // Poll every 5s to demote back to "waiting" if the stream stops.
+    const id = window.setInterval(() => {
+      if (
+        lastCaptionAt.current > 0 &&
+        Date.now() - lastCaptionAt.current > CAPTIONS_FLOWING_WINDOW_MS
+      ) {
+        setCaptionsFlowing(false);
+      }
+    }, 5_000);
+    return () => {
+      room.off(RoomEvent.TranscriptionReceived, onTranscript);
+      window.clearInterval(id);
+    };
+  }, [room]);
+  // Reset the flowing state whenever captions toggle off so a stale
+  // "green" from a previous ON session doesn't persist.
+  useEffect(() => {
+    if (!enabled) {
+      lastCaptionAt.current = 0;
+      setCaptionsFlowing(false);
+    }
+  }, [enabled]);
 
   // Re-arm broadcast on agent arrival. Placed above the useCallback
   // that defines broadcastState so the dependency reference is stable
@@ -181,35 +224,56 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
   // turns captions on.
   if (!enabled && !canControl) return null;
 
-  const labelOn = busy
-    ? 'Captions …'
-    : enabled
-      ? workerMissing
-        ? 'CC ● WORKER OFFLINE'
-        : agentPresent
-          ? 'CC ● ON'
-          : 'CC ● WAITING…'
-      : 'CC';
-  const labelOff = enabled
-    ? workerMissing
-      ? 'CC ● WORKER OFFLINE'
-      : agentPresent
-        ? 'CC ● ON'
-        : 'CC ● WAITING…'
-    : 'CC ● ON';
+  // Priority ordering of the possible states, most-severe first:
+  //   OFF        — captions toggle is off
+  //   WORKER OFFLINE (rose)   — worker didn't join within 15s
+  //   WAITING (amber)         — dispatched, cold-starting
+  //   ON, no captions (blue)  — worker present but silent (likely
+  //                             Deepgram-side failure)
+  //   LIVE (green)            — transcripts actively arriving
+  const state: 'off' | 'offline' | 'waiting' | 'silent' | 'live' = !enabled
+    ? 'off'
+    : workerMissing
+      ? 'offline'
+      : !agentPresent
+        ? 'waiting'
+        : captionsFlowing
+          ? 'live'
+          : 'silent';
 
-  // Pill colour tracks state so operators can see at a glance:
-  //   OFF     — black
-  //   WAITING — amber (dispatched, worker hasn't joined yet — cold start)
-  //   OFFLINE — rose (past timeout; likely Railway/Deepgram infra issue)
-  //   ON      — cyan (worker present)
-  const pillClass = enabled
-    ? workerMissing
-      ? 'bg-rose-600/90 text-white border-rose-300/40'
-      : agentPresent
-        ? 'bg-cyan-500/90 text-white border-cyan-200/40 hover:bg-cyan-500'
-        : 'bg-amber-500/90 text-black border-amber-200/40'
-    : 'bg-black text-white border-white/30 hover:bg-zinc-800';
+  const stateLabel = (() => {
+    if (busy) return 'Captions …';
+    switch (state) {
+      case 'off':
+        return canControl ? 'CC' : 'CC ● ON';
+      case 'offline':
+        return 'CC ● WORKER OFFLINE';
+      case 'waiting':
+        return 'CC ● WAITING…';
+      case 'silent':
+        return 'CC ● NO CAPTIONS';
+      case 'live':
+        return 'CC ● LIVE';
+    }
+  })();
+
+  const labelOn = stateLabel;
+  const labelOff = stateLabel;
+
+  const pillClass = (() => {
+    switch (state) {
+      case 'off':
+        return 'bg-black text-white border-white/30 hover:bg-zinc-800';
+      case 'offline':
+        return 'bg-rose-600/90 text-white border-rose-300/40';
+      case 'waiting':
+        return 'bg-amber-500/90 text-black border-amber-200/40';
+      case 'silent':
+        return 'bg-cyan-500/90 text-white border-cyan-200/40';
+      case 'live':
+        return 'bg-emerald-500/95 text-white border-emerald-200/40 hover:bg-emerald-500';
+    }
+  })();
 
   return (
     <div className="fixed bottom-36 right-4 z-50 flex items-center gap-1">
@@ -220,21 +284,24 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
         disabled={busy}
         aria-pressed={enabled}
         aria-disabled={!canControl}
-        title={
-          canControl
-            ? enabled
-              ? workerMissing
-                ? 'Captions worker did not join. Check Railway service and Deepgram quota / key.'
-                : agentPresent
-                  ? 'Turn live captions off'
-                  : 'Waiting for captions worker to join (cold start can take a few seconds)…'
-              : 'Turn live captions on'
-            : enabled
-              ? workerMissing
-                ? 'Captions enabled but the transcription worker did not join. Ask the host to toggle off + on.'
-                : 'Live captions are on (only hosts can toggle)'
-              : 'Live captions are off'
-        }
+        title={(() => {
+          if (canControl) {
+            switch (state) {
+              case 'off': return 'Turn live captions on';
+              case 'offline': return 'Captions worker did not join. Check Railway service and Deepgram quota / key.';
+              case 'waiting': return 'Waiting for captions worker to join (cold start can take a few seconds)…';
+              case 'silent': return 'Worker joined but no transcripts are arriving. Check Deepgram key / quota.';
+              case 'live': return 'Turn live captions off';
+            }
+          }
+          switch (state) {
+            case 'off': return 'Live captions are off';
+            case 'offline': return 'Captions enabled but the transcription worker did not join. Ask the host to toggle off + on.';
+            case 'waiting': return 'Waiting for captions worker to join…';
+            case 'silent': return 'Captions enabled but no transcripts are arriving yet.';
+            case 'live': return 'Live captions are on (only hosts can toggle)';
+          }
+        })()}
         className={
           'px-3 py-1.5 text-xs rounded border shadow-sm transition ' +
           pillClass +
