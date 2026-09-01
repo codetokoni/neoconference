@@ -23,8 +23,14 @@
 // Must be rendered inside a <LiveKitRoom> so useRoomContext() works.
 
 import { useEffect, useState, useCallback } from 'react';
-import { useRoomContext, useLocalParticipant } from '@livekit/components-react';
+import { useRoomContext, useLocalParticipant, useParticipants } from '@livekit/components-react';
 import { RoomEvent } from 'livekit-client';
+
+// How long to wait for the captions worker to join after a host clicks
+// ON before surfacing "worker did not join" as a warning. Railway
+// cold-starts can take 5-8s; keep the wait generous so we don't
+// false-positive on a slow spin-up.
+const WORKER_JOIN_TIMEOUT_MS = 15_000;
 
 type Props = {
   roomRole: string;
@@ -35,11 +41,38 @@ type Props = {
 export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props) {
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
+  const participants = useParticipants();
   const [enabled, setEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [workerMissing, setWorkerMissing] = useState(false);
 
   const canControl = roomRole === 'host';
+
+  // Detect the captions worker via LiveKit's isAgent flag. Any agent-
+  // kind participant in the room counts — we don't tie this to a
+  // specific identity so a name change on the worker side doesn't
+  // silently break the check.
+  const agentPresent = participants.some((p) => {
+    // LiveKit 2.x exposes `isAgent` on both local and remote participants.
+    return (p as { isAgent?: boolean }).isAgent === true;
+  });
+
+  // If captions are ON but no agent has joined within a generous window,
+  // surface a warning. Reset whenever the room composition changes or
+  // captions toggle. Clears immediately when the agent shows up.
+  useEffect(() => {
+    if (!enabled) {
+      setWorkerMissing(false);
+      return;
+    }
+    if (agentPresent) {
+      setWorkerMissing(false);
+      return;
+    }
+    const id = window.setTimeout(() => setWorkerMissing(true), WORKER_JOIN_TIMEOUT_MS);
+    return () => window.clearTimeout(id);
+  }, [enabled, agentPresent]);
 
   // Listen for room-wide captions state changes.
   useEffect(() => {
@@ -116,8 +149,35 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
   // turns captions on.
   if (!enabled && !canControl) return null;
 
-  const labelOn = busy ? 'Captions …' : enabled ? 'CC ● ON' : 'CC';
-  const labelOff = 'CC ● ON';
+  const labelOn = busy
+    ? 'Captions …'
+    : enabled
+      ? workerMissing
+        ? 'CC ● WORKER OFFLINE'
+        : agentPresent
+          ? 'CC ● ON'
+          : 'CC ● WAITING…'
+      : 'CC';
+  const labelOff = enabled
+    ? workerMissing
+      ? 'CC ● WORKER OFFLINE'
+      : agentPresent
+        ? 'CC ● ON'
+        : 'CC ● WAITING…'
+    : 'CC ● ON';
+
+  // Pill colour tracks state so operators can see at a glance:
+  //   OFF     — black
+  //   WAITING — amber (dispatched, worker hasn't joined yet — cold start)
+  //   OFFLINE — rose (past timeout; likely Railway/Deepgram infra issue)
+  //   ON      — cyan (worker present)
+  const pillClass = enabled
+    ? workerMissing
+      ? 'bg-rose-600/90 text-white border-rose-300/40'
+      : agentPresent
+        ? 'bg-cyan-500/90 text-white border-cyan-200/40 hover:bg-cyan-500'
+        : 'bg-amber-500/90 text-black border-amber-200/40'
+    : 'bg-black text-white border-white/30 hover:bg-zinc-800';
 
   return (
     <div className="fixed bottom-36 right-4 z-50 flex items-center gap-1">
@@ -131,17 +191,21 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
         title={
           canControl
             ? enabled
-              ? 'Turn live captions off'
+              ? workerMissing
+                ? 'Captions worker did not join. Check Railway service and Deepgram quota / key.'
+                : agentPresent
+                  ? 'Turn live captions off'
+                  : 'Waiting for captions worker to join (cold start can take a few seconds)…'
               : 'Turn live captions on'
             : enabled
-              ? 'Live captions are on (only hosts can toggle)'
+              ? workerMissing
+                ? 'Captions enabled but the transcription worker did not join. Ask the host to toggle off + on.'
+                : 'Live captions are on (only hosts can toggle)'
               : 'Live captions are off'
         }
         className={
           'px-3 py-1.5 text-xs rounded border shadow-sm transition ' +
-          (enabled
-            ? 'bg-cyan-500/90 text-white border-cyan-200/40 hover:bg-cyan-500'
-            : 'bg-black text-white border-white/30 hover:bg-zinc-800') +
+          pillClass +
           (canControl ? ' cursor-pointer' : ' cursor-default opacity-90')
         }
         style={{ pointerEvents: canControl ? 'auto' : 'none' }}
