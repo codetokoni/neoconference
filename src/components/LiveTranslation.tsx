@@ -80,15 +80,39 @@ function useSpeechVoice(targetLang: string) {
   return voice;
 }
 
+interface Diagnostics {
+  captionsSeen: number;
+  finalsSeen: number;
+  translateAttempts: number;
+  translateOk: number;
+  spoke: number;
+  lastError: string | null;
+  lastSample: string | null;
+}
+
+const EMPTY_DIAG: Diagnostics = {
+  captionsSeen: 0,
+  finalsSeen: 0,
+  translateAttempts: 0,
+  translateOk: 0,
+  spoke: 0,
+  lastError: null,
+  lastSample: null,
+};
+
 export default function LiveTranslation() {
   const room = useRoomContext();
   const [targetLang, setTargetLangState] = useState<string>('off');
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [everSpoke, setEverSpoke] = useState(false);
+  const [diag, setDiag] = useState<Diagnostics>(EMPTY_DIAG);
+  // Ref mirror so async work can update counters without stale closures.
+  const diagRef = useRef<Diagnostics>(EMPTY_DIAG);
+  const bumpDiag = useCallback((patch: Partial<Diagnostics>) => {
+    diagRef.current = { ...diagRef.current, ...patch };
+    setDiag(diagRef.current);
+  }, []);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const warnedNoTts = useRef(false);
-  const warnedNoConfig = useRef(false);
   const voice = useSpeechVoice(targetLang === 'off' ? 'en' : targetLang);
 
   // Load / persist per-viewer preference.
@@ -108,12 +132,15 @@ export default function LiveTranslation() {
     } catch {
       // ignore
     }
-    // Any change cancels queued utterances so the switch is instant.
+    // Any change cancels queued utterances so the switch is instant,
+    // and resets diagnostics so the next attempt starts from zero.
     try {
       window.speechSynthesis.cancel();
     } catch {
       // ignore
     }
+    diagRef.current = EMPTY_DIAG;
+    setDiag(EMPTY_DIAG);
   }, []);
 
   // Warn once if TTS is unavailable — no user-facing error, just a
@@ -164,10 +191,12 @@ export default function LiveTranslation() {
       _participant?: Participant,
       _publication?: TrackPublication,
     ) => {
+      bumpDiag({ captionsSeen: diagRef.current.captionsSeen + segments.length });
       for (const seg of segments) {
         if (!seg.final) continue;
         if (seenFinalIds.has(seg.id)) continue;
         seenFinalIds.add(seg.id);
+        bumpDiag({ finalsSeen: diagRef.current.finalsSeen + 1 });
         const text = (seg.text || '').trim();
         if (!text) continue;
         // Skip if the caption is already in the viewer's target
@@ -176,6 +205,10 @@ export default function LiveTranslation() {
         const sourceShort = source.split('-')[0].toLowerCase();
         if (sourceShort && sourceShort === targetLang) continue;
 
+        bumpDiag({
+          translateAttempts: diagRef.current.translateAttempts + 1,
+          lastError: null,
+        });
         try {
           const res = await fetch('/api/translate', {
             method: 'POST',
@@ -187,34 +220,40 @@ export default function LiveTranslation() {
             }),
           });
           if (!res.ok) {
+            const body = (await res.json().catch(() => ({}))) as { error?: string };
+            const code = body?.error || 'http_' + res.status;
+            const humanized = describeError(code, res.status);
+            bumpDiag({ lastError: humanized });
+            console.warn('[live-translation] translate failed', res.status, body);
             if (res.status === 503) {
-              if (!warnedNoConfig.current) {
-                warnedNoConfig.current = true;
-                setError('DEEPL_API_KEY is not configured on the server.');
-              }
+              // No point retrying — key isn't configured. Stop until
+              // the user changes target (which resets diagnostics).
               return;
             }
-            const body = await res.json().catch(() => ({}));
-            console.warn('[live-translation] translate failed', res.status, body);
             continue;
           }
           const j = (await res.json()) as { translated?: string };
           const out = (j.translated || '').trim();
-          if (!out) continue;
+          if (!out) {
+            bumpDiag({ lastError: 'Provider returned empty translation.' });
+            continue;
+          }
+          bumpDiag({
+            translateOk: diagRef.current.translateOk + 1,
+            lastSample: out.length > 60 ? out.slice(0, 57) + '…' : out,
+          });
 
           const utt = new SpeechSynthesisUtterance(out);
           utt.lang = targetLang;
           if (voice) utt.voice = voice;
-          // Slightly faster than default so the queue drains and we
-          // don't fall further behind the live speaker with every
-          // caption. Sequential queueing (no cancel) — the previous
-          // implementation called cancel() on every new utterance
-          // whenever anything was pending, which interrupted the
-          // current one and produced almost silent playback.
           utt.rate = 1.15;
+          utt.onstart = () => bumpDiag({ spoke: diagRef.current.spoke + 1 });
+          utt.onerror = (ev) =>
+            bumpDiag({ lastError: 'TTS error: ' + (ev.error || 'unknown') });
           window.speechSynthesis.speak(utt);
-          setEverSpoke(true);
         } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          bumpDiag({ lastError: 'Network: ' + msg });
           console.warn('[live-translation] fetch failed', e);
         }
       }
@@ -315,7 +354,7 @@ export default function LiveTranslation() {
         to work — if you don&apos;t hear anything, ask the host to turn
         Captions on.
       </div>
-      {targetLang !== 'off' && !everSpoke && (
+      {targetLang !== 'off' && diag.spoke === 0 && (
         <button
           type="button"
           onClick={testVoice}
@@ -334,9 +373,48 @@ export default function LiveTranslation() {
           Test voice
         </button>
       )}
-      {error && (
-        <div style={{ fontSize: 11, color: '#fca5a5', padding: '4px 10px' }}>
-          {error}
+
+      {targetLang !== 'off' && (
+        <div
+          style={{
+            fontSize: 10,
+            color: 'rgba(255,255,255,0.55)',
+            padding: '6px 10px',
+            borderTop: '1px solid rgba(255,255,255,0.06)',
+            marginTop: 4,
+            lineHeight: 1.55,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 9,
+              letterSpacing: 0.5,
+              textTransform: 'uppercase',
+              color: 'rgba(255,255,255,0.4)',
+              marginBottom: 4,
+            }}
+          >
+            Pipeline status
+          </div>
+          <StatusRow label="Captions received" value={diag.captionsSeen} good={diag.captionsSeen > 0} />
+          <StatusRow label="Final sentences" value={diag.finalsSeen} good={diag.finalsSeen > 0} />
+          <StatusRow label="Translations OK" value={`${diag.translateOk} / ${diag.translateAttempts}`} good={diag.translateOk > 0} />
+          <StatusRow label="Spoke aloud" value={diag.spoke} good={diag.spoke > 0} />
+          {diag.captionsSeen === 0 && (
+            <div style={{ color: '#fbbf24', marginTop: 6 }}>
+              No captions received yet — ask the host to turn Captions ON.
+            </div>
+          )}
+          {diag.lastSample && (
+            <div style={{ marginTop: 6, color: 'rgba(126,233,247,0.9)', fontStyle: 'italic' }}>
+              Latest: “{diag.lastSample}”
+            </div>
+          )}
+          {diag.lastError && (
+            <div style={{ marginTop: 6, color: '#fca5a5' }}>
+              {diag.lastError}
+            </div>
+          )}
         </div>
       )}
     </div>,
@@ -390,6 +468,58 @@ function computePopoverLeft(btn: HTMLElement | null): number {
   const min = 8;
   const max = window.innerWidth - width - 8;
   return Math.max(min, Math.min(desired, max));
+}
+
+function StatusRow({
+  label,
+  value,
+  good,
+}: {
+  label: string;
+  value: number | string;
+  good: boolean;
+}) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+      <span>
+        <span
+          style={{
+            display: 'inline-block',
+            width: 6,
+            height: 6,
+            borderRadius: 999,
+            marginRight: 6,
+            background: good ? '#34d399' : 'rgba(255,255,255,0.25)',
+            verticalAlign: 'middle',
+          }}
+        />
+        {label}
+      </span>
+      <span style={{ fontVariantNumeric: 'tabular-nums', color: good ? '#fff' : 'rgba(255,255,255,0.45)' }}>{value}</span>
+    </div>
+  );
+}
+
+function describeError(code: string, status: number): string {
+  switch (code) {
+    case 'translation_not_configured':
+      return 'DEEPL_API_KEY is not set in Vercel env. Add it and redeploy.';
+    case 'unauthenticated':
+      return 'Sign in to use translation.';
+    case 'target_not_supported':
+      return 'This language is not supported by DeepL.';
+    case 'text_too_long':
+      return 'Caption was too long to translate.';
+    case 'provider_error':
+      return `DeepL rejected the request (HTTP ${status}). Check the API key or your DeepL quota.`;
+    case 'provider_bad_response':
+    case 'provider_empty_response':
+      return 'DeepL returned an unexpected response.';
+    case 'network_error':
+      return 'Network error contacting DeepL.';
+    default:
+      return `Translate failed (${code}).`;
+  }
 }
 
 function TargetOption({
