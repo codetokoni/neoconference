@@ -22,7 +22,7 @@
 //
 // Must be rendered inside a <LiveKitRoom> so useRoomContext() works.
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRoomContext, useLocalParticipant, useParticipants } from '@livekit/components-react';
 import { RoomEvent } from 'livekit-client';
 
@@ -57,6 +57,7 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
     // LiveKit 2.x exposes `isAgent` on both local and remote participants.
     return (p as { isAgent?: boolean }).isAgent === true;
   });
+  const prevAgentPresent = useRef(agentPresent);
 
   // If captions are ON but no agent has joined within a generous window,
   // surface a warning. Reset whenever the room composition changes or
@@ -73,6 +74,18 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
     const id = window.setTimeout(() => setWorkerMissing(true), WORKER_JOIN_TIMEOUT_MS);
     return () => window.clearTimeout(id);
   }, [enabled, agentPresent]);
+
+  // Race fix: the toggle dispatches the worker AND broadcasts
+  // { captions: enabled: true } immediately. The worker takes ~5-8s to
+  // join (Railway cold start), and by then the broadcast has already
+  // fired — so it joins the room but never receives the "start
+  // transcribing" signal, sits silent, and captions never arrive.
+  //
+  // This effect resends the current state one time whenever the agent
+  // transitions from missing to present. Host-only — every non-host in
+  // the room broadcasting on the same signal would just be noise.
+  //
+  // Guarded by prevAgentPresent so we don't re-fire on every render.
 
   // Listen for room-wide captions state changes.
   useEffect(() => {
@@ -96,6 +109,20 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
     };
   }, [room]);
 
+  // Re-arm broadcast on agent arrival. Placed above the useCallback
+  // that defines broadcastState so the dependency reference is stable
+  // — see the effect body for the actual work.
+  const broadcastStateRef = useRef<((next: boolean) => Promise<void>) | null>(null);
+  useEffect(() => {
+    const wasAbsent = !prevAgentPresent.current;
+    prevAgentPresent.current = agentPresent;
+    if (!canControl) return;
+    if (!wasAbsent || !agentPresent || !enabled) return;
+    broadcastStateRef.current?.(true).catch(() => {
+      // best-effort; broadcastState logs its own error
+    });
+  }, [agentPresent, enabled, canControl]);
+
   const broadcastState = useCallback(
     async (next: boolean) => {
       try {
@@ -109,6 +136,11 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
     },
     [localParticipant],
   );
+  // Keep the ref pointing at the latest broadcastState so the
+  // agent-arrival effect above always uses the current closure.
+  useEffect(() => {
+    broadcastStateRef.current = broadcastState;
+  }, [broadcastState]);
 
   const toggle = useCallback(async () => {
     if (busy || !canControl) return;
