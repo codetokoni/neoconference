@@ -93,8 +93,18 @@ export async function GET(req: NextRequest) {
             if (apiKey2 && apiSecret2 && wsUrl2) {
               const httpUrl = wsUrl2.replace(/^wss?:\/\//, "https://");
               const svc = new RoomServiceClient(httpUrl, apiKey2, apiSecret2);
+              // Same four-tier host detection as PR #129 landed on
+              // the /api/events/host-present sibling. Both routes gate
+              // meeting entry on "is a host in the room" — the token
+              // route is the primary gate (returns 403 wait_for_host),
+              // host-present is the poll the client uses to know when
+              // to retry. If the two disagree, the client either
+              // can't enter at all or spins forever on the waiting
+              // screen. Keeping the check identical stops that class
+              // of bug.
               const hostIds2 = new Set<string>();
               if (ev2.ownerUserId) hostIds2.add(ev2.ownerUserId.toLowerCase());
+              if (ev2.ownerEmail) hostIds2.add(ev2.ownerEmail.toLowerCase());
               (ev2.roles || []).forEach((r: { role: string; identifier: string }) => {
                 if ((r.role === "host" || r.role === "cohost") && r.identifier) {
                   hostIds2.add(r.identifier.toLowerCase());
@@ -103,16 +113,36 @@ export async function GET(req: NextRequest) {
               let hostPresent = false;
               try {
                 const parts = await svc.listParticipants(room);
-                hostPresent = parts.some((p) => {
+                const { getMeetingRole: __getMR, getMeetingRoleByEmail: __getMRE } =
+                  await import("@/lib/meeting-roles");
+                for (const p of parts) {
                   const raw = (p.identity || "").split("#")[0].toLowerCase();
-                  if (raw && hostIds2.has(raw)) return true;
+                  if (raw && hostIds2.has(raw)) { hostPresent = true; break; }
+                  if (raw && isAdmin(raw)) { hostPresent = true; break; }
                   try {
                     const md = p.metadata ? JSON.parse(p.metadata) : null;
-                    return md?.role === "host" || md?.role === "cohost";
+                    if (md?.role === "host" || md?.role === "cohost") {
+                      hostPresent = true;
+                      break;
+                    }
                   } catch {
-                    return false;
+                    // fall through
                   }
-                });
+                  if (raw) {
+                    const hashRole = await __getMR(ev2.id, raw);
+                    if (hashRole === "host" || hashRole === "moderator" || hashRole === "owner") {
+                      hostPresent = true;
+                      break;
+                    }
+                    if (raw.includes("@")) {
+                      const emailRole = await __getMRE(ev2.id, raw);
+                      if (emailRole === "host" || emailRole === "moderator" || emailRole === "owner") {
+                        hostPresent = true;
+                        break;
+                      }
+                    }
+                  }
+                }
               } catch (listErr) {
                 // If the room does not exist yet, listParticipants throws â treat as no host present.
                 hostPresent = false;
