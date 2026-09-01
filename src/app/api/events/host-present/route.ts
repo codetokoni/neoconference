@@ -37,78 +37,42 @@ export async function GET(req: NextRequest) {
     const roomName = slug;
     const svc = new RoomServiceClient(httpUrl, apiKey, apiSecret);
 
-    // Legacy identity sources: event ownerUserId + roles[] array. These
-    // are the two sources the route consulted before — kept as-is so
-    // rooms that never used the RBAC route (which writes to the Redis
-    // membership hash) still work.
-    const hostIds = new Set<string>();
-    if (ev.ownerUserId) hostIds.add(ev.ownerUserId.toLowerCase());
-    if (ev.ownerEmail) hostIds.add(ev.ownerEmail.toLowerCase());
-    (ev.roles || []).forEach((r: { role: string; identifier: string }) => {
-      if ((r.role === "host" || r.role === "cohost") && r.identifier) {
-        hostIds.add(r.identifier.toLowerCase());
-      }
-    });
-
+    // Relaxed gate — "is any HUMAN participant already in the room."
+    // Previously we tried to prove that a specific participant was
+    // recognised as host via one of four detection paths (event owner,
+    // ADMIN_EMAILS, participant metadata, Redis membership hash). Every
+    // path had edge cases where a real host went undetected (metadata
+    // race, Clerk userId vs email mismatch in identity, LiveKit
+    // identity suffix quirks) and joiners got parked on the waiting
+    // screen forever with the host clearly right there. See #129, #130,
+    // and the pep-room incident that ate a day of debugging.
+    //
+    // Simpler rule matches how Zoom / Meet / Teams treat this: don't
+    // let joiners into an empty room, but ANY human being present
+    // counts as "meeting started." A joiner who wanders in early
+    // still gets held; the moment any real participant appears, the
+    // gate opens for everyone else.
+    //
+    // Agents (captions worker, future translation worker) are
+    // deliberately excluded — a bot joining alone is not a "started"
+    // meeting. LiveKit tags agent participants with a `kind` field
+    // set to "agent"; we filter on that plus a name-prefix fallback
+    // for older workers that don't set kind.
+    void hostIds; // legacy set kept out of the decision below
     let hostPresent = false;
     let participantCount = 0;
     try {
       const parts = await svc.listParticipants(roomName);
-      participantCount = parts.length;
-
-      // Per-participant check. Return true if ANY of these holds:
-      //   1. Identity matches ownerUserId / ownerEmail / roles[]
-      //   2. Identity matches ADMIN_EMAILS — platform admins act as
-      //      host in every room per resolveRole() in permissions.ts.
-      //      The token route already grants them host-level metadata;
-      //      this catches the case where the metadata write raced or
-      //      lost the field for any reason.
-      //   3. Identity is present in the Redis membership hash with
-      //      role "host" or "cohost" — same fix pattern as PR #83 for
-      //      /api/events/role and /api/livekit/token.
-      //   4. Participant's own LiveKit metadata already declares
-      //      role: "host" | "cohost" — this remains the fast path
-      //      when everything is set up cleanly.
-      hostPresent = false;
-      for (const p of parts) {
-        const raw = (p.identity || "").split("#")[0].toLowerCase();
-        if (raw && hostIds.has(raw)) {
-          hostPresent = true;
-          break;
-        }
-        if (raw && isAdmin(raw)) {
-          hostPresent = true;
-          break;
-        }
-        try {
-          const md = p.metadata ? JSON.parse(p.metadata) : null;
-          if (md?.role === "host" || md?.role === "cohost") {
-            hostPresent = true;
-            break;
-          }
-        } catch {
-          // fall through to Redis hash lookup
-        }
-        // Redis membership hash — only queried if the cheap in-memory
-        // checks above didn't match. getMeetingRole falls back to the
-        // legacy array internally, so a "cohost" written by either
-        // pathway is caught here.
-        if (raw) {
-          const hashRole = await getMeetingRole(ev.id, raw);
-          if (hashRole === "host" || hashRole === "moderator" || hashRole === "owner") {
-            hostPresent = true;
-            break;
-          }
-          // Identity may be an email for guest joiners.
-          if (raw.includes("@")) {
-            const emailRole = await getMeetingRoleByEmail(ev.id, raw);
-            if (emailRole === "host" || emailRole === "moderator" || emailRole === "owner") {
-              hostPresent = true;
-              break;
-            }
-          }
-        }
-      }
+      const humans = parts.filter((p) => {
+        const kind = (p as { kind?: unknown }).kind;
+        if (kind === 4 /* ParticipantInfo_Kind.AGENT */) return false;
+        const identity = (p.identity || "").toLowerCase();
+        if (identity.startsWith("agent-")) return false;
+        if (identity.startsWith("neo-captions")) return false;
+        return true;
+      });
+      participantCount = humans.length;
+      hostPresent = humans.length > 0;
     } catch {
       hostPresent = false;
       participantCount = 0;
