@@ -1,0 +1,28 @@
+{
+  "name": "neoconference-captions-worker",
+  "version": "1.0.0",
+  "description": "LiveKit Agent that transcribes room audio via Deepgram and publishes LiveKit transcription segments. Answers dispatches to the 'neo-captions' agent name so it works with NeoConference's existing dispatch route unchanged.",
+  "type": "module",
+  "main": "dist/agent.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/agent.js start",
+    "dev": "tsx watch src/agent.ts dev",
+    "download-files": "node dist/agent.js download-files"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@livekit/agents": "^0.7.5",
+    "@livekit/agents-plugin-deepgram": "^0.6.5",
+    "@livekit/agents-plugin-silero": "^0.6.5",
+    "@livekit/rtc-node": "^0.13.11",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}

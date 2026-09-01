@@ -1,0 +1,20 @@
+[Unit]
+Description=NeoConference captions worker (LiveKit Agent -> Deepgram)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/neoconference-captions-worker
+EnvironmentFile=/opt/neoconference-captions-worker/.env
+ExecStart=/usr/bin/node /opt/neoconference-captions-worker/dist/agent.js start
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+# Room over-subscription would just OOM the box under too many parallel
+# sessions. Keep it obvious in the journal when it happens.
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
