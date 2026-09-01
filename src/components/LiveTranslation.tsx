@@ -29,6 +29,7 @@
 // starts speaking the translation of every final caption segment.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Languages } from 'lucide-react';
 import { useRoomContext } from '@livekit/components-react';
 import {
@@ -84,7 +85,8 @@ export default function LiveTranslation() {
   const [targetLang, setTargetLangState] = useState<string>('off');
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const anchorRef = useRef<HTMLDivElement>(null);
+  const [everSpoke, setEverSpoke] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const warnedNoTts = useRef(false);
   const warnedNoConfig = useRef(false);
   const voice = useSpeechVoice(targetLang === 'off' ? 'en' : targetLang);
@@ -126,16 +128,20 @@ export default function LiveTranslation() {
     }
   }, []);
 
-  // Close popover on Escape / outside tap.
+  // Close popover on Escape / outside tap. Popover is portaled to
+  // document.body so contains() checks have to cover both button and
+  // the popover DOM. Track the popover element via callback ref.
+  const [popoverEl, setPopoverEl] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
     const onDown = (e: PointerEvent) => {
-      if (anchorRef.current && !anchorRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      if (buttonRef.current?.contains(target)) return;
+      if (popoverEl?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener('keydown', onKey);
     document.addEventListener('pointerdown', onDown, true);
@@ -143,7 +149,7 @@ export default function LiveTranslation() {
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('pointerdown', onDown, true);
     };
-  }, [open]);
+  }, [open, popoverEl]);
 
   // Main pipeline: caption arrives → translate if needed → speak.
   useEffect(() => {
@@ -199,18 +205,15 @@ export default function LiveTranslation() {
           const utt = new SpeechSynthesisUtterance(out);
           utt.lang = targetLang;
           if (voice) utt.voice = voice;
-          // Cap the queue so a long silence followed by a torrent of
-          // captions doesn't back up 5 minutes of speech. Anything
-          // pending gets dropped in favour of what's current.
-          const pendingQueue = window.speechSynthesis.pending;
-          if (pendingQueue) {
-            try {
-              window.speechSynthesis.cancel();
-            } catch {
-              // ignore
-            }
-          }
+          // Slightly faster than default so the queue drains and we
+          // don't fall further behind the live speaker with every
+          // caption. Sequential queueing (no cancel) — the previous
+          // implementation called cancel() on every new utterance
+          // whenever anything was pending, which interrupted the
+          // current one and produced almost silent playback.
+          utt.rate = 1.15;
           window.speechSynthesis.speak(utt);
+          setEverSpoke(true);
         } catch (e) {
           console.warn('[live-translation] fetch failed', e);
         }
@@ -234,9 +237,122 @@ export default function LiveTranslation() {
     return match?.native || targetLang;
   }, [targetLang]);
 
+  const testVoice = useCallback(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    const sample =
+      targetLang === 'off' || targetLang === 'en'
+        ? 'Live translation is ready.'
+        : 'Translation test.';
+    const utt = new SpeechSynthesisUtterance(sample);
+    utt.lang = targetLang === 'off' ? 'en' : targetLang;
+    if (voice) utt.voice = voice;
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      // ignore
+    }
+    window.speechSynthesis.speak(utt);
+    setEverSpoke(true);
+  }, [targetLang, voice]);
+
+  const popover = open && typeof document !== 'undefined' ? createPortal(
+    <div
+      ref={setPopoverEl}
+      role="menu"
+      style={{
+        position: 'fixed',
+        top: computePopoverTop(buttonRef.current),
+        left: computePopoverLeft(buttonRef.current),
+        minWidth: 260,
+        maxHeight: '60vh',
+        overflowY: 'auto',
+        padding: 6,
+        borderRadius: 12,
+        background: 'rgba(11,16,32,0.98)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        zIndex: 200,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          color: 'rgba(255,255,255,0.5)',
+          padding: '4px 10px',
+          letterSpacing: 0.5,
+          textTransform: 'uppercase',
+        }}
+      >
+        Hear this meeting in
+      </div>
+      <TargetOption
+        code="off"
+        label="Off (original audio only)"
+        active={targetLang === 'off'}
+        onPick={setTargetLang}
+      />
+      {TARGET_LANGUAGES.map((l) => (
+        <TargetOption
+          key={l.code}
+          code={l.code}
+          label={`${l.native} · ${l.label}`}
+          active={targetLang === l.code}
+          onPick={setTargetLang}
+        />
+      ))}
+      <div
+        style={{
+          fontSize: 10,
+          color: 'rgba(255,255,255,0.4)',
+          padding: '6px 10px 4px',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          marginTop: 4,
+        }}
+      >
+        Uses your browser&apos;s voice. Captions must be on for this
+        to work — if you don&apos;t hear anything, ask the host to turn
+        Captions on.
+      </div>
+      {targetLang !== 'off' && !everSpoke && (
+        <button
+          type="button"
+          onClick={testVoice}
+          style={{
+            width: 'calc(100% - 12px)',
+            margin: '4px 6px',
+            padding: '6px 8px',
+            fontSize: 12,
+            borderRadius: 8,
+            border: '1px solid rgba(34,211,238,0.35)',
+            background: 'rgba(34,211,238,0.12)',
+            color: '#7ee9f7',
+            cursor: 'pointer',
+          }}
+        >
+          Test voice
+        </button>
+      )}
+      {error && (
+        <div style={{ fontSize: 11, color: '#fca5a5', padding: '4px 10px' }}>
+          {error}
+        </div>
+      )}
+    </div>,
+    document.body,
+  ) : null;
+
+  // Return a FRAGMENT with the button as a direct child of whatever
+  // parent renders us (in practice: `.room-toolbar`). The wrapping
+  // <div> the previous version had broke the `.room-toolbar > button`
+  // scan used by both DesktopMoreMenu and MobileMoreMenu — that's why
+  // the button never appeared on mobile. Popover is portaled to
+  // document.body so it doesn't need the local anchor either.
   return (
-    <div ref={anchorRef} style={{ position: 'relative', display: 'inline-block' }}>
+    <>
       <button
+        ref={buttonRef}
         type="button"
         data-toolbar-item="true"
         data-room-chrome="true"
@@ -250,73 +366,30 @@ export default function LiveTranslation() {
         <Languages size={16} aria-hidden />
         Translate{targetLang !== 'off' ? ` · ${currentLabel}` : ''}
       </button>
-
-      {open && (
-        <div
-          role="menu"
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 6px)',
-            right: 0,
-            minWidth: 240,
-            maxHeight: '60vh',
-            overflowY: 'auto',
-            padding: 6,
-            borderRadius: 12,
-            background: 'rgba(11,16,32,0.98)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            zIndex: 60,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 10,
-              color: 'rgba(255,255,255,0.5)',
-              padding: '4px 10px',
-              letterSpacing: 0.5,
-              textTransform: 'uppercase',
-            }}
-          >
-            Hear this meeting in
-          </div>
-          <TargetOption
-            code="off"
-            label="Off (original audio only)"
-            active={targetLang === 'off'}
-            onPick={setTargetLang}
-          />
-          {TARGET_LANGUAGES.map((l) => (
-            <TargetOption
-              key={l.code}
-              code={l.code}
-              label={`${l.native} · ${l.label}`}
-              active={targetLang === l.code}
-              onPick={setTargetLang}
-            />
-          ))}
-          <div
-            style={{
-              fontSize: 10,
-              color: 'rgba(255,255,255,0.4)',
-              padding: '6px 10px 4px',
-              borderTop: '1px solid rgba(255,255,255,0.06)',
-              marginTop: 4,
-            }}
-          >
-            Uses your browser&apos;s voice. Captions must be on.
-          </div>
-          {error && (
-            <div style={{ fontSize: 11, color: '#fca5a5', padding: '4px 10px' }}>
-              {error}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+      {popover}
+    </>
   );
+}
+
+/* Positioning helpers for the portaled popover. Anchored under the
+ * button's bounding rect; clamped to the viewport so the menu never
+ * flies off-screen on mobile where the button lives in the More
+ * popover rather than in the visible toolbar. */
+function computePopoverTop(btn: HTMLElement | null): number {
+  if (!btn) return 80;
+  const rect = btn.getBoundingClientRect();
+  const desired = rect.bottom + 6;
+  const maxTop = window.innerHeight - 100;
+  return Math.min(desired, maxTop);
+}
+function computePopoverLeft(btn: HTMLElement | null): number {
+  if (!btn) return 16;
+  const rect = btn.getBoundingClientRect();
+  const width = 260;
+  const desired = rect.right - width;
+  const min = 8;
+  const max = window.innerWidth - width - 8;
+  return Math.max(min, Math.min(desired, max));
 }
 
 function TargetOption({
