@@ -14,10 +14,9 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@livekit/agents": "^0.7.5",
-    "@livekit/agents-plugin-deepgram": "^0.6.5",
-    "@livekit/agents-plugin-silero": "^0.6.5",
-    "@livekit/rtc-node": "^0.13.11",
+    "@livekit/agents": "^1.7.1",
+    "@livekit/agents-plugin-deepgram": "^1.7.1",
+    "@livekit/rtc-node": "^0.13.34",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {
