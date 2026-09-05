@@ -3,11 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAmsMultitrack } from "./useAmsMultitrack";
 import { SIMULCAST_MAIN, type FeaturedState } from "@/lib/simulcast";
-import { participantStreamId } from "@/lib/participantCodes";
-
-/** Matches PER_SCREEN in /api/video/room. Kept as a constant so the play
- *  subscription can be built before the roster comes back from the API. */
-const SLOTS_PER_SCREEN = 50;
 
 interface Participant {
   slot: number;
@@ -27,10 +22,21 @@ interface RoomPayload {
   featured: FeaturedState | null;
 }
 
-/** One tile. Binds its own stream so re-renders never re-attach the others. */
+/**
+ * One tile — one AMS play session, opened directly on p.streamId.
+ *
+ * Group-play of the mainTrack (all 50 subtracks over one PC) was the
+ * elegant idea, but AMS delivers group subtracks under generic slot names
+ * that don't identify the publisher, and no combination of trackList,
+ * position mapping, or active-track detection lets us tell whose stream
+ * is whose. The featured player has always played its subject as a
+ * single stream and worked. Do the same per tile, gated on p.live.
+ *
+ * Cost: one WebRTC connection per LIVE participant (not per roster
+ * slot). Empty slots keep zero connections open.
+ */
 function Tile({
   p,
-  stream,
   featured,
   monitored,
   onOpen,
@@ -39,7 +45,6 @@ function Tile({
   onDrop,
 }: {
   p: Participant;
-  stream: MediaStream | null;
   featured: boolean;
   monitored: boolean;
   onOpen: () => void;
@@ -50,15 +55,18 @@ function Tile({
   const ref = useRef<HTMLVideoElement | null>(null);
   const [over, setOver] = useState(false);
 
+  const enabled = p.live && Boolean(p.streamId);
+  const { videoStream } = useAmsMultitrack(p.streamId, enabled);
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (stream && el.srcObject !== stream) {
-      el.srcObject = stream;
+    if (enabled && videoStream && el.srcObject !== videoStream) {
+      el.srcObject = videoStream;
       el.play().catch(() => {});
     }
-    if (!stream) el.srcObject = null;
-  }, [stream]);
+    if (!enabled || !videoStream) el.srcObject = null;
+  }, [enabled, videoStream]);
 
   useEffect(() => {
     if (ref.current) ref.current.muted = !monitored;
@@ -128,6 +136,87 @@ function Tile({
   );
 }
 
+/**
+ * Spotlight modal — opens its own play session on the clicked participant.
+ * Kept separate from Tile so it doesn't share the tile's muted state
+ * (spotlighting implies the operator wants to hear the participant).
+ */
+function Spotlight({
+  spot,
+  busy,
+  monitored,
+  onFeature,
+  onMonitor,
+  onRemove,
+  onClose,
+}: {
+  spot: Participant;
+  busy: boolean;
+  monitored: boolean;
+  onFeature: () => void;
+  onMonitor: () => void;
+  onRemove: () => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  const { videoStream } = useAmsMultitrack(spot.streamId, Boolean(spot.streamId));
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (videoStream && el.srcObject !== videoStream) {
+      el.srcObject = videoStream;
+      el.play().catch(() => {});
+    }
+  }, [videoStream]);
+
+  return (
+    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/93 p-5">
+      <video
+        ref={ref}
+        playsInline
+        autoPlay
+        className="aspect-[4/3] w-[min(640px,100%)] rounded-lg border border-white/10 bg-black object-cover"
+      />
+      <span className="font-mono text-xs text-white/70">
+        {spot.name} · {spot.streamId} · {spot.code}
+      </span>
+      <div className="flex flex-wrap justify-center gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onFeature}
+          className="rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-[#14100a] transition hover:bg-amber-400 disabled:opacity-40"
+        >
+          Feature to air
+        </button>
+        <button
+          type="button"
+          onClick={onMonitor}
+          className="rounded-md border border-white/15 px-4 py-2 text-sm text-white/85 transition hover:bg-white/10"
+        >
+          {monitored ? "Stop monitoring" : "Monitor audio"}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onRemove}
+          className="rounded-md border border-red-500/50 px-4 py-2 text-sm text-red-300 transition hover:bg-red-500/15 disabled:opacity-40"
+        >
+          Remove
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md border border-white/15 px-4 py-2 text-sm text-white/85 transition hover:bg-white/10"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ControlRoom({
   room = SIMULCAST_MAIN,
   screen = 1,
@@ -144,28 +233,6 @@ export default function ControlRoom({
   const [err, setErr] = useState<string | null>(null);
 
   const dragId = useRef<string | null>(null);
-  const spotRef = useRef<HTMLVideoElement | null>(null);
-
-  const mainTrack = data?.mainTrack ?? "";
-  /* Name every slot's stream id up front. AMS treats an empty trackList as
-     "send everything", and for a group whose subtracks are declared but not
-     yet publishing (the 49 unclaimed slots) the resulting SDP negotiation
-     lands the play session in a reconnect loop. Naming the ids we care
-     about keeps the offer to well-defined m-lines that Chrome can answer.
-     One peer connection still carries every camera on this screen — 50
-     separate connections would cost 50× the signalling for no gain. */
-  const trackList = useMemo(
-    () =>
-      Array.from({ length: SLOTS_PER_SCREEN }, (_, i) =>
-        participantStreamId(room, (screen - 1) * SLOTS_PER_SCREEN + i + 1),
-      ),
-    [room, screen],
-  );
-  const { videoStreams, state, liveTrackIds, activeVideoKeys } = useAmsMultitrack(
-    mainTrack,
-    Boolean(mainTrack),
-    trackList,
-  );
 
   const load = useCallback(async () => {
     try {
@@ -232,31 +299,6 @@ export default function ControlRoom({
   const hiddenList = useMemo(
     () => hidden.map((id) => bySlot.get(id)).filter(Boolean) as Participant[],
     [hidden, bySlot],
-  );
-
-  /* AMS's slot numbering doesn't reliably match trackList order — position
-     mapping in useAmsMultitrack gets us the right key most of the time,
-     but a phantom subtrack landing at position N can shadow the real
-     broadcaster's slot. Trust activeVideoKeys (unmuted receivers) as the
-     source of truth for "which streams actually carry a broadcast." When
-     the exact-key stream is phantom and exactly one participant is live
-     and exactly one stream is active, bind them; that resolves the
-     single-broadcaster ambiguity without pretending we can identify
-     participants inside a multi-broadcast group. */
-  const liveParticipantsCount = useMemo(
-    () => participants.filter((p) => p.live).length,
-    [participants],
-  );
-  const getEffectiveStream = useCallback(
-    (p: Participant): MediaStream | null => {
-      const exact = videoStreams[p.streamId];
-      if (exact && activeVideoKeys.includes(p.streamId)) return exact;
-      if (p.live && liveParticipantsCount === 1 && activeVideoKeys.length === 1) {
-        return videoStreams[activeVideoKeys[0]] ?? null;
-      }
-      return exact ?? null;
-    },
-    [videoStreams, activeVideoKeys, liveParticipantsCount],
   );
 
   const featuredId = data?.featured?.streamId ?? null;
@@ -333,17 +375,7 @@ export default function ControlRoom({
     [visible, hidden, saveLayout],
   );
 
-  useEffect(() => {
-    const el = spotRef.current;
-    if (!el || !spot) return;
-    const s = getEffectiveStream(spot);
-    if (s && el.srcObject !== s) {
-      el.srcObject = s;
-      el.play().catch(() => {});
-    }
-  }, [spot, getEffectiveStream]);
-
-  const liveCount = liveParticipantsCount;
+  const liveCount = participants.filter((p) => p.live).length;
 
   return (
     <div className="overflow-hidden rounded-xl border border-white/10 bg-[#101A20] text-[#DDE7EC] shadow-2xl">
@@ -364,22 +396,7 @@ export default function ControlRoom({
         ))}
 
         <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
-          {liveCount} live · {hidden.length} hidden · {state}
-        </span>
-
-        {/* Diagnostic: what tracks the WebRTC play session is receiving
-            vs. which of those are actually carrying frames (activeKeys).
-            A tile only binds when the exact match is in activeKeys, or
-            when there is exactly one live participant and one active
-            stream — that resolves AMS's ambiguous slot numbering. */}
-        <span className="font-mono text-[10px] normal-case tracking-normal text-white/35" title="Diagnostic — WebRTC track ids received and which are actively receiving frames.">
-          tracks={liveTrackIds.length}{" "}
-          active={activeVideoKeys.length === 0
-            ? "∅"
-            : "[" + activeVideoKeys.join(",") + "]"}{" "}
-          keys={Object.keys(videoStreams).length === 0
-            ? "∅"
-            : "[" + Object.keys(videoStreams).join(",") + "]"}
+          {liveCount} live · {hidden.length} hidden
         </span>
 
         <span className="ml-auto font-mono text-[10.5px] uppercase tracking-[0.12em] text-amber-300/90">
@@ -404,7 +421,6 @@ export default function ControlRoom({
             <Tile
               key={p.streamId}
               p={p}
-              stream={getEffectiveStream(p)}
               featured={featuredId === p.streamId}
               monitored={monitor === p.streamId}
               onOpen={() => setSpot(p)}
@@ -418,49 +434,15 @@ export default function ControlRoom({
         </div>
 
         {spot && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/93 p-5">
-            <video
-              ref={spotRef}
-              playsInline
-              autoPlay
-              className="aspect-[4/3] w-[min(640px,100%)] rounded-lg border border-white/10 bg-black object-cover"
-            />
-            <span className="font-mono text-xs text-white/70">
-              {spot.name} · {spot.streamId} · {spot.code}
-            </span>
-            <div className="flex flex-wrap justify-center gap-2">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => feature(spot)}
-                className="rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-[#14100a] transition hover:bg-amber-400 disabled:opacity-40"
-              >
-                Feature to air
-              </button>
-              <button
-                type="button"
-                onClick={() => setMonitor(monitor === spot.streamId ? null : spot.streamId)}
-                className="rounded-md border border-white/15 px-4 py-2 text-sm text-white/85 transition hover:bg-white/10"
-              >
-                {monitor === spot.streamId ? "Stop monitoring" : "Monitor audio"}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => remove(spot)}
-                className="rounded-md border border-red-500/50 px-4 py-2 text-sm text-red-300 transition hover:bg-red-500/15 disabled:opacity-40"
-              >
-                Remove
-              </button>
-              <button
-                type="button"
-                onClick={() => setSpot(null)}
-                className="rounded-md border border-white/15 px-4 py-2 text-sm text-white/85 transition hover:bg-white/10"
-              >
-                Close
-              </button>
-            </div>
-          </div>
+          <Spotlight
+            spot={spot}
+            busy={busy}
+            monitored={monitor === spot.streamId}
+            onFeature={() => feature(spot)}
+            onMonitor={() => setMonitor(monitor === spot.streamId ? null : spot.streamId)}
+            onRemove={() => remove(spot)}
+            onClose={() => setSpot(null)}
+          />
         )}
       </div>
 
