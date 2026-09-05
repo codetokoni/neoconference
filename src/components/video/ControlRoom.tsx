@@ -170,18 +170,37 @@ function Spotlight({
     }
   }, [videoStream]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
-    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/93 p-5">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black">
       <video
         ref={ref}
         playsInline
         autoPlay
-        className="aspect-[4/3] w-[min(640px,100%)] rounded-lg border border-white/10 bg-black object-cover"
+        className="h-full w-full object-contain"
       />
-      <span className="font-mono text-xs text-white/70">
+
+      <span className="pointer-events-none absolute left-4 top-4 rounded-md border border-white/15 bg-black/70 px-3 py-1.5 font-mono text-xs text-white/80 backdrop-blur">
         {spot.name} · {spot.streamId} · {spot.code}
       </span>
-      <div className="flex flex-wrap justify-center gap-2">
+
+      <button
+        type="button"
+        aria-label="Close preview"
+        onClick={onClose}
+        className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-md border border-white/15 bg-black/70 text-lg text-white/85 transition hover:bg-white/10"
+      >
+        ✕
+      </button>
+
+      <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-wrap justify-center gap-2 rounded-xl border border-white/15 bg-black/70 p-2 backdrop-blur">
         <button
           type="button"
           disabled={busy}
@@ -204,13 +223,6 @@ function Spotlight({
           className="rounded-md border border-red-500/50 px-4 py-2 text-sm text-red-300 transition hover:bg-red-500/15 disabled:opacity-40"
         >
           Remove
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md border border-white/15 px-4 py-2 text-sm text-white/85 transition hover:bg-white/10"
-        >
-          Close
         </button>
       </div>
     </div>
