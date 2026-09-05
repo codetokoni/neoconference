@@ -34,6 +34,10 @@ const isPublicRoute = createRouteMatcher([
   // every future /api/video route, including the staff-only ones.
   '/api/video/status',
   '/api/video/chat',
+  // Participants have no account; the personal code is the credential and
+  // the route rate limits hard. /api/video/codes and /feature stay staff-only.
+  '/video/join',
+  '/api/video/join',
 ]);
 
 // Hosts that ARE the canonical app (skip custom-domain rewrite for these).
