@@ -30,6 +30,7 @@ export function useAmsMultitrack(mainTrack: string, enabled: boolean): Multitrac
   const wsRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const idMapRef = useRef<Record<string, string>>({});
+  const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deadRef = useRef(false);
@@ -63,6 +64,7 @@ export function useAmsMultitrack(mainTrack: string, enabled: boolean): Multitrac
       try { wsRef.current?.close(); } catch { /* already closed */ }
       wsRef.current = null;
       idMapRef.current = {};
+      pendingIceRef.current = [];
     };
 
     const scheduleRetry = () => {
@@ -77,7 +79,8 @@ export function useAmsMultitrack(mainTrack: string, enabled: boolean): Multitrac
       if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(o));
     };
 
-    const buildPc = () => {
+    const ensurePc = () => {
+      if (pcRef.current) return pcRef.current;
       const pc = new RTCPeerConnection(ICE);
       pcRef.current = pc;
 
@@ -97,7 +100,10 @@ export function useAmsMultitrack(mainTrack: string, enabled: boolean): Multitrac
         if (s === "connected" || s === "completed") {
           attempt = 0;
           setState("playing");
-        } else if (s === "failed" || s === "disconnected" || s === "closed") {
+        } else if (s === "failed" || s === "disconnected") {
+          // "closed" is intentionally excluded: pc.close() inside teardown()
+          // fires this event, which would otherwise re-enter teardown and
+          // schedule a second retry, leaking the first setTimeout handle.
           teardown();
           scheduleRetry();
         }
@@ -170,11 +176,21 @@ export function useAmsMultitrack(mainTrack: string, enabled: boolean): Multitrac
 
         if (m.command === "takeConfiguration" && m.type === "offer") {
           if (m.idMapping && typeof m.idMapping === "object") idMapRef.current = m.idMapping;
-          const pc = buildPc();
+          const pc = ensurePc();
           try {
             await pc.setRemoteDescription({ type: "offer", sdp: m.sdp });
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
+            // Flush candidates that arrived before the remote description was set.
+            const queued = pendingIceRef.current;
+            pendingIceRef.current = [];
+            for (const init of queued) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(init));
+              } catch {
+                /* transient state; AMS resends critical candidates */
+              }
+            }
             send({
               command: "takeConfiguration",
               streamId: mainTrack,
@@ -189,16 +205,21 @@ export function useAmsMultitrack(mainTrack: string, enabled: boolean): Multitrac
         }
 
         if (m.command === "takeCandidate") {
+          const init: RTCIceCandidateInit = {
+            candidate: m.candidate,
+            sdpMLineIndex: m.label,
+            sdpMid: m.id,
+          };
+          if (!pcRef.current?.remoteDescription) {
+            // Setting addIceCandidate before setRemoteDescription throws
+            // InvalidStateError. Queue and flush after the answer.
+            pendingIceRef.current.push(init);
+            return;
+          }
           try {
-            await pcRef.current?.addIceCandidate(
-              new RTCIceCandidate({
-                candidate: m.candidate,
-                sdpMLineIndex: m.label,
-                sdpMid: m.id,
-              }),
-            );
+            await pcRef.current.addIceCandidate(new RTCIceCandidate(init));
           } catch {
-            /* candidate before remote description; AMS resends */
+            /* addIceCandidate can still fail on transient churn */
           }
           return;
         }
