@@ -1,0 +1,244 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AMS_WS, normaliseTrackId } from "@/lib/simulcast";
+
+export type ConnState = "connecting" | "waiting" | "playing" | "reconnecting";
+
+export interface MultitrackResult {
+  state: ConnState;
+  videoStream: MediaStream | null;
+  audioStreams: Record<string, MediaStream>;
+  liveTrackIds: string[];
+  /** Ask AMS to start/stop sending one subtrack. Optional bandwidth control. */
+  setTrackEnabled: (trackId: string, enabled: boolean) => void;
+  restart: () => void;
+}
+
+const ICE: RTCConfiguration = {
+  iceServers: [{ urls: "stun:stun1.l.google.com:19302" }],
+  // Add a TURN entry here if strict-NAT viewers report a black frame.
+};
+
+export function useAmsMultitrack(mainTrack: string, enabled: boolean): MultitrackResult {
+  const [state, setState] = useState<ConnState>("connecting");
+  const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
+  const [audioStreams, setAudioStreams] = useState<Record<string, MediaStream>>({});
+  const [liveTrackIds, setLiveTrackIds] = useState<string[]>([]);
+  const [nonce, setNonce] = useState(0);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const idMapRef = useRef<Record<string, string>>({});
+  const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deadRef = useRef(false);
+
+  const restart = useCallback(() => setNonce((n) => n + 1), []);
+
+  const setTrackEnabled = useCallback(
+    (trackId: string, on: boolean) => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({ command: "enableTrack", streamId: mainTrack, trackId, enabled: on }),
+        );
+      }
+    },
+    [mainTrack],
+  );
+
+  useEffect(() => {
+    if (!enabled) return;
+    deadRef.current = false;
+
+    let attempt = 0;
+
+    const teardown = () => {
+      if (pingRef.current) {
+        clearInterval(pingRef.current);
+        pingRef.current = null;
+      }
+      try { pcRef.current?.close(); } catch { /* already closed */ }
+      pcRef.current = null;
+      try { wsRef.current?.close(); } catch { /* already closed */ }
+      wsRef.current = null;
+      idMapRef.current = {};
+    };
+
+    const scheduleRetry = () => {
+      if (deadRef.current) return;
+      attempt += 1;
+      const delay = Math.min(2000 * attempt, 15000);
+      setState((s) => (s === "waiting" ? "waiting" : "reconnecting"));
+      retryRef.current = setTimeout(connect, delay);
+    };
+
+    const send = (o: unknown) => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(o));
+    };
+
+    const buildPc = () => {
+      const pc = new RTCPeerConnection(ICE);
+      pcRef.current = pc;
+
+      pc.onicecandidate = (e) => {
+        if (!e.candidate) return;
+        send({
+          command: "takeCandidate",
+          streamId: mainTrack,
+          label: e.candidate.sdpMLineIndex,
+          id: e.candidate.sdpMid,
+          candidate: e.candidate.candidate,
+        });
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        const s = pc.iceConnectionState;
+        if (s === "connected" || s === "completed") {
+          attempt = 0;
+          setState("playing");
+        } else if (s === "failed" || s === "disconnected" || s === "closed") {
+          teardown();
+          scheduleRetry();
+        }
+      };
+
+      pc.ontrack = (e) => {
+        const mid = e.transceiver?.mid ?? "";
+        const mapped = idMapRef.current[mid];
+        const rawId = mapped || e.streams[0]?.id || `${e.track.kind}-${mid}`;
+        const id = normaliseTrackId(rawId);
+        const stream = e.streams[0] ?? new MediaStream([e.track]);
+
+        if (e.track.kind === "video") {
+          setVideoStream(stream);
+        } else {
+          setAudioStreams((prev) => (prev[id] === stream ? prev : { ...prev, [id]: stream }));
+        }
+        setLiveTrackIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+
+        e.track.onended = () => {
+          setLiveTrackIds((prev) => prev.filter((t) => t !== id));
+          if (e.track.kind === "audio") {
+            setAudioStreams((prev) => {
+              const next = { ...prev };
+              delete next[id];
+              return next;
+            });
+          }
+        };
+      };
+
+      return pc;
+    };
+
+    function connect() {
+      if (deadRef.current) return;
+      teardown();
+      setState((s) => (s === "playing" ? "reconnecting" : s));
+
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(AMS_WS);
+      } catch {
+        scheduleRetry();
+        return;
+      }
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        pingRef.current = setInterval(() => send({ command: "ping" }), 3000);
+        send({ command: "play", streamId: mainTrack, token: "", trackList: [] });
+      };
+
+      ws.onmessage = async (ev) => {
+        let m: {
+          command?: string;
+          type?: string;
+          sdp?: string;
+          definition?: string;
+          candidate?: string;
+          label?: number;
+          id?: string;
+          idMapping?: Record<string, string>;
+        };
+        try {
+          m = JSON.parse(ev.data as string);
+        } catch {
+          return;
+        }
+
+        if (m.command === "takeConfiguration" && m.type === "offer") {
+          if (m.idMapping && typeof m.idMapping === "object") idMapRef.current = m.idMapping;
+          const pc = buildPc();
+          try {
+            await pc.setRemoteDescription({ type: "offer", sdp: m.sdp });
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            send({
+              command: "takeConfiguration",
+              streamId: mainTrack,
+              type: "answer",
+              sdp: answer.sdp,
+            });
+          } catch {
+            teardown();
+            scheduleRetry();
+          }
+          return;
+        }
+
+        if (m.command === "takeCandidate") {
+          try {
+            await pcRef.current?.addIceCandidate(
+              new RTCIceCandidate({
+                candidate: m.candidate,
+                sdpMLineIndex: m.label,
+                sdpMid: m.id,
+              }),
+            );
+          } catch {
+            /* candidate before remote description; AMS resends */
+          }
+          return;
+        }
+
+        if (m.command === "error") {
+          // no_stream_exist: the venue has not started pushing yet
+          setState("waiting");
+          teardown();
+          scheduleRetry();
+          return;
+        }
+
+        if (
+          m.command === "notification" &&
+          (m.definition === "play_finished" || m.definition === "streaming_finished")
+        ) {
+          setVideoStream(null);
+          setAudioStreams({});
+          setLiveTrackIds([]);
+          setState("waiting");
+          teardown();
+          scheduleRetry();
+        }
+      };
+
+      ws.onclose = () => {
+        if (deadRef.current) return;
+        teardown();
+        scheduleRetry();
+      };
+    }
+
+    connect();
+
+    return () => {
+      deadRef.current = true;
+      if (retryRef.current) clearTimeout(retryRef.current);
+      teardown();
+    };
+  }, [mainTrack, enabled, nonce]);
+
+  return { state, videoStream, audioStreams, liveTrackIds, setTrackEnabled, restart };
+}
