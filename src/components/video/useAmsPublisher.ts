@@ -324,7 +324,16 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
         }
 
         // The server says it is ready; we make the offer.
-        if (m.command === "notification" && m.definition === "start") {
+        //
+        // Ant Media sends this in two shapes depending on the build. The play
+        // loop gets it as {command:"notification", definition:"start"}, but the
+        // publish loop on the current server ships it as a top-level
+        // {command:"start", streamId, subscriberId:null}. Match both so we
+        // survive either.
+        const isStart =
+          m.command === "start" ||
+          (m.command === "notification" && m.definition === "start");
+        if (isStart) {
           const pc = await buildPc();
           try {
             const offer = await pc.createOffer();

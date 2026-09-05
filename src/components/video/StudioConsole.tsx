@@ -114,7 +114,7 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-lg border border-black/10 p-0.5 dark:border-white/15">
+        <div className="flex rounded-lg border border-white/12 p-0.5">
           {(["programme", "booth"] as const).map((m) => (
             <button
               key={m}
@@ -125,7 +125,7 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
                 "rounded-md px-3.5 py-1.5 text-sm font-medium transition disabled:opacity-40",
                 mode === m
                   ? "bg-emerald-600 text-white"
-                  : "text-neutral-600 hover:bg-black/5 dark:text-neutral-300 dark:hover:bg-white/10",
+                  : "text-white/60 hover:bg-white/10",
               ].join(" ")}
             >
               {m === "programme" ? "Programme" : "Interpreter booth"}
@@ -133,14 +133,14 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
           ))}
         </div>
 
-        <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-neutral-500">
+        <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/45">
           {streamId} · {live.ids.has(streamId) ? "on air" : "off air"} · {live.viewers} watching
         </span>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex flex-col gap-3">
-          <div className="relative aspect-video overflow-hidden rounded-xl border border-black/10 bg-black dark:border-white/10">
+          <div className="relative aspect-video overflow-hidden rounded-xl border border-white/12 bg-black">
             {!booth ? (
               <video
                 ref={videoRef}
@@ -189,14 +189,14 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
                 <button
                   type="button"
                   onClick={pub.stop}
-                  className="rounded-lg border border-red-500/50 px-5 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-500/10 dark:text-red-300"
+                  className="rounded-lg border border-red-500/50 px-5 py-2.5 text-sm font-semibold text-red-300 transition hover:bg-red-500/10"
                 >
                   Stop
                 </button>
                 <button
                   type="button"
                   onClick={pub.toggleMic}
-                  className="rounded-lg border border-black/10 px-4 py-2.5 text-sm transition hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
+                  className="rounded-lg border border-white/12 px-4 py-2.5 text-sm text-white transition hover:bg-white/10"
                 >
                   {pub.micOn ? "Mute mic" : "Unmute mic"}
                 </button>
@@ -204,7 +204,7 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
                   <button
                     type="button"
                     onClick={pub.toggleCam}
-                    className="rounded-lg border border-black/10 px-4 py-2.5 text-sm transition hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
+                    className="rounded-lg border border-white/12 px-4 py-2.5 text-sm text-white transition hover:bg-white/10"
                   >
                     {pub.camOn ? "Hide video" : "Show video"}
                   </button>
@@ -212,16 +212,16 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
               </>
             )}
 
-            <span className="text-sm text-neutral-600 dark:text-neutral-400">{status}</span>
+            <span className="text-sm text-white/60">{status}</span>
           </div>
 
-          {pub.error && <p className="text-sm text-red-600 dark:text-red-400">{pub.error}</p>}
+          {pub.error && <p className="text-sm text-red-400">{pub.error}</p>}
         </div>
 
-        <aside className="flex flex-col gap-4 rounded-xl border border-black/10 bg-neutral-50 p-4 dark:border-white/10 dark:bg-neutral-900">
+        <aside className="flex flex-col gap-4 rounded-xl border border-white/12 bg-[#101820] p-4">
           {booth ? (
             <div className="flex flex-col gap-2">
-              <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-neutral-500">
+              <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/45">
                 Language
               </span>
               {BOOTHS.map((b) => (
@@ -231,16 +231,16 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
                   disabled={publishing || busy}
                   onClick={() => setBoothId(b.id)}
                   className={[
-                    "flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-sm transition disabled:opacity-40",
+                    "flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-sm text-white transition disabled:opacity-40",
                     boothId === b.id
                       ? "border-emerald-500 bg-emerald-500/10"
-                      : "border-black/10 hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10",
+                      : "border-white/12 hover:bg-white/10",
                   ].join(" ")}
                 >
                   <span className="h-6 w-1.5 rounded-sm" style={{ background: b.color }} />
                   <span className="flex flex-col leading-tight">
                     <b className="font-semibold">{b.label}</b>
-                    <small className="font-mono text-[10px] text-neutral-500">{b.id}</small>
+                    <small className="font-mono text-[10px] text-white/45">{b.id}</small>
                   </span>
                 </button>
               ))}
@@ -248,7 +248,7 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
           ) : (
             <>
               <div className="flex flex-col gap-2">
-                <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-neutral-500">
+                <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/45">
                   Source
                 </span>
                 <div className="flex gap-2">
@@ -259,10 +259,10 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
                       disabled={publishing || busy}
                       onClick={() => setSource(sxx)}
                       className={[
-                        "flex-1 rounded-lg border px-3 py-2 text-sm capitalize transition disabled:opacity-40",
+                        "flex-1 rounded-lg border px-3 py-2 text-sm capitalize text-white transition disabled:opacity-40",
                         source === sxx
                           ? "border-emerald-500 bg-emerald-500/10"
-                          : "border-black/10 hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10",
+                          : "border-white/12 hover:bg-white/10",
                       ].join(" ")}
                     >
                       {sxx}
@@ -272,7 +272,7 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
               </div>
 
               <div className="flex flex-col gap-2">
-                <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-neutral-500">
+                <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/45">
                   Quality
                 </span>
                 {PRESETS.map((p) => (
@@ -282,27 +282,27 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
                     disabled={publishing || busy}
                     onClick={() => setPresetId(p.id)}
                     className={[
-                      "rounded-lg border px-3 py-2 text-left text-sm transition disabled:opacity-40",
+                      "rounded-lg border px-3 py-2 text-left text-sm text-white transition disabled:opacity-40",
                       presetId === p.id
                         ? "border-emerald-500 bg-emerald-500/10"
-                        : "border-black/10 hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10",
+                        : "border-white/12 hover:bg-white/10",
                     ].join(" ")}
                   >
                     {p.label}
                     {p.id === "safe" && (
-                      <span className="ml-1 text-xs text-neutral-500">· measured safe</span>
+                      <span className="ml-1 text-xs text-white/45">· measured safe</span>
                     )}
                   </button>
                 ))}
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs text-white/45">
                   Start here. Move up only once the feed holds without falling behind.
                 </p>
               </div>
             </>
           )}
 
-          <div className="flex flex-col gap-1 border-t border-black/10 pt-3 dark:border-white/10">
-            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-neutral-500">
+          <div className="flex flex-col gap-1 border-t border-white/12 pt-3">
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/45">
               Channels
             </span>
             {SIMULCAST_CHANNELS.map((c) => (
@@ -311,12 +311,12 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
                   className="h-2 w-2 rounded-full"
                   style={{ background: live.ids.has(c.id) ? c.color : "transparent", boxShadow: `inset 0 0 0 1px ${c.color}` }}
                 />
-                <span className={live.ids.has(c.id) ? "" : "text-neutral-500"}>{c.label}</span>
+                <span className={live.ids.has(c.id) ? "text-white" : "text-white/45"}>{c.label}</span>
               </span>
             ))}
           </div>
 
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-white/45">
             vMix can push to the same id over RTMP instead — whichever is in front of you wins, but
             not both at once.
           </p>

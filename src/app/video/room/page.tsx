@@ -26,11 +26,11 @@ export default async function VideoRoomPage({
   return (
     <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-5 px-4 py-8 sm:px-6">
       <header className="flex flex-col gap-1">
-        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-neutral-500">
+        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
           Control room · {room}
         </span>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Camera board</h1>
-        <p className="max-w-[64ch] text-sm text-neutral-600 dark:text-neutral-400">
+        <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Camera board</h1>
+        <p className="max-w-[64ch] text-sm text-white/60">
           Drag to rearrange, × to hide, click a tile to open it. Featuring puts that camera
           full-frame for the public audience until you send it back to the programme.
         </p>
