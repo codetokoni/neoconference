@@ -20,6 +20,7 @@
     "docx": "^9.7.1",
     "exceljs": "^4.4.0",
     "framer-motion": "^12.38.0",
+    "hls.js": "^1.5.17",
     "jose": "^5.9.6",
     "livekit-client": "^2.18.9",
     "livekit-server-sdk": "^2.15.2",

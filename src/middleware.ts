@@ -29,6 +29,8 @@ const isPublicRoute = createRouteMatcher([
   '/api/invites/(.*)',
   '/api/cron/(.*)',
   '/i/(.*)',
+  '/video/dashboard',
+  '/api/video/(.*)',
 ]);
 
 // Hosts that ARE the canonical app (skip custom-domain rewrite for these).
@@ -91,7 +93,7 @@ async function resolveDomain(host: string, origin: string): Promise<string | nul
 
 const RESERVED_SHORT_URL_SLUGS = new Set([
   'admin', 'api', 'dashboard', 'docs', 'e', 'embed', 'explore', 'fonts',
-  'i', 'pricing', 'room', 'share',
+  'i', 'pricing', 'room', 'share', 'video',
   'sign-in', 'sign-up', 'sign-out',
   '_next', '_vercel',
 ]);
