@@ -63,7 +63,7 @@ export async function GET(req: Request) {
   const r = room(req);
   const screen = screenNo(req);
 
-  const [codes, claimed, layout, featured] = await Promise.all([
+  const [codes, claimed, layout, featuredRaw] = await Promise.all([
     listCodes(r),
     claimedCodes(r),
     kv.get<RoomLayout>(layoutKey(r, screen)),
@@ -71,13 +71,25 @@ export async function GET(req: Request) {
   ]);
 
   let liveIds = new Set<string>();
+  let subsFetched = false;
   try {
     const subs = await fetchSubtracks(roomMainTrack(r));
     liveIds = new Set(
       subs.filter((b) => b.status === "broadcasting").map((b) => b.streamId),
     );
+    subsFetched = true;
   } catch {
     /* AMS unreachable — report the roster with nobody live rather than 500 */
+  }
+
+  // Self-heal a stale featured pointer whose publisher has gone away without
+  // clearing KV — matches the status route so the ON AIR badge and the
+  // dashboard picture agree. Only clear when we actually reached AMS: if
+  // the fetch failed above we can't tell alive from unreachable.
+  let featured: FeaturedState | null = featuredRaw ?? null;
+  if (featured && subsFetched && !liveIds.has(featured.streamId)) {
+    await kv.del(featuredKey(r)).catch(() => {});
+    featured = null;
   }
 
   const from = (screen - 1) * PER_SCREEN + 1;
@@ -104,7 +116,7 @@ export async function GET(req: Request) {
       mainTrack: roomMainTrack(r),
       participants,
       layout: layout ?? { order: [], hidden: [] },
-      featured: featured ?? null,
+      featured,
     },
     { headers: { "Cache-Control": "no-store" } },
   );

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { kv } from "@vercel/kv";
 import {
   fetchSubtracks,
+  isBroadcasting,
   SIMULCAST_MAIN,
   SIMULCAST_CHANNELS,
   featuredKey,
@@ -15,7 +16,7 @@ export async function GET(req: Request) {
   const main = new URL(req.url).searchParams.get("room")?.trim() || SIMULCAST_MAIN;
 
   try {
-    const [subs, featured] = await Promise.all([
+    const [subs, featuredRaw] = await Promise.all([
       fetchSubtracks(main),
       kv.get<FeaturedState>(featuredKey(main)).catch(() => null),
     ]);
@@ -28,13 +29,28 @@ export async function GET(req: Request) {
       0,
     );
 
+    // Verify the featured stream still exists. Participant streams live in
+    // the roomMainTrack group ("<main>-room"), so `subs` above doesn't
+    // include them — hit AMS directly and self-heal if it has gone away.
+    // Without this a mobile publisher that dropped off (screen lock, WS
+    // timeout) would leave the pointer set forever and every viewer would
+    // sit on a black picture behind an ON AIR badge that lies.
+    let featured: FeaturedState | null = featuredRaw ?? null;
+    if (featured) {
+      const alive = await isBroadcasting(featured.streamId);
+      if (!alive) {
+        await kv.del(featuredKey(main)).catch(() => {});
+        featured = null;
+      }
+    }
+
     return NextResponse.json(
       {
         ok: true,
         main,
         live: liveIds.size > 0,
         viewers,
-        featured: featured ?? null,
+        featured,
         channels: SIMULCAST_CHANNELS.map((c) => ({ id: c.id, live: liveIds.has(c.id) })),
         // any booth publishing into the group but missing from SIMULCAST_CHANNELS
         unknown: subs

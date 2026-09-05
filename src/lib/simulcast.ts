@@ -121,3 +121,27 @@ export async function fetchSubtracks(main = SIMULCAST_MAIN): Promise<AmsBroadcas
   const all = (await r.json()) as AmsBroadcast[];
   return all.filter((b) => b.mainTrackStreamId === main || b.streamId === main);
 }
+
+/**
+ * Is this stream currently pushing to AMS.
+ *
+ * Used to self-heal a stale "featured" pointer whose publisher has gone
+ * away without anyone clearing the KV entry. Conservative on failure:
+ * on a network error or a 5xx we return true so a transient AMS blip
+ * does not evict a valid pointer. A 404 or a status field that is not
+ * "broadcasting" are the only signals we treat as a definite no.
+ */
+export async function isBroadcasting(streamId: string): Promise<boolean> {
+  try {
+    const r = await fetch(
+      `${AMS_REST}/broadcasts/${encodeURIComponent(streamId)}`,
+      { cache: "no-store", signal: AbortSignal.timeout(4000) },
+    );
+    if (r.status === 404) return false;
+    if (!r.ok) return true;
+    const b = (await r.json()) as AmsBroadcast;
+    return b?.status === "broadcasting";
+  } catch {
+    return true;
+  }
+}
