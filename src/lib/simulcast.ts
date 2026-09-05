@@ -50,6 +50,24 @@ export const SIMULCAST_CHANNELS: SimulcastChannel[] = [
 export const VIDEO_CHANNEL =
   SIMULCAST_CHANNELS.find((c) => c.video) ?? SIMULCAST_CHANNELS[0];
 
+/**
+ * The only subtracks a public viewer should ever be sent from the broadcast
+ * group. Participant cameras publish into their own main track, so naming
+ * these explicitly is what stops a viewer receiving fifty of them.
+ */
+export const CHANNEL_TRACK_IDS: string[] = SIMULCAST_CHANNELS.map((c) => c.id);
+
+/** Redis key holding the participant currently featured to air, if any. */
+export const featuredKey = (room: string) => `neo:video:featured:${room}`;
+
+export interface FeaturedState {
+  /** AMS stream id of the featured participant, played directly by viewers. */
+  streamId: string;
+  /** Shown under the player while they are on air. */
+  label: string;
+  at: number;
+}
+
 export function channelById(id: string): SimulcastChannel | undefined {
   return SIMULCAST_CHANNELS.find((c) => c.id === id);
 }

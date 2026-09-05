@@ -7,7 +7,10 @@ export type ConnState = "connecting" | "waiting" | "playing" | "reconnecting";
 
 export interface MultitrackResult {
   state: ConnState;
+  /** Most recent video track. Fine when a group carries exactly one. */
   videoStream: MediaStream | null;
+  /** Every video track, keyed by subtrack id — the control room needs all 50. */
+  videoStreams: Record<string, MediaStream>;
   audioStreams: Record<string, MediaStream>;
   liveTrackIds: string[];
   /** Ask AMS to start/stop sending one subtrack. Optional bandwidth control. */
@@ -20,9 +23,24 @@ const ICE: RTCConfiguration = {
   // Add a TURN entry here if strict-NAT viewers report a black frame.
 };
 
-export function useAmsMultitrack(mainTrack: string, enabled: boolean): MultitrackResult {
+/**
+ * Plays one AMS stream id over a single peer connection.
+ *
+ * Used twice on the watch page: once for the broadcast main track (where
+ * `trackList` names the subtracks we are willing to receive) and once for a
+ * featured participant's own stream id (where it plays alone). Naming the
+ * tracks matters — an empty list means "send everything", which is correct
+ * for five subtracks and ruinous once participant cameras share a server.
+ */
+export function useAmsMultitrack(
+  mainTrack: string,
+  enabled: boolean,
+  trackList: string[] = [],
+): MultitrackResult {
+  const trackKey = trackList.join(",");
   const [state, setState] = useState<ConnState>("connecting");
   const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
+  const [videoStreams, setVideoStreams] = useState<Record<string, MediaStream>>({});
   const [audioStreams, setAudioStreams] = useState<Record<string, MediaStream>>({});
   const [liveTrackIds, setLiveTrackIds] = useState<string[]>([]);
   const [nonce, setNonce] = useState(0);
@@ -49,7 +67,7 @@ export function useAmsMultitrack(mainTrack: string, enabled: boolean): Multitrac
   );
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !mainTrack) return;
     deadRef.current = false;
 
     let attempt = 0;
@@ -118,6 +136,7 @@ export function useAmsMultitrack(mainTrack: string, enabled: boolean): Multitrac
 
         if (e.track.kind === "video") {
           setVideoStream(stream);
+          setVideoStreams((prev) => (prev[id] === stream ? prev : { ...prev, [id]: stream }));
         } else {
           setAudioStreams((prev) => (prev[id] === stream ? prev : { ...prev, [id]: stream }));
         }
@@ -127,6 +146,13 @@ export function useAmsMultitrack(mainTrack: string, enabled: boolean): Multitrac
           setLiveTrackIds((prev) => prev.filter((t) => t !== id));
           if (e.track.kind === "audio") {
             setAudioStreams((prev) => {
+              const next = { ...prev };
+              delete next[id];
+              return next;
+            });
+          } else {
+            setVideoStreams((prev) => {
+              if (!(id in prev)) return prev;
               const next = { ...prev };
               delete next[id];
               return next;
@@ -154,7 +180,12 @@ export function useAmsMultitrack(mainTrack: string, enabled: boolean): Multitrac
 
       ws.onopen = () => {
         pingRef.current = setInterval(() => send({ command: "ping" }), 3000);
-        send({ command: "play", streamId: mainTrack, token: "", trackList: [] });
+        send({
+          command: "play",
+          streamId: mainTrack,
+          token: "",
+          trackList: trackKey ? trackKey.split(",") : [],
+        });
       };
 
       ws.onmessage = async (ev) => {
@@ -237,6 +268,7 @@ export function useAmsMultitrack(mainTrack: string, enabled: boolean): Multitrac
           (m.definition === "play_finished" || m.definition === "streaming_finished")
         ) {
           setVideoStream(null);
+          setVideoStreams({});
           setAudioStreams({});
           setLiveTrackIds([]);
           setState("waiting");
@@ -259,7 +291,7 @@ export function useAmsMultitrack(mainTrack: string, enabled: boolean): Multitrac
       if (retryRef.current) clearTimeout(retryRef.current);
       teardown();
     };
-  }, [mainTrack, enabled, nonce]);
+  }, [mainTrack, enabled, nonce, trackKey]);
 
-  return { state, videoStream, audioStreams, liveTrackIds, setTrackEnabled, restart };
+  return { state, videoStream, videoStreams, audioStreams, liveTrackIds, setTrackEnabled, restart };
 }
