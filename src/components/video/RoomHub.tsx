@@ -144,11 +144,11 @@ export default function RoomHub({ room }: { room: string }) {
             cheap
           />
           <BoardCard
-            href="#"
+            href={`/video/room/queue?room=${encodeURIComponent(s.room)}`}
             title="Queue"
-            subtitle="Stage who goes on air next. Coming next."
-            costHint=""
-            disabled
+            subtitle="Stage who goes on air next — top of the list, one click to feature."
+            costHint="Zero viewer slots used. Poll only."
+            cheap
           />
         </div>
       </section>
