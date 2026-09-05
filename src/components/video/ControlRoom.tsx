@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAmsMultitrack } from "./useAmsMultitrack";
 import { SIMULCAST_MAIN, type FeaturedState } from "@/lib/simulcast";
+import { participantStreamId } from "@/lib/participantCodes";
+
+/** Matches PER_SCREEN in /api/video/room. Kept as a constant so the play
+ *  subscription can be built before the roster comes back from the API. */
+const SLOTS_PER_SCREEN = 50;
 
 interface Participant {
   slot: number;
@@ -142,9 +147,25 @@ export default function ControlRoom({
   const spotRef = useRef<HTMLVideoElement | null>(null);
 
   const mainTrack = data?.mainTrack ?? "";
-  /* One peer connection carries every camera on this screen. Fifty separate
-     connections would cost fifty times the signalling and ICE for no gain. */
-  const { videoStreams, state } = useAmsMultitrack(mainTrack, Boolean(mainTrack));
+  /* Name every slot's stream id up front. AMS treats an empty trackList as
+     "send everything", and for a group whose subtracks are declared but not
+     yet publishing (the 49 unclaimed slots) the resulting SDP negotiation
+     lands the play session in a reconnect loop. Naming the ids we care
+     about keeps the offer to well-defined m-lines that Chrome can answer.
+     One peer connection still carries every camera on this screen — 50
+     separate connections would cost 50× the signalling for no gain. */
+  const trackList = useMemo(
+    () =>
+      Array.from({ length: SLOTS_PER_SCREEN }, (_, i) =>
+        participantStreamId(room, (screen - 1) * SLOTS_PER_SCREEN + i + 1),
+      ),
+    [room, screen],
+  );
+  const { videoStreams, state } = useAmsMultitrack(
+    mainTrack,
+    Boolean(mainTrack),
+    trackList,
+  );
 
   const load = useCallback(async () => {
     try {
