@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAmsMultitrack } from "./useAmsMultitrack";
+import PreviewPane, { type PreviewState } from "./PreviewPane";
 import { SIMULCAST_MAIN, type FeaturedState } from "@/lib/simulcast";
 
 interface Participant {
@@ -146,6 +147,7 @@ function Spotlight({
   busy,
   monitored,
   onFeature,
+  onSendToPreview,
   onMonitor,
   onRemove,
   onClose,
@@ -154,6 +156,7 @@ function Spotlight({
   busy: boolean;
   monitored: boolean;
   onFeature: () => void;
+  onSendToPreview: () => void;
   onMonitor: () => void;
   onRemove: () => void;
   onClose: () => void;
@@ -211,6 +214,14 @@ function Spotlight({
         </button>
         <button
           type="button"
+          disabled={busy}
+          onClick={onSendToPreview}
+          className="rounded-md border border-emerald-400/60 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/10 disabled:opacity-40"
+        >
+          Send to preview
+        </button>
+        <button
+          type="button"
           onClick={onMonitor}
           className="rounded-md border border-white/15 px-4 py-2 text-sm text-white/85 transition hover:bg-white/10"
         >
@@ -241,6 +252,7 @@ export default function ControlRoom({
   const [hidden, setHidden] = useState<string[]>([]);
   const [monitor, setMonitor] = useState<string | null>(null);
   const [spot, setSpot] = useState<Participant | null>(null);
+  const [preview, setPreview] = useState<PreviewState | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -271,6 +283,28 @@ export default function ControlRoom({
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
   }, [load]);
+
+  // Preview state lives on the server (/api/video/preview) so multiple
+  // operators agree on what is being checked. Poll faster than the room
+  // load because a producer wants immediate feedback when a colleague
+  // sends someone to preview from the queue board.
+  const loadPreview = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/video/preview?room=${encodeURIComponent(room)}`, {
+        cache: "no-store",
+      });
+      const j = await r.json();
+      if (j.ok) setPreview(j.preview ?? null);
+    } catch {
+      /* transient */
+    }
+  }, [room]);
+
+  useEffect(() => {
+    loadPreview();
+    const t = setInterval(loadPreview, 3000);
+    return () => clearInterval(t);
+  }, [loadPreview]);
 
   const saveLayout = useCallback(
     async (nextOrder: string[], nextHidden: string[]) => {
@@ -332,6 +366,57 @@ export default function ControlRoom({
       }
     },
     [room, load],
+  );
+
+  const sendToPreview = useCallback(
+    async (p: Participant) => {
+      setBusy(true);
+      try {
+        await fetch(`/api/video/preview?room=${encodeURIComponent(room)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ streamId: p.streamId, label: p.name }),
+        });
+        await loadPreview();
+      } finally {
+        setBusy(false);
+      }
+    },
+    [room, loadPreview],
+  );
+
+  const clearPreview = useCallback(async () => {
+    setBusy(true);
+    try {
+      await fetch(`/api/video/preview?room=${encodeURIComponent(room)}`, {
+        method: "DELETE",
+      });
+      await loadPreview();
+    } finally {
+      setBusy(false);
+    }
+  }, [room, loadPreview]);
+
+  const takePreviewToAir = useCallback(
+    async (p: PreviewState) => {
+      setBusy(true);
+      try {
+        await fetch(`/api/video/feature?room=${encodeURIComponent(room)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ streamId: p.streamId, label: p.label }),
+        });
+        // Preview clears once its subject is on air — the pane is for what
+        // is COMING NEXT, not what is already there.
+        await fetch(`/api/video/preview?room=${encodeURIComponent(room)}`, {
+          method: "DELETE",
+        });
+        await Promise.all([load(), loadPreview()]);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [room, load, loadPreview],
   );
 
   const remove = useCallback(
@@ -427,6 +512,18 @@ export default function ControlRoom({
 
       {err && <p className="px-3 py-2 text-sm text-red-400">{err}</p>}
 
+      {/* One extra subscription while `preview` is set — the whole point of
+          a preview slot is that the operator has audio + full-quality video
+          for the person they are about to cut to. */}
+      <div className="px-3 pt-3">
+        <PreviewPane
+          preview={preview}
+          busy={busy}
+          onTake={takePreviewToAir}
+          onClear={clearPreview}
+        />
+      </div>
+
       <div className="relative">
         <div className="grid grid-cols-4 gap-[5px] p-3 sm:grid-cols-6 lg:grid-cols-10">
           {visible.map((p) => (
@@ -451,6 +548,10 @@ export default function ControlRoom({
             busy={busy}
             monitored={monitor === spot.streamId}
             onFeature={() => feature(spot)}
+            onSendToPreview={() => {
+              sendToPreview(spot);
+              setSpot(null);
+            }}
             onMonitor={() => setMonitor(monitor === spot.streamId ? null : spot.streamId)}
             onRemove={() => remove(spot)}
             onClose={() => setSpot(null)}
