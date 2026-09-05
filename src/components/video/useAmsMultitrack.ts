@@ -13,6 +13,10 @@ export interface MultitrackResult {
   videoStreams: Record<string, MediaStream>;
   audioStreams: Record<string, MediaStream>;
   liveTrackIds: string[];
+  /** Keys in videoStreams whose video track is currently unmuted (i.e.,
+   *  receiving actual frames from the publisher). Distinguishes a real
+   *  broadcast from a phantom slot AMS advertised without media. */
+  activeVideoKeys: string[];
   /** Ask AMS to start/stop sending one subtrack. Optional bandwidth control. */
   setTrackEnabled: (trackId: string, enabled: boolean) => void;
   restart: () => void;
@@ -43,6 +47,7 @@ export function useAmsMultitrack(
   const [videoStreams, setVideoStreams] = useState<Record<string, MediaStream>>({});
   const [audioStreams, setAudioStreams] = useState<Record<string, MediaStream>>({});
   const [liveTrackIds, setLiveTrackIds] = useState<string[]>([]);
+  const [activeVideoKeys, setActiveVideoKeys] = useState<string[]>([]);
   const [nonce, setNonce] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -184,6 +189,24 @@ export function useAmsMultitrack(
         if (e.track.kind === "video") {
           setVideoStream(stream);
           setVideoStreams((prev) => (prev[id] === stream ? prev : { ...prev, [id]: stream }));
+
+          // Remote WebRTC tracks arrive "muted" and unmute the first time
+          // frames flow; a phantom subtrack AMS advertised without a real
+          // publisher stays muted forever. The activeVideoKeys set is
+          // what downstream code should trust to decide which stream in a
+          // group actually carries a broadcast.
+          const syncActive = () => {
+            const muted = e.track.muted;
+            setActiveVideoKeys((prev) => {
+              const included = prev.includes(id);
+              if (!muted && !included) return [...prev, id];
+              if (muted && included) return prev.filter((k) => k !== id);
+              return prev;
+            });
+          };
+          syncActive();
+          e.track.addEventListener("mute", syncActive);
+          e.track.addEventListener("unmute", syncActive);
         } else {
           setAudioStreams((prev) => (prev[id] === stream ? prev : { ...prev, [id]: stream }));
         }
@@ -198,6 +221,7 @@ export function useAmsMultitrack(
               return next;
             });
           } else {
+            setActiveVideoKeys((prev) => prev.filter((k) => k !== id));
             setVideoStreams((prev) => {
               if (!(id in prev)) return prev;
               const next = { ...prev };
@@ -318,6 +342,7 @@ export function useAmsMultitrack(
           setVideoStreams({});
           setAudioStreams({});
           setLiveTrackIds([]);
+          setActiveVideoKeys([]);
           setState("waiting");
           teardown();
           scheduleRetry();
@@ -340,5 +365,5 @@ export function useAmsMultitrack(
     };
   }, [mainTrack, enabled, nonce, trackKey]);
 
-  return { state, videoStream, videoStreams, audioStreams, liveTrackIds, setTrackEnabled, restart };
+  return { state, videoStream, videoStreams, audioStreams, liveTrackIds, activeVideoKeys, setTrackEnabled, restart };
 }

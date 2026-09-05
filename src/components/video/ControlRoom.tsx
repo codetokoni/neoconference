@@ -161,7 +161,7 @@ export default function ControlRoom({
       ),
     [room, screen],
   );
-  const { videoStreams, state, liveTrackIds } = useAmsMultitrack(
+  const { videoStreams, state, liveTrackIds, activeVideoKeys } = useAmsMultitrack(
     mainTrack,
     Boolean(mainTrack),
     trackList,
@@ -232,6 +232,31 @@ export default function ControlRoom({
   const hiddenList = useMemo(
     () => hidden.map((id) => bySlot.get(id)).filter(Boolean) as Participant[],
     [hidden, bySlot],
+  );
+
+  /* AMS's slot numbering doesn't reliably match trackList order — position
+     mapping in useAmsMultitrack gets us the right key most of the time,
+     but a phantom subtrack landing at position N can shadow the real
+     broadcaster's slot. Trust activeVideoKeys (unmuted receivers) as the
+     source of truth for "which streams actually carry a broadcast." When
+     the exact-key stream is phantom and exactly one participant is live
+     and exactly one stream is active, bind them; that resolves the
+     single-broadcaster ambiguity without pretending we can identify
+     participants inside a multi-broadcast group. */
+  const liveParticipantsCount = useMemo(
+    () => participants.filter((p) => p.live).length,
+    [participants],
+  );
+  const getEffectiveStream = useCallback(
+    (p: Participant): MediaStream | null => {
+      const exact = videoStreams[p.streamId];
+      if (exact && activeVideoKeys.includes(p.streamId)) return exact;
+      if (p.live && liveParticipantsCount === 1 && activeVideoKeys.length === 1) {
+        return videoStreams[activeVideoKeys[0]] ?? null;
+      }
+      return exact ?? null;
+    },
+    [videoStreams, activeVideoKeys, liveParticipantsCount],
   );
 
   const featuredId = data?.featured?.streamId ?? null;
@@ -311,14 +336,14 @@ export default function ControlRoom({
   useEffect(() => {
     const el = spotRef.current;
     if (!el || !spot) return;
-    const s = videoStreams[spot.streamId] ?? null;
+    const s = getEffectiveStream(spot);
     if (s && el.srcObject !== s) {
       el.srcObject = s;
       el.play().catch(() => {});
     }
-  }, [spot, videoStreams]);
+  }, [spot, getEffectiveStream]);
 
-  const liveCount = participants.filter((p) => p.live).length;
+  const liveCount = liveParticipantsCount;
 
   return (
     <div className="overflow-hidden rounded-xl border border-white/10 bg-[#101A20] text-[#DDE7EC] shadow-2xl">
@@ -342,13 +367,17 @@ export default function ControlRoom({
           {liveCount} live · {hidden.length} hidden · {state}
         </span>
 
-        {/* Diagnostic: what tracks the WebRTC play session is actually
-            receiving vs. what the tiles look up by. If videoKeys ≠
-            expected participant streamIds, ontrack is storing the video
-            under the wrong id and we can see it here without DevTools. */}
-        <span className="font-mono text-[10px] normal-case tracking-normal text-white/35" title="Diagnostic — WebRTC track ids the play session has received.">
+        {/* Diagnostic: what tracks the WebRTC play session is receiving
+            vs. which of those are actually carrying frames (activeKeys).
+            A tile only binds when the exact match is in activeKeys, or
+            when there is exactly one live participant and one active
+            stream — that resolves AMS's ambiguous slot numbering. */}
+        <span className="font-mono text-[10px] normal-case tracking-normal text-white/35" title="Diagnostic — WebRTC track ids received and which are actively receiving frames.">
           tracks={liveTrackIds.length}{" "}
-          videoKeys={Object.keys(videoStreams).length === 0
+          active={activeVideoKeys.length === 0
+            ? "∅"
+            : "[" + activeVideoKeys.join(",") + "]"}{" "}
+          keys={Object.keys(videoStreams).length === 0
             ? "∅"
             : "[" + Object.keys(videoStreams).join(",") + "]"}
         </span>
@@ -375,7 +404,7 @@ export default function ControlRoom({
             <Tile
               key={p.streamId}
               p={p}
-              stream={videoStreams[p.streamId] ?? null}
+              stream={getEffectiveStream(p)}
               featured={featuredId === p.streamId}
               monitored={monitor === p.streamId}
               onOpen={() => setSpot(p)}
