@@ -51,6 +51,7 @@ export function useAmsMultitrack(
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const iceGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deadRef = useRef(false);
 
   const restart = useCallback(() => setNonce((n) => n + 1), []);
@@ -76,6 +77,10 @@ export function useAmsMultitrack(
       if (pingRef.current) {
         clearInterval(pingRef.current);
         pingRef.current = null;
+      }
+      if (iceGraceRef.current) {
+        clearTimeout(iceGraceRef.current);
+        iceGraceRef.current = null;
       }
       try { pcRef.current?.close(); } catch { /* already closed */ }
       pcRef.current = null;
@@ -116,14 +121,38 @@ export function useAmsMultitrack(
       pc.oniceconnectionstatechange = () => {
         const s = pc.iceConnectionState;
         if (s === "connected" || s === "completed") {
+          // Cancel any in-flight grace timer — ICE recovered on its own.
+          if (iceGraceRef.current) {
+            clearTimeout(iceGraceRef.current);
+            iceGraceRef.current = null;
+          }
           attempt = 0;
           setState("playing");
-        } else if (s === "failed" || s === "disconnected") {
+        } else if (s === "failed") {
           // "closed" is intentionally excluded: pc.close() inside teardown()
           // fires this event, which would otherwise re-enter teardown and
           // schedule a second retry, leaking the first setTimeout handle.
           teardown();
           scheduleRetry();
+        } else if (s === "disconnected") {
+          // AMS renegotiates the play session every time a subtrack joins
+          // or leaves the mainTrack group. Chrome's iceConnectionState
+          // briefly flips to "disconnected" during that flow and normally
+          // returns to "connected" on its own. Treating it as fatal
+          // immediately makes the control-room subscription flap between
+          // PLAYING and RECONNECTING every time a participant appears.
+          // Give ICE five seconds to recover; if it hasn't, then reconnect.
+          if (!iceGraceRef.current) {
+            iceGraceRef.current = setTimeout(() => {
+              iceGraceRef.current = null;
+              if (deadRef.current) return;
+              if (pcRef.current !== pc) return;
+              if (pc.iceConnectionState === "disconnected") {
+                teardown();
+                scheduleRetry();
+              }
+            }, 5000);
+          }
         }
       };
 
