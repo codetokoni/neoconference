@@ -22,7 +22,12 @@ const WEBRTC_TIMEOUT_MS = 8000;
 
 type Destroyable = { destroy: () => void };
 
-export default function SimulcastPlayer() {
+export interface SimulcastPlayerProps {
+  /** Show the LiveChat column beside the player. Default true. */
+  showChat?: boolean;
+}
+
+export default function SimulcastPlayer({ showChat = true }: SimulcastPlayerProps = {}) {
   const [active, setActive] = useState(VIDEO_CHANNEL.id);
   const [muted, setMuted] = useState(true);
   const [mode, setMode] = useState<"webrtc" | "hls">("webrtc");
@@ -283,7 +288,7 @@ export default function SimulcastPlayer() {
 
   return (
     <div className="overflow-hidden rounded-xl border border-white/10 bg-[#101A20] shadow-2xl">
-      <div className="grid lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className={showChat ? "grid lg:grid-cols-[minmax(0,1fr)_320px]" : ""}>
         <div className="flex min-w-0 flex-col gap-4 p-4">
           <div className="relative aspect-video overflow-hidden rounded-lg border border-white/10 bg-black">
             <video
@@ -396,7 +401,7 @@ export default function SimulcastPlayer() {
           )}
         </div>
 
-        <LiveChat room={SIMULCAST_MAIN} code={activeChannel.code} />
+        {showChat && <LiveChat room={SIMULCAST_MAIN} code={activeChannel.code} />}
       </div>
     </div>
   );

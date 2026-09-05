@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAmsPublisher } from "./useAmsPublisher";
+import SimulcastPlayer from "./SimulcastPlayer";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 
 const DEVICE_KEY = "nc:video-device-id";
@@ -128,6 +129,12 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+      {/* Programme feed + language rail. Participants see the show they are
+          joining and can listen in a chosen language while they enter their
+          code or wait for their turn on air. Chat lives on the public
+          /video/dashboard so it stays out of the way here. */}
+      <SimulcastPlayer showChat={false} />
+
       {!slot ? (
         <form
           onSubmit={submit}
