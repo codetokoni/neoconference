@@ -161,7 +161,7 @@ export default function ControlRoom({
       ),
     [room, screen],
   );
-  const { videoStreams, state } = useAmsMultitrack(
+  const { videoStreams, state, liveTrackIds } = useAmsMultitrack(
     mainTrack,
     Boolean(mainTrack),
     trackList,
@@ -340,6 +340,17 @@ export default function ControlRoom({
 
         <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
           {liveCount} live · {hidden.length} hidden · {state}
+        </span>
+
+        {/* Diagnostic: what tracks the WebRTC play session is actually
+            receiving vs. what the tiles look up by. If videoKeys ≠
+            expected participant streamIds, ontrack is storing the video
+            under the wrong id and we can see it here without DevTools. */}
+        <span className="font-mono text-[10px] normal-case tracking-normal text-white/35" title="Diagnostic — WebRTC track ids the play session has received.">
+          tracks={liveTrackIds.length}{" "}
+          videoKeys={Object.keys(videoStreams).length === 0
+            ? "∅"
+            : "[" + Object.keys(videoStreams).join(",") + "]"}
         </span>
 
         <span className="ml-auto font-mono text-[10.5px] uppercase tracking-[0.12em] text-amber-300/90">
