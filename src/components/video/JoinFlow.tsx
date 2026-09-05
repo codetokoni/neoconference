@@ -131,14 +131,14 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
       {!slot ? (
         <form
           onSubmit={submit}
-          className="flex flex-col gap-4 rounded-xl border border-black/10 bg-white p-6 dark:border-white/10 dark:bg-neutral-900"
+          className="flex flex-col gap-4 rounded-xl border border-white/12 bg-[#141C22] p-6"
         >
           <div className="flex flex-col gap-1">
-            <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-neutral-500">
+            <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
               Join the event
             </span>
-            <h2 className="text-xl font-bold tracking-tight">Enter your code</h2>
-            <p className="max-w-[46ch] text-sm text-neutral-600 dark:text-neutral-400">
+            <h2 className="text-xl font-bold tracking-tight text-white">Enter your code</h2>
+            <p className="max-w-[46ch] text-sm text-white/60">
               It is on your invitation. Your camera turns on only after you press Join.
             </p>
           </div>
@@ -152,10 +152,10 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
             autoComplete="off"
             placeholder="XXXX-00"
             aria-label="Participant code"
-            className="w-full rounded-lg border border-black/10 bg-white px-4 py-3 text-center font-mono text-xl tracking-[0.28em] outline-none focus:ring-2 focus:ring-emerald-500 dark:border-white/15 dark:bg-neutral-950"
+            className="w-full rounded-lg border border-white/12 bg-[#0B1319] px-4 py-3 text-center font-mono text-xl tracking-[0.28em] text-white outline-none placeholder:text-white/30 focus:ring-2 focus:ring-emerald-500"
           />
 
-          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
 
           <button
             type="submit"
@@ -166,25 +166,25 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
           </button>
         </form>
       ) : (
-        <div className="flex flex-col gap-4 rounded-xl border border-black/10 bg-white p-6 dark:border-white/10 dark:bg-neutral-900">
+        <div className="flex flex-col gap-4 rounded-xl border border-white/12 bg-[#141C22] p-6">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <div className="flex flex-col">
-              <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-neutral-500">
+              <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
                 Slot {slot.slot}
               </span>
-              <h2 className="text-xl font-bold tracking-tight">{slot.name}</h2>
+              <h2 className="text-xl font-bold tracking-tight text-white">{slot.name}</h2>
             </div>
             <span
               className={[
                 "rounded px-2 py-1 font-mono text-[10.5px] uppercase tracking-[0.14em]",
-                live ? "bg-red-600 text-white" : "border border-black/10 text-neutral-500 dark:border-white/15",
+                live ? "bg-red-600 text-white" : "border border-white/12 text-white/60",
               ].join(" ")}
             >
               {live ? "Live" : "Off"}
             </span>
           </div>
 
-          <div className="relative aspect-video overflow-hidden rounded-lg border border-black/10 bg-black dark:border-white/10">
+          <div className="relative aspect-video overflow-hidden rounded-lg border border-white/12 bg-black">
             <video
               ref={videoRef}
               playsInline
@@ -199,10 +199,10 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
             )}
           </div>
 
-          <p className="text-sm text-neutral-600 dark:text-neutral-400">{statusLine}</p>
-          {pub.error && <p className="text-sm text-red-600 dark:text-red-400">{pub.error}</p>}
+          <p className="text-sm text-white/60">{statusLine}</p>
+          {pub.error && <p className="text-sm text-red-400">{pub.error}</p>}
           {slot.rejoined && !pub.error && (
-            <p className="text-xs text-neutral-500">Welcome back — this is your slot from earlier.</p>
+            <p className="text-xs text-white/45">Welcome back — this is your slot from earlier.</p>
           )}
 
           <div className="flex flex-wrap gap-2">
@@ -219,14 +219,14 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
                 <button
                   type="button"
                   onClick={pub.toggleMic}
-                  className="rounded-lg border border-black/10 px-4 py-2.5 text-sm font-medium transition hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
+                  className="rounded-lg border border-white/12 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10"
                 >
                   {pub.micOn ? "Mute mic" : "Unmute mic"}
                 </button>
                 <button
                   type="button"
                   onClick={pub.toggleCam}
-                  className="rounded-lg border border-black/10 px-4 py-2.5 text-sm font-medium transition hover:bg-black/5 dark:border-white/15 dark:hover:bg-white/10"
+                  className="rounded-lg border border-white/12 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10"
                 >
                   {pub.camOn ? "Stop camera" : "Start camera"}
                 </button>
@@ -235,13 +235,13 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
             <button
               type="button"
               onClick={leave}
-              className="ml-auto rounded-lg border border-black/10 px-4 py-2.5 text-sm font-medium text-neutral-600 transition hover:bg-black/5 dark:border-white/15 dark:text-neutral-400 dark:hover:bg-white/10"
+              className="ml-auto rounded-lg border border-white/12 px-4 py-2.5 text-sm font-medium text-white/60 transition hover:bg-white/10"
             >
               Leave
             </button>
           </div>
 
-          <p className="font-mono text-[11px] text-neutral-500">
+          <p className="font-mono text-[11px] text-white/45">
             {slot.streamId} · 320×240 · 15 fps
           </p>
         </div>

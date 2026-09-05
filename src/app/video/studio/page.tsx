@@ -24,11 +24,11 @@ export default async function VideoStudioPage({
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">
       <header className="flex flex-col gap-1">
-        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-neutral-500">
+        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
           Studio · {room}
         </span>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Push the feed</h1>
-        <p className="max-w-[64ch] text-sm text-neutral-600 dark:text-neutral-400">
+        <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Push the feed</h1>
+        <p className="max-w-[64ch] text-sm text-white/60">
           Publish the programme from a camera or a shared screen, or run an interpreter booth from
           this machine. Everything lands on the same track group the watch page is already playing.
         </p>
