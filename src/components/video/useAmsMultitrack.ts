@@ -160,7 +160,25 @@ export function useAmsMultitrack(
         const mid = e.transceiver?.mid ?? "";
         const mapped = idMapRef.current[mid];
         const rawId = mapped || e.streams[0]?.id || `${e.track.kind}-${mid}`;
-        const id = normaliseTrackId(rawId);
+        let id = normaliseTrackId(rawId);
+
+        // AMS labels group subtracks with generic slot names like
+        // "videoTrack<N>" / "audioTrack<N>" instead of carrying the
+        // subtrack streamId in msid. When we sent an explicit trackList
+        // in the play command, the Nth slot maps to trackList[N], so
+        // rewrite the id back to the real participant streamId. Without
+        // this, tiles that look up videoStreams["neoconf-p02"] find
+        // nothing while the actual track sits under "videoTrack1".
+        // Proven live: control-room diag showed videoKeys=[videoTrack0,
+        // videoTrack1, ...] instead of the neoconf-pNN slot ids.
+        const generic = /^(?:video|audio)Track(\d+)$/.exec(id);
+        if (generic) {
+          const n = parseInt(generic[1], 10);
+          if (n >= 0 && n < trackList.length && trackList[n]) {
+            id = trackList[n];
+          }
+        }
+
         const stream = e.streams[0] ?? new MediaStream([e.track]);
 
         if (e.track.kind === "video") {
