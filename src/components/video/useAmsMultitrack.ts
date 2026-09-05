@@ -7,7 +7,10 @@ export type ConnState = "connecting" | "waiting" | "playing" | "reconnecting";
 
 export interface MultitrackResult {
   state: ConnState;
+  /** Most recent video track. Fine when a group carries exactly one. */
   videoStream: MediaStream | null;
+  /** Every video track, keyed by subtrack id — the control room needs all 50. */
+  videoStreams: Record<string, MediaStream>;
   audioStreams: Record<string, MediaStream>;
   liveTrackIds: string[];
   /** Ask AMS to start/stop sending one subtrack. Optional bandwidth control. */
@@ -37,6 +40,7 @@ export function useAmsMultitrack(
   const trackKey = trackList.join(",");
   const [state, setState] = useState<ConnState>("connecting");
   const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
+  const [videoStreams, setVideoStreams] = useState<Record<string, MediaStream>>({});
   const [audioStreams, setAudioStreams] = useState<Record<string, MediaStream>>({});
   const [liveTrackIds, setLiveTrackIds] = useState<string[]>([]);
   const [nonce, setNonce] = useState(0);
@@ -132,6 +136,7 @@ export function useAmsMultitrack(
 
         if (e.track.kind === "video") {
           setVideoStream(stream);
+          setVideoStreams((prev) => (prev[id] === stream ? prev : { ...prev, [id]: stream }));
         } else {
           setAudioStreams((prev) => (prev[id] === stream ? prev : { ...prev, [id]: stream }));
         }
@@ -141,6 +146,13 @@ export function useAmsMultitrack(
           setLiveTrackIds((prev) => prev.filter((t) => t !== id));
           if (e.track.kind === "audio") {
             setAudioStreams((prev) => {
+              const next = { ...prev };
+              delete next[id];
+              return next;
+            });
+          } else {
+            setVideoStreams((prev) => {
+              if (!(id in prev)) return prev;
               const next = { ...prev };
               delete next[id];
               return next;
@@ -256,6 +268,7 @@ export function useAmsMultitrack(
           (m.definition === "play_finished" || m.definition === "streaming_finished")
         ) {
           setVideoStream(null);
+          setVideoStreams({});
           setAudioStreams({});
           setLiveTrackIds([]);
           setState("waiting");
@@ -280,5 +293,5 @@ export function useAmsMultitrack(
     };
   }, [mainTrack, enabled, nonce, trackKey]);
 
-  return { state, videoStream, audioStreams, liveTrackIds, setTrackEnabled, restart };
+  return { state, videoStream, videoStreams, audioStreams, liveTrackIds, setTrackEnabled, restart };
 }
