@@ -12,10 +12,16 @@ export type PublishState =
   | "taken"
   | "failed";
 
+export type PublishSource = "camera" | "screen";
+
 export interface PublisherOptions {
   wsUrl: string;
   streamId: string;
-  mainTrack: string;
+  /** Empty string publishes a standalone stream with no group. */
+  mainTrack?: string;
+  source?: PublishSource;
+  /** Interpreter booths send a mic and nothing else. */
+  audioOnly?: boolean;
   /** Kept small on purpose: fifty of these share one server. */
   width?: number;
   height?: number;
@@ -50,7 +56,9 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
   const {
     wsUrl,
     streamId,
-    mainTrack,
+    mainTrack = "",
+    source = "camera",
+    audioOnly = false,
     width = 320,
     height = 240,
     frameRate = 15,
@@ -68,6 +76,8 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
   const wsRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  /** Everything getUserMedia/getDisplayMedia handed us, so stop() is complete. */
+  const sourcesRef = useRef<MediaStream[]>([]);
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -128,8 +138,10 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
       wsRef.current = null;
       pendingIceRef.current = [];
 
-      if (dropCamera && streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
+      if (dropCamera) {
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        sourcesRef.current.forEach((s) => s.getTracks().forEach((t) => t.stop()));
+        sourcesRef.current = [];
         streamRef.current = null;
         setLocalStream(null);
       }
@@ -201,15 +213,55 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
 
       if (!streamRef.current) {
         setState("requesting-camera");
+        const mic = { echoCancellation: true, noiseSuppression: true };
         try {
-          const s = await navigator.mediaDevices.getUserMedia({
-            video: {
-              width: { ideal: width },
-              height: { ideal: height },
-              frameRate: { ideal: frameRate, max: frameRate },
-            },
-            audio: { echoCancellation: true, noiseSuppression: true },
-          });
+          let s: MediaStream;
+
+          if (audioOnly) {
+            // Interpreter booth: a mic and nothing else.
+            s = await navigator.mediaDevices.getUserMedia({ audio: mic, video: false });
+            sourcesRef.current.push(s);
+          } else if (source === "screen") {
+            const disp = await navigator.mediaDevices.getDisplayMedia({
+              video: { frameRate: { ideal: frameRate, max: frameRate } },
+              audio: true,
+            });
+            sourcesRef.current.push(disp);
+
+            // Prefer the operator's mic; fall back to whatever audio the
+            // capture carried, so a shared tab's sound still goes out.
+            let voice: MediaStream | null = null;
+            try {
+              voice = await navigator.mediaDevices.getUserMedia({ audio: mic, video: false });
+              sourcesRef.current.push(voice);
+            } catch {
+              /* no mic is survivable when sharing a screen */
+            }
+
+            s = new MediaStream();
+            disp.getVideoTracks().forEach((t) => s.addTrack(t));
+            const audioTrack = voice?.getAudioTracks()[0] ?? disp.getAudioTracks()[0];
+            if (audioTrack) s.addTrack(audioTrack);
+
+            // The browser's own "stop sharing" button must end the broadcast.
+            disp.getVideoTracks()[0]?.addEventListener("ended", () => {
+              deadRef.current = true;
+              teardown(true);
+              setState("idle");
+              setRunning(false);
+            });
+          } else {
+            s = await navigator.mediaDevices.getUserMedia({
+              video: {
+                width: { ideal: width },
+                height: { ideal: height },
+                frameRate: { ideal: frameRate, max: frameRate },
+              },
+              audio: mic,
+            });
+            sourcesRef.current.push(s);
+          }
+
           if (deadRef.current) {
             s.getTracks().forEach((t) => t.stop());
             return;
@@ -220,7 +272,11 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
           setCamOn(true);
         } catch {
           setState("denied");
-          setError("Camera or microphone access was refused. Allow it and try again.");
+          setError(
+            source === "screen"
+              ? "Screen sharing was cancelled or refused."
+              : "Camera or microphone access was refused. Allow it and try again.",
+          );
           return;
         }
       }
@@ -241,9 +297,13 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
           command: "publish",
           streamId,
           token: "",
-          mainTrack,
-          video: true,
+          ...(mainTrack ? { mainTrack } : {}),
+          video: !audioOnly,
           audio: true,
+          // The websocket reference spells these differently from the SDK;
+          // sending both keeps every AMS build happy.
+          enablevideo: !audioOnly,
+          enableaudio: true,
         });
       };
 
@@ -352,7 +412,19 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
       if (retryRef.current) clearTimeout(retryRef.current);
       teardown(true);
     };
-  }, [running, runToken, streamId, mainTrack, wsUrl, width, height, frameRate, maxBitrateKbps]);
+  }, [
+    running,
+    runToken,
+    streamId,
+    mainTrack,
+    wsUrl,
+    source,
+    audioOnly,
+    width,
+    height,
+    frameRate,
+    maxBitrateKbps,
+  ]);
 
   return { state, error, localStream, micOn, camOn, start, stop, toggleMic, toggleCam };
 }
