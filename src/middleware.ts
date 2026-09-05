@@ -30,7 +30,10 @@ const isPublicRoute = createRouteMatcher([
   '/api/cron/(.*)',
   '/i/(.*)',
   '/video/dashboard',
-  '/api/video/(.*)',
+  // Listed individually on purpose: a wildcard here would silently expose
+  // every future /api/video route, including the staff-only ones.
+  '/api/video/status',
+  '/api/video/chat',
 ]);
 
 // Hosts that ARE the canonical app (skip custom-domain rewrite for these).

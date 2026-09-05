@@ -8,8 +8,10 @@ import {
   SIMULCAST_CHANNELS,
   SIMULCAST_MAIN,
   VIDEO_CHANNEL,
+  CHANNEL_TRACK_IDS,
   channelById,
   hlsUrl,
+  type FeaturedState,
 } from "@/lib/simulcast";
 
 /** true = also ask AMS to stop sending unselected audio subtracks (saves bandwidth, ~1s switch). */
@@ -26,15 +28,27 @@ export default function SimulcastPlayer() {
   const [mode, setMode] = useState<"webrtc" | "hls">("webrtc");
   const [serverLive, setServerLive] = useState<Set<string>>(new Set());
   const [viewers, setViewers] = useState(0);
+  const [featured, setFeatured] = useState<FeaturedState | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const featVideoRef = useRef<HTMLVideoElement | null>(null);
+  const featAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
   const fallbackAudioRef = useRef<HTMLAudioElement | null>(null);
   const hlsVideo = useRef<Destroyable | null>(null);
   const hlsAudio = useRef<Destroyable | null>(null);
 
   const { state, videoStream, audioStreams, liveTrackIds, setTrackEnabled, restart } =
-    useAmsMultitrack(SIMULCAST_MAIN, mode === "webrtc");
+    useAmsMultitrack(SIMULCAST_MAIN, mode === "webrtc", CHANNEL_TRACK_IDS);
+
+  /**
+   * A featured participant is played on its OWN connection, straight to their
+   * stream id. The programme connection is never dropped, so clearing the
+   * feature is instant and nothing is re-encoded anywhere.
+   */
+  const feat = useAmsMultitrack(featured?.streamId ?? "", !!featured && mode === "webrtc");
+  const featStream = feat.videoStream;
+  const onAir = Boolean(featured && featStream);
 
   const activeChannel = channelById(active) ?? VIDEO_CHANNEL;
 
@@ -56,6 +70,11 @@ export default function SimulcastPlayer() {
           ),
         );
         setViewers(j.viewers ?? 0);
+        setFeatured((prev) => {
+          const next = (j.featured ?? null) as FeaturedState | null;
+          if (prev?.streamId === next?.streamId) return prev;
+          return next;
+        });
       } catch {
         /* transient */
       }
@@ -107,21 +126,48 @@ export default function SimulcastPlayer() {
     }
   }, [videoStream, mode]);
 
-  /* ---- WebRTC: exactly one audio element unmuted ---- */
+  /* ---- featured participant: bind its own media ---- */
+  useEffect(() => {
+    const el = featVideoRef.current;
+    if (!el) return;
+    if (featStream && el.srcObject !== featStream) {
+      el.srcObject = featStream;
+      el.play().catch(() => {});
+    }
+    if (!featStream) el.srcObject = null;
+  }, [featStream]);
+
+  useEffect(() => {
+    const el = featAudioRef.current;
+    if (!el) return;
+    const stream = Object.values(feat.audioStreams)[0] ?? null;
+    if (stream && el.srcObject !== stream) el.srcObject = stream;
+    if (!stream) {
+      el.srcObject = null;
+      return;
+    }
+    el.muted = muted || !onAir;
+    if (!el.muted) el.play().catch(() => setMuted(true));
+  }, [feat.audioStreams, muted, onAir]);
+
+  /* ---- WebRTC: exactly one audio element unmuted ----
+     While a participant is on air their mic replaces the floor, so every
+     language element goes quiet. The booths are still interpreting the host,
+     which is why featuring is meant to be short. ---- */
   useEffect(() => {
     if (mode !== "webrtc") return;
     if (videoRef.current) videoRef.current.muted = true;
 
     Object.entries(audioRefs.current).forEach(([id, el]) => {
       if (!el) return;
-      const shouldPlay = id === active && !muted;
+      const shouldPlay = id === active && !muted && !onAir;
       el.muted = !shouldPlay;
       el.volume = 1;
       if (shouldPlay) {
         el.play().catch(() => setMuted(true));
       }
     });
-  }, [active, muted, audioStreams, mode]);
+  }, [active, muted, audioStreams, mode, onAir]);
 
   /* ---- optional: stop receiving the languages nobody is listening to ---- */
   useEffect(() => {
@@ -240,7 +286,26 @@ export default function SimulcastPlayer() {
       <div className="grid lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-4 p-4">
           <div className="relative aspect-video overflow-hidden rounded-lg border border-white/10 bg-black">
-            <video ref={videoRef} playsInline autoPlay muted className="h-full w-full object-contain" />
+            <video
+              ref={videoRef}
+              playsInline
+              autoPlay
+              muted
+              className="h-full w-full object-contain"
+              style={onAir ? { visibility: "hidden" } : undefined}
+            />
+
+            {/* Featured participant replaces the programme picture while on air.
+                The programme connection keeps running underneath. */}
+            <video
+              ref={featVideoRef}
+              playsInline
+              autoPlay
+              muted
+              className="absolute inset-0 h-full w-full object-contain"
+              style={{ display: onAir ? "block" : "none" }}
+            />
+            <audio ref={featAudioRef} autoPlay muted />
 
             {/* one audio element per language subtrack (WebRTC mode) */}
             {Object.entries(audioStreams).map(([id, stream]) => (
@@ -285,9 +350,11 @@ export default function SimulcastPlayer() {
               <span className="h-5 w-2 rounded-sm" style={{ background: activeChannel.color }} />
               <span className="flex flex-col leading-tight">
                 <small className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-white/50">
-                  Listening in
+                  {onAir ? "On air" : "Listening in"}
                 </small>
-                <span className="text-[13px] font-semibold text-white">{activeChannel.label}</span>
+                <span className="text-[13px] font-semibold text-white">
+                  {onAir ? `${featured?.label} — live` : activeChannel.label}
+                </span>
               </span>
             </div>
 
@@ -319,7 +386,14 @@ export default function SimulcastPlayer() {
             )}
           </div>
 
-          <ChannelRail channels={SIMULCAST_CHANNELS} live={live} active={active} onSelect={setActive} />
+          <div style={onAir ? { opacity: 0.45, pointerEvents: "none" } : undefined}>
+            <ChannelRail channels={SIMULCAST_CHANNELS} live={live} active={active} onSelect={setActive} />
+          </div>
+          {onAir && (
+            <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-amber-400/80">
+              Language channels resume when the programme returns
+            </p>
+          )}
         </div>
 
         <LiveChat room={SIMULCAST_MAIN} code={activeChannel.code} />
