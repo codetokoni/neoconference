@@ -58,7 +58,6 @@ export async function GET(req: NextRequest) {
     // meeting. LiveKit tags agent participants with a `kind` field
     // set to "agent"; we filter on that plus a name-prefix fallback
     // for older workers that don't set kind.
-    void hostIds; // legacy set kept out of the decision below
     let hostPresent = false;
     let participantCount = 0;
     try {
