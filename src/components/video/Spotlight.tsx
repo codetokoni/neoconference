@@ -7,43 +7,33 @@ interface Spot {
   streamId: string;
   name: string;
   code?: string;
+  /**
+   * Roster columns uploaded via /video/room/roster. Keys are lowercased
+   * header names — `condition`, `country`, `contact` for the SEEN_DOXA
+   * shape. Absent when the room never had a roster.
+   */
+  meta?: Record<string, string>;
 }
 
 /**
  * Fullscreen preview of one participant.
  *
- * Extracted from the cameras board so the name board (and anything else
- * that wants a full-quality look at one child) can reuse the exact same
- * modal without pulling in per-tile WebRTC. Opens one AMS play session
- * on `spot.streamId` for as long as the modal is mounted; closes when
- * `onClose` fires.
+ * Attention-first: renders the incoming video edge-to-edge with a name +
+ * condition card at the bottom instead of moderator action buttons. The
+ * point is inspection — who is this and what should we know about them —
+ * not to also be the trigger surface for going to air. Feature-to-air,
+ * send-to-preview, monitor and remove all live on the queue board and
+ * the tile menus; the Spotlight modal only asks you to look.
  *
- * All action props are optional — pass only the buttons the caller can
- * meaningfully offer. The camera board wires all five (Feature, Send to
- * preview, Monitor audio, Remove, Close); the name board only shows the
- * two producer flows (Feature, Send to preview) plus Close.
+ * Opens one AMS play session on `spot.streamId` for as long as the modal
+ * is mounted; closes on ✕ or Esc.
  */
 export interface SpotlightProps {
   spot: Spot;
-  busy?: boolean;
-  monitored?: boolean;
-  onFeature?: () => void;
-  onSendToPreview?: () => void;
-  onMonitor?: () => void;
-  onRemove?: () => void;
   onClose: () => void;
 }
 
-export default function Spotlight({
-  spot,
-  busy = false,
-  monitored = false,
-  onFeature,
-  onSendToPreview,
-  onMonitor,
-  onRemove,
-  onClose,
-}: SpotlightProps) {
+export default function Spotlight({ spot, onClose }: SpotlightProps) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const { videoStream } = useAmsMultitrack(spot.streamId, Boolean(spot.streamId));
 
@@ -64,12 +54,16 @@ export default function Spotlight({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const condition = spot.meta?.condition;
+  const country = spot.meta?.country;
+  const contact = spot.meta?.contact;
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black">
       <video ref={ref} playsInline autoPlay className="h-full w-full object-contain" />
 
       <span className="pointer-events-none absolute left-4 top-4 rounded-md border border-white/15 bg-black/70 px-3 py-1.5 font-mono text-xs text-white/80 backdrop-blur">
-        {spot.name} · {spot.streamId}
+        {spot.streamId}
         {spot.code ? ` · ${spot.code}` : ""}
       </span>
 
@@ -82,45 +76,29 @@ export default function Spotlight({
         ✕
       </button>
 
-      <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-wrap justify-center gap-2 rounded-xl border border-white/15 bg-black/70 p-2 backdrop-blur">
-        {onFeature && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onFeature}
-            className="rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-[#14100a] transition hover:bg-amber-400 disabled:opacity-40"
-          >
-            Feature to air
-          </button>
+      <div className="absolute bottom-6 left-1/2 flex max-w-[min(720px,92vw)] -translate-x-1/2 flex-col items-center gap-2 rounded-xl border border-white/15 bg-black/70 px-6 py-4 text-center backdrop-blur">
+        <span className="text-2xl font-bold text-white sm:text-3xl">{spot.name}</span>
+        {condition && (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/45">
+              Condition
+            </span>
+            <span className="text-base text-white/90 sm:text-lg">{condition}</span>
+          </div>
         )}
-        {onSendToPreview && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onSendToPreview}
-            className="rounded-md border border-emerald-400/60 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/10 disabled:opacity-40"
-          >
-            Send to preview
-          </button>
-        )}
-        {onMonitor && (
-          <button
-            type="button"
-            onClick={onMonitor}
-            className="rounded-md border border-white/15 px-4 py-2 text-sm text-white/85 transition hover:bg-white/10"
-          >
-            {monitored ? "Stop monitoring" : "Monitor audio"}
-          </button>
-        )}
-        {onRemove && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onRemove}
-            className="rounded-md border border-red-500/50 px-4 py-2 text-sm text-red-300 transition hover:bg-red-500/15 disabled:opacity-40"
-          >
-            Remove
-          </button>
+        {(country || contact) && (
+          <div className="mt-1 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-white/70">
+            {country && (
+              <span>
+                <span className="text-white/45">Country:</span> {country}
+              </span>
+            )}
+            {contact && (
+              <span>
+                <span className="text-white/45">Contact:</span> {contact}
+              </span>
+            )}
+          </div>
         )}
       </div>
     </div>
