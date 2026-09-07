@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAmsMultitrack } from "./useAmsMultitrack";
 import PreviewPane, { type PreviewState } from "./PreviewPane";
+import Spotlight from "./Spotlight";
 import { SIMULCAST_MAIN, type FeaturedState } from "@/lib/simulcast";
 
 interface Participant {
@@ -133,109 +134,6 @@ function Tile({
       <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/90 to-transparent px-1.5 py-0.5 text-[10px] font-semibold text-white/90">
         {p.name}
       </span>
-    </div>
-  );
-}
-
-/**
- * Spotlight modal — opens its own play session on the clicked participant.
- * Kept separate from Tile so it doesn't share the tile's muted state
- * (spotlighting implies the operator wants to hear the participant).
- */
-function Spotlight({
-  spot,
-  busy,
-  monitored,
-  onFeature,
-  onSendToPreview,
-  onMonitor,
-  onRemove,
-  onClose,
-}: {
-  spot: Participant;
-  busy: boolean;
-  monitored: boolean;
-  onFeature: () => void;
-  onSendToPreview: () => void;
-  onMonitor: () => void;
-  onRemove: () => void;
-  onClose: () => void;
-}) {
-  const ref = useRef<HTMLVideoElement | null>(null);
-  const { videoStream } = useAmsMultitrack(spot.streamId, Boolean(spot.streamId));
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    if (videoStream && el.srcObject !== videoStream) {
-      el.srcObject = videoStream;
-      el.play().catch(() => {});
-    }
-  }, [videoStream]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black">
-      <video
-        ref={ref}
-        playsInline
-        autoPlay
-        className="h-full w-full object-contain"
-      />
-
-      <span className="pointer-events-none absolute left-4 top-4 rounded-md border border-white/15 bg-black/70 px-3 py-1.5 font-mono text-xs text-white/80 backdrop-blur">
-        {spot.name} · {spot.streamId} · {spot.code}
-      </span>
-
-      <button
-        type="button"
-        aria-label="Close preview"
-        onClick={onClose}
-        className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-md border border-white/15 bg-black/70 text-lg text-white/85 transition hover:bg-white/10"
-      >
-        ✕
-      </button>
-
-      <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-wrap justify-center gap-2 rounded-xl border border-white/15 bg-black/70 p-2 backdrop-blur">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onFeature}
-          className="rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-[#14100a] transition hover:bg-amber-400 disabled:opacity-40"
-        >
-          Feature to air
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onSendToPreview}
-          className="rounded-md border border-emerald-400/60 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/10 disabled:opacity-40"
-        >
-          Send to preview
-        </button>
-        <button
-          type="button"
-          onClick={onMonitor}
-          className="rounded-md border border-white/15 px-4 py-2 text-sm text-white/85 transition hover:bg-white/10"
-        >
-          {monitored ? "Stop monitoring" : "Monitor audio"}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onRemove}
-          className="rounded-md border border-red-500/50 px-4 py-2 text-sm text-red-300 transition hover:bg-red-500/15 disabled:opacity-40"
-        >
-          Remove
-        </button>
-      </div>
     </div>
   );
 }
