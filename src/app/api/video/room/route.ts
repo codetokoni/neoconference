@@ -41,6 +41,17 @@ function screenNo(req: Request) {
   return Number.isFinite(n) && n >= 1 && n <= 20 ? Math.floor(n) : 1;
 }
 
+/**
+ * `?screen=all` means "every participant across every screen." The name
+ * board uses it because attendance-at-a-glance for the whole event is
+ * cheaper than making a floor manager click through Screen 1 / Screen 2 /
+ * … / Screen 10 tabs to find one name.
+ */
+function isAllScreens(req: Request) {
+  const raw = new URL(req.url).searchParams.get("screen")?.trim().toLowerCase();
+  return raw === "all";
+}
+
 async function guard() {
   const actor = await requireRole(["admin", "staff"]);
   return actor
@@ -61,12 +72,14 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   const r = room(req);
+  const all = isAllScreens(req);
   const screen = screenNo(req);
 
   const [codes, claimed, layout, featuredRaw] = await Promise.all([
     listCodes(r),
     claimedCodes(r),
-    kv.get<RoomLayout>(layoutKey(r, screen)),
+    // No layout for the all-screens view — layouts are per-screen.
+    all ? Promise.resolve(null) : kv.get<RoomLayout>(layoutKey(r, screen)),
     kv.get<FeaturedState>(featuredKey(r)).catch(() => null),
   ]);
 
@@ -96,7 +109,7 @@ export async function GET(req: Request) {
   const to = screen * PER_SCREEN;
 
   const participants = codes
-    .filter((c) => c.slot >= from && c.slot <= to)
+    .filter((c) => all || (c.slot >= from && c.slot <= to))
     .map((c) => ({
       slot: c.slot,
       name: c.name,
@@ -110,7 +123,7 @@ export async function GET(req: Request) {
     {
       ok: true,
       room: r,
-      screen,
+      screen: all ? "all" : screen,
       perScreen: PER_SCREEN,
       screens: Math.max(1, Math.ceil(codes.length / PER_SCREEN)),
       mainTrack: roomMainTrack(r),

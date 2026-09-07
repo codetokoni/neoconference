@@ -294,7 +294,7 @@ function ScreenCard({ room, block }: { room: string; block: ScreenBlock }) {
           Camera board
         </a>
         <a
-          href={`/video/room/names?room=${encodeURIComponent(room)}&screen=${block.screen}`}
+          href={`/video/room/names?room=${encodeURIComponent(room)}`}
           className="rounded-md border border-white/12 px-3 py-1.5 text-xs text-white hover:bg-white/10"
         >
           Name board

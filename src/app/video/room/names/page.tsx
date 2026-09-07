@@ -14,13 +14,12 @@ export const metadata: Metadata = {
 export default async function NamesPage({
   searchParams,
 }: {
-  searchParams?: { screen?: string; room?: string };
+  searchParams?: { room?: string };
 }) {
   // Clerk already protects this path via middleware; this is the role gate.
   const actor = await requireRole(["admin", "staff"]);
   if (!actor) redirect("/dashboard");
 
-  const screen = Math.max(1, Math.min(20, Number(searchParams?.screen ?? 1) || 1));
   const room = (searchParams?.room ?? SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "");
 
   return (
@@ -37,11 +36,12 @@ export default async function NamesPage({
         </h1>
         <p className="max-w-[64ch] text-sm text-white/60">
           Attendance only. Renders no video, so it costs zero viewer slots on the
-          ingest server — leave it open all day. Auto-refreshes every few seconds.
+          ingest server — leave it open all day. Every participant across every
+          screen in one list. Auto-refreshes every few seconds.
         </p>
       </header>
 
-      <NameBoard room={room} screen={screen} />
+      <NameBoard room={room} />
     </main>
   );
 }
