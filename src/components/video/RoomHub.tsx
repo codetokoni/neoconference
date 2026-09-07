@@ -57,6 +57,7 @@ export default function RoomHub({
   const [err, setErr] = useState<string | null>(null);
   const [joinUrl, setJoinUrl] = useState("");
   const [streamingUrl, setStreamingUrl] = useState("");
+  const [studioUrl, setStudioUrl] = useState("");
   const [moderatorUrl, setModeratorUrl] = useState("");
 
   useEffect(() => {
@@ -67,6 +68,7 @@ export default function RoomHub({
     const q = encodeURIComponent(room);
     setJoinUrl(`${origin}/video/join?room=${q}`);
     setStreamingUrl(`${origin}/video/dashboard?room=${q}`);
+    setStudioUrl(`${origin}/video/studio?room=${q}`);
     // Moderator URL is the sanitised handout — /video/room/moderate, not
     // this /video/room admin URL. Admins hand it out; nobody sees the
     // admin URL unless they know it.
@@ -144,6 +146,17 @@ export default function RoomHub({
           <p className="text-xs text-white/60">
             Send this to everyone watching the show. Programme feed with language
             selector; no login required.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
+            Studio link — broadcaster
+          </span>
+          <Copyable value={studioUrl || "/video/studio"} label="studio link" />
+          <p className="text-xs text-white/60">
+            Send this to whoever pushes the programme feed. Picks camera or
+            screen, quality preset, or an interpreter booth for audio. Staff
+            login required.
           </p>
         </div>
         <div className="flex flex-col gap-2">
