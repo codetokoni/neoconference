@@ -5,14 +5,18 @@ import ChannelRail from "./ChannelRail";
 import LiveChat from "./LiveChat";
 import { useAmsMultitrack } from "./useAmsMultitrack";
 import {
-  SIMULCAST_CHANNELS,
   SIMULCAST_MAIN,
-  VIDEO_CHANNEL,
-  CHANNEL_TRACK_IDS,
-  channelById,
+  channelById as channelByIdInList,
+  channelsForRoom,
+  channelTrackIdsForRoom,
   hlsUrl,
+  videoChannelForRoom,
   type FeaturedState,
+  type SimulcastChannel,
 } from "@/lib/simulcast";
+
+// `channelByIdInList` is the exported helper; imported under an alias so the
+// local callback below can be named `channelById` for readability.
 
 /** true = also ask AMS to stop sending unselected audio subtracks (saves bandwidth, ~1s switch). */
 const BANDWIDTH_SAVER = false;
@@ -25,15 +29,37 @@ type Destroyable = { destroy: () => void };
 export interface SimulcastPlayerProps {
   /** Show the LiveChat column beside the player. Default true. */
   showChat?: boolean;
+  /** Room slug — governs which mainTrack is subscribed and which
+   *  language subtracks are named. Defaults to the app's default room. */
+  room?: string;
 }
 
-export default function SimulcastPlayer({ showChat = true }: SimulcastPlayerProps = {}) {
-  const [active, setActive] = useState(VIDEO_CHANNEL.id);
+export default function SimulcastPlayer({
+  showChat = true,
+  room = SIMULCAST_MAIN,
+}: SimulcastPlayerProps = {}) {
+  // Channels are keyed by the room slug so a second event's streaming
+  // link plays that event's programme, not the default's.
+  const channels = useMemo<SimulcastChannel[]>(() => channelsForRoom(room), [room]);
+  const videoChannel = useMemo(() => videoChannelForRoom(room), [room]);
+  const channelTrackIds = useMemo(() => channelTrackIdsForRoom(room), [room]);
+  const channelById = useCallback(
+    (id: string) => channelByIdInList(id, channels),
+    [channels],
+  );
+
+  const [active, setActive] = useState(videoChannel.id);
   const [muted, setMuted] = useState(true);
   const [mode, setMode] = useState<"webrtc" | "hls">("webrtc");
   const [serverLive, setServerLive] = useState<Set<string>>(new Set());
   const [viewers, setViewers] = useState(0);
   const [featured, setFeatured] = useState<FeaturedState | null>(null);
+
+  // Room prop changing (e.g. via a client-side navigation) resets the
+  // selected channel to that room's Floor English.
+  useEffect(() => {
+    setActive(videoChannel.id);
+  }, [videoChannel.id]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const featVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -44,7 +70,7 @@ export default function SimulcastPlayer({ showChat = true }: SimulcastPlayerProp
   const hlsAudio = useRef<Destroyable | null>(null);
 
   const { state, videoStream, audioStreams, liveTrackIds, setTrackEnabled, restart } =
-    useAmsMultitrack(SIMULCAST_MAIN, mode === "webrtc", CHANNEL_TRACK_IDS);
+    useAmsMultitrack(room, mode === "webrtc", channelTrackIds);
 
   /**
    * A featured participant is played on its OWN connection, straight to their
@@ -55,14 +81,14 @@ export default function SimulcastPlayer({ showChat = true }: SimulcastPlayerProp
   const featStream = feat.videoStream;
   const onAir = Boolean(featured && featStream);
 
-  const activeChannel = channelById(active) ?? VIDEO_CHANNEL;
+  const activeChannel = channelById(active) ?? videoChannel;
 
   /* ---- which booths are actually publishing (server-side AMS REST) ---- */
   useEffect(() => {
     let stopped = false;
     const tick = async () => {
       try {
-        const r = await fetch(`/api/video/status?room=${encodeURIComponent(SIMULCAST_MAIN)}`, {
+        const r = await fetch(`/api/video/status?room=${encodeURIComponent(room)}`, {
           cache: "no-store",
         });
         const j = await r.json();
@@ -90,7 +116,7 @@ export default function SimulcastPlayer({ showChat = true }: SimulcastPlayerProp
       stopped = true;
       clearInterval(t);
     };
-  }, []);
+  }, [room]);
 
   /** Selectable if AMS says it is publishing, or its track already arrived. */
   const live = useMemo(() => {
@@ -101,8 +127,8 @@ export default function SimulcastPlayer({ showChat = true }: SimulcastPlayerProp
 
   /** If the selected booth drops off air, fall back to the floor. */
   useEffect(() => {
-    if (live.size > 0 && !live.has(active)) setActive(VIDEO_CHANNEL.id);
-  }, [live, active]);
+    if (live.size > 0 && !live.has(active)) setActive(videoChannel.id);
+  }, [live, active, videoChannel.id]);
 
   /* ---- fall back to HLS if WebRTC never reaches playing ----
      "waiting" means AMS says no stream exists yet, so HLS would 404 too:
@@ -178,7 +204,7 @@ export default function SimulcastPlayer({ showChat = true }: SimulcastPlayerProp
   useEffect(() => {
     if (!BANDWIDTH_SAVER || mode !== "webrtc") return;
     const t = setTimeout(() => {
-      SIMULCAST_CHANNELS.forEach((c) => {
+      channels.forEach((c) => {
         if (c.video) return;
         setTrackEnabled(c.id, c.id === active);
       });
@@ -196,7 +222,7 @@ export default function SimulcastPlayer({ showChat = true }: SimulcastPlayerProp
     el.srcObject = null;
 
     (async () => {
-      const src = hlsUrl(VIDEO_CHANNEL.id);
+      const src = hlsUrl(videoChannel.id);
       if (el.canPlayType("application/vnd.apple.mpegurl")) {
         el.src = src;
       } else {
@@ -215,7 +241,7 @@ export default function SimulcastPlayer({ showChat = true }: SimulcastPlayerProp
       hlsVideo.current?.destroy();
       hlsVideo.current = null;
     };
-  }, [mode]);
+  }, [mode, videoChannel.id]);
 
   /* ---- HLS fallback: the language audio, kept near the picture ---- */
   useEffect(() => {
@@ -224,7 +250,7 @@ export default function SimulcastPlayer({ showChat = true }: SimulcastPlayerProp
     const audio = fallbackAudioRef.current;
     if (!video || !audio) return;
 
-    const onFloor = active === VIDEO_CHANNEL.id;
+    const onFloor = active === videoChannel.id;
     video.muted = muted || !onFloor;
 
     hlsAudio.current?.destroy();
@@ -271,7 +297,7 @@ export default function SimulcastPlayer({ showChat = true }: SimulcastPlayerProp
       hlsAudio.current?.destroy();
       hlsAudio.current = null;
     };
-  }, [mode, active, muted]);
+  }, [mode, active, muted, videoChannel.id]);
 
   const unmute = useCallback(() => setMuted(false), []);
 
@@ -392,7 +418,7 @@ export default function SimulcastPlayer({ showChat = true }: SimulcastPlayerProp
           </div>
 
           <div style={onAir ? { opacity: 0.45, pointerEvents: "none" } : undefined}>
-            <ChannelRail channels={SIMULCAST_CHANNELS} live={live} active={active} onSelect={setActive} />
+            <ChannelRail channels={channels} live={live} active={active} onSelect={setActive} />
           </div>
           {onAir && (
             <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-amber-400/80">
@@ -401,7 +427,7 @@ export default function SimulcastPlayer({ showChat = true }: SimulcastPlayerProp
           )}
         </div>
 
-        {showChat && <LiveChat room={SIMULCAST_MAIN} code={activeChannel.code} />}
+        {showChat && <LiveChat room={room} code={activeChannel.code} />}
       </div>
     </div>
   );
