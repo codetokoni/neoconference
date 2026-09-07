@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import RoomsList from "@/components/video/RoomsList";
 import { requireRole } from "@/lib/roles";
+import { isVideoRoomAdmin } from "@/lib/videoAdmin";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export default async function RoomsPage() {
   // Clerk already protects this path via middleware; this is the role gate.
   const actor = await requireRole(["admin", "staff"]);
   if (!actor) redirect("/dashboard");
+  if (!(await isVideoRoomAdmin())) redirect("/dashboard");
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">

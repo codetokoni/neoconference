@@ -36,6 +36,10 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
   const [source, setSource] = useState<PublishSource>("camera");
   const [presetId, setPresetId] = useState<PresetId>("safe");
   const [boothId, setBoothId] = useState(booths[0]?.id ?? "");
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [videoDeviceId, setVideoDeviceId] = useState("");
+  const [audioDeviceId, setAudioDeviceId] = useState("");
   const [live, setLive] = useState<{ ids: Set<string>; viewers: number }>({
     ids: new Set(),
     viewers: 0,
@@ -45,6 +49,25 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
   useEffect(() => {
     setBoothId(booths[0]?.id ?? "");
   }, [booths]);
+
+  // Device enumeration. Browsers won't hand back device labels until the
+  // user has granted at least one media permission — so a fresh page load
+  // may return unlabeled devices. Re-enumerate after publish starts to
+  // catch the labels once permission has been granted.
+  const refreshDevices = useCallback(async () => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      setVideoDevices(devices.filter((d) => d.kind === "videoinput"));
+      setAudioDevices(devices.filter((d) => d.kind === "audioinput"));
+    } catch {
+      /* denied or unsupported — sidebar stays empty */
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshDevices();
+  }, [refreshDevices]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0];
@@ -58,11 +81,20 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
     mainTrack: room,
     source,
     audioOnly: booth,
+    videoDeviceId,
+    audioDeviceId,
     width: preset.width,
     height: preset.height,
     frameRate: preset.fps,
     maxBitrateKbps: preset.kbps,
   });
+
+  // Re-enumerate after publish starts — browsers only hand back device
+  // labels once permission has been granted, so labels that were empty
+  // before Go live are populated afterwards.
+  useEffect(() => {
+    if (pub.state === "publishing") refreshDevices();
+  }, [pub.state, refreshDevices]);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -310,6 +342,30 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
             </>
           )}
 
+          <div className="flex flex-col gap-2 border-t border-white/12 pt-3">
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/45">
+              Devices
+            </span>
+            {!booth && source === "camera" && (
+              <DeviceSelect
+                label="Camera"
+                devices={videoDevices}
+                value={videoDeviceId}
+                onChange={setVideoDeviceId}
+                disabled={publishing || busy}
+                emptyHint="Click Go live once to unlock camera names."
+              />
+            )}
+            <DeviceSelect
+              label="Microphone"
+              devices={audioDevices}
+              value={audioDeviceId}
+              onChange={setAudioDeviceId}
+              disabled={publishing || busy}
+              emptyHint="Click Go live once to unlock microphone names."
+            />
+          </div>
+
           <div className="flex flex-col gap-1 border-t border-white/12 pt-3">
             <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/45">
               Channels
@@ -332,5 +388,46 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
         </aside>
       </div>
     </div>
+  );
+}
+
+function DeviceSelect({
+  label,
+  devices,
+  value,
+  onChange,
+  disabled,
+  emptyHint,
+}: {
+  label: string;
+  devices: MediaDeviceInfo[];
+  value: string;
+  onChange: (v: string) => void;
+  disabled: boolean;
+  emptyHint: string;
+}) {
+  const hasLabels = devices.some((d) => d.label);
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/45">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className="rounded-md border border-white/12 bg-[#0B1319] px-2 py-1.5 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-40"
+      >
+        <option value="">Default</option>
+        {devices.map((d, i) => (
+          <option key={d.deviceId || i} value={d.deviceId}>
+            {d.label || `${label} ${i + 1}`}
+          </option>
+        ))}
+      </select>
+      {devices.length > 0 && !hasLabels && (
+        <span className="text-[10px] text-white/45">{emptyHint}</span>
+      )}
+    </label>
   );
 }
