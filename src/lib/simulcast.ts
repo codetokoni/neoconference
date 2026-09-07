@@ -39,23 +39,50 @@ export const AMS_HTTP =
  * Edit this list to add or remove interpretation booths.
  * The first entry MUST be the video-bearing stream.
  */
-export const SIMULCAST_CHANNELS: SimulcastChannel[] = [
-  { id: `${SIMULCAST_MAIN}-video`, label: "Floor — English", code: "EN", lang: "en", color: "#7C8C98", video: true },
-  { id: `${SIMULCAST_MAIN}-a-fr`,  label: "Français",        code: "FR", lang: "fr", color: "#3F80EE" },
-  { id: `${SIMULCAST_MAIN}-a-es`,  label: "Español",         code: "ES", lang: "es", color: "#E0912C" },
-  { id: `${SIMULCAST_MAIN}-a-pt`,  label: "Português",       code: "PT", lang: "pt", color: "#2FA268" },
-  { id: `${SIMULCAST_MAIN}-a-ar`,  label: "العربية", code: "AR", lang: "ar", color: "#A96BDD" },
+/**
+ * Channel template. Each entry becomes `${room}<suffix>` when scoped to
+ * a room — Floor English is always `<room>-video`, French is
+ * `<room>-a-fr`, etc. The first entry MUST be the video-bearing stream.
+ * Same shape across every room today; per-room language configs can
+ * come later when a venue actually differs.
+ */
+interface ChannelTemplate {
+  suffix: string;
+  label: string;
+  code: string;
+  lang: string;
+  color: string;
+  video?: boolean;
+}
+
+const CHANNEL_TEMPLATE: ChannelTemplate[] = [
+  { suffix: "-video", label: "Floor — English", code: "EN", lang: "en", color: "#7C8C98", video: true },
+  { suffix: "-a-fr",  label: "Français",        code: "FR", lang: "fr", color: "#3F80EE" },
+  { suffix: "-a-es",  label: "Español",         code: "ES", lang: "es", color: "#E0912C" },
+  { suffix: "-a-pt",  label: "Português",       code: "PT", lang: "pt", color: "#2FA268" },
+  { suffix: "-a-ar",  label: "العربية", code: "AR", lang: "ar", color: "#A96BDD" },
 ];
 
-export const VIDEO_CHANNEL =
-  SIMULCAST_CHANNELS.find((c) => c.video) ?? SIMULCAST_CHANNELS[0];
+export function channelsForRoom(room = SIMULCAST_MAIN): SimulcastChannel[] {
+  return CHANNEL_TEMPLATE.map(({ suffix, ...rest }) => ({
+    id: `${room}${suffix}`,
+    ...rest,
+  }));
+}
 
-/**
- * The only subtracks a public viewer should ever be sent from the broadcast
- * group. Participant cameras publish into their own main track, so naming
- * these explicitly is what stops a viewer receiving fifty of them.
- */
-export const CHANNEL_TRACK_IDS: string[] = SIMULCAST_CHANNELS.map((c) => c.id);
+export function videoChannelForRoom(room = SIMULCAST_MAIN): SimulcastChannel {
+  const chans = channelsForRoom(room);
+  return chans.find((c) => c.video) ?? chans[0];
+}
+
+export function channelTrackIdsForRoom(room = SIMULCAST_MAIN): string[] {
+  return channelsForRoom(room).map((c) => c.id);
+}
+
+/** Default-room presets kept as exports for callers that predate multi-tenant. */
+export const SIMULCAST_CHANNELS: SimulcastChannel[] = channelsForRoom(SIMULCAST_MAIN);
+export const VIDEO_CHANNEL: SimulcastChannel = videoChannelForRoom(SIMULCAST_MAIN);
+export const CHANNEL_TRACK_IDS: string[] = channelTrackIdsForRoom(SIMULCAST_MAIN);
 
 /** Redis key holding the participant currently featured to air, if any. */
 export const featuredKey = (room: string) => `neo:video:featured:${room}`;
@@ -68,8 +95,11 @@ export interface FeaturedState {
   at: number;
 }
 
-export function channelById(id: string): SimulcastChannel | undefined {
-  return SIMULCAST_CHANNELS.find((c) => c.id === id);
+export function channelById(
+  id: string,
+  channels: SimulcastChannel[] = SIMULCAST_CHANNELS,
+): SimulcastChannel | undefined {
+  return channels.find((c) => c.id === id);
 }
 
 /** AMS prefixes WebRTC track ids; normalise back to the stream id. */

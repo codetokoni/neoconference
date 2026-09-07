@@ -40,12 +40,18 @@ export default function RoomHub({ room }: { room: string }) {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [joinUrl, setJoinUrl] = useState("");
+  const [streamingUrl, setStreamingUrl] = useState("");
+  const [moderatorUrl, setModeratorUrl] = useState("");
 
   useEffect(() => {
-    // Include the room slug so a second event's codes land in the right
-    // room. The default room's URL keeps the query too — cheap price for
-    // consistency across every room's invite.
-    setJoinUrl(`${window.location.origin}/video/join?room=${encodeURIComponent(room)}`);
+    // Include the room slug on every URL so a second event's links go to
+    // the right room. The default room's URLs keep the query too — cheap
+    // price for consistency across every room's handouts.
+    const origin = window.location.origin;
+    const q = encodeURIComponent(room);
+    setJoinUrl(`${origin}/video/join?room=${q}`);
+    setStreamingUrl(`${origin}/video/dashboard?room=${q}`);
+    setModeratorUrl(`${origin}/video/room?room=${q}`);
   }, [room]);
 
   const load = useCallback(async () => {
@@ -100,14 +106,34 @@ export default function RoomHub({ room }: { room: string }) {
         </div>
       </div>
 
-      <div className="grid gap-3 rounded-xl border border-white/12 bg-[#141C22] p-4 sm:grid-cols-2">
+      <div className="grid gap-3 rounded-xl border border-white/12 bg-[#141C22] p-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="flex flex-col gap-2">
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
-            Join link
+            Join link — participants
           </span>
           <Copyable value={joinUrl || "/video/join"} label="join link" />
           <p className="text-xs text-white/60">
             Send this to participants. They enter their code to claim their tile.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
+            Streaming link — audience
+          </span>
+          <Copyable value={streamingUrl || "/video/dashboard"} label="streaming link" />
+          <p className="text-xs text-white/60">
+            Send this to everyone watching the show. Programme feed with language
+            selector; no login required.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
+            Moderator link — this hub
+          </span>
+          <Copyable value={moderatorUrl || "/video/room"} label="moderator link" />
+          <p className="text-xs text-white/60">
+            Send this to moderators running the boards. Staff login required —
+            it opens the hub and boards for this room.
           </p>
         </div>
         <div className="flex flex-col gap-2">
