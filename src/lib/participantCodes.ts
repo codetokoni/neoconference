@@ -15,10 +15,17 @@ export interface ParticipantCode {
   code: string;
   /** 1-based position on the control-room screen */
   slot: number;
-  /** Tile label, e.g. "Child 17" */
+  /** Tile label, e.g. "Child 17" or "EMMANUEL" once a roster is uploaded */
   name: string;
   /** AMS stream id this participant publishes to */
   streamId: string;
+  /**
+   * Free-form roster columns kept alongside the code so the download
+   * round-trip preserves them. Keys are lowercased header names
+   * ("country", "condition", "contact"). Old records without this field
+   * are handled everywhere as if the meta object were empty.
+   */
+  meta?: Record<string, string>;
 }
 
 /** Codes never outlive the event by much; claims free up on their own. */
@@ -96,6 +103,56 @@ export async function listCodes(room: string): Promise<ParticipantCode[]> {
   return Object.values(all)
     .map((v) => (typeof v === "string" ? (JSON.parse(v) as ParticipantCode) : v))
     .sort((a, b) => a.slot - b.slot);
+}
+
+/**
+ * Apply an uploaded roster: rename existing codes to the roster's names
+ * and attach any extra columns as meta. If the roster references slots
+ * beyond what's currently minted, the missing codes are minted first so
+ * the room grows to fit.
+ *
+ * Slots not covered by the roster keep their previous name — an admin
+ * uploading a partial roster (say, only slots 1..30 of a 50-slot room)
+ * shouldn't blank out the last 20 tiles. If they want a smaller room
+ * they can delete and recreate.
+ */
+export async function applyRoster(
+  room: string,
+  rows: { slot: number; name: string; meta?: Record<string, string> }[],
+): Promise<{ updated: number; created: number }> {
+  const existing = await listCodes(room);
+  const bySlot = new Map(existing.map((c) => [c.slot, c]));
+
+  const maxSlot = rows.reduce(
+    (m, r) => Math.max(m, r.slot),
+    existing.length ? existing[existing.length - 1].slot : 0,
+  );
+  let created = 0;
+  if (maxSlot > existing.length) {
+    await mintCodes(room, maxSlot);
+    created = maxSlot - existing.length;
+    const refreshed = await listCodes(room);
+    refreshed.forEach((c) => bySlot.set(c.slot, c));
+  }
+
+  const record: Record<string, string> = {};
+  let updated = 0;
+  for (const r of rows) {
+    const cur = bySlot.get(r.slot);
+    if (!cur) continue;
+    const name = r.name.trim();
+    if (!name) continue;
+    const next: ParticipantCode = {
+      ...cur,
+      name,
+      meta: r.meta && Object.keys(r.meta).length ? r.meta : cur.meta,
+    };
+    record[keyForCode(cur.code)] = JSON.stringify(next);
+    updated += 1;
+  }
+  if (Object.keys(record).length) await kv.hset(codesKey(room), record);
+
+  return { updated, created };
 }
 
 export async function lookupCode(room: string, raw: string): Promise<ParticipantCode | null> {

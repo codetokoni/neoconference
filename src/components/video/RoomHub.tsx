@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import RosterPanel from "./RosterPanel";
 
 interface ScreenBlock {
   screen: number;
@@ -127,6 +128,8 @@ export default function RoomHub({ room }: { room: string }) {
           </p>
         </div>
       </div>
+
+      <RosterPanel room={s.room} />
 
       <section className="flex flex-col gap-3">
         <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
