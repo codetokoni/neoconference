@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Spotlight from "./Spotlight";
 
 interface Participant {
   slot: number;
@@ -22,19 +23,26 @@ interface RoomPayload {
 }
 
 /**
- * Attendance-only board. Renders no video: 4 vCPU AMS with 200 viewer
- * slots is easy to burn if a floor manager keeps the camera board open
- * all afternoon. Polling /api/video/room every few seconds costs nothing
- * on that budget.
+ * Attendance-only board. Renders no video by default: 4 vCPU AMS with
+ * 200 viewer slots is easy to burn if a floor manager keeps the camera
+ * board open all afternoon. Polling /api/video/room every few seconds
+ * costs nothing on that budget.
  *
- * Unlike the camera board, this shows every participant across every
- * screen in one long list — the name board's job is attendance-at-a-
- * glance for the whole event, and paging through Screen 1 / Screen 2 /
- * … to find one row makes that harder, not easier.
+ * Clicking a row opens a fullscreen Spotlight — one WebRTC subscription
+ * for as long as the modal is open, closes on ✕ or Esc. This is the
+ * cheap way to check on a specific child without spinning up an entire
+ * camera board's worth of connections.
+ *
+ * Every participant across every screen appears in one list — the name
+ * board's job is attendance-at-a-glance for the whole event, and paging
+ * through Screen 1 / Screen 2 / … to find one row makes that harder,
+ * not easier.
  */
 export default function NameBoard({ room }: { room: string }) {
   const [data, setData] = useState<RoomPayload | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [spot, setSpot] = useState<Participant | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -64,6 +72,40 @@ export default function NameBoard({ room }: { room: string }) {
     return () => clearInterval(t);
   }, [load]);
 
+  const feature = useCallback(
+    async (p: Participant) => {
+      setBusy(true);
+      try {
+        await fetch(`/api/video/feature?room=${encodeURIComponent(room)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ streamId: p.streamId, label: p.name }),
+        });
+      } finally {
+        setBusy(false);
+      }
+      setSpot(null);
+    },
+    [room],
+  );
+
+  const sendToPreview = useCallback(
+    async (p: Participant) => {
+      setBusy(true);
+      try {
+        await fetch(`/api/video/preview?room=${encodeURIComponent(room)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ streamId: p.streamId, label: p.name }),
+        });
+      } finally {
+        setBusy(false);
+      }
+      setSpot(null);
+    },
+    [room],
+  );
+
   if (err) return <p className="text-sm text-red-400">{err}</p>;
   if (!data) {
     return (
@@ -78,32 +120,44 @@ export default function NameBoard({ room }: { room: string }) {
   const notJoinedCount = data.participants.filter((p) => !p.claimed).length;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-white/12 bg-[#101820] text-[#DDE7EC] shadow-2xl">
-      <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2.5">
-        <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
-          {data.participants.length} slots · {data.screens} screen
-          {data.screens === 1 ? "" : "s"}
-        </span>
+    <>
+      <div className="overflow-hidden rounded-xl border border-white/12 bg-[#101820] text-[#DDE7EC] shadow-2xl">
+        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2.5">
+          <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
+            {data.participants.length} slots · {data.screens} screen
+            {data.screens === 1 ? "" : "s"}
+          </span>
 
-        <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
-          {liveCount} live · {joinedCount} joined without camera · {notJoinedCount} not joined
-        </span>
+          <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
+            {liveCount} live · {joinedCount} joined without camera · {notJoinedCount} not joined
+          </span>
 
-        <span className="ml-auto rounded-sm border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">
-          zero viewer slots used
-        </span>
+          <span className="ml-auto rounded-sm border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">
+            zero viewer slots used
+          </span>
+        </div>
+
+        <div className="grid gap-[3px] p-3 sm:grid-cols-2 lg:grid-cols-3">
+          {data.participants.map((p) => (
+            <Row key={p.streamId} p={p} onOpen={() => setSpot(p)} />
+          ))}
+        </div>
       </div>
 
-      <div className="grid gap-[3px] p-3 sm:grid-cols-2 lg:grid-cols-3">
-        {data.participants.map((p) => (
-          <Row key={p.streamId} p={p} />
-        ))}
-      </div>
-    </div>
+      {spot && (
+        <Spotlight
+          spot={spot}
+          busy={busy}
+          onFeature={() => feature(spot)}
+          onSendToPreview={() => sendToPreview(spot)}
+          onClose={() => setSpot(null)}
+        />
+      )}
+    </>
   );
 }
 
-function Row({ p }: { p: Participant }) {
+function Row({ p, onOpen }: { p: Participant; onOpen: () => void }) {
   const state = p.live
     ? { label: "LIVE", tone: "bg-emerald-500/20 text-emerald-300 border-emerald-400/40" }
     : p.claimed
@@ -111,7 +165,12 @@ function Row({ p }: { p: Participant }) {
       : { label: "NOT JOINED", tone: "bg-white/[0.04] text-white/45 border-white/10" };
 
   return (
-    <div className="flex items-center gap-3 rounded-md border border-white/10 bg-white/[0.02] px-3 py-2">
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex w-full items-center gap-3 rounded-md border border-white/10 bg-white/[0.02] px-3 py-2 text-left transition hover:border-white/25 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
+      aria-label={`Open ${p.name} fullscreen`}
+    >
       <span className="w-8 font-mono text-[10px] text-white/45">
         {String(p.slot).padStart(2, "0")}
       </span>
@@ -125,6 +184,6 @@ function Row({ p }: { p: Participant }) {
       >
         {state.label}
       </span>
-    </div>
+    </button>
   );
 }

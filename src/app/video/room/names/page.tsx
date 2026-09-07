@@ -35,9 +35,10 @@ export default async function NamesPage({
           Name board
         </h1>
         <p className="max-w-[64ch] text-sm text-white/60">
-          Attendance only. Renders no video, so it costs zero viewer slots on the
-          ingest server — leave it open all day. Every participant across every
-          screen in one list. Auto-refreshes every few seconds.
+          Every participant across every screen in one list. The board itself
+          renders no video — leave it open all day and it costs zero viewer
+          slots. Click any row to open that child fullscreen, feature to air,
+          or send to preview. Auto-refreshes every few seconds.
         </p>
       </header>
 
