@@ -117,6 +117,10 @@ export async function GET(req: Request) {
       streamId: c.streamId,
       live: liveIds.has(c.streamId),
       claimed: claimed.has(c.code),
+      // Roster meta (country, condition, contact, …) travels through so
+      // Spotlight can show it. Undefined for rooms that never had a
+      // roster uploaded.
+      meta: c.meta,
     }));
 
   return NextResponse.json(

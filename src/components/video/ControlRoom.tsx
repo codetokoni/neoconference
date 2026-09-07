@@ -13,6 +13,7 @@ interface Participant {
   streamId: string;
   live: boolean;
   claimed: boolean;
+  meta?: Record<string, string>;
 }
 
 interface RoomPayload {
@@ -440,21 +441,7 @@ export default function ControlRoom({
           ))}
         </div>
 
-        {spot && (
-          <Spotlight
-            spot={spot}
-            busy={busy}
-            monitored={monitor === spot.streamId}
-            onFeature={() => feature(spot)}
-            onSendToPreview={() => {
-              sendToPreview(spot);
-              setSpot(null);
-            }}
-            onMonitor={() => setMonitor(monitor === spot.streamId ? null : spot.streamId)}
-            onRemove={() => remove(spot)}
-            onClose={() => setSpot(null)}
-          />
-        )}
+        {spot && <Spotlight spot={spot} onClose={() => setSpot(null)} />}
       </div>
 
       <div className="flex min-h-[46px] flex-wrap items-center gap-2 border-t border-white/10 px-3 py-2.5">

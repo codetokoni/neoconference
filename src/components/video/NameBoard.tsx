@@ -10,6 +10,7 @@ interface Participant {
   streamId: string;
   live: boolean;
   claimed: boolean;
+  meta?: Record<string, string>;
 }
 
 interface RoomPayload {
@@ -144,15 +145,7 @@ export default function NameBoard({ room }: { room: string }) {
         </div>
       </div>
 
-      {spot && (
-        <Spotlight
-          spot={spot}
-          busy={busy}
-          onFeature={() => feature(spot)}
-          onSendToPreview={() => sendToPreview(spot)}
-          onClose={() => setSpot(null)}
-        />
-      )}
+      {spot && <Spotlight spot={spot} onClose={() => setSpot(null)} />}
     </>
   );
 }
