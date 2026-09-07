@@ -36,7 +36,23 @@ interface Summary {
  * numbers that decide whether doors can open. Polls the summary endpoint
  * every few seconds; the boards themselves each own their own connection.
  */
-export default function RoomHub({ room }: { room: string }) {
+/**
+ * "admin" — the secret URL, `/video/room`. Shows everything: link handouts
+ * to distribute, roster upload/download, boards, screens.
+ *
+ * "moderator" — the URL admins hand out at `/video/room/moderate`. Shows
+ * only what an operator running the boards needs: on-air state, counts,
+ * boards, per-screen cards. No copyable URLs, no roster.
+ */
+export type RoomHubRole = "admin" | "moderator";
+
+export default function RoomHub({
+  room,
+  role = "admin",
+}: {
+  room: string;
+  role?: RoomHubRole;
+}) {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [joinUrl, setJoinUrl] = useState("");
@@ -51,7 +67,10 @@ export default function RoomHub({ room }: { room: string }) {
     const q = encodeURIComponent(room);
     setJoinUrl(`${origin}/video/join?room=${q}`);
     setStreamingUrl(`${origin}/video/dashboard?room=${q}`);
-    setModeratorUrl(`${origin}/video/room?room=${q}`);
+    // Moderator URL is the sanitised handout — /video/room/moderate, not
+    // this /video/room admin URL. Admins hand it out; nobody sees the
+    // admin URL unless they know it.
+    setModeratorUrl(`${origin}/video/room/moderate?room=${q}`);
   }, [room]);
 
   const load = useCallback(async () => {
@@ -106,6 +125,7 @@ export default function RoomHub({ room }: { room: string }) {
         </div>
       </div>
 
+      {role === "admin" && (
       <div className="grid gap-3 rounded-xl border border-white/12 bg-[#141C22] p-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="flex flex-col gap-2">
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
@@ -154,8 +174,9 @@ export default function RoomHub({ room }: { room: string }) {
           </p>
         </div>
       </div>
+      )}
 
-      <RosterPanel room={s.room} />
+      {role === "admin" && <RosterPanel room={s.room} />}
 
       <section className="flex flex-col gap-3">
         <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
