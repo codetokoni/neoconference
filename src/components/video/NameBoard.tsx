@@ -13,7 +13,7 @@ interface Participant {
 
 interface RoomPayload {
   ok: true;
-  screen: number;
+  screen: number | "all";
   screens: number;
   perScreen: number;
   participants: Participant[];
@@ -22,31 +22,32 @@ interface RoomPayload {
 }
 
 /**
- * Attendance-only board. Deliberately renders no video: 4 vCPU AMS with
- * 200 viewer slots is easy to burn if a floor manager keeps the camera
- * board open all afternoon. Polling /api/video/room every few seconds
- * costs nothing on that budget.
+ * Attendance-only board. Renders no video: 4 vCPU AMS with 200 viewer
+ * slots is easy to burn if a floor manager keeps the camera board open
+ * all afternoon. Polling /api/video/room every few seconds costs nothing
+ * on that budget.
+ *
+ * Unlike the camera board, this shows every participant across every
+ * screen in one long list — the name board's job is attendance-at-a-
+ * glance for the whole event, and paging through Screen 1 / Screen 2 /
+ * … to find one row makes that harder, not easier.
  */
-export default function NameBoard({
-  room,
-  screen,
-}: {
-  room: string;
-  screen: number;
-}) {
+export default function NameBoard({ room }: { room: string }) {
   const [data, setData] = useState<RoomPayload | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const r = await fetch(
-        `/api/video/room?room=${encodeURIComponent(room)}&screen=${screen}`,
+        `/api/video/room?room=${encodeURIComponent(room)}&screen=all`,
         { cache: "no-store" },
       );
       const j = await r.json();
       if (!j.ok) {
         setErr(
-          j.error === "forbidden" ? "You do not have control-room access." : "Could not load.",
+          j.error === "forbidden"
+            ? "You do not have control-room access."
+            : "Could not load.",
         );
         return;
       }
@@ -55,7 +56,7 @@ export default function NameBoard({
     } catch {
       /* transient */
     }
-  }, [room, screen]);
+  }, [room]);
 
   useEffect(() => {
     load();
@@ -79,20 +80,10 @@ export default function NameBoard({
   return (
     <div className="overflow-hidden rounded-xl border border-white/12 bg-[#101820] text-[#DDE7EC] shadow-2xl">
       <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2.5">
-        {Array.from({ length: data.screens }, (_, i) => i + 1).map((n) => (
-          <a
-            key={n}
-            href={`?room=${encodeURIComponent(room)}&screen=${n}`}
-            className={[
-              "rounded-md border px-3 py-1 text-xs transition",
-              n === data.screen
-                ? "border-transparent bg-emerald-600 text-white"
-                : "border-white/12 bg-white/[0.03] text-white/70 hover:bg-white/10",
-            ].join(" ")}
-          >
-            Screen {n}
-          </a>
-        ))}
+        <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
+          {data.participants.length} slots · {data.screens} screen
+          {data.screens === 1 ? "" : "s"}
+        </span>
 
         <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
           {liveCount} live · {joinedCount} joined without camera · {notJoinedCount} not joined
