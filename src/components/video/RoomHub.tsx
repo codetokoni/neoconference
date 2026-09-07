@@ -41,8 +41,11 @@ export default function RoomHub({ room }: { room: string }) {
   const [joinUrl, setJoinUrl] = useState("");
 
   useEffect(() => {
-    setJoinUrl(`${window.location.origin}/video/join`);
-  }, []);
+    // Include the room slug so a second event's codes land in the right
+    // room. The default room's URL keeps the query too — cheap price for
+    // consistency across every room's invite.
+    setJoinUrl(`${window.location.origin}/video/join?room=${encodeURIComponent(room)}`);
+  }, [room]);
 
   const load = useCallback(async () => {
     try {
