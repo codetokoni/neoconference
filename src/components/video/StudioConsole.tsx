@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAmsPublisher, type PublishSource } from "./useAmsPublisher";
 import {
-  SIMULCAST_CHANNELS,
   SIMULCAST_MAIN,
-  VIDEO_CHANNEL,
-  type SimulcastChannel,
+  channelsForRoom,
+  videoChannelForRoom,
 } from "@/lib/simulcast";
 
 /**
@@ -25,23 +24,33 @@ const PRESETS = [
 
 type PresetId = (typeof PRESETS)[number]["id"];
 
-const BOOTHS: SimulcastChannel[] = SIMULCAST_CHANNELS.filter((c) => !c.video);
-
 export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string }) {
+  // Channels are room-scoped: programme goes to `<room>-video`, booths
+  // go to `<room>-a-fr` etc. A studio opened at /video/studio?room=hslhs
+  // publishes into hslhs's tracks, not the default room's.
+  const channels = useMemo(() => channelsForRoom(room), [room]);
+  const videoChannel = useMemo(() => videoChannelForRoom(room), [room]);
+  const booths = useMemo(() => channels.filter((c) => !c.video), [channels]);
+
   const [mode, setMode] = useState<"programme" | "booth">("programme");
   const [source, setSource] = useState<PublishSource>("camera");
   const [presetId, setPresetId] = useState<PresetId>("safe");
-  const [boothId, setBoothId] = useState(BOOTHS[0]?.id ?? "");
+  const [boothId, setBoothId] = useState(booths[0]?.id ?? "");
   const [live, setLive] = useState<{ ids: Set<string>; viewers: number }>({
     ids: new Set(),
     viewers: 0,
   });
 
+  // Room prop changing resets booth selection to the new room's first booth.
+  useEffect(() => {
+    setBoothId(booths[0]?.id ?? "");
+  }, [booths]);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const preset = PRESETS.find((p) => p.id === presetId) ?? PRESETS[0];
 
   const booth = mode === "booth";
-  const streamId = booth ? boothId : VIDEO_CHANNEL.id;
+  const streamId = booth ? boothId : videoChannel.id;
 
   const pub = useAmsPublisher({
     wsUrl: process.env.NEXT_PUBLIC_AMS_WS ?? "",
@@ -224,7 +233,7 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
               <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/45">
                 Language
               </span>
-              {BOOTHS.map((b) => (
+              {booths.map((b) => (
                 <button
                   key={b.id}
                   type="button"
@@ -305,7 +314,7 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
             <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/45">
               Channels
             </span>
-            {SIMULCAST_CHANNELS.map((c) => (
+            {channels.map((c) => (
               <span key={c.id} className="flex items-center gap-2 text-xs">
                 <span
                   className="h-2 w-2 rounded-full"
