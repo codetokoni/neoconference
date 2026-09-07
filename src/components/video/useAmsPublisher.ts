@@ -22,6 +22,13 @@ export interface PublisherOptions {
   source?: PublishSource;
   /** Interpreter booths send a mic and nothing else. */
   audioOnly?: boolean;
+  /**
+   * Specific camera / microphone to use, from
+   * navigator.mediaDevices.enumerateDevices(). Empty string means "let
+   * the browser pick" — same behaviour as omitting the option.
+   */
+  videoDeviceId?: string;
+  audioDeviceId?: string;
   /** Kept small on purpose: fifty of these share one server. */
   width?: number;
   height?: number;
@@ -59,6 +66,8 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
     mainTrack = "",
     source = "camera",
     audioOnly = false,
+    videoDeviceId = "",
+    audioDeviceId = "",
     width = 320,
     height = 240,
     frameRate = 15,
@@ -213,13 +222,25 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
 
       if (!streamRef.current) {
         setState("requesting-camera");
-        const mic = { echoCancellation: true, noiseSuppression: true };
+        const micBase = { echoCancellation: true, noiseSuppression: true };
+        const audioConstraint: MediaTrackConstraints = audioDeviceId
+          ? { ...micBase, deviceId: { exact: audioDeviceId } }
+          : micBase;
+        const videoConstraint: MediaTrackConstraints = {
+          width: { ideal: width },
+          height: { ideal: height },
+          frameRate: { ideal: frameRate, max: frameRate },
+          ...(videoDeviceId ? { deviceId: { exact: videoDeviceId } } : {}),
+        };
         try {
           let s: MediaStream;
 
           if (audioOnly) {
             // Interpreter booth: a mic and nothing else.
-            s = await navigator.mediaDevices.getUserMedia({ audio: mic, video: false });
+            s = await navigator.mediaDevices.getUserMedia({
+              audio: audioConstraint,
+              video: false,
+            });
             sourcesRef.current.push(s);
           } else if (source === "screen") {
             const disp = await navigator.mediaDevices.getDisplayMedia({
@@ -232,7 +253,10 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
             // capture carried, so a shared tab's sound still goes out.
             let voice: MediaStream | null = null;
             try {
-              voice = await navigator.mediaDevices.getUserMedia({ audio: mic, video: false });
+              voice = await navigator.mediaDevices.getUserMedia({
+                audio: audioConstraint,
+                video: false,
+              });
               sourcesRef.current.push(voice);
             } catch {
               /* no mic is survivable when sharing a screen */
@@ -252,12 +276,8 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
             });
           } else {
             s = await navigator.mediaDevices.getUserMedia({
-              video: {
-                width: { ideal: width },
-                height: { ideal: height },
-                frameRate: { ideal: frameRate, max: frameRate },
-              },
-              audio: mic,
+              video: videoConstraint,
+              audio: audioConstraint,
             });
             sourcesRef.current.push(s);
           }
@@ -429,6 +449,8 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
     wsUrl,
     source,
     audioOnly,
+    videoDeviceId,
+    audioDeviceId,
     width,
     height,
     frameRate,

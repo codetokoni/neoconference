@@ -4,6 +4,7 @@ import { SIMULCAST_MAIN } from "@/lib/simulcast";
 import { applyRoster, listCodes } from "@/lib/participantCodes";
 import { buildRosterXlsx, parseRoster } from "@/lib/roster";
 import { getRoom } from "@/lib/rooms";
+import { isVideoRoomAdmin } from "@/lib/videoAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,9 +16,16 @@ function room(req: Request) {
 
 async function guard() {
   const actor = await requireRole(["admin", "staff"]);
-  return actor
-    ? null
-    : NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  if (!actor) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
+  // Roster upload / download is admin-only — the codes it emits are
+  // handed to participants and shouldn't be reachable by a moderator
+  // with staff role.
+  if (!(await isVideoRoomAdmin())) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
+  return null;
 }
 
 /**
@@ -87,14 +95,17 @@ export async function GET(req: Request) {
   const joinUrl = `${origin}/video/join?room=${encodeURIComponent(r)}`;
 
   const buffer = buildRosterXlsx(codes, { joinUrl, roomName });
+  // Node's Buffer works at runtime but the dom Response body types
+  // don't accept it directly — wrap in Uint8Array for a clean type.
+  const body = new Uint8Array(buffer);
 
-  return new Response(buffer, {
+  return new Response(body, {
     status: 200,
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": `attachment; filename="${r}-roster.xlsx"`,
-      "Content-Length": String(buffer.length),
+      "Content-Length": String(body.length),
       "Cache-Control": "no-store",
     },
   });

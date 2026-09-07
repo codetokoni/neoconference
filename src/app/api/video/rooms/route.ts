@@ -7,6 +7,7 @@ import {
   listRooms,
   normaliseSlug,
 } from "@/lib/rooms";
+import { isVideoRoomAdmin } from "@/lib/videoAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,8 +19,17 @@ async function guard() {
     : NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
 }
 
-export async function GET() {
+async function guardAdmin() {
   const denied = await guard();
+  if (denied) return denied;
+  if (!(await isVideoRoomAdmin())) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
+  return null;
+}
+
+export async function GET() {
+  const denied = await guardAdmin();
   if (denied) return denied;
   const rooms = await listRooms();
   return NextResponse.json(
@@ -35,7 +45,7 @@ export async function GET() {
  * should handle.
  */
 export async function POST(req: Request) {
-  const denied = await guard();
+  const denied = await guardAdmin();
   if (denied) return denied;
 
   let body: { slug?: unknown; name?: unknown; slotCount?: unknown };
