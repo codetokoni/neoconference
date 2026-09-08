@@ -119,9 +119,24 @@ export async function listCodes(room: string): Promise<ParticipantCode[]> {
 export async function applyRoster(
   room: string,
   rows: { slot: number; name: string; meta?: Record<string, string> }[],
+  opts?: { append?: boolean },
 ): Promise<{ updated: number; created: number }> {
   const existing = await listCodes(room);
   const bySlot = new Map(existing.map((c) => [c.slot, c]));
+
+  // Append mode: ignore whatever S/N the incoming xlsx says, and place
+  // the new rows immediately after the last CUSTOMISED slot. A slot is
+  // "customised" when its name has been renamed away from the default
+  // "Child N" or it carries roster meta — so uploading the very first
+  // xlsx into a fresh room still starts at slot 1 (nothing customised
+  // yet), while a second upload lands after the first upload's block.
+  const isDefault = (c: ParticipantCode) =>
+    c.name === `Child ${c.slot}` && (!c.meta || Object.keys(c.meta).length === 0);
+  if (opts?.append) {
+    let lastCustom = 0;
+    for (const c of existing) if (!isDefault(c)) lastCustom = Math.max(lastCustom, c.slot);
+    rows = rows.map((r, i) => ({ ...r, slot: lastCustom + i + 1 }));
+  }
 
   const maxSlot = rows.reduce(
     (m, r) => Math.max(m, r.slot),

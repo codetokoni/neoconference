@@ -14,6 +14,7 @@ import { useCallback, useRef, useState } from "react";
 export default function RosterPanel({ room }: { room: string }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [append, setAppend] = useState(true);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const onUpload = useCallback(
@@ -25,6 +26,7 @@ export default function RosterPanel({ room }: { room: string }) {
       try {
         const form = new FormData();
         form.append("file", file);
+        if (append) form.append("append", "1");
         const r = await fetch(
           `/api/video/room/roster?room=${encodeURIComponent(room)}`,
           { method: "POST", body: form },
@@ -48,7 +50,7 @@ export default function RosterPanel({ room }: { room: string }) {
         if (fileRef.current) fileRef.current.value = "";
       }
     },
-    [room],
+    [room, append],
   );
 
   const downloadHref = `/api/video/room/roster?room=${encodeURIComponent(room)}`;
@@ -79,9 +81,26 @@ export default function RosterPanel({ room }: { room: string }) {
               disabled={busy}
             />
           </label>
+          <label className="mt-1 inline-flex cursor-pointer items-center gap-2 text-xs text-white/70">
+            <input
+              type="checkbox"
+              checked={append}
+              onChange={(e) => setAppend(e.target.checked)}
+              className="h-3.5 w-3.5 accent-emerald-500"
+            />
+            <span>
+              Append after existing rows
+              <span className="ml-1 text-white/45">(ignores S/N)</span>
+            </span>
+          </label>
           <p className="text-xs text-white/60">
-            Needs a <b>NAME</b> column. Optional <b>S/N</b> maps rows to slots; without it,
-            row order is used. Extra columns (COUNTRY, CONDITION, …) are preserved.
+            Needs a <b>NAME</b> column. Extras (COUNTRY, CONDITION, …) are preserved.
+            <br />
+            <b>Append on</b> — the default — places the file's rows immediately after
+            the last named slot, so a second xlsx doesn't overwrite the first.
+            <br />
+            <b>Append off</b> — the file's <b>S/N</b> becomes the target slot, and
+            rows without S/N fall in by order starting at slot 1 (overwrites).
           </p>
         </div>
 
