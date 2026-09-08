@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { kv } from "@vercel/kv";
-import { requireRole } from "@/lib/roles";
 import {
   SIMULCAST_MAIN,
   featuredKey,
@@ -24,11 +23,14 @@ function room(req: Request) {
   return (r || SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 64);
 }
 
+// Summary is read-only — totals + per-screen counts, no participant
+// list, no roster meta. Deliberately unauthenticated so the moderator
+// hub at /video/room/moderate loads for guest moderators handed the
+// URL by the admin (matching the page-level decision to drop auth on
+// that route). Anything that leaks a participant identity or mutates
+// state still requires role.
 async function guard() {
-  const actor = await requireRole(["admin", "staff"]);
-  return actor
-    ? null
-    : NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  return null;
 }
 
 /**
