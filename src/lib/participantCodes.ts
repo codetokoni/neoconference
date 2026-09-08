@@ -155,6 +155,53 @@ export async function applyRoster(
   return { updated, created };
 }
 
+/**
+ * Edit one participant after upload. Admins use this to fix roster
+ * typos — a misspelled name, a wrong condition — without re-uploading
+ * the whole spreadsheet.
+ *
+ * `meta` merges: keys with an empty string value are DELETED (so an
+ * admin can clear a stale column), other values overwrite. `name`
+ * replaces when non-empty; an empty string is treated as "leave alone"
+ * because the tile has to show something.
+ *
+ * Returns the updated record, or null when the slot doesn't exist.
+ */
+export async function updateParticipant(
+  room: string,
+  slot: number,
+  patch: { name?: string; meta?: Record<string, string> },
+): Promise<ParticipantCode | null> {
+  const existing = await listCodes(room);
+  const cur = existing.find((c) => c.slot === slot);
+  if (!cur) return null;
+
+  let name = cur.name;
+  if (typeof patch.name === "string") {
+    const trimmed = patch.name.trim();
+    if (trimmed) name = trimmed;
+  }
+
+  let meta = cur.meta;
+  if (patch.meta) {
+    const next: Record<string, string> = { ...(cur.meta ?? {}) };
+    for (const [k, v] of Object.entries(patch.meta)) {
+      const key = k.toLowerCase().trim();
+      if (!key) continue;
+      const val = String(v ?? "").trim();
+      if (val) next[key] = val;
+      else delete next[key];
+    }
+    meta = Object.keys(next).length ? next : undefined;
+  }
+
+  const nextEntry: ParticipantCode = { ...cur, name, meta };
+  await kv.hset(codesKey(room), {
+    [keyForCode(cur.code)]: JSON.stringify(nextEntry),
+  });
+  return nextEntry;
+}
+
 export async function lookupCode(room: string, raw: string): Promise<ParticipantCode | null> {
   const key = keyForCode(raw);
   if (!key) return null;
