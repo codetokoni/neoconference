@@ -29,6 +29,24 @@ type Key = string; // `${room}:${lang}`
 const subs = new Map<Key, Set<http.ServerResponse>>();
 const last = new Map<Key, Line>();
 
+// Total subscribers per room across all langs — the supervisor uses
+// this to decide when to start/stop that room's ffmpeg+Deepgram pipe.
+const roomSubCount = new Map<string, number>();
+
+type RoomHook = (room: string) => void;
+let onFirstHook: RoomHook | null = null;
+let onLastHook: RoomHook | null = null;
+
+/** Fired once when a room's total subscriber count goes 0 → 1. */
+export function onFirstSubscriberForRoom(fn: RoomHook): void {
+  onFirstHook = fn;
+}
+
+/** Fired once when a room's total subscriber count goes 1 → 0. */
+export function onLastSubscriberForRoom(fn: RoomHook): void {
+  onLastHook = fn;
+}
+
 const corsMw = cors({ origin: true, credentials: false });
 
 function subKey(room: string, lang: string): Key {
@@ -96,6 +114,16 @@ export function startSseServer(port: number): void {
       }
       set.add(res);
 
+      const prevRoomCount = roomSubCount.get(room) ?? 0;
+      roomSubCount.set(room, prevRoomCount + 1);
+      if (prevRoomCount === 0 && onFirstHook) {
+        try {
+          onFirstHook(room);
+        } catch (e) {
+          console.error("[sse] onFirstSubscriberForRoom threw:", e);
+        }
+      }
+
       const ping = setInterval(() => {
         try {
           res.write(": ping\n\n");
@@ -108,6 +136,19 @@ export function startSseServer(port: number): void {
         clearInterval(ping);
         set!.delete(res);
         if (set!.size === 0) subs.delete(k);
+        const next = (roomSubCount.get(room) ?? 1) - 1;
+        if (next <= 0) {
+          roomSubCount.delete(room);
+          if (onLastHook) {
+            try {
+              onLastHook(room);
+            } catch (e) {
+              console.error("[sse] onLastSubscriberForRoom threw:", e);
+            }
+          }
+        } else {
+          roomSubCount.set(room, next);
+        }
       });
     });
   });
