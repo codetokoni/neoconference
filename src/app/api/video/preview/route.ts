@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { kv } from "@vercel/kv";
-import { requireRole } from "@/lib/roles";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 
 export const runtime = "nodejs";
@@ -30,11 +29,12 @@ function room(req: Request) {
   return (r || SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 64);
 }
 
+// Deliberately unauthenticated: the preview pointer is a moderator-tier
+// signal (which tile the producer is checking), shared across every
+// operator watching the boards. Same rationale as the other
+// moderator-tier APIs — see src/app/video/room/moderate/page.tsx.
 async function guard() {
-  const actor = await requireRole(["admin", "staff"]);
-  return actor
-    ? null
-    : NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  return null;
 }
 
 export async function GET(req: Request) {

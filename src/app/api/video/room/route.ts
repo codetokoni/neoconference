@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { kv } from "@vercel/kv";
-import { requireRole } from "@/lib/roles";
 import {
   AMS_REST,
   SIMULCAST_MAIN,
@@ -52,11 +51,14 @@ function isAllScreens(req: Request) {
   return raw === "all";
 }
 
+// Deliberately unauthenticated: the moderator boards read layout via
+// GET and mutate hide/order/stop via PATCH+DELETE, and those all need
+// to work for guest moderators handed the moderator URL. DELETE here
+// stops one broadcast + releases one code claim — moderator-tier, not
+// destructive to the room itself. See the note on
+// src/app/video/room/moderate/page.tsx.
 async function guard() {
-  const actor = await requireRole(["admin", "staff"]);
-  return actor
-    ? null
-    : NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  return null;
 }
 
 /**
