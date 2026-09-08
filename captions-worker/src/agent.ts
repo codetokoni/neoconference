@@ -41,12 +41,14 @@ import { randomUUID } from 'node:crypto';
 import {
   AutoSubscribe,
   type JobContext,
-  JobType,
   WorkerOptions,
   cli,
   defineAgent,
   stt,
 } from '@livekit/agents';
+// JobType lives on the protocol package now (was re-exported from
+// @livekit/agents in 0.x, moved in the 1.x rework).
+import { JobType } from '@livekit/protocol';
 import * as deepgram from '@livekit/agents-plugin-deepgram';
 import {
   RoomEvent,
@@ -103,7 +105,10 @@ export default defineAgent({
     ) => {
       if (!enabled) return;
       if (publication.kind !== TrackKind.KIND_AUDIO) return;
-      const key = `${participant.identity}:${publication.sid}`;
+      const identity = participant.identity;
+      const trackSid = publication.sid;
+      if (!identity || !trackSid) return;
+      const key = `${identity}:${trackSid}`;
       if (perTrack.has(key)) return;
 
       console.log(`[neo-captions] opening STT for ${key}`);
@@ -150,8 +155,8 @@ export default defineAgent({
 
             try {
               await ctx.room.localParticipant?.publishTranscription({
-                participantIdentity: participant.identity,
-                trackSid: publication.sid,
+                participantIdentity: identity,
+                trackSid,
                 segments: [
                   {
                     id: segmentId,
@@ -175,15 +180,18 @@ export default defineAgent({
 
       perTrack.set(key, {
         close: () => {
+          // AudioStream extends ReadableStream — use cancel(). The 0.x
+          // API had close(); 1.x removed it in favour of the standard
+          // web-stream method.
           try {
-            audioStream.close();
+            audioStream.cancel();
           } catch {}
           try {
             sttStream.endInput();
           } catch {}
         },
-        participantIdentity: participant.identity,
-        trackSid: publication.sid,
+        participantIdentity: identity,
+        trackSid,
       });
     };
 
@@ -272,7 +280,9 @@ export default defineAgent({
 cli.runApp(
   new WorkerOptions({
     agent: fileURLToPath(import.meta.url),
-    workerType: JobType.JT_ROOM,
+    // serverType was called workerType in 0.x. Same enum value
+    // (JT_ROOM), same meaning — one worker per room.
+    serverType: JobType.JT_ROOM,
     agentName: AGENT_NAME,
   }),
 );
