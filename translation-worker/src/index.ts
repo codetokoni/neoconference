@@ -1,24 +1,37 @@
 import "dotenv/config";
 import { createClient, LiveTranscriptionEvents, LiveClient } from "@deepgram/sdk";
-import { spawnAudio } from "./ffmpeg.js";
+import { spawnAudio, type FfmpegAudio } from "./ffmpeg.js";
 import { translate } from "./deepl.js";
-import { broadcast, startSseServer, type Line } from "./sse.js";
+import {
+  broadcast,
+  onFirstSubscriberForRoom,
+  onLastSubscriberForRoom,
+  startSseServer,
+  type Line,
+} from "./sse.js";
 
 /**
  * NeoConference translation worker.
  *
- * Pulls the programme audio for one room from AMS via HLS, runs it
- * through Deepgram Live for streaming STT, translates each final
- * transcript into every configured target language via DeepL, and
- * broadcasts the result over SSE so any /video/dashboard or /video/join
- * client can subscribe and speak the captions via browser TTS (Phase 1)
- * or, later, mix a TTS audio channel back into AMS (Phase 2).
+ * A single process serves many rooms. Each room's pipeline (ffmpeg
+ * pulling HLS → PCM → Deepgram Live → DeepL → SSE broadcast) is spun
+ * up lazily the first time any SSE subscriber asks for that room's
+ * translations, and torn down after an idle grace period once the
+ * last subscriber leaves. That way rooms nobody is listening to don't
+ * burn Deepgram or DeepL credits, and adding a new room to the app
+ * needs no worker-side config — only that a real programme feed
+ * exists at AMS_HTTP/streams/<room>-video.m3u8.
  *
- * One worker instance covers one room's programme feed. To translate a
- * second event, run a second worker with a different ROOM env.
+ * Room lifecycle:
+ *   • First subscriber for room R → startPipeline(R)
+ *   • Every subsequent subscriber → no-op (pipeline already running,
+ *     any pending teardown for R is cancelled)
+ *   • Last subscriber leaves → schedule stopPipeline(R) after
+ *     IDLE_GRACE_MS
+ *   • New subscriber arrives during the grace window → cancel the
+ *     pending stop, keep going
  */
 
-const ROOM = required("ROOM"); // e.g. "neoconf"
 const AMS_HTTP = required("AMS_HTTP"); // e.g. "https://ingest.streamlab.cloud/LiveApp"
 const DEEPGRAM_KEY = required("DEEPGRAM_API_KEY");
 const DEEPL_KEY = required("DEEPL_API_KEY");
@@ -28,6 +41,11 @@ const TARGET_LANGS = (process.env.TARGET_LANGS ?? "fr,es,pt,ar")
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 const SOURCE_LANG = (process.env.SOURCE_LANG ?? "en").toLowerCase();
+// How long to keep a room's pipeline warm after its last subscriber
+// disconnects. Long enough to survive brief reloads/tab switches
+// without paying reconnection latency; short enough that a truly
+// abandoned room stops billing Deepgram/DeepL within a minute.
+const IDLE_GRACE_MS = Number(process.env.IDLE_GRACE_MS ?? "60000");
 
 function required(name: string): string {
   const v = process.env[name];
@@ -38,19 +56,26 @@ function required(name: string): string {
   return v;
 }
 
-startSseServer(SSE_PORT);
+interface Pipeline {
+  audio: FfmpegAudio;
+  live: LiveClient | null;
+  seq: number;
+  running: boolean;
+  teardownTimer: ReturnType<typeof setTimeout> | null;
+}
 
-console.log(
-  `[worker] room=${ROOM} langs=${TARGET_LANGS.join(",")} source=${SOURCE_LANG}`,
-);
+const pipelines = new Map<string, Pipeline>();
 
-const HLS_URL = `${AMS_HTTP.replace(/\/$/, "")}/streams/${ROOM}-video.m3u8`;
-console.log(`[worker] source=${HLS_URL}`);
+function hlsUrlForRoom(room: string): string {
+  return `${AMS_HTTP.replace(/\/$/, "")}/streams/${room}-video.m3u8`;
+}
 
-let seq = 0;
-let live: LiveClient | null = null;
-
-async function translateAndBroadcast(text: string, final: boolean) {
+async function translateAndBroadcast(
+  room: string,
+  pipeline: Pipeline,
+  text: string,
+  final: boolean,
+): Promise<void> {
   const cleaned = text.trim();
   if (!cleaned) return;
   // Fan out to every target language in parallel. If any DeepL call
@@ -64,25 +89,25 @@ async function translateAndBroadcast(text: string, final: boolean) {
           lang,
           SOURCE_LANG.toUpperCase(),
         );
-        seq += 1;
+        pipeline.seq += 1;
         const line: Line = {
           lang,
           text: translated,
-          seq,
+          seq: pipeline.seq,
           ts: Date.now(),
           original: cleaned,
           final,
         };
-        broadcast(ROOM, line);
-        if (final) console.log(`[out][${lang}] ${translated}`);
+        broadcast(room, line);
+        if (final) console.log(`[out][${room}][${lang}] ${translated}`);
       } catch (e) {
-        console.error(`[deepl][${lang}]`, (e as Error).message);
+        console.error(`[deepl][${room}][${lang}]`, (e as Error).message);
       }
     }),
   );
 }
 
-function connectDeepgram(): LiveClient {
+function connectDeepgram(room: string, pipeline: Pipeline): LiveClient {
   const dg = createClient(DEEPGRAM_KEY);
   const conn = dg.listen.live({
     model: "nova-2",
@@ -96,13 +121,13 @@ function connectDeepgram(): LiveClient {
   });
 
   conn.on(LiveTranscriptionEvents.Open, () => {
-    console.log("[deepgram] open");
+    console.log(`[deepgram][${room}] open`);
   });
   conn.on(LiveTranscriptionEvents.Close, (evt: { code?: number; reason?: string }) => {
-    console.log(`[deepgram] close code=${evt?.code} reason=${evt?.reason}`);
+    console.log(`[deepgram][${room}] close code=${evt?.code} reason=${evt?.reason}`);
   });
   conn.on(LiveTranscriptionEvents.Error, (err: unknown) => {
-    console.error("[deepgram] error", err);
+    console.error(`[deepgram][${room}] error`, err);
   });
   conn.on(LiveTranscriptionEvents.Transcript, (evt: {
     channel: { alternatives: { transcript: string }[] };
@@ -112,21 +137,41 @@ function connectDeepgram(): LiveClient {
     if (!text) return;
     // Broadcast interim results too — the audience sees the sentence
     // building. Only the final counts as a full utterance.
-    void translateAndBroadcast(text, Boolean(evt.is_final));
+    void translateAndBroadcast(room, pipeline, text, Boolean(evt.is_final));
   });
 
   return conn;
 }
 
-function pumpAudio() {
-  const audio = spawnAudio(HLS_URL);
-  live = connectDeepgram();
+function startPipeline(room: string): void {
+  const existing = pipelines.get(room);
+  if (existing) {
+    if (existing.teardownTimer) {
+      clearTimeout(existing.teardownTimer);
+      existing.teardownTimer = null;
+      console.log(`[worker][${room}] teardown cancelled — new subscriber`);
+    }
+    return;
+  }
+
+  const url = hlsUrlForRoom(room);
+  console.log(`[worker][${room}] starting pipeline source=${url}`);
+  const audio = spawnAudio(url);
+  const pipeline: Pipeline = {
+    audio,
+    live: null,
+    seq: 0,
+    running: true,
+    teardownTimer: null,
+  };
+  pipeline.live = connectDeepgram(room, pipeline);
+  pipelines.set(room, pipeline);
 
   audio.proc.stdout.on("data", (chunk: Buffer) => {
     try {
       // The SDK's send() is typed browser-first (Blob | ArrayBuffer).
       // Hand it a standalone ArrayBuffer rather than a Node Buffer view.
-      live?.send(new Uint8Array(chunk).buffer);
+      pipeline.live?.send(new Uint8Array(chunk).buffer);
     } catch {
       /* Deepgram probably closed; the exit handler restarts */
     }
@@ -134,24 +179,68 @@ function pumpAudio() {
 
   audio.onExit(() => {
     try {
-      live?.finish();
+      pipeline.live?.finish();
     } catch {
       /* ignore */
     }
-    live = null;
+    pipeline.live = null;
     // Backoff on restart so a genuinely-down source doesn't hammer
-    // AMS or Deepgram with reconnects.
-    setTimeout(pumpAudio, 3000);
+    // AMS or Deepgram with reconnects. Only restart if this pipeline
+    // is still supposed to be running (i.e. hasn't been torn down by
+    // the idle-grace timer while ffmpeg was flapping).
+    setTimeout(() => {
+      if (!pipeline.running || pipelines.get(room) !== pipeline) return;
+      console.log(`[worker][${room}] ffmpeg exited, restarting`);
+      pipelines.delete(room);
+      startPipeline(room);
+    }, 3000);
   });
 }
 
-pumpAudio();
+function stopPipeline(room: string): void {
+  const p = pipelines.get(room);
+  if (!p) return;
+  p.running = false;
+  if (p.teardownTimer) {
+    clearTimeout(p.teardownTimer);
+    p.teardownTimer = null;
+  }
+  try {
+    p.live?.finish();
+  } catch {
+    /* ignore */
+  }
+  p.live = null;
+  try {
+    p.audio.proc.kill("SIGTERM");
+  } catch {
+    /* ignore */
+  }
+  pipelines.delete(room);
+  console.log(`[worker][${room}] stopped`);
+}
 
-process.on("SIGINT", () => {
-  console.log("[worker] SIGINT — shutting down");
-  process.exit(0);
+startSseServer(SSE_PORT);
+console.log(
+  `[worker] multi-room, langs=${TARGET_LANGS.join(",")} source=${SOURCE_LANG} idleGrace=${IDLE_GRACE_MS}ms`,
+);
+
+onFirstSubscriberForRoom((room) => {
+  startPipeline(room);
 });
-process.on("SIGTERM", () => {
-  console.log("[worker] SIGTERM — shutting down");
-  process.exit(0);
+
+onLastSubscriberForRoom((room) => {
+  const p = pipelines.get(room);
+  if (!p) return;
+  if (p.teardownTimer) return;
+  console.log(`[worker][${room}] idle, teardown in ${IDLE_GRACE_MS}ms`);
+  p.teardownTimer = setTimeout(() => stopPipeline(room), IDLE_GRACE_MS);
 });
+
+function shutdown(signal: string) {
+  console.log(`[worker] ${signal} — shutting down ${pipelines.size} pipeline(s)`);
+  for (const room of Array.from(pipelines.keys())) stopPipeline(room);
+  process.exit(0);
+}
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
