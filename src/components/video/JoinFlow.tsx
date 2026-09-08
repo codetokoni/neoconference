@@ -128,13 +128,17 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
   const live = pub.state === "publishing";
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-      {/* Programme feed + language rail. Participants see the show they are
-          joining and can listen in a chosen language while they enter their
-          code or wait for their turn on air. Chat lives on the public
-          /video/dashboard so it stays out of the way here. */}
-      <SimulcastPlayer showChat={false} />
+    <div className="mx-auto grid w-full gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+      {/* Programme feed is the main focus. Participants watch the show
+          they're joining and can listen in a chosen language while they
+          enter their code or wait for their turn on air. Player renders
+          full-width on mobile, then side-by-side with the join / slot
+          panel on lg+ so both are visible at once without scrolling. */}
+      <div className="min-w-0">
+        <SimulcastPlayer room={room} showChat={false} />
+      </div>
 
+      <div className="flex flex-col gap-4">
       {!slot ? (
         <form
           onSubmit={submit}
@@ -253,6 +257,7 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
           </p>
         </div>
       )}
+      </div>
     </div>
   );
 }

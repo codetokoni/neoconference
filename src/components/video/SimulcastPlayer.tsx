@@ -62,9 +62,29 @@ export default function SimulcastPlayer({
   }, [videoChannel.id]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const videoBoxRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const featVideoRef = useRef<HTMLVideoElement | null>(null);
   const featAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
+
+  // Track the browser's fullscreen state so the button label and icon
+  // reflect reality when the user presses Esc to exit.
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    const el = videoBoxRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      el.requestFullscreen?.().catch(() => {});
+    }
+  }, []);
   const fallbackAudioRef = useRef<HTMLAudioElement | null>(null);
   const hlsVideo = useRef<Destroyable | null>(null);
   const hlsAudio = useRef<Destroyable | null>(null);
@@ -316,7 +336,14 @@ export default function SimulcastPlayer({
     <div className="overflow-hidden rounded-xl border border-white/10 bg-[#101A20] shadow-2xl">
       <div className={showChat ? "grid lg:grid-cols-[minmax(0,1fr)_320px]" : ""}>
         <div className="flex min-w-0 flex-col gap-4 p-4">
-          <div className="relative aspect-video overflow-hidden rounded-lg border border-white/10 bg-black">
+          <div
+            ref={videoBoxRef}
+            className={
+              isFullscreen
+                ? "relative h-full w-full overflow-hidden bg-black"
+                : "relative aspect-video overflow-hidden rounded-lg border border-white/10 bg-black"
+            }
+          >
             <video
               ref={videoRef}
               playsInline
@@ -376,6 +403,30 @@ export default function SimulcastPlayer({
             <span className="absolute bottom-3 right-3 rounded border border-white/15 bg-black/60 px-2 py-1 font-mono text-[10.5px] text-white/70">
               {statusLabel}
             </span>
+
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              title={isFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
+              className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-md border border-white/15 bg-black/60 text-white/80 transition hover:bg-white/10"
+            >
+              {isFullscreen ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 3v4H5" />
+                  <path d="M15 3v4h4" />
+                  <path d="M9 21v-4H5" />
+                  <path d="M15 21v-4h4" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 8V3h5" />
+                  <path d="M21 8V3h-5" />
+                  <path d="M3 16v5h5" />
+                  <path d="M21 16v5h-5" />
+                </svg>
+              )}
+            </button>
 
             <div className="absolute bottom-3 left-3 flex items-center gap-2.5 rounded-md border border-white/15 bg-black/70 px-3 py-1.5 backdrop-blur">
               <span className="h-5 w-2 rounded-sm" style={{ background: activeChannel.color }} />
