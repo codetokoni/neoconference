@@ -66,6 +66,11 @@ export default function RoomHub({
   const [streamingUrl, setStreamingUrl] = useState("");
   const [studioUrl, setStudioUrl] = useState("");
   const [moderatorUrl, setModeratorUrl] = useState("");
+  const [origin, setOrigin] = useState("");
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
 
   useEffect(() => {
     // Include the room slug on every URL so a second event's links go to
@@ -254,21 +259,27 @@ export default function RoomHub({
           </a>
         ) : (
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {queues.map((q) => (
-              <a
-                key={q.slug}
-                href={`/video/room/${encodeURIComponent(q.slug)}?room=${encodeURIComponent(s.room)}`}
-                className="flex flex-col gap-1.5 rounded-lg border border-white/12 bg-[#101820] p-4 transition hover:border-white/25 hover:bg-white/[0.04]"
-              >
-                <h3 className="text-base font-semibold text-white">{q.name}</h3>
-                <p className="text-xs text-white/60">
-                  {q.order.length} staged
-                </p>
-                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/35">
-                  /video/room/{q.slug}
-                </p>
-              </a>
-            ))}
+            {queues.map((q) => {
+              const openHref = `/video/room/${encodeURIComponent(q.slug)}?room=${encodeURIComponent(s.room)}`;
+              const fullUrl = origin ? `${origin}${openHref}` : openHref;
+              return (
+                <div
+                  key={q.slug}
+                  className="flex flex-col gap-2 rounded-lg border border-white/12 bg-[#101820] p-4"
+                >
+                  <a
+                    href={openHref}
+                    className="flex flex-col gap-1 rounded-md transition hover:opacity-90"
+                  >
+                    <h3 className="text-base font-semibold text-white">{q.name}</h3>
+                    <p className="text-xs text-white/60">
+                      {q.order.length} staged
+                    </p>
+                  </a>
+                  <Copyable value={fullUrl} label={`queue link for ${q.name}`} />
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
