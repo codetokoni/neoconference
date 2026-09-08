@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { kv } from "@vercel/kv";
-import { requireRole } from "@/lib/roles";
 import { SIMULCAST_MAIN, featuredKey, type FeaturedState } from "@/lib/simulcast";
 
 export const runtime = "nodejs";
@@ -19,14 +18,12 @@ function room(req: Request) {
  * swaps the rendered element once it has frames. Nothing is re-encoded, and
  * clearing is instant because the programme connection was never dropped.
  *
- * Staff only. This route is not in the middleware's public matcher.
+ * Deliberately unauthenticated so the moderator hub's "feature to air"
+ * works for guest moderators handed the moderator URL. See the note on
+ * src/app/video/room/moderate/page.tsx — the room slug is the shared
+ * secret.
  */
 export async function POST(req: Request) {
-  const actor = await requireRole(["admin", "staff"]);
-  if (!actor) {
-    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
-  }
-
   const r = room(req);
 
   let body: { streamId?: string | null; label?: string };

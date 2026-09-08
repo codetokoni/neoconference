@@ -38,15 +38,26 @@ const isPublicRoute = createRouteMatcher([
   // the route rate limits hard. /api/video/codes and /feature stay staff-only.
   '/video/join',
   '/api/video/join',
-  // Studio (feed pusher) and the moderator handout are deliberately
-  // unauthenticated: the room slug in the URL is the shared secret,
-  // and requiring Clerk blocked guest broadcasters and volunteer
-  // moderators. The admin surface at /video/room stays gated to the
-  // admin email list (videoAdmin.ts), and the summary API these pages
-  // rely on only returns totals + per-screen counts, no identities.
+  // Studio (feed pusher) and the moderator hub + every board it links
+  // to are deliberately unauthenticated: the room slug in the URL is
+  // the shared secret, and requiring Clerk blocked guest broadcasters
+  // and volunteer moderators. The admin surface at /video/room (bare)
+  // and the roster upload/download stay gated to the admin email list
+  // (videoAdmin.ts). Moderator-tier APIs listed here are individually
+  // named — a wildcard would silently expose future /api/video/*
+  // routes, including admin-only ones.
   '/video/studio',
   '/video/room/moderate',
+  '/video/room/cameras',
+  '/video/room/names',
+  '/video/room/queue',
+  '/video/room/queue/(.*)',
   '/api/video/room/summary',
+  '/api/video/room',
+  '/api/video/feature',
+  '/api/video/preview',
+  '/api/video/queues',
+  '/api/video/queues/(.*)',
 ]);
 
 // Hosts that ARE the canonical app (skip custom-domain rewrite for these).

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/roles";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 import { deleteQueue, getQueue, updateQueue } from "@/lib/videoQueues";
 
@@ -11,11 +10,10 @@ function room(req: Request) {
   return (r || SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 64);
 }
 
+// Deliberately unauthenticated — see the note on
+// src/app/video/room/moderate/page.tsx.
 async function guard() {
-  const actor = await requireRole(["admin", "staff"]);
-  return actor
-    ? null
-    : NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  return null;
 }
 
 function slugFromParams(params: { slug?: string }) {

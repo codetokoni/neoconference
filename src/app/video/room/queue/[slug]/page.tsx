@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import QueueBoard from "@/components/video/QueueBoard";
-import { requireRole } from "@/lib/roles";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +9,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// Deliberately unauthenticated — see the note on
+// src/app/video/room/moderate/page.tsx.
 export default async function QueueDetail({
   searchParams,
   params,
@@ -18,10 +18,6 @@ export default async function QueueDetail({
   searchParams?: { room?: string };
   params: { slug: string };
 }) {
-  // Clerk already protects this path via middleware; this is the role gate.
-  const actor = await requireRole(["admin", "staff"]);
-  if (!actor) redirect("/dashboard");
-
   const room = (searchParams?.room ?? SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "");
   const slug = String(params.slug ?? "")
     .toLowerCase()
