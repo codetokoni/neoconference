@@ -1,4 +1,5 @@
-import { spawn, ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
+import type { Readable } from "node:stream";
 
 /**
  * Pull audio from an HLS/RTMP/WebRTC-viewable URL and stream 16 kHz mono
@@ -14,7 +15,9 @@ import { spawn, ChildProcessWithoutNullStreams } from "node:child_process";
  * kill the worker.
  */
 export interface FfmpegAudio {
-  proc: ChildProcessWithoutNullStreams;
+  // stdio is ["ignore", "pipe", "pipe"], so stdin is null and the
+  // ChildProcessWithoutNullStreams alias does not apply.
+  proc: ChildProcessByStdio<null, Readable, Readable>;
   onExit: (fn: () => void) => void;
 }
 
