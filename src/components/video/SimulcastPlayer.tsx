@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AudioMeter from "./AudioMeter";
 import ChannelRail from "./ChannelRail";
 import LiveChat from "./LiveChat";
 import TranslationOverlay from "./TranslationOverlay";
@@ -103,6 +104,17 @@ export default function SimulcastPlayer({
   const onAir = Boolean(featured && featStream);
 
   const activeChannel = channelById(active) ?? videoChannel;
+
+  // The audio stream feeding the speakers right now. When a participant
+  // is featured to air, their mic replaces the floor and every language
+  // channel goes quiet — reflect that by tapping the featured stream
+  // instead. HLS fallback isn't tapped here; the WebRTC path covers
+  // every viewer whose network reached "playing" state.
+  const playbackStream = useMemo<MediaStream | null>(() => {
+    if (mode !== "webrtc") return null;
+    if (onAir) return Object.values(feat.audioStreams)[0] ?? null;
+    return audioStreams[active] ?? null;
+  }, [mode, onAir, feat.audioStreams, audioStreams, active]);
 
   /* ---- which booths are actually publishing (server-side AMS REST) ---- */
   useEffect(() => {
@@ -445,7 +457,7 @@ export default function SimulcastPlayer({
               )}
             </button>
 
-            <div className="absolute bottom-3 left-3 flex items-center gap-2.5 rounded-md border border-white/15 bg-black/70 px-3 py-1.5 backdrop-blur">
+            <div className="absolute bottom-3 left-3 flex items-center gap-3 rounded-md border border-white/15 bg-black/70 px-3 py-1.5 backdrop-blur">
               <span className="h-5 w-2 rounded-sm" style={{ background: activeChannel.color }} />
               <span className="flex flex-col leading-tight">
                 <small className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-white/50">
@@ -455,6 +467,14 @@ export default function SimulcastPlayer({
                   {onAir ? `${featured?.label} — live` : activeChannel.label}
                 </span>
               </span>
+              {/*
+                Live playback meter. Bar animates whenever there's audio
+                on the wire — confirms sound is actually leaving the app
+                even before the viewer has turned their speakers up. Goes
+                flat when muted (no stream tapped) or when the selected
+                language isn't broadcasting.
+              */}
+              <AudioMeter stream={muted ? null : playbackStream} />
             </div>
 
             {/*
