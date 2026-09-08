@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/roles";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
-import { updateParticipant } from "@/lib/participantCodes";
+import { deleteParticipant, updateParticipant } from "@/lib/participantCodes";
 import { isVideoRoomAdmin } from "@/lib/videoAdmin";
 
 export const runtime = "nodejs";
@@ -67,4 +67,27 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: false, error: "Slot not found." }, { status: 404 });
   }
   return NextResponse.json({ ok: true, participant: updated });
+}
+
+/**
+ * Remove one participant from the roster entirely. Query params:
+ *
+ *   /api/video/room/roster/participant?room=X&slot=7
+ *
+ * The code stops working immediately and any active claim on it is
+ * released. Idempotent — deleting a missing slot returns ok:true so
+ * a double-click on the delete button doesn't 404 the second time.
+ */
+export async function DELETE(req: Request) {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const r = room(req);
+  const slot = Number(new URL(req.url).searchParams.get("slot") ?? "");
+  if (!Number.isFinite(slot) || slot <= 0) {
+    return NextResponse.json({ ok: false, error: "Bad slot." }, { status: 400 });
+  }
+
+  const result = await deleteParticipant(r, slot);
+  return NextResponse.json({ ok: true, deleted: result.deleted, slot });
 }

@@ -217,6 +217,85 @@ export async function updateParticipant(
   return nextEntry;
 }
 
+/**
+ * Remove one participant from the roster entirely — the code stops
+ * working immediately, the tile disappears, and any active claim on
+ * that code is released. If the deleted slot was the last one, the
+ * room shrinks; otherwise the slot number becomes a gap.
+ *
+ * Returns whether the slot existed. Idempotent — deleting a missing
+ * slot is not an error.
+ */
+export async function deleteParticipant(
+  room: string,
+  slot: number,
+): Promise<{ deleted: boolean }> {
+  const existing = await listCodes(room);
+  const cur = existing.find((c) => c.slot === slot);
+  if (!cur) return { deleted: false };
+  const key = keyForCode(cur.code);
+  await kv.hdel(codesKey(room), key);
+  await kv.del(claimKey(room, key));
+  return { deleted: true };
+}
+
+/**
+ * Reset every slot's name back to "Child N" and clear all meta,
+ * without touching the codes themselves. Participants who already
+ * have their code keep the same one; only the boards go back to
+ * unlabeled tiles. Also drops the stored xlsx template so a
+ * subsequent download reflects the reset state instead of overlaying
+ * the previous upload's layout onto the blanked names.
+ */
+export async function resetRosterMeta(room: string): Promise<{ reset: number }> {
+  const existing = await listCodes(room);
+  if (!existing.length) return { reset: 0 };
+  const record: Record<string, string> = {};
+  for (const c of existing) {
+    const next: ParticipantCode = {
+      code: c.code,
+      slot: c.slot,
+      name: `Child ${c.slot}`,
+      streamId: c.streamId,
+    };
+    record[keyForCode(c.code)] = JSON.stringify(next);
+  }
+  await kv.hset(codesKey(room), record);
+  await kv.del(`neo:video:rosterfile:${room}`);
+  return { reset: existing.length };
+}
+
+/**
+ * Wipe every trace of this room's roster and broadcast state — codes,
+ * code prefix, featured pointer, preview pointer, per-screen layouts,
+ * all claim locks, stored xlsx template, and any queues on the room.
+ * The room's registry entry is NOT touched; the slug still exists,
+ * and the next upload starts from a clean slate (new code prefix, new
+ * codes minted).
+ *
+ * Uses scan-and-delete for pattern-shaped keys (layouts, claims,
+ * queues) to catch every screen number and every claim without
+ * enumerating them by hand.
+ */
+export async function wipeRoom(room: string): Promise<void> {
+  await Promise.all([
+    kv.del(codesKey(room)),
+    kv.del(prefixKey(room)),
+    kv.del(`neo:video:featured:${room}`),
+    kv.del(`neo:video:preview:${room}`),
+    kv.del(`neo:video:rosterfile:${room}`),
+  ]);
+  const patterns = [
+    `neo:video:layout:${room}:*`,
+    `neo:video:claim:${room}:*`,
+    `neo:video:queues:${room}:*`,
+  ];
+  for (const pattern of patterns) {
+    const keys = await kv.keys(pattern);
+    if (keys.length) await kv.del(...(keys as [string, ...string[]]));
+  }
+}
+
 export async function lookupCode(room: string, raw: string): Promise<ParticipantCode | null> {
   const key = keyForCode(raw);
   if (!key) return null;

@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/roles";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
-import { applyRoster, listCodes } from "@/lib/participantCodes";
+import {
+  applyRoster,
+  listCodes,
+  resetRosterMeta,
+  wipeRoom,
+} from "@/lib/participantCodes";
 import {
   buildRosterXlsx,
   buildRosterXlsxFromTemplate,
@@ -156,4 +161,43 @@ export async function GET(req: Request) {
       "Cache-Control": "no-store",
     },
   });
+}
+
+/**
+ * Batch destructive actions on the roster. Query params:
+ *
+ *   /api/video/room/roster?room=X&scope=wipe   — remove every trace
+ *   /api/video/room/roster?room=X&scope=names  — reset names/meta only
+ *
+ * `wipe` deletes codes, code prefix, featured pointer, preview pointer,
+ * every screen's layout, every claim lock, the stored xlsx template,
+ * and any queues on the room. Next upload starts on a fresh code
+ * prefix; anyone still holding an old code from before the wipe finds
+ * it no longer works.
+ *
+ * `names` keeps every code and slot exactly as-is, but resets each
+ * tile's label to "Child N" and clears roster meta. Also drops the
+ * stored xlsx template so the download reflects the reset state.
+ * Participants who already have their code are unaffected.
+ *
+ * Admin-only, same as upload/download.
+ */
+export async function DELETE(req: Request) {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const r = room(req);
+  const scope = new URL(req.url).searchParams.get("scope");
+  if (scope === "wipe") {
+    await wipeRoom(r);
+    return NextResponse.json({ ok: true, scope: "wipe" });
+  }
+  if (scope === "names") {
+    const { reset } = await resetRosterMeta(r);
+    return NextResponse.json({ ok: true, scope: "names", reset });
+  }
+  return NextResponse.json(
+    { ok: false, error: "scope must be 'wipe' or 'names'." },
+    { status: 400 },
+  );
 }

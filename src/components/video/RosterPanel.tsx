@@ -18,6 +18,42 @@ export default function RosterPanel({ room }: { room: string }) {
   const [append, setAppend] = useState(true);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
+  const runDelete = useCallback(
+    async (scope: "wipe" | "names", confirmPhrase: string, onOk: string) => {
+      const typed = window.prompt(
+        scope === "wipe"
+          ? `This wipes every code, every name, every layout, and every claim for ${room}. Type "${confirmPhrase}" to confirm.`
+          : `This resets every tile's name back to "Child N" and clears meta for ${room}. Codes stay valid. Type "${confirmPhrase}" to confirm.`,
+      );
+      if (typed?.trim().toLowerCase() !== confirmPhrase) {
+        setMsg({ kind: "err", text: "Cancelled." });
+        return;
+      }
+      setBusy(true);
+      setMsg(null);
+      try {
+        const r = await fetch(
+          `/api/video/room/roster?room=${encodeURIComponent(room)}&scope=${scope}`,
+          { method: "DELETE" },
+        );
+        const j = await r.json();
+        if (!j.ok) {
+          setMsg({ kind: "err", text: j.error ?? "Delete failed." });
+          return;
+        }
+        setMsg({
+          kind: "ok",
+          text: scope === "names" && typeof j.reset === "number" ? `${onOk} (${j.reset} slot${j.reset === 1 ? "" : "s"} reset)` : onOk,
+        });
+      } catch {
+        setMsg({ kind: "err", text: "Delete failed. Check your connection." });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [room],
+  );
+
   const onUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -139,6 +175,56 @@ export default function RosterPanel({ room }: { room: string }) {
         </a>{" "}
         without re-uploading the whole spreadsheet.
       </p>
+
+      <div className="mt-2 flex flex-col gap-3 rounded-xl border border-red-500/25 bg-red-950/20 p-4">
+        <div>
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-red-300/80">
+            Danger zone
+          </span>
+          <p className="mt-1 text-xs text-white/60">
+            Two destructive actions. Both ask you to type a confirm phrase before
+            running — no undo.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => runDelete("names", "clear", "Names cleared.")}
+              disabled={busy}
+              className={
+                "inline-flex items-center justify-center rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200 transition hover:bg-amber-500/20" +
+                (busy ? " opacity-40" : "")
+              }
+            >
+              Clear names only
+            </button>
+            <p className="text-xs text-white/60">
+              Tiles go back to <b>Child 1</b>, <b>Child 2</b>… and meta is cleared.
+              Codes stay valid — participants already holding a code still join.
+              Confirm phrase: <code className="text-white/80">clear</code>.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => runDelete("wipe", "wipe", "Room wiped.")}
+              disabled={busy}
+              className={
+                "inline-flex items-center justify-center rounded-md border border-red-500/50 bg-red-500/15 px-4 py-2 text-sm font-semibold text-red-200 transition hover:bg-red-500/25" +
+                (busy ? " opacity-40" : "")
+              }
+            >
+              Wipe room completely
+            </button>
+            <p className="text-xs text-white/60">
+              Deletes every code, prefix, layout, and claim. Old codes stop
+              working. Next upload starts fresh on a new prefix. Confirm phrase:{" "}
+              <code className="text-white/80">wipe</code>.
+            </p>
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
