@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ChannelRail from "./ChannelRail";
 import LiveChat from "./LiveChat";
+import TranslationOverlay from "./TranslationOverlay";
 import { useAmsMultitrack } from "./useAmsMultitrack";
 import {
   SIMULCAST_MAIN,
@@ -138,12 +139,28 @@ export default function SimulcastPlayer({
     };
   }, [room]);
 
-  /** Selectable if AMS says it is publishing, or its track already arrived. */
+  /**
+   * Selectable if:
+   *   - AMS says the subtrack is publishing (a real interpreter booth is live), or
+   *   - the WebRTC track has already arrived, or
+   *   - the translation worker is configured (NEXT_PUBLIC_TRANSLATION_SSE) —
+   *     in which case every non-source language becomes selectable and
+   *     the SSE overlay speaks the translated captions.
+   */
+  const translationEnabled =
+    typeof process !== "undefined" &&
+    Boolean(process.env.NEXT_PUBLIC_TRANSLATION_SSE);
   const live = useMemo(() => {
     const s = new Set<string>(serverLive);
     liveTrackIds.forEach((id) => s.add(id));
+    if (translationEnabled) {
+      // Floor / source channel still needs a real broadcast to be
+      // selectable — no translation for it. Every other channel opens
+      // up to translation-driven captions.
+      for (const c of channels) if (!c.video) s.add(c.id);
+    }
     return s;
-  }, [serverLive, liveTrackIds]);
+  }, [serverLive, liveTrackIds, translationEnabled, channels]);
 
   /** If the selected booth drops off air, fall back to the floor. */
   useEffect(() => {
@@ -439,6 +456,22 @@ export default function SimulcastPlayer({
                 </span>
               </span>
             </div>
+
+            {/*
+              Translation overlay + browser-TTS. Mounts only when the
+              viewer has picked a non-source language. Speaks silently
+              when a real interpreter booth is publishing that language
+              (audioStreams[active] present) so we don't talk over a
+              human interpreter — captions still show, TTS stays muted.
+            */}
+            {active !== videoChannel.id && !onAir && (
+              <TranslationOverlay
+                room={room}
+                lang={activeChannel.lang}
+                active={!muted}
+                muted={muted || Boolean(audioStreams[active])}
+              />
+            )}
 
             {muted && (
               <button

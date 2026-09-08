@@ -1,0 +1,14 @@
+services:
+  translator:
+    build: .
+    image: neo-translation-worker:latest
+    container_name: neo-translation-worker
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8080:8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
