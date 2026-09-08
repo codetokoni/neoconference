@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAmsPublisher, type PublishSource } from "./useAmsPublisher";
+import AudioMeter from "./AudioMeter";
 import {
   SIMULCAST_MAIN,
   channelsForRoom,
@@ -36,6 +37,11 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
   const [source, setSource] = useState<PublishSource>("camera");
   const [presetId, setPresetId] = useState<PresetId>("safe");
   const [boothId, setBoothId] = useState(booths[0]?.id ?? "");
+  // Preview-only mirror. Default matches the old auto-mirror behaviour
+  // (camera preview flipped like a bathroom mirror, screen share not);
+  // the operator can toggle it if their camera lands the wrong way
+  // round on this machine.
+  const [mirror, setMirror] = useState(true);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [videoDeviceId, setVideoDeviceId] = useState("");
@@ -190,7 +196,7 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
                 muted
                 className={[
                   "h-full w-full object-contain",
-                  source === "camera" ? "scale-x-[-1]" : "",
+                  source === "camera" && mirror ? "scale-x-[-1]" : "",
                 ].join(" ")}
               />
             ) : (
@@ -250,10 +256,21 @@ export default function StudioConsole({ room = SIMULCAST_MAIN }: { room?: string
                     {pub.camOn ? "Hide video" : "Show video"}
                   </button>
                 )}
+                {!booth && source === "camera" && (
+                  <button
+                    type="button"
+                    onClick={() => setMirror((m) => !m)}
+                    className="rounded-lg border border-white/12 px-4 py-2.5 text-sm text-white transition hover:bg-white/10"
+                    title="Flip the preview horizontally. Audience view is not affected."
+                  >
+                    {mirror ? "Unflip preview" : "Flip preview"}
+                  </button>
+                )}
               </>
             )}
 
             <span className="text-sm text-white/60">{status}</span>
+            <AudioMeter stream={pub.localStream} />
           </div>
 
           {pub.error && <p className="text-sm text-red-400">{pub.error}</p>}
