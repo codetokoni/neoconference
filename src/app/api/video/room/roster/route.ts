@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/roles";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 import { applyRoster, listCodes } from "@/lib/participantCodes";
-import { buildRosterXlsx, parseRoster } from "@/lib/roster";
+import {
+  buildRosterXlsx,
+  buildRosterXlsxFromTemplate,
+  mergeRosterFiles,
+  parseRoster,
+} from "@/lib/roster";
+import { loadRosterFile, saveRosterFile } from "@/lib/rosterStore";
 import { getRoom } from "@/lib/rooms";
 import { isVideoRoomAdmin } from "@/lib/videoAdmin";
 
@@ -74,6 +80,32 @@ export async function POST(req: Request) {
   }
 
   const { updated, created } = await applyRoster(r, rows, { append });
+
+  // Stash the original file bytes so the download can re-emit the
+  // admin's own layout (columns, order, header case, banner rows,
+  // sheet name, cell formatting) with current NAME + meta overlaid on
+  // top. For append uploads we fold the new file's data rows into the
+  // stored template rather than overwriting it, so the extended
+  // roster keeps rendering in the operator's original shape.
+  try {
+    if (append) {
+      const existing = await loadRosterFile(r);
+      if (existing) {
+        const merged = mergeRosterFiles(existing, buffer);
+        await saveRosterFile(r, merged ?? buffer);
+      } else {
+        await saveRosterFile(r, buffer);
+      }
+    } else {
+      await saveRosterFile(r, buffer);
+    }
+  } catch (e) {
+    // Best-effort: a KV hiccup here shouldn't fail the upload — the
+    // codes have already been applied and the download will fall back
+    // to the derived layout.
+    console.error("[video/room/roster] saveRosterFile failed:", e);
+  }
+
   return NextResponse.json({ ok: true, updated, created });
 }
 
@@ -98,7 +130,18 @@ export async function GET(req: Request) {
   const origin = req.headers.get("origin") ?? new URL(req.url).origin;
   const joinUrl = `${origin}/video/join?room=${encodeURIComponent(r)}`;
 
-  const buffer = buildRosterXlsx(codes, { joinUrl, roomName });
+  // Prefer the operator's own layout: overlay current NAME + meta onto
+  // the stored upload template and add a PASSCODE column. Fall back to
+  // the derived layout for rooms that never uploaded a template (or
+  // whose template couldn't be parsed).
+  let buffer: Buffer | null = null;
+  try {
+    const template = await loadRosterFile(r);
+    if (template) buffer = buildRosterXlsxFromTemplate(template, codes);
+  } catch (e) {
+    console.error("[video/room/roster] template overlay failed:", e);
+  }
+  if (!buffer) buffer = buildRosterXlsx(codes, { joinUrl, roomName });
   // Node's Buffer works at runtime but the dom Response body types
   // don't accept it directly — wrap in Uint8Array for a clean type.
   const body = new Uint8Array(buffer);
