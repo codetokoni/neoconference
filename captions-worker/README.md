@@ -38,13 +38,27 @@ Copy `.env.example` to `.env` and fill:
 
 | Var | What it is |
 |---|---|
-| `LIVEKIT_URL` | `wss://…` for your LiveKit project (same value as the Next.js app's `NEXT_PUBLIC_LIVEKIT_URL`) |
+| `LIVEKIT_URL` | `wss://…` for your LiveKit project (**must be the same project as the Next.js app's `NEXT_PUBLIC_LIVEKIT_URL`** — see the naming-quirk note below) |
 | `LIVEKIT_API_KEY` | Same key the Next.js app uses |
 | `LIVEKIT_API_SECRET` | Same secret |
 | `DEEPGRAM_API_KEY` | From <https://console.deepgram.com/> |
 | `AGENT_NAME` | Optional. Defaults to `neo-captions` — matches the Next.js dispatch route |
 | `DEEPGRAM_MODEL` | Optional. Defaults to `nova-2` |
 | `DEEPGRAM_LANGUAGE` | Optional. `multi` auto-detects; set `en` / `es` / … for a single-language room |
+
+> **Naming quirk — read before "fixing" the LiveKit URL.** Production
+> currently runs against the LiveKit project literally called
+> `neoconference-dev`
+> (`wss://neoconference-dev-01ptt1d1.livekit.cloud`). The `dev` in the
+> hostname is a project-name holdover; it is the production project.
+> Both the Next.js app (Vercel Production `NEXT_PUBLIC_LIVEKIT_URL`)
+> and this worker must point at the same project or dispatches never
+> land — the app tells project A "dispatch `neo-captions`", but the
+> worker is registered against project B and never hears about the
+> job. Any rename must be a coordinated change: rotate
+> `NEXT_PUBLIC_LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`
+> in Vercel Production **and** this worker's `.env` in the same
+> window, then restart the worker.
 
 ---
 
