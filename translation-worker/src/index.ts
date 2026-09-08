@@ -109,11 +109,19 @@ async function translateAndBroadcast(
 
 function connectDeepgram(room: string, pipeline: Pipeline): LiveClient {
   const dg = createClient(DEEPGRAM_KEY);
+  // interim_results deliberately OFF. Deepgram fires 5-15 interim
+  // updates per second while someone is speaking; translating each of
+  // them fanned out to 4 target langs was ~40-60 DeepL calls/second,
+  // which blew through the Free-tier rate limit within seconds and
+  // 429'd every subsequent request for the day. Finals-only is a
+  // ~20× reduction in call volume, and for a broadcast audience
+  // reading captions the sentence-stable output is actually easier
+  // to follow than a caption that mutates as each word arrives.
   const conn = dg.listen.live({
     model: "nova-2",
     language: SOURCE_LANG,
     smart_format: true,
-    interim_results: true,
+    interim_results: false,
     utterance_end_ms: 1000,
     encoding: "linear16",
     sample_rate: 16000,
@@ -133,11 +141,13 @@ function connectDeepgram(room: string, pipeline: Pipeline): LiveClient {
     channel: { alternatives: { transcript: string }[] };
     is_final: boolean;
   }) => {
+    // Belt-and-braces alongside interim_results:false — if Deepgram
+    // ever sends a non-final anyway (SDK bug, config drift), we still
+    // don't burn a DeepL call on it.
+    if (!evt.is_final) return;
     const text = evt.channel.alternatives[0]?.transcript ?? "";
     if (!text) return;
-    // Broadcast interim results too — the audience sees the sentence
-    // building. Only the final counts as a full utterance.
-    void translateAndBroadcast(room, pipeline, text, Boolean(evt.is_final));
+    void translateAndBroadcast(room, pipeline, text, true);
   });
 
   return conn;
