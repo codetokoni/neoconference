@@ -21,7 +21,7 @@ import { currentUser } from "@clerk/nextjs/server";
 
 const DEFAULT_VIDEO_ROOM_ADMINS = [
   "victoragbasa@neoemail.org",
-  "victoragbasa@gmail.org",
+  "victoragbasa@gmail.com",
 ];
 
 export function videoRoomAdminEmails(): string[] {
