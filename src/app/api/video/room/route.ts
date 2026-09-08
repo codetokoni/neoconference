@@ -28,7 +28,7 @@ export interface RoomLayout {
   hidden: string[];
 }
 
-const layoutKey = (room: string, screen: number) =>
+const layoutKey = (room: string, screen: number | "all") =>
   `neo:video:layout:${room}:${screen}`;
 
 function room(req: Request) {
@@ -78,8 +78,10 @@ export async function GET(req: Request) {
   const [codes, claimed, layout, featuredRaw] = await Promise.all([
     listCodes(r),
     claimedCodes(r),
-    // No layout for the all-screens view — layouts are per-screen.
-    all ? Promise.resolve(null) : kv.get<RoomLayout>(layoutKey(r, screen)),
+    // All-screens view has its own shared layout key so drag/hide/restore
+    // still persist across sessions when the operator flattens the whole
+    // room into one board.
+    kv.get<RoomLayout>(layoutKey(r, all ? "all" : screen)),
     kv.get<FeaturedState>(featuredKey(r)).catch(() => null),
   ]);
 
@@ -139,12 +141,13 @@ export async function GET(req: Request) {
   );
 }
 
-/** Saves the arrangement of one screen. */
+/** Saves the arrangement of one screen — or the shared all-screens layout. */
 export async function PATCH(req: Request) {
   const denied = await guard();
   if (denied) return denied;
 
   const r = room(req);
+  const all = isAllScreens(req);
   const screen = screenNo(req);
 
   let body: { order?: unknown; hidden?: unknown };
@@ -158,10 +161,13 @@ export async function PATCH(req: Request) {
     (Array.isArray(v) ? v : [])
       .map((x) => String(x).replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 128))
       .filter(Boolean)
-      .slice(0, PER_SCREEN * 2);
+      // The all-screens board can hold every roster row; per-screen
+      // boards can't hold more than the screen's tile budget plus a
+      // hidden tray, so cap accordingly.
+      .slice(0, all ? 1000 : PER_SCREEN * 2);
 
   const layout: RoomLayout = { order: clean(body.order), hidden: clean(body.hidden) };
-  await kv.set(layoutKey(r, screen), layout);
+  await kv.set(layoutKey(r, all ? "all" : screen), layout);
 
   return NextResponse.json({ ok: true, layout });
 }

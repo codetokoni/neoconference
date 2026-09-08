@@ -197,10 +197,10 @@ export default function RoomHub({
         </h2>
         <div className="grid gap-3 md:grid-cols-3">
           <BoardCard
-            href={`/video/room/cameras?room=${encodeURIComponent(s.room)}&screen=1`}
+            href={`/video/room/cameras?room=${encodeURIComponent(s.room)}`}
             title="Camera board"
             subtitle="Grid of live cameras — drag, hide, feature to air."
-            costHint="One viewer slot per live camera on this screen."
+            costHint="One viewer slot per live camera in the room."
           />
           <BoardCard
             href={`/video/room/names?room=${encodeURIComponent(s.room)}&screen=1`}
@@ -351,7 +351,7 @@ function ScreenCard({ room, block }: { room: string; block: ScreenBlock }) {
 
       <div className="flex flex-wrap gap-2">
         <a
-          href={`/video/room/cameras?room=${encodeURIComponent(room)}&screen=${block.screen}`}
+          href={`/video/room/cameras?room=${encodeURIComponent(room)}`}
           className="rounded-md border border-white/12 px-3 py-1.5 text-xs text-white hover:bg-white/10"
         >
           Camera board
