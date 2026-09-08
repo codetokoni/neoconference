@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAmsMultitrack } from "./useAmsMultitrack";
 
 interface Participant {
   slot: number;
@@ -20,13 +21,17 @@ interface Queue {
 /**
  * Detail view of one queue.
  *
- * Poll-only; the queue itself renders no video. Entries show live status
- * so a producer knows if the top of the queue is actually ready before
- * they take it to air.
+ * Renders as a tile grid — the same look as the Camera board — but
+ * filtered to only the participants staged in this queue. Each tile
+ * plays that participant's own AMS stream if they're live, so a
+ * producer can see the person before featuring them, and click the
+ * tile to take it to air. Not-joined and joined-no-camera tiles show
+ * a text placeholder in the same shape so the grid stays uniform.
  *
- * The Send-to-preview action writes to /api/video/preview (server-side,
- * shared with the cameras board). The Take-to-air action posts to
- * /api/video/feature — the same endpoint every other cut in the app uses.
+ * Reorder + remove live on the tile itself; the "Take to air" action
+ * writes to /api/video/feature, matching every other cut in the app.
+ * The Send-to-preview action writes to /api/video/preview so the
+ * cameras board's preview pane picks it up too.
  */
 export default function QueueBoard({ room, slug }: { room: string; slug: string }) {
   const [queue, setQueue] = useState<Queue | null>(null);
@@ -214,6 +219,13 @@ export default function QueueBoard({ room, slug }: { room: string; slug: string 
     [participants],
   );
 
+  const liveCount = useMemo(() => {
+    if (!queue) return 0;
+    let n = 0;
+    for (const sid of queue.order) if (bySid.get(sid)?.live) n += 1;
+    return n;
+  }, [queue, bySid]);
+
   if (err && !queue) return <p className="text-sm text-red-400">{err}</p>;
   if (!queue) {
     return (
@@ -227,14 +239,14 @@ export default function QueueBoard({ room, slug }: { room: string; slug: string 
     <div className="flex flex-col gap-4">
       {err && <p className="text-sm text-red-400">{err}</p>}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/12 bg-[#141C22] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/12 bg-[#141C22] p-4">
         <div className="flex flex-col">
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
             Queue
           </span>
           <span className="text-xl font-bold text-white">{queue.name}</span>
           <span className="font-mono text-[10px] text-white/35">
-            /{queue.slug} · {queue.order.length} staged
+            /{queue.slug} · {queue.order.length} staged · {liveCount} live
           </span>
         </div>
         <button
@@ -258,7 +270,7 @@ export default function QueueBoard({ room, slug }: { room: string; slug: string 
             value={addInput}
             onChange={(e) => setAddInput(e.target.value)}
             maxLength={16}
-            placeholder="e.g. 7  or  QAEX-07"
+            placeholder="e.g. 7  or  528401"
             className="w-full rounded-md border border-white/12 bg-[#0B1319] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:ring-2 focus:ring-emerald-500"
           />
         </label>
@@ -271,40 +283,56 @@ export default function QueueBoard({ room, slug }: { room: string; slug: string 
         </button>
       </form>
 
-      <div className="flex flex-col gap-2">
-        {queue.order.length === 0 ? (
-          <p className="rounded-lg border border-white/12 bg-[#101820] p-4 text-sm text-white/60">
-            No entries yet. Add participants to stage them for air.
-          </p>
-        ) : (
-          queue.order.map((streamId, i) => (
-            <QueueRow
-              key={streamId}
-              streamId={streamId}
-              participant={bySid.get(streamId)}
-              first={i === 0}
-              busy={busy}
-              onUp={() => moveEntry(streamId, -1)}
-              onDown={() => moveEntry(streamId, 1)}
-              onRemove={() => removeEntry(streamId)}
-              onTake={() =>
-                takeToAir(streamId, bySid.get(streamId)?.name ?? streamId)
-              }
-              onPreview={() =>
-                sendToPreview(streamId, bySid.get(streamId)?.name ?? streamId)
-              }
-            />
-          ))
-        )}
-      </div>
+      {queue.order.length === 0 ? (
+        <p className="rounded-lg border border-white/12 bg-[#101820] p-4 text-sm text-white/60">
+          No entries yet. Add participants by slot number or code above.
+        </p>
+      ) : (
+        <div className="rounded-xl border border-white/12 bg-[#0F1519] p-3">
+          <div className="grid grid-cols-4 gap-[6px] sm:grid-cols-6 lg:grid-cols-10">
+            {queue.order.map((sid, i) => (
+              <QueueTile
+                key={sid}
+                streamId={sid}
+                participant={bySid.get(sid)}
+                position={i + 1}
+                first={i === 0}
+                last={i === queue.order.length - 1}
+                busy={busy}
+                onUp={() => moveEntry(sid, -1)}
+                onDown={() => moveEntry(sid, 1)}
+                onRemove={() => removeEntry(sid)}
+                onTake={() =>
+                  takeToAir(sid, bySid.get(sid)?.name ?? sid)
+                }
+                onPreview={() =>
+                  sendToPreview(sid, bySid.get(sid)?.name ?? sid)
+                }
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function QueueRow({
+/**
+ * One tile in the queue grid. Same shape as the Camera board's tile
+ * (aspect-4/3, slot number top-left, name bottom, video for live
+ * participants) so a producer flipping between the two boards reads
+ * the layout instantly.
+ *
+ * The whole tile is clickable to take-to-air — matches the "one click
+ * to feature" language on the hub. Hover actions add preview / remove
+ * / reorder without cluttering the tile at rest.
+ */
+function QueueTile({
   streamId,
   participant,
+  position,
   first,
+  last,
   busy,
   onUp,
   onDown,
@@ -314,7 +342,9 @@ function QueueRow({
 }: {
   streamId: string;
   participant: Participant | undefined;
+  position: number;
   first: boolean;
+  last: boolean;
   busy: boolean;
   onUp: () => void;
   onDown: () => void;
@@ -322,90 +352,119 @@ function QueueRow({
   onTake: () => void;
   onPreview: () => void;
 }) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  const enabled = Boolean(participant?.live) && Boolean(streamId);
+  const { videoStream } = useAmsMultitrack(streamId, enabled);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (enabled && videoStream && el.srcObject !== videoStream) {
+      el.srcObject = videoStream;
+      el.play().catch(() => {});
+    }
+    if (!enabled || !videoStream) el.srcObject = null;
+  }, [enabled, videoStream]);
+
   const status = participant?.live
-    ? { label: "LIVE", tone: "bg-emerald-500/20 text-emerald-300 border-emerald-400/40" }
+    ? "LIVE"
     : participant?.claimed
-      ? { label: "JOINED", tone: "bg-amber-500/20 text-amber-300 border-amber-400/40" }
+      ? "JOINED, NO CAMERA"
       : participant
-        ? { label: "NOT JOINED", tone: "bg-white/[0.04] text-white/45 border-white/10" }
-        : { label: "UNKNOWN", tone: "bg-red-500/15 text-red-300 border-red-400/40" };
+        ? "NOT JOINED"
+        : "UNKNOWN";
 
   return (
     <div
+      onClick={busy ? undefined : onTake}
       className={
-        "flex flex-wrap items-center gap-3 rounded-lg border p-3 " +
-        (first ? "border-amber-400/50 bg-amber-500/[0.06]" : "border-white/12 bg-[#101820]")
+        "group relative aspect-[4/3] cursor-pointer overflow-hidden rounded border bg-[#16232B] " +
+        (first
+          ? "border-amber-400 ring-1 ring-amber-400"
+          : participant?.live
+            ? "border-emerald-500/40"
+            : "border-white/10")
+      }
+      title={
+        participant
+          ? `Position ${position} — ${participant.name}. Click to take to air.`
+          : streamId
       }
     >
-      <div className="flex min-w-[220px] flex-1 items-center gap-3">
-        <span className="w-8 font-mono text-[10px] text-white/45">
-          {participant ? String(participant.slot).padStart(2, "0") : "??"}
-        </span>
-        <span className="flex min-w-0 flex-col leading-tight">
-          <span className="truncate text-sm font-semibold text-white">
-            {participant?.name ?? streamId}
-          </span>
-          <span className="truncate font-mono text-[10px] text-white/45">
-            {participant?.code ? participant.code + " · " : ""}
-            {streamId}
-          </span>
-        </span>
-        <span
-          className={
-            "rounded-sm border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] " +
-            status.tone
-          }
-        >
-          {status.label}
-        </span>
-      </div>
+      <video ref={ref} playsInline autoPlay muted className="h-full w-full object-cover" />
 
-      <div className="flex items-center gap-1">
+      {!participant?.live && (
+        <span className="absolute inset-0 flex items-center justify-center px-1 text-center font-mono text-[8.5px] uppercase tracking-[0.14em] text-white/40">
+          {status}
+        </span>
+      )}
+
+      <span className="absolute left-1 top-0.5 font-mono text-[9.5px] text-white/70">
+        {participant?.slot ?? "??"}
+      </span>
+
+      <span className="absolute right-1 top-0.5 font-mono text-[8.5px] uppercase tracking-[0.14em] text-white/70">
+        #{position}
+      </span>
+
+      {first && (
+        <span className="absolute right-1 top-4 rounded-sm bg-amber-400 px-1 font-mono text-[8px] tracking-[0.1em] text-[#14100a]">
+          NEXT
+        </span>
+      )}
+
+      <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/90 to-transparent px-1.5 py-0.5 text-[10px] font-semibold text-white/90">
+        {participant?.name ?? streamId}
+      </span>
+
+      {/* Hover controls — appear only on hover so a resting tile looks
+          like a Camera board tile. stopPropagation on each so clicking
+          them doesn't also trigger the tile's take-to-air. */}
+      <div className="absolute inset-x-0 top-[38%] hidden justify-center gap-1 group-hover:flex">
         <button
           type="button"
-          onClick={onUp}
-          className="rounded-md border border-white/12 px-2 py-1 text-xs text-white/70 hover:bg-white/10"
-          aria-label="Move up"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPreview();
+          }}
+          disabled={busy}
+          className="rounded-sm bg-black/70 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-white/85 hover:bg-black/90 disabled:opacity-40"
+          title="Send to preview"
+        >
+          PVW
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onUp();
+          }}
+          disabled={first}
+          className="rounded-sm bg-black/70 px-1.5 py-0.5 font-mono text-[9px] text-white/85 hover:bg-black/90 disabled:opacity-30"
+          title="Move up"
         >
           ↑
         </button>
         <button
           type="button"
-          onClick={onDown}
-          className="rounded-md border border-white/12 px-2 py-1 text-xs text-white/70 hover:bg-white/10"
-          aria-label="Move down"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDown();
+          }}
+          disabled={last}
+          className="rounded-sm bg-black/70 px-1.5 py-0.5 font-mono text-[9px] text-white/85 hover:bg-black/90 disabled:opacity-30"
+          title="Move down"
         >
           ↓
         </button>
-      </div>
-
-      <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={onPreview}
-          disabled={busy}
-          className="rounded-md border border-white/15 px-3 py-1.5 text-xs text-white/85 hover:bg-white/10 disabled:opacity-40"
-        >
-          Send to preview
-        </button>
-        <button
-          type="button"
-          onClick={onTake}
-          disabled={busy}
-          className={
-            "rounded-md px-3 py-1.5 text-xs font-semibold disabled:opacity-40 " +
-            (first
-              ? "bg-amber-500 text-[#14100a] hover:bg-amber-400"
-              : "border border-amber-400/60 text-amber-300 hover:bg-amber-500/10")
-          }
-        >
-          Take to air
-        </button>
-        <button
-          type="button"
-          onClick={onRemove}
-          className="rounded-md border border-red-500/50 px-2 py-1 text-xs text-red-300 hover:bg-red-500/15"
-          aria-label="Remove from queue"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          className="rounded-sm bg-black/70 px-1.5 py-0.5 font-mono text-[9px] text-white/85 hover:bg-black/90"
+          title="Remove from queue"
         >
           ×
         </button>
