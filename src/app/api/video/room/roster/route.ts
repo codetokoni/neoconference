@@ -51,6 +51,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "No file uploaded." }, { status: 400 });
   }
 
+  const appendField = form.get("append");
+  const append =
+    appendField === "1" || appendField === "true" || appendField === "on";
+
   const buffer = Buffer.from(await file.arrayBuffer());
   let rows: ReturnType<typeof parseRoster>;
   try {
@@ -69,7 +73,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { updated, created } = await applyRoster(r, rows);
+  const { updated, created } = await applyRoster(r, rows, { append });
   return NextResponse.json({ ok: true, updated, created });
 }
 
