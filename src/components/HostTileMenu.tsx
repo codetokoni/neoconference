@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 
@@ -165,6 +166,54 @@ export function HostTileMenu({
   // Kebab menu is available to any viewer on any remote tile — the local
   // hide option is unconditional. Host/moderator actions are added below
   // conditionally.
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // Anchor the portal-rendered menu to the kebab's viewport rect. Recompute
+  // on scroll/resize so it tracks when the tile grid reflows or the user
+  // scrolls the participant strip.
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuPos(null);
+      return;
+    }
+    const place = () => {
+      const b = buttonRef.current;
+      if (!b) return;
+      const r = b.getBoundingClientRect();
+      const width = 200;
+      // Right-align under the kebab, but clamp so we don't spill off-screen.
+      const left = Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8));
+      setMenuPos({ top: r.bottom + 4, left });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open]);
+
+  // Outside-click close: the menu is portaled to <body>, so it isn't in the
+  // subtree of the wrapper's stopPropagation. Watch document clicks and
+  // dismiss unless the target is the menu itself or the kebab button.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (menuRef.current?.contains(t)) return;
+      if (buttonRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
   if (isSelf || !slug) return null;
   const showHostActions = isHost;
 
@@ -180,6 +229,7 @@ export function HostTileMenu({
       onClick={(e) => e.stopPropagation()}
     >
       <button
+        ref={buttonRef}
         type="button"
         aria-label={`Host actions for ${participantName}`}
         onClick={() => setOpen((v) => !v)}
@@ -202,14 +252,17 @@ export function HostTileMenu({
         {String.fromCharCode(8942)}
       </button>
 
-      {open && (
+      {open && mounted && menuPos && createPortal(
         <div
+          ref={menuRef}
           role="menu"
+          onClick={(e) => e.stopPropagation()}
           style={{
-            position: 'absolute',
-            top: 32,
-            right: 0,
-            minWidth: 180,
+            position: 'fixed',
+            top: menuPos.top,
+            left: menuPos.left,
+            width: 200,
+            zIndex: 10000,
             background: 'rgba(20,20,22,0.96)',
             color: '#fff',
             borderRadius: 10,
@@ -399,7 +452,8 @@ export function HostTileMenu({
               Error: {error}
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
