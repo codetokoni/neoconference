@@ -7,9 +7,10 @@ import { useCallback, useRef, useState } from "react";
  *
  * Upload takes an xlsx or csv shaped like: S/N, NAME, plus whatever
  * extra columns the operator uses (COUNTRY, CONDITION, CONTACT, …).
- * NAME becomes the tile label; extras are stored as meta so the
- * download re-emits them with a PASSCODE column added and the join URL
- * at the top.
+ * NAME becomes the tile label; extras are stored as meta and the raw
+ * xlsx bytes are stashed so the download re-emits the operator's own
+ * layout (title rows, column order, header case, sheet name) with the
+ * current NAME / meta values overlaid and a PASSCODE column appended.
  */
 export default function RosterPanel({ room }: { room: string }) {
   const [busy, setBusy] = useState(false);
@@ -115,8 +116,9 @@ export default function RosterPanel({ room }: { room: string }) {
             Download .xlsx with codes
           </a>
           <p className="text-xs text-white/60">
-            Same columns you uploaded, plus a <b>PASSCODE</b> column and the join URL at the top.
-            Slots not touched by upload keep their auto-generated names.
+            The exact file you uploaded, with a <b>PASSCODE</b> column added and any
+            name/condition edits reflected. Slots not touched by upload keep their
+            auto-generated names.
           </p>
         </div>
       </div>
