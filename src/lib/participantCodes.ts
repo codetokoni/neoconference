@@ -120,7 +120,14 @@ export async function applyRoster(
   room: string,
   rows: { slot: number; name: string; meta?: Record<string, string> }[],
   opts?: { append?: boolean },
-): Promise<{ updated: number; created: number }> {
+): Promise<{
+  updated: number;
+  created: number;
+  /** Lowest slot this upload wrote to (0 when nothing named landed). */
+  slotStart: number;
+  /** Highest slot this upload wrote to (0 when nothing named landed). */
+  slotEnd: number;
+}> {
   const existing = await listCodes(room);
   const bySlot = new Map(existing.map((c) => [c.slot, c]));
 
@@ -152,6 +159,8 @@ export async function applyRoster(
 
   const record: Record<string, string> = {};
   let updated = 0;
+  let slotStart = Number.POSITIVE_INFINITY;
+  let slotEnd = 0;
   for (const r of rows) {
     const cur = bySlot.get(r.slot);
     if (!cur) continue;
@@ -164,10 +173,17 @@ export async function applyRoster(
     };
     record[keyForCode(cur.code)] = JSON.stringify(next);
     updated += 1;
+    if (r.slot < slotStart) slotStart = r.slot;
+    if (r.slot > slotEnd) slotEnd = r.slot;
   }
   if (Object.keys(record).length) await kv.hset(codesKey(room), record);
 
-  return { updated, created };
+  return {
+    updated,
+    created,
+    slotStart: Number.isFinite(slotStart) ? slotStart : 0,
+    slotEnd,
+  };
 }
 
 /**
@@ -284,11 +300,13 @@ export async function wipeRoom(room: string): Promise<void> {
     kv.del(`neo:video:featured:${room}`),
     kv.del(`neo:video:preview:${room}`),
     kv.del(`neo:video:rosterfile:${room}`),
+    kv.del(`neo:video:rosterbatches:${room}`),
   ]);
   const patterns = [
     `neo:video:layout:${room}:*`,
     `neo:video:claim:${room}:*`,
     `neo:video:queues:${room}:*`,
+    `neo:video:rosterbatch:${room}:*`,
   ];
   for (const pattern of patterns) {
     const keys = await kv.keys(pattern);

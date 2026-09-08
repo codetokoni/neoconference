@@ -13,7 +13,13 @@ import {
   mergeRosterFiles,
   parseRoster,
 } from "@/lib/roster";
-import { loadRosterFile, saveRosterFile } from "@/lib/rosterStore";
+import {
+  getRosterBatchMeta,
+  loadRosterBatch,
+  loadRosterFile,
+  saveRosterBatch,
+  saveRosterFile,
+} from "@/lib/rosterStore";
 import { getRoom } from "@/lib/rooms";
 import { isVideoRoomAdmin } from "@/lib/videoAdmin";
 
@@ -84,14 +90,34 @@ export async function POST(req: Request) {
     );
   }
 
-  const { updated, created } = await applyRoster(r, rows, { append });
+  const { updated, created, slotStart, slotEnd } = await applyRoster(r, rows, { append });
 
-  // Stash the original file bytes so the download can re-emit the
-  // admin's own layout (columns, order, header case, banner rows,
-  // sheet name, cell formatting) with current NAME + meta overlaid on
-  // top. For append uploads we fold the new file's data rows into the
-  // stored template rather than overwriting it, so the extended
-  // roster keeps rendering in the operator's original shape.
+  // Stash the original file two ways:
+  //
+  //  1. As its own batch — so the download list can hand back this
+  //     exact xlsx (with a PASSCODE column overlaid for its slot
+  //     range) even after further uploads land on top. This is what
+  //     makes "download the files like I uploaded them" work.
+  //  2. As the legacy single merged file — feeds the no-`?batch`
+  //     download path that pre-dates batches. Append uploads fold in
+  //     so the merged view keeps growing; replace uploads overwrite.
+  //
+  // Both writes are best-effort: a KV hiccup here shouldn't fail the
+  // upload, since the codes have already been applied and downloads
+  // will fall back to the derived layout.
+  const filename = (file instanceof File ? file.name : "") || "roster.xlsx";
+  let savedBatch: string | null = null;
+  try {
+    const batch = await saveRosterBatch(r, buffer, {
+      filename,
+      slotStart,
+      slotEnd,
+      rowCount: rows.length,
+    });
+    savedBatch = batch.id;
+  } catch (e) {
+    console.error("[video/room/roster] saveRosterBatch failed:", e);
+  }
   try {
     if (append) {
       const existing = await loadRosterFile(r);
@@ -105,19 +131,33 @@ export async function POST(req: Request) {
       await saveRosterFile(r, buffer);
     }
   } catch (e) {
-    // Best-effort: a KV hiccup here shouldn't fail the upload — the
-    // codes have already been applied and the download will fall back
-    // to the derived layout.
     console.error("[video/room/roster] saveRosterFile failed:", e);
   }
 
-  return NextResponse.json({ ok: true, updated, created });
+  return NextResponse.json({
+    ok: true,
+    updated,
+    created,
+    slotStart,
+    slotEnd,
+    batch: savedBatch,
+  });
 }
 
 /**
- * Download the roster as xlsx. First row carries the room name and join
- * URL for a mail merge; the rest is one row per code with any meta
- * columns the upload contributed, plus a PASSCODE column.
+ * Download the roster as xlsx.
+ *
+ *   /api/video/room/roster?room=X                 → merged view
+ *   /api/video/room/roster?room=X&batch=<id>      → one upload's own file
+ *
+ * With `batch`, we return the exact xlsx the admin uploaded for that
+ * batch (same layout, sheet name, banner rows, column order, header
+ * case), overlaying the current NAME + meta values for the batch's
+ * slot range and appending a PASSCODE column. Post-upload edits from
+ * RosterEditor still show up in the download.
+ *
+ * Without `batch`, we return the merged single-file view (fallback:
+ * derived layout for rooms that never uploaded a template).
  */
 export async function GET(req: Request) {
   const denied = await guard();
@@ -135,10 +175,57 @@ export async function GET(req: Request) {
   const origin = req.headers.get("origin") ?? new URL(req.url).origin;
   const joinUrl = `${origin}/video/join?room=${encodeURIComponent(r)}`;
 
-  // Prefer the operator's own layout: overlay current NAME + meta onto
-  // the stored upload template and add a PASSCODE column. Fall back to
-  // the derived layout for rooms that never uploaded a template (or
-  // whose template couldn't be parsed).
+  const batchId = new URL(req.url).searchParams.get("batch");
+  if (batchId) {
+    const meta = await getRosterBatchMeta(r, batchId);
+    if (!meta) {
+      return NextResponse.json(
+        { ok: false, error: "Batch not found." },
+        { status: 404 },
+      );
+    }
+    const template = await loadRosterBatch(r, batchId);
+    if (!template) {
+      return NextResponse.json(
+        { ok: false, error: "Batch payload missing." },
+        { status: 404 },
+      );
+    }
+    // Only the codes inside this batch's slot range are overlaid —
+    // otherwise a later batch's rows would leak into this one's
+    // trailing-rows section.
+    const scopedCodes = codes.filter(
+      (c) => c.slot >= meta.slotStart && c.slot <= meta.slotEnd,
+    );
+    let batchBuffer: Buffer | null = null;
+    try {
+      batchBuffer = buildRosterXlsxFromTemplate(template, scopedCodes);
+    } catch (e) {
+      console.error("[video/room/roster] batch overlay failed:", e);
+    }
+    if (!batchBuffer) batchBuffer = template; // best-effort fallback
+
+    const body = new Uint8Array(batchBuffer);
+    // Sanitise filename for Content-Disposition: strip quotes and
+    // control chars; browsers reject a header carrying them.
+    const safeName = (meta.filename || `${r}-batch.xlsx`).replace(/["\\\r\n]/g, "_");
+    const outName = safeName.replace(/\.xlsx?$/i, "") + "-with-codes.xlsx";
+    return new Response(body, {
+      status: 200,
+      headers: {
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${outName}"`,
+        "Content-Length": String(body.length),
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
+  // Merged view. Prefer the operator's own layout: overlay current
+  // NAME + meta onto the stored upload template and add a PASSCODE
+  // column. Fall back to the derived layout for rooms that never
+  // uploaded a template (or whose template couldn't be parsed).
   let buffer: Buffer | null = null;
   try {
     const template = await loadRosterFile(r);
@@ -147,8 +234,6 @@ export async function GET(req: Request) {
     console.error("[video/room/roster] template overlay failed:", e);
   }
   if (!buffer) buffer = buildRosterXlsx(codes, { joinUrl, roomName });
-  // Node's Buffer works at runtime but the dom Response body types
-  // don't accept it directly — wrap in Uint8Array for a clean type.
   const body = new Uint8Array(buffer);
 
   return new Response(body, {
@@ -164,10 +249,11 @@ export async function GET(req: Request) {
 }
 
 /**
- * Batch destructive actions on the roster. Query params:
+ * Destructive actions on the roster. Query params:
  *
  *   /api/video/room/roster?room=X&scope=wipe   — remove every trace
  *   /api/video/room/roster?room=X&scope=names  — reset names/meta only
+ *   /api/video/room/roster?room=X&batch=<id>   — remove one upload
  *
  * `wipe` deletes codes, code prefix, featured pointer, preview pointer,
  * every screen's layout, every claim lock, the stored xlsx template,
@@ -180,6 +266,12 @@ export async function GET(req: Request) {
  * stored xlsx template so the download reflects the reset state.
  * Participants who already have their code are unaffected.
  *
+ * `batch=<id>` removes ONE upload's stored xlsx from the download
+ * list — the participants that upload wrote to keep their codes and
+ * names (those live in participantCodes, not the batch entry), only
+ * the downloadable template is gone. Use it to prune stale uploads
+ * from the download list without touching the roster itself.
+ *
  * Admin-only, same as upload/download.
  */
 export async function DELETE(req: Request) {
@@ -187,7 +279,14 @@ export async function DELETE(req: Request) {
   if (denied) return denied;
 
   const r = room(req);
-  const scope = new URL(req.url).searchParams.get("scope");
+  const search = new URL(req.url).searchParams;
+  const batchId = search.get("batch");
+  if (batchId) {
+    const { deleteRosterBatch } = await import("@/lib/rosterStore");
+    const removed = await deleteRosterBatch(r, batchId);
+    return NextResponse.json({ ok: true, batch: batchId, removed });
+  }
+  const scope = search.get("scope");
   if (scope === "wipe") {
     await wipeRoom(r);
     return NextResponse.json({ ok: true, scope: "wipe" });
@@ -197,7 +296,7 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ ok: true, scope: "names", reset });
   }
   return NextResponse.json(
-    { ok: false, error: "scope must be 'wipe' or 'names'." },
+    { ok: false, error: "scope must be 'wipe' or 'names', or pass batch=<id>." },
     { status: 400 },
   );
 }
