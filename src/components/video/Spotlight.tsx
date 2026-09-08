@@ -56,7 +56,6 @@ export default function Spotlight({ spot, onClose }: SpotlightProps) {
 
   const condition = spot.meta?.condition;
   const country = spot.meta?.country;
-  const contact = spot.meta?.contact;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black">
@@ -86,18 +85,9 @@ export default function Spotlight({ spot, onClose }: SpotlightProps) {
             <span className="text-base text-white/90 sm:text-lg">{condition}</span>
           </div>
         )}
-        {(country || contact) && (
-          <div className="mt-1 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-white/70">
-            {country && (
-              <span>
-                <span className="text-white/45">Country:</span> {country}
-              </span>
-            )}
-            {contact && (
-              <span>
-                <span className="text-white/45">Contact:</span> {contact}
-              </span>
-            )}
+        {country && (
+          <div className="mt-1 text-xs text-white/70">
+            <span className="text-white/45">Country:</span> {country}
           </div>
         )}
       </div>
