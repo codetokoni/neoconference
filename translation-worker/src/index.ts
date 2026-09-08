@@ -124,7 +124,9 @@ function pumpAudio() {
 
   audio.proc.stdout.on("data", (chunk: Buffer) => {
     try {
-      live?.send(chunk);
+      // The SDK's send() is typed browser-first (Blob | ArrayBuffer).
+      // Hand it a standalone ArrayBuffer rather than a Node Buffer view.
+      live?.send(new Uint8Array(chunk).buffer);
     } catch {
       /* Deepgram probably closed; the exit handler restarts */
     }
