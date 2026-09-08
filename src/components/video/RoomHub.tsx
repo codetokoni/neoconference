@@ -173,17 +173,12 @@ export default function RoomHub({
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
             Code prefix
           </span>
-          <Copyable
-            value={
-              s.codePrefix
-                ? `${s.codePrefix}-01..${String(s.totalSlots).padStart(2, "0")}`
-                : ""
-            }
-            label="code prefix"
-          />
+          <Copyable value={s.codePrefix || ""} label="code prefix" />
           <p className="text-xs text-white/60">
-            {s.totalSlots} personal codes. Each participant gets one, e.g.{" "}
-            {s.codePrefix || "PREFX"}-07.
+            {s.totalSlots} personal codes. Each is <b>{s.codePrefix || "PREFX"}</b>{" "}
+            followed by a random 4-character suffix (e.g.{" "}
+            {s.codePrefix || "PREFX"}-K7P3) so knowing your own code doesn't
+            let you guess anyone else's.
           </p>
         </div>
       </div>

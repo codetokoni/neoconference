@@ -70,12 +70,17 @@ export default function RosterPanel({ room }: { room: string }) {
   );
 
   const runDelete = useCallback(
-    async (scope: "wipe" | "names", confirmPhrase: string, onOk: string) => {
-      const typed = window.prompt(
-        scope === "wipe"
-          ? `This wipes every code, every name, every layout, and every claim for ${room}. Type "${confirmPhrase}" to confirm.`
-          : `This resets every tile's name back to "Child N" and clears meta for ${room}. Codes stay valid. Type "${confirmPhrase}" to confirm.`,
-      );
+    async (
+      scope: "wipe" | "names" | "codes",
+      confirmPhrase: string,
+      onOk: string,
+    ) => {
+      const prompts: Record<typeof scope, string> = {
+        wipe: `This wipes every code, every name, every layout, and every claim for ${room}. Type "${confirmPhrase}" to confirm.`,
+        names: `This resets every tile's name back to "Child N" and clears meta for ${room}. Codes stay valid. Type "${confirmPhrase}" to confirm.`,
+        codes: `This regenerates every participant code with a fresh random suffix. Every previously distributed code stops working immediately. Names, slots and roster meta are preserved. Type "${confirmPhrase}" to confirm.`,
+      };
+      const typed = window.prompt(prompts[scope]);
       if (typed?.trim().toLowerCase() !== confirmPhrase) {
         setMsg({ kind: "err", text: "Cancelled." });
         return;
@@ -92,10 +97,13 @@ export default function RosterPanel({ room }: { room: string }) {
           setMsg({ kind: "err", text: j.error ?? "Delete failed." });
           return;
         }
-        setMsg({
-          kind: "ok",
-          text: scope === "names" && typeof j.reset === "number" ? `${onOk} (${j.reset} slot${j.reset === 1 ? "" : "s"} reset)` : onOk,
-        });
+        let text = onOk;
+        if (scope === "names" && typeof j.reset === "number") {
+          text = `${onOk} (${j.reset} slot${j.reset === 1 ? "" : "s"} reset)`;
+        } else if (scope === "codes" && typeof j.regenerated === "number") {
+          text = `${onOk} (${j.regenerated} code${j.regenerated === 1 ? "" : "s"} rotated)`;
+        }
+        setMsg({ kind: "ok", text });
         // Wipe nukes the batch index too; re-pull so the UI reflects
         // reality instead of showing stale entries whose backing files
         // are already gone.
@@ -294,11 +302,11 @@ export default function RosterPanel({ room }: { room: string }) {
             Danger zone
           </span>
           <p className="mt-1 text-xs text-white/60">
-            Two destructive actions. Both ask you to type a confirm phrase before
-            running — no undo.
+            Three destructive actions. Each asks you to type a confirm phrase
+            before running — no undo.
           </p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-2">
             <button
               type="button"
@@ -315,6 +323,25 @@ export default function RosterPanel({ room }: { room: string }) {
               Tiles go back to <b>Child 1</b>, <b>Child 2</b>… and meta is cleared.
               Codes stay valid — participants already holding a code still join.
               Confirm phrase: <code className="text-white/80">clear</code>.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => runDelete("codes", "rotate", "Codes rotated.")}
+              disabled={busy}
+              className={
+                "inline-flex items-center justify-center rounded-md border border-orange-500/40 bg-orange-500/10 px-4 py-2 text-sm font-semibold text-orange-200 transition hover:bg-orange-500/20" +
+                (busy ? " opacity-40" : "")
+              }
+            >
+              Regenerate all codes
+            </button>
+            <p className="text-xs text-white/60">
+              Reissues every code with a fresh random suffix so knowing one
+              code doesn't leak the pattern. Names, slots and meta preserved;
+              every previously distributed code stops working. Confirm phrase:{" "}
+              <code className="text-white/80">rotate</code>.
             </p>
           </div>
           <div className="flex flex-col gap-2">
