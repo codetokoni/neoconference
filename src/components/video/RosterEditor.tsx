@@ -318,7 +318,9 @@ export default function RosterEditor({ room }: { room: string }) {
                   <Td className="font-mono text-[11px] text-white/45">
                     {String(p.slot).padStart(2, "0")}
                   </Td>
-                  <Td className="font-mono text-[11px] text-white/60">{p.code}</Td>
+                  <Td>
+                    <CodeChip code={p.code} />
+                  </Td>
                   <Td>
                     <RowInput
                       value={row.draft.name}
@@ -400,6 +402,44 @@ function Th({ children, className }: { children?: React.ReactNode; className?: s
 
 function Td({ children, className }: { children?: React.ReactNode; className?: string }) {
   return <td className={"px-3 py-1.5 " + (className ?? "")}>{children}</td>;
+}
+
+/**
+ * The participant's passcode as a clickable chip. Bigger and brighter
+ * than the plain text it replaces so an admin scanning the roster can
+ * read codes at a glance, and one click copies the code to the
+ * clipboard for pasting into a mailer / DM. Tick feedback lasts a
+ * beat so a quick multi-copy pass is comfortable.
+ */
+function CodeChip({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  const onCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard blocked — the code is still visible for manual copy */
+    }
+  }, [code]);
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      title="Click to copy"
+      className={
+        "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-sm font-semibold transition " +
+        (copied
+          ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-200"
+          : "border-emerald-500/25 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20")
+      }
+    >
+      <span>{code}</span>
+      <span className="text-[10px] font-normal text-emerald-300/70">
+        {copied ? "copied" : "copy"}
+      </span>
+    </button>
+  );
 }
 
 function RowInput({

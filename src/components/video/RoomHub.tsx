@@ -171,14 +171,19 @@ export default function RoomHub({
         </div>
         <div className="flex flex-col gap-2">
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
-            Code prefix
+            Personal codes
           </span>
-          <Copyable value={s.codePrefix || ""} label="code prefix" />
+          <div className="flex items-baseline gap-2 rounded-md border border-white/12 bg-[#0B1319] px-3 py-2">
+            <span className="font-mono text-lg font-semibold tracking-wider text-emerald-300">
+              {s.totalSlots}
+            </span>
+            <span className="text-xs text-white/60">slots minted</span>
+          </div>
           <p className="text-xs text-white/60">
-            {s.totalSlots} personal codes. Each is <b>{s.codePrefix || "PREFX"}</b>{" "}
-            followed by a random 4-character suffix (e.g.{" "}
-            {s.codePrefix || "PREFX"}-K7P3) so knowing your own code doesn't
-            let you guess anyone else's.
+            Each participant gets a random 6-digit passcode (e.g.{" "}
+            <span className="font-mono text-white/80">528401</span>). Numeric
+            only — easy to type on a mobile keypad — and random so knowing
+            one code tells you nothing about anyone else's.
           </p>
         </div>
       </div>
