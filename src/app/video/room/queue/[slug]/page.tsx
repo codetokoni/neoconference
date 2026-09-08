@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import QueueBoard from "@/components/video/QueueBoard";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 
@@ -9,7 +11,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// Deliberately unauthenticated — see the note on
+// Requires a signed-in Clerk account — see the note on
 // src/app/video/room/moderate/page.tsx.
 export default async function QueueDetail({
   searchParams,
@@ -18,6 +20,9 @@ export default async function QueueDetail({
   searchParams?: { room?: string };
   params: { slug: string };
 }) {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+
   const room = (searchParams?.room ?? SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "");
   const slug = String(params.slug ?? "")
     .toLowerCase()

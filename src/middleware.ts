@@ -38,26 +38,21 @@ const isPublicRoute = createRouteMatcher([
   // the route rate limits hard. /api/video/codes and /feature stay staff-only.
   '/video/join',
   '/api/video/join',
-  // Studio (feed pusher) and the moderator hub + every board it links
-  // to are deliberately unauthenticated: the room slug in the URL is
-  // the shared secret, and requiring Clerk blocked guest broadcasters
-  // and volunteer moderators. The admin surface at /video/room (bare)
-  // and the roster upload/download stay gated to the admin email list
-  // (videoAdmin.ts). Moderator-tier APIs listed here are individually
-  // named — a wildcard would silently expose future /api/video/*
-  // routes, including admin-only ones.
+  // Studio (feed pusher) stays deliberately unauthenticated: the room
+  // slug in the URL is the shared secret. Guest broadcasters shouldn't
+  // need to sign up just to push a feed.
+  //
+  // The moderator hub (/video/room/moderate) and every board it links
+  // to now require a Clerk sign-in — any account works, no role gate,
+  // but every moderator action lands with a name attached. This is
+  // stricter than earlier revisions of this file: opening the boards
+  // to fully-anonymous traffic let anyone who knew a room slug feature
+  // participants on air, hide tiles, and stop broadcasts. Any account
+  // is still low enough friction that volunteer moderators can sign up
+  // in 30s. The admin surface at /video/room (bare) and roster
+  // upload/download remain gated to the admin email list
+  // (videoAdmin.ts) on top of the sign-in wall.
   '/video/studio',
-  '/video/room/moderate',
-  '/video/room/cameras',
-  '/video/room/names',
-  '/video/room/queue',
-  '/video/room/queue/(.*)',
-  '/api/video/room/summary',
-  '/api/video/room',
-  '/api/video/feature',
-  '/api/video/preview',
-  '/api/video/queues',
-  '/api/video/queues/(.*)',
 ]);
 
 // Hosts that ARE the canonical app (skip custom-domain rewrite for these).

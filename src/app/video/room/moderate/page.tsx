@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import RoomHub from "@/components/video/RoomHub";
 import { getRoom } from "@/lib/rooms";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
@@ -13,24 +15,26 @@ export const metadata: Metadata = {
 /**
  * The moderator handout URL.
  *
- * This is the link admins hand to whoever is running the boards during
- * the event. It renders the same live counts, boards, and per-screen
- * cards as the admin hub, but omits everything an admin holds close:
- * the copyable Join / Streaming / Moderator links, the code prefix, the
- * roster upload and download.
+ * Renders the same live counts, boards, and per-screen cards as the
+ * admin hub, but omits everything an admin holds close: the copyable
+ * Join / Streaming / Moderator links, the code prefix, the roster
+ * upload and download.
  *
- * Deliberately unauthenticated: the room slug in the query string is
- * the shared secret; requiring Clerk for moderator handouts blocked
- * guest volunteers who help run boards during events. The admin
- * surface at /video/room stays gated to the admin email list — this
- * page never exposes the admin-only affordances regardless of who
- * opens it.
+ * Requires a signed-in Clerk account (any account — no role gate);
+ * moderator actions mutate broadcast state, so every hit lands with a
+ * name attached. Middleware bounces anonymous traffic to Clerk's
+ * sign-in with the correct redirect_url; the auth() check here is
+ * belt-and-braces if that ever regresses. The admin surface at
+ * /video/room stays gated to the admin email list on top of this.
  */
 export default async function ModeratePage({
   searchParams,
 }: {
   searchParams?: { room?: string };
 }) {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+
   const room = (searchParams?.room ?? SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "");
   const roomRecord = await getRoom(room);
   const roomName = roomRecord?.name ?? room;
