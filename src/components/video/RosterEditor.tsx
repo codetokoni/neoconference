@@ -23,6 +23,7 @@ interface RowState {
   draft: Draft;
   saving: boolean;
   saved: boolean;
+  deleting: boolean;
   error: string | null;
 }
 
@@ -87,6 +88,7 @@ export default function RosterEditor({ room }: { room: string }) {
               draft: toDraft(p),
               saving: false,
               saved: false,
+              deleting: false,
               error: null,
             };
           }
@@ -170,6 +172,7 @@ export default function RosterEditor({ room }: { room: string }) {
             draft: toDraft(updated),
             saving: false,
             saved: true,
+            deleting: false,
             error: null,
           },
         }));
@@ -192,6 +195,58 @@ export default function RosterEditor({ room }: { room: string }) {
       }
     },
     [rows, room],
+  );
+
+  const remove = useCallback(
+    async (p: Participant) => {
+      // Confirmation is intentional — this deletes the slot's code, and
+      // anyone holding that code loses their invite immediately.
+      const ok = window.confirm(
+        `Remove slot ${p.slot} (${p.name || "unnamed"}, code ${p.code})? The code stops working immediately.`,
+      );
+      if (!ok) return;
+      setRows((prev) => {
+        const cur = prev[p.slot];
+        if (!cur) return prev;
+        return { ...prev, [p.slot]: { ...cur, deleting: true, error: null } };
+      });
+      try {
+        const r = await fetch(
+          `/api/video/room/roster/participant?room=${encodeURIComponent(room)}&slot=${p.slot}`,
+          { method: "DELETE" },
+        );
+        const j = await r.json();
+        if (!j.ok) {
+          setRows((prev) => {
+            const cur = prev[p.slot];
+            if (!cur) return prev;
+            return {
+              ...prev,
+              [p.slot]: { ...cur, deleting: false, error: j.error ?? "Delete failed." },
+            };
+          });
+          return;
+        }
+        // Drop the participant + row state in one pass so the table
+        // doesn't flash a "deleting…" cell before it disappears.
+        setParticipants((prev) => prev.filter((x) => x.slot !== p.slot));
+        setRows((prev) => {
+          const next = { ...prev };
+          delete next[p.slot];
+          return next;
+        });
+      } catch {
+        setRows((prev) => {
+          const cur = prev[p.slot];
+          if (!cur) return prev;
+          return {
+            ...prev,
+            [p.slot]: { ...cur, deleting: false, error: "Delete failed. Check your connection." },
+          };
+        });
+      }
+    },
+    [room],
   );
 
   const visible = useMemo(() => {
@@ -292,7 +347,7 @@ export default function RosterEditor({ room }: { room: string }) {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        disabled={!isDirty || row.saving}
+                        disabled={!isDirty || row.saving || row.deleting}
                         onClick={() => save(p)}
                         className={
                           "rounded-md px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40 " +
@@ -302,6 +357,15 @@ export default function RosterEditor({ room }: { room: string }) {
                         }
                       >
                         {row.saving ? "Saving…" : isDirty ? "Save" : "Saved"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={row.saving || row.deleting}
+                        onClick={() => remove(p)}
+                        className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-200 transition hover:bg-red-500/20 disabled:opacity-40"
+                        title="Delete this slot — the code stops working immediately"
+                      >
+                        {row.deleting ? "Deleting…" : "Delete"}
                       </button>
                       {row.saved && (
                         <span className="font-mono text-[10px] text-emerald-300">✓</span>
