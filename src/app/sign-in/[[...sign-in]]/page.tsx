@@ -80,10 +80,6 @@ export default function Page({ searchParams }: { searchParams: SP }) {
         </div>
       )}
 
-      <EmailPasswordSignIn />
-
-      <div className='text-sm text-gray-500'>or</div>
-
       <Link
         href={kcHref}
         className='inline-flex items-center justify-center w-72 px-4 py-2 rounded bg-[#1f8feb] hover:bg-[#1976c4] text-white font-medium transition-colors'
@@ -97,6 +93,10 @@ export default function Page({ searchParams }: { searchParams: SP }) {
       >
         Continue with Neoemail
       </Link>
+
+      <div className='text-sm text-gray-500'>or</div>
+
+      <EmailPasswordSignIn />
     </div>
   );
 }
