@@ -271,7 +271,7 @@ export default function RosterEditor({ room }: { room: string }) {
                     />
                   </Td>
                   <Td>
-                    <RowInput
+                    <RowTextarea
                       value={row.draft.condition}
                       onChange={(v) => setDraftField(p.slot, "condition", v)}
                     />
@@ -350,6 +350,30 @@ function RowInput({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className="w-full rounded-md border border-white/10 bg-[#0B1319] px-2 py-1.5 text-sm text-white outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/60"
+    />
+  );
+}
+
+/**
+ * Multi-line variant for Condition. Roster conditions are comma-separated
+ * clinical notes — SOFT TISSUE CARCINOMA, ANEMIA / CHRONIC HEADACHE,
+ * PHOTOBIA, HEART DISEASE — and single-line inputs clip them so the
+ * operator can't see what they're editing. Wraps to fit the column, grows
+ * with the content.
+ */
+function RowTextarea({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      rows={2}
+      className="min-h-[38px] w-full resize-y rounded-md border border-white/10 bg-[#0B1319] px-2 py-1.5 text-sm leading-snug text-white outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/60"
     />
   );
 }
