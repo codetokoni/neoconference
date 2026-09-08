@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import ControlRoom from "@/components/video/ControlRoom";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 
@@ -9,15 +11,16 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// Deliberately unauthenticated: the moderator handout URL links here,
-// and the moderator hub is public. See the note on
-// src/app/video/room/moderate/page.tsx — the room slug is the shared
-// secret, admin surfaces at /video/room stay gated.
+// Requires a signed-in Clerk account — see the note on
+// src/app/video/room/moderate/page.tsx.
 export default async function CamerasPage({
   searchParams,
 }: {
   searchParams?: { room?: string };
 }) {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
+
   const room = (searchParams?.room ?? SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "");
 
   return (

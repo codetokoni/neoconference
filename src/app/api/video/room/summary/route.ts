@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { kv } from "@vercel/kv";
 import {
   SIMULCAST_MAIN,
@@ -24,12 +25,14 @@ function room(req: Request) {
 }
 
 // Summary is read-only — totals + per-screen counts, no participant
-// list, no roster meta. Deliberately unauthenticated so the moderator
-// hub at /video/room/moderate loads for guest moderators handed the
-// URL by the admin (matching the page-level decision to drop auth on
-// that route). Anything that leaks a participant identity or mutates
-// state still requires role.
+// list, no roster meta — but the moderator hub polls it, and the
+// moderator surface now requires a signed-in Clerk account. Any
+// account is enough (no role gate).
 async function guard() {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
   return null;
 }
 

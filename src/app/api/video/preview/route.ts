@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { kv } from "@vercel/kv";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 
@@ -29,11 +30,13 @@ function room(req: Request) {
   return (r || SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 64);
 }
 
-// Deliberately unauthenticated: the preview pointer is a moderator-tier
-// signal (which tile the producer is checking), shared across every
-// operator watching the boards. Same rationale as the other
-// moderator-tier APIs — see src/app/video/room/moderate/page.tsx.
+// Requires a signed-in Clerk account — same rationale as the other
+// moderator-tier APIs, see src/app/video/room/moderate/page.tsx.
 async function guard() {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
   return null;
 }
 

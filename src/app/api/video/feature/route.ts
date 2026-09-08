@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { kv } from "@vercel/kv";
 import { SIMULCAST_MAIN, featuredKey, type FeaturedState } from "@/lib/simulcast";
 
@@ -18,12 +19,16 @@ function room(req: Request) {
  * swaps the rendered element once it has frames. Nothing is re-encoded, and
  * clearing is instant because the programme connection was never dropped.
  *
- * Deliberately unauthenticated so the moderator hub's "feature to air"
- * works for guest moderators handed the moderator URL. See the note on
- * src/app/video/room/moderate/page.tsx — the room slug is the shared
- * secret.
+ * Requires a signed-in Clerk account (any account — no role gate).
+ * Featuring a participant on air mutates broadcast state and needs a
+ * name on the audit trail; middleware handles the primary gate, this
+ * is defense-in-depth.
  */
 export async function POST(req: Request) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
   const r = room(req);
 
   let body: { streamId?: string | null; label?: string };

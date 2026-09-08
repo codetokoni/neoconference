@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { kv } from "@vercel/kv";
 import {
   AMS_REST,
@@ -51,13 +52,15 @@ function isAllScreens(req: Request) {
   return raw === "all";
 }
 
-// Deliberately unauthenticated: the moderator boards read layout via
-// GET and mutate hide/order/stop via PATCH+DELETE, and those all need
-// to work for guest moderators handed the moderator URL. DELETE here
-// stops one broadcast + releases one code claim — moderator-tier, not
-// destructive to the room itself. See the note on
-// src/app/video/room/moderate/page.tsx.
+// Moderator-tier: GET reads layout, PATCH mutates hide/order, DELETE
+// stops one broadcast + releases one code claim. All require a signed-in
+// Clerk account (any account — no role gate). Middleware already
+// bounces anonymous traffic; this is defense-in-depth.
 async function guard() {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
   return null;
 }
 

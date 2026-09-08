@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 import {
   createQueue,
@@ -15,9 +16,13 @@ function room(req: Request) {
   return (r || SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 64);
 }
 
-// Deliberately unauthenticated — see the note on
+// Requires a signed-in Clerk account — see the note on
 // src/app/video/room/moderate/page.tsx.
 async function guard() {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
   return null;
 }
 
