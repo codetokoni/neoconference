@@ -107,6 +107,17 @@ export default function RosterPanel({ room }: { room: string }) {
           {msg.text}
         </p>
       )}
+
+      <p className="text-xs text-white/60">
+        Typo in a name or condition after upload?{" "}
+        <a
+          href={`/video/room/roster/edit?room=${encodeURIComponent(room)}`}
+          className="text-emerald-300 underline decoration-dotted underline-offset-2 hover:text-emerald-200"
+        >
+          Fix one row at a time
+        </a>{" "}
+        without re-uploading the whole spreadsheet.
+      </p>
     </section>
   );
 }
