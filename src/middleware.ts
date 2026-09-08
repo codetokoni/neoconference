@@ -38,6 +38,15 @@ const isPublicRoute = createRouteMatcher([
   // the route rate limits hard. /api/video/codes and /feature stay staff-only.
   '/video/join',
   '/api/video/join',
+  // Studio (feed pusher) and the moderator handout are deliberately
+  // unauthenticated: the room slug in the URL is the shared secret,
+  // and requiring Clerk blocked guest broadcasters and volunteer
+  // moderators. The admin surface at /video/room stays gated to the
+  // admin email list (videoAdmin.ts), and the summary API these pages
+  // rely on only returns totals + per-screen counts, no identities.
+  '/video/studio',
+  '/video/room/moderate',
+  '/api/video/room/summary',
 ]);
 
 // Hosts that ARE the canonical app (skip custom-domain rewrite for these).

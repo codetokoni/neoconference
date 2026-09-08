@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import RoomHub from "@/components/video/RoomHub";
-import { requireRole } from "@/lib/roles";
 import { getRoom } from "@/lib/rooms";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 
@@ -21,18 +19,18 @@ export const metadata: Metadata = {
  * the copyable Join / Streaming / Moderator links, the code prefix, the
  * roster upload and download.
  *
- * The route is still Clerk-protected and requires staff role. If someone
- * with staff access wants the admin surface, they type /video/room
- * themselves. The moderator URL is a UX boundary, not a security one.
+ * Deliberately unauthenticated: the room slug in the query string is
+ * the shared secret; requiring Clerk for moderator handouts blocked
+ * guest volunteers who help run boards during events. The admin
+ * surface at /video/room stays gated to the admin email list — this
+ * page never exposes the admin-only affordances regardless of who
+ * opens it.
  */
 export default async function ModeratePage({
   searchParams,
 }: {
   searchParams?: { room?: string };
 }) {
-  const actor = await requireRole(["admin", "staff"]);
-  if (!actor) redirect("/dashboard");
-
   const room = (searchParams?.room ?? SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "");
   const roomRecord = await getRoom(room);
   const roomName = roomRecord?.name ?? room;

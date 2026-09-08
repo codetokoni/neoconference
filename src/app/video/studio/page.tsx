@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import StudioConsole from "@/components/video/StudioConsole";
-import { requireRole } from "@/lib/roles";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 
 export const dynamic = "force-dynamic";
@@ -11,14 +9,16 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// Deliberately unauthenticated: the Studio URL is handed out per event to
+// whoever is pushing the programme feed, and requiring a Clerk account
+// created too much friction for guest broadcasters. The room slug in the
+// query string is the shared secret — treat the URL itself as the
+// credential and don't post it publicly.
 export default async function VideoStudioPage({
   searchParams,
 }: {
   searchParams?: { room?: string };
 }) {
-  const actor = await requireRole(["admin", "staff"]);
-  if (!actor) redirect("/dashboard");
-
   const room = (searchParams?.room ?? SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "");
 
   return (
