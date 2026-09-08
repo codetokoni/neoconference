@@ -67,26 +67,32 @@ function randomPrefix(): string {
 }
 
 /**
- * The bit after the "-" in a code. Random per slot so knowing your
- * own code (say QAEX-K7P3) tells you the room's shared prefix but
- * nothing about anyone else's suffix — you can't guess QAEX-01,
- * QAEX-02, etc. because they don't exist. 4 chars from the 30-glyph
- * ambiguity-free alphabet gives ~810 K combinations; for a 150-slot
- * room the chance of any collision is ~1e-4, and the loop below
- * eliminates even that.
+ * Length of the numeric passcode handed to participants. 6 digits
+ * gives ~1 M combinations; birthday-paradox collision in a 150-slot
+ * room is ~1 %, eliminated by the retry loop in mintCodes. Long
+ * enough that brute-forcing over a rate-limited join endpoint is
+ * hopeless, short enough that a participant on a mobile keypad can
+ * type it without mistakes.
  */
-function randomSuffix(): string {
-  return randomChars(4);
+const NUMERIC_CODE_LENGTH = 6;
+
+/**
+ * Generate a random numeric passcode. Digits only — the operator's
+ * original PASSCODE columns (SEEN_DOXA_2, SEEN_JULY_DAY_2_ZOE)
+ * always looked like this (860684, 272794, 574651), and switching
+ * to alphanumeric confused people typing them off a mailer.
+ */
+function randomNumericCode(): string {
+  let out = "";
+  const bytes = new Uint8Array(NUMERIC_CODE_LENGTH);
+  crypto.getRandomValues(bytes);
+  for (let i = 0; i < NUMERIC_CODE_LENGTH; i += 1) out += String(bytes[i] % 10);
+  return out;
 }
 
-export function formatCode(prefix: string, suffix: string): string {
-  return `${prefix}-${suffix}`;
-}
-
-/** Everything after the first "-" in a code — the room-unique bit. */
-function suffixOf(code: string): string {
-  const dash = code.indexOf("-");
-  return dash < 0 ? code : code.slice(dash + 1);
+/** Kept as a thin re-export for callers that already imported it. */
+export function formatCode(_prefix: string, code: string): string {
+  return code;
 }
 
 /**
@@ -108,21 +114,20 @@ export async function mintCodes(
   if (!stored) await kv.set(prefixKey(room), prefix);
 
   // Pull existing codes so we can (a) skip slots that already have a
-  // code and (b) avoid handing out a suffix that's already in use in
+  // code and (b) avoid handing out a code that's already in use in
   // this room.
   const already = await listCodes(room);
   const filledSlots = new Set(already.map((c) => c.slot));
-  const usedSuffixes = new Set(already.map((c) => suffixOf(c.code)));
+  const usedCodes = new Set(already.map((c) => c.code));
 
   const codes: ParticipantCode[] = [];
   const record: Record<string, string> = {};
 
   for (let slot = 1; slot <= count; slot += 1) {
     if (filledSlots.has(slot)) continue;
-    let suffix = randomSuffix();
-    while (usedSuffixes.has(suffix)) suffix = randomSuffix();
-    usedSuffixes.add(suffix);
-    const code = formatCode(prefix, suffix);
+    let code = randomNumericCode();
+    while (usedCodes.has(code)) code = randomNumericCode();
+    usedCodes.add(code);
     const entry: ParticipantCode = {
       code,
       slot,
@@ -154,17 +159,14 @@ export async function regenerateCodes(
 ): Promise<{ regenerated: number }> {
   const existing = await listCodes(room);
   if (!existing.length) return { regenerated: 0 };
-  const stored = await kv.get<string>(prefixKey(room));
-  const prefix = stored ?? randomPrefix();
-  if (!stored) await kv.set(prefixKey(room), prefix);
 
-  const usedSuffixes = new Set<string>();
+  const usedCodes = new Set<string>();
   const record: Record<string, string> = {};
   for (const c of existing) {
-    let suffix = randomSuffix();
-    while (usedSuffixes.has(suffix)) suffix = randomSuffix();
-    usedSuffixes.add(suffix);
-    const next: ParticipantCode = { ...c, code: formatCode(prefix, suffix) };
+    let code = randomNumericCode();
+    while (usedCodes.has(code)) code = randomNumericCode();
+    usedCodes.add(code);
+    const next: ParticipantCode = { ...c, code };
     record[keyForCode(next.code)] = JSON.stringify(next);
   }
   // The whole hash gets replaced — the old codes' hash keys don't
