@@ -14,13 +14,12 @@ export const metadata: Metadata = {
 export default async function CamerasPage({
   searchParams,
 }: {
-  searchParams?: { screen?: string; room?: string };
+  searchParams?: { room?: string };
 }) {
   // Clerk already protects this path via middleware; this is the role gate.
   const actor = await requireRole(["admin", "staff"]);
   if (!actor) redirect("/dashboard");
 
-  const screen = Math.max(1, Math.min(20, Number(searchParams?.screen ?? 1) || 1));
   const room = (searchParams?.room ?? SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "");
 
   return (
@@ -36,12 +35,13 @@ export default async function CamerasPage({
           Camera board
         </h1>
         <p className="max-w-[64ch] text-sm text-white/60">
-          Drag to rearrange, × to hide, click a tile to open it. Featuring puts that camera
+          Every participant across every screen in one grid. Drag to rearrange,
+          × to hide, click a tile to open it. Featuring puts that camera
           full-frame for the public audience until you send it back to the programme.
         </p>
       </header>
 
-      <ControlRoom room={room} screen={screen} />
+      <ControlRoom room={room} />
     </main>
   );
 }

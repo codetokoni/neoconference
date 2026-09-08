@@ -141,10 +141,8 @@ function Tile({
 
 export default function ControlRoom({
   room = SIMULCAST_MAIN,
-  screen = 1,
 }: {
   room?: string;
-  screen?: number;
 }) {
   const [data, setData] = useState<RoomPayload | null>(null);
   const [order, setOrder] = useState<string[]>([]);
@@ -159,8 +157,11 @@ export default function ControlRoom({
 
   const load = useCallback(async () => {
     try {
+      // Camera board is unified — every participant across every screen
+      // in one grid, same choice we made for the name board. Per-tile
+      // WebRTC only opens on p.live, so empty slots stay free.
       const r = await fetch(
-        `/api/video/room?room=${encodeURIComponent(room)}&screen=${screen}`,
+        `/api/video/room?room=${encodeURIComponent(room)}&screen=all`,
         { cache: "no-store" },
       );
       const j = await r.json();
@@ -175,7 +176,7 @@ export default function ControlRoom({
     } catch {
       /* transient */
     }
-  }, [room, screen]);
+  }, [room]);
 
   useEffect(() => {
     load();
@@ -208,16 +209,19 @@ export default function ControlRoom({
   const saveLayout = useCallback(
     async (nextOrder: string[], nextHidden: string[]) => {
       try {
-        await fetch(`/api/video/room?room=${encodeURIComponent(room)}&screen=${screen}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order: nextOrder, hidden: nextHidden }),
-        });
+        await fetch(
+          `/api/video/room?room=${encodeURIComponent(room)}&screen=all`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ order: nextOrder, hidden: nextHidden }),
+          },
+        );
       } catch {
         /* the operator still sees their arrangement; it just is not shared yet */
       }
     },
-    [room, screen],
+    [room],
   );
 
   /* Memoised: a fresh [] each render would recompute every list below and
@@ -376,23 +380,8 @@ export default function ControlRoom({
   return (
     <div className="overflow-hidden rounded-xl border border-white/10 bg-[#101A20] text-[#DDE7EC] shadow-2xl">
       <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2.5">
-        {Array.from({ length: data?.screens ?? 1 }, (_, i) => i + 1).map((n) => (
-          <a
-            key={n}
-            href={`?screen=${n}`}
-            className={[
-              "rounded-md border px-3 py-1 text-xs transition",
-              n === screen
-                ? "border-transparent bg-emerald-600 text-white"
-                : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10",
-            ].join(" ")}
-          >
-            Screen {n}
-          </a>
-        ))}
-
         <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
-          {liveCount} live · {hidden.length} hidden
+          {participants.length} slots · {liveCount} live · {hidden.length} hidden
         </span>
 
         <span className="ml-auto font-mono text-[10.5px] uppercase tracking-[0.12em] text-amber-300/90">
