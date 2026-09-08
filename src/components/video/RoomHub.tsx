@@ -46,6 +46,12 @@ interface Summary {
  */
 export type RoomHubRole = "admin" | "moderator";
 
+interface QueueMeta {
+  slug: string;
+  name: string;
+  order: string[];
+}
+
 export default function RoomHub({
   room,
   role = "admin",
@@ -54,6 +60,7 @@ export default function RoomHub({
   role?: RoomHubRole;
 }) {
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [queues, setQueues] = useState<QueueMeta[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [joinUrl, setJoinUrl] = useState("");
   const [streamingUrl, setStreamingUrl] = useState("");
@@ -87,6 +94,19 @@ export default function RoomHub({
       }
       setErr(null);
       setSummary(j as Summary);
+    } catch {
+      /* transient */
+    }
+    // Fetch queues in parallel so the hub shows them without waiting
+    // for a moderator to click through to the queue list. A queues
+    // fetch failing shouldn't kill the summary render, so it's a
+    // second try/catch.
+    try {
+      const qr = await fetch(`/api/video/queues?room=${encodeURIComponent(room)}`, {
+        cache: "no-store",
+      });
+      const qj = await qr.json();
+      if (qj.ok) setQueues(qj.queues as QueueMeta[]);
     } catch {
       /* transient */
     }
@@ -195,7 +215,7 @@ export default function RoomHub({
         <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
           Boards
         </h2>
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2">
           <BoardCard
             href={`/video/room/cameras?room=${encodeURIComponent(s.room)}`}
             title="Camera board"
@@ -209,14 +229,48 @@ export default function RoomHub({
             costHint="Zero viewer slots used. Poll only."
             cheap
           />
-          <BoardCard
-            href={`/video/room/queue?room=${encodeURIComponent(s.room)}`}
-            title="Queue"
-            subtitle="Stage who goes on air next — top of the list, one click to feature."
-            costHint="Zero viewer slots used. Poll only."
-            cheap
-          />
         </div>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
+            Queues
+          </h2>
+          <a
+            href={`/video/room/queue?room=${encodeURIComponent(s.room)}`}
+            className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-emerald-300 hover:text-emerald-200"
+          >
+            Manage →
+          </a>
+        </div>
+        {queues.length === 0 ? (
+          <a
+            href={`/video/room/queue?room=${encodeURIComponent(s.room)}`}
+            className="rounded-lg border border-white/12 bg-[#101820] p-4 text-sm text-white/60 transition hover:border-white/25 hover:bg-white/[0.04]"
+          >
+            No queues yet. Create one to stage the participants who are online out
+            of the crowd so you can feature them one click at a time.
+          </a>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {queues.map((q) => (
+              <a
+                key={q.slug}
+                href={`/video/room/${encodeURIComponent(q.slug)}?room=${encodeURIComponent(s.room)}`}
+                className="flex flex-col gap-1.5 rounded-lg border border-white/12 bg-[#101820] p-4 transition hover:border-white/25 hover:bg-white/[0.04]"
+              >
+                <h3 className="text-base font-semibold text-white">{q.name}</h3>
+                <p className="text-xs text-white/60">
+                  {q.order.length} staged
+                </p>
+                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/35">
+                  /video/room/{q.slug}
+                </p>
+              </a>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="flex flex-col gap-3">

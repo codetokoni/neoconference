@@ -6,6 +6,7 @@ import {
   isValidSlug,
   listQueues,
   normaliseSlug,
+  RESERVED_QUEUE_SLUGS,
 } from "@/lib/videoQueues";
 
 export const runtime = "nodejs";
@@ -56,7 +57,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Name required." }, { status: 400 });
   }
   const slug = normaliseSlug(String(body.slug ?? "") || name);
-  if (!slug || !isValidSlug(slug)) {
+  if (!slug) {
+    return NextResponse.json({ ok: false, error: "Bad slug." }, { status: 400 });
+  }
+  if (RESERVED_QUEUE_SLUGS.has(slug)) {
+    // Explicit message so admins immediately know why "moderate",
+    // "cameras", "queue", … aren't accepted — those names collide
+    // with existing pages under /video/room/<name> and would be
+    // unreachable at the short URL.
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `"${slug}" is a reserved name — pick another (avoid: ${Array.from(RESERVED_QUEUE_SLUGS).join(", ")}).`,
+      },
+      { status: 400 },
+    );
+  }
+  if (!isValidSlug(slug)) {
     return NextResponse.json({ ok: false, error: "Bad slug." }, { status: 400 });
   }
 

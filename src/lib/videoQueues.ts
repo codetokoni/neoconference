@@ -23,6 +23,22 @@ const queuesKey = (room: string) => `neo:video:queues:${room}`;
 /** Slug shape: 1-32 chars, lowercase alphanumerics and dashes only. */
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 
+/**
+ * Slugs that collide with existing paths under /video/room/. A queue
+ * with slug "moderate" (or any of these) would be shadowed by the
+ * static route of the same name once we expose queues at
+ * /video/room/<slug>, so the API refuses them at create time. Keep
+ * this in sync with the folder names under src/app/video/room/.
+ */
+export const RESERVED_QUEUE_SLUGS = new Set([
+  "moderate",
+  "cameras",
+  "names",
+  "queue",
+  "queues",
+  "roster",
+]);
+
 export function normaliseSlug(raw: string): string {
   return String(raw ?? "")
     .toLowerCase()
@@ -33,7 +49,7 @@ export function normaliseSlug(raw: string): string {
 }
 
 export function isValidSlug(s: string): boolean {
-  return SLUG_RE.test(s);
+  return SLUG_RE.test(s) && !RESERVED_QUEUE_SLUGS.has(s);
 }
 
 function parse(val: Queue | string | null | undefined, slug: string): Queue | null {
