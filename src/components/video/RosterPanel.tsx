@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+interface BatchMeta {
+  id: string;
+  filename: string;
+  uploadedAt: number;
+  slotStart: number;
+  slotEnd: number;
+  rowCount: number;
+}
 
 /**
  * Roster upload / download for one room.
@@ -17,6 +26,48 @@ export default function RosterPanel({ room }: { room: string }) {
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [append, setAppend] = useState(true);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const [batches, setBatches] = useState<BatchMeta[]>([]);
+
+  const refreshBatches = useCallback(async () => {
+    try {
+      const r = await fetch(
+        `/api/video/room/roster/batches?room=${encodeURIComponent(room)}`,
+        { cache: "no-store" },
+      );
+      const j = await r.json();
+      if (j.ok) setBatches(j.batches as BatchMeta[]);
+    } catch {
+      /* transient */
+    }
+  }, [room]);
+
+  useEffect(() => {
+    refreshBatches();
+  }, [refreshBatches]);
+
+  const deleteBatch = useCallback(
+    async (b: BatchMeta) => {
+      const ok = window.confirm(
+        `Remove "${b.filename}" from the download list? Codes and names on slots ${b.slotStart}–${b.slotEnd} stay untouched; only this downloadable file goes away.`,
+      );
+      if (!ok) return;
+      try {
+        const r = await fetch(
+          `/api/video/room/roster?room=${encodeURIComponent(room)}&batch=${encodeURIComponent(b.id)}`,
+          { method: "DELETE" },
+        );
+        const j = await r.json();
+        if (!j.ok) {
+          setMsg({ kind: "err", text: j.error ?? "Could not remove batch." });
+          return;
+        }
+        setBatches((prev) => prev.filter((x) => x.id !== b.id));
+      } catch {
+        setMsg({ kind: "err", text: "Could not remove batch. Check your connection." });
+      }
+    },
+    [room],
+  );
 
   const runDelete = useCallback(
     async (scope: "wipe" | "names", confirmPhrase: string, onOk: string) => {
@@ -45,13 +96,17 @@ export default function RosterPanel({ room }: { room: string }) {
           kind: "ok",
           text: scope === "names" && typeof j.reset === "number" ? `${onOk} (${j.reset} slot${j.reset === 1 ? "" : "s"} reset)` : onOk,
         });
+        // Wipe nukes the batch index too; re-pull so the UI reflects
+        // reality instead of showing stale entries whose backing files
+        // are already gone.
+        if (scope === "wipe") void refreshBatches();
       } catch {
         setMsg({ kind: "err", text: "Delete failed. Check your connection." });
       } finally {
         setBusy(false);
       }
     },
-    [room],
+    [room, refreshBatches],
   );
 
   const onUpload = useCallback(
@@ -80,6 +135,10 @@ export default function RosterPanel({ room }: { room: string }) {
           kind: "ok",
           text: parts.length ? parts.join(" · ") : "No changes applied.",
         });
+        // A successful upload minted a new batch — pull the refreshed
+        // list so the operator sees the file in the download list
+        // without having to reload.
+        void refreshBatches();
       } catch {
         setMsg({ kind: "err", text: "Upload failed. Check your connection." });
       } finally {
@@ -87,7 +146,7 @@ export default function RosterPanel({ room }: { room: string }) {
         if (fileRef.current) fileRef.current.value = "";
       }
     },
-    [room, append],
+    [room, append, refreshBatches],
   );
 
   const downloadHref = `/api/video/room/roster?room=${encodeURIComponent(room)}`;
@@ -149,15 +208,68 @@ export default function RosterPanel({ room }: { room: string }) {
             href={downloadHref}
             className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
           >
-            Download .xlsx with codes
+            Download combined .xlsx
           </a>
           <p className="text-xs text-white/60">
-            The exact file you uploaded, with a <b>PASSCODE</b> column added and any
-            name/condition edits reflected. Slots not touched by upload keep their
-            auto-generated names.
+            One file with every slot in the merged layout of your latest upload,
+            <b> PASSCODE</b> column appended, RosterEditor edits reflected. When
+            two uploads had different columns (e.g. one with <b>CONTACT</b>, one
+            without) the merged file drops the difference — use the per-file
+            downloads below for exact fidelity.
           </p>
         </div>
       </div>
+
+      {batches.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-xl border border-white/12 bg-[#141C22] p-4">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/45">
+              Downloads by upload · {batches.length}
+            </span>
+            <span className="text-[10px] text-white/40">
+              Each file matches its original layout with a PASSCODE column added.
+            </span>
+          </div>
+          <ul className="flex flex-col gap-2">
+            {batches.map((b) => {
+              const href = `/api/video/room/roster?room=${encodeURIComponent(
+                room,
+              )}&batch=${encodeURIComponent(b.id)}`;
+              return (
+                <li
+                  key={b.id}
+                  className="flex flex-wrap items-center gap-3 rounded-md border border-white/8 bg-[#0B1319] px-3 py-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-white" title={b.filename}>
+                      {b.filename}
+                    </div>
+                    <div className="font-mono text-[10.5px] uppercase tracking-[0.10em] text-white/45">
+                      slots {b.slotStart}–{b.slotEnd} · {b.rowCount} row
+                      {b.rowCount === 1 ? "" : "s"} ·{" "}
+                      {new Date(b.uploadedAt).toLocaleString()}
+                    </div>
+                  </div>
+                  <a
+                    href={href}
+                    className="inline-flex items-center justify-center rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500"
+                  >
+                    Download
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => deleteBatch(b)}
+                    className="inline-flex items-center justify-center rounded-md border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-200 transition hover:bg-red-500/20"
+                    title="Remove this file from the download list (codes and names untouched)"
+                  >
+                    Remove
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {msg && (
         <p className={"text-sm " + (msg.kind === "ok" ? "text-emerald-300" : "text-red-400")}>
