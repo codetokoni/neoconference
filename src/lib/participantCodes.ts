@@ -54,35 +54,75 @@ function keyForCode(raw: string): string {
   return normaliseCode(raw);
 }
 
-function randomPrefix(): string {
+function randomChars(length: number): string {
   let out = "";
-  const bytes = new Uint8Array(4);
+  const bytes = new Uint8Array(length);
   crypto.getRandomValues(bytes);
-  for (let i = 0; i < 4; i += 1) out += ALPHABET[bytes[i] % ALPHABET.length];
+  for (let i = 0; i < length; i += 1) out += ALPHABET[bytes[i] % ALPHABET.length];
   return out;
 }
 
-export function formatCode(prefix: string, slot: number): string {
-  return `${prefix}-${String(slot).padStart(2, "0")}`;
+function randomPrefix(): string {
+  return randomChars(4);
 }
 
 /**
- * Creates codes for slots 1..count, reusing the room's existing prefix so
- * previously issued invitations keep working when the list is extended.
+ * The bit after the "-" in a code. Random per slot so knowing your
+ * own code (say QAEX-K7P3) tells you the room's shared prefix but
+ * nothing about anyone else's suffix — you can't guess QAEX-01,
+ * QAEX-02, etc. because they don't exist. 4 chars from the 30-glyph
+ * ambiguity-free alphabet gives ~810 K combinations; for a 150-slot
+ * room the chance of any collision is ~1e-4, and the loop below
+ * eliminates even that.
+ */
+function randomSuffix(): string {
+  return randomChars(4);
+}
+
+export function formatCode(prefix: string, suffix: string): string {
+  return `${prefix}-${suffix}`;
+}
+
+/** Everything after the first "-" in a code — the room-unique bit. */
+function suffixOf(code: string): string {
+  const dash = code.indexOf("-");
+  return dash < 0 ? code : code.slice(dash + 1);
+}
+
+/**
+ * Mint codes for slots 1..count that don't already have one. Reuses
+ * the room's existing prefix so previously issued codes keep working
+ * when the list is extended, and skips slots that are already minted
+ * so those participants don't have the code changed under them.
+ *
+ * Suffixes are random (see randomSuffix) — sequential IDs would let
+ * a participant holding QAEX-07 guess QAEX-01…QAEX-06 and grab an
+ * unclaimed slot.
  */
 export async function mintCodes(
   room: string,
   count: number,
 ): Promise<{ prefix: string; codes: ParticipantCode[] }> {
-  const existing = await kv.get<string>(prefixKey(room));
-  const prefix = existing ?? randomPrefix();
-  if (!existing) await kv.set(prefixKey(room), prefix);
+  const stored = await kv.get<string>(prefixKey(room));
+  const prefix = stored ?? randomPrefix();
+  if (!stored) await kv.set(prefixKey(room), prefix);
+
+  // Pull existing codes so we can (a) skip slots that already have a
+  // code and (b) avoid handing out a suffix that's already in use in
+  // this room.
+  const already = await listCodes(room);
+  const filledSlots = new Set(already.map((c) => c.slot));
+  const usedSuffixes = new Set(already.map((c) => suffixOf(c.code)));
 
   const codes: ParticipantCode[] = [];
   const record: Record<string, string> = {};
 
   for (let slot = 1; slot <= count; slot += 1) {
-    const code = formatCode(prefix, slot);
+    if (filledSlots.has(slot)) continue;
+    let suffix = randomSuffix();
+    while (usedSuffixes.has(suffix)) suffix = randomSuffix();
+    usedSuffixes.add(suffix);
+    const code = formatCode(prefix, suffix);
     const entry: ParticipantCode = {
       code,
       slot,
@@ -95,6 +135,50 @@ export async function mintCodes(
 
   if (codes.length) await kv.hset(codesKey(room), record);
   return { prefix, codes };
+}
+
+/**
+ * Reissue every code in the room with a fresh random suffix. Names,
+ * meta, slots, and streamIds are preserved; only the code changes.
+ *
+ * Anyone still holding an old code loses access immediately — that's
+ * the whole point (rotating away from predictable QAEX-01…QAEX-150
+ * codes so guessing stops working). Active claims are dropped so the
+ * next join is a fresh claim on the new code.
+ *
+ * The prefix is reused so admins can still recognise which room a
+ * code belongs to at a glance.
+ */
+export async function regenerateCodes(
+  room: string,
+): Promise<{ regenerated: number }> {
+  const existing = await listCodes(room);
+  if (!existing.length) return { regenerated: 0 };
+  const stored = await kv.get<string>(prefixKey(room));
+  const prefix = stored ?? randomPrefix();
+  if (!stored) await kv.set(prefixKey(room), prefix);
+
+  const usedSuffixes = new Set<string>();
+  const record: Record<string, string> = {};
+  for (const c of existing) {
+    let suffix = randomSuffix();
+    while (usedSuffixes.has(suffix)) suffix = randomSuffix();
+    usedSuffixes.add(suffix);
+    const next: ParticipantCode = { ...c, code: formatCode(prefix, suffix) };
+    record[keyForCode(next.code)] = JSON.stringify(next);
+  }
+  // The whole hash gets replaced — the old codes' hash keys don't
+  // match the new ones (each code normalises to a different key), so
+  // without a del the old entries would linger and double every slot.
+  await kv.del(codesKey(room));
+  await kv.hset(codesKey(room), record);
+
+  // Old claim locks are keyed by the old normalised code and would
+  // otherwise become undeletable orphans until their TTL expires.
+  const claimKeys = await kv.keys(`neo:video:claim:${room}:*`);
+  if (claimKeys.length) await kv.del(...(claimKeys as [string, ...string[]]));
+
+  return { regenerated: existing.length };
 }
 
 export async function listCodes(room: string): Promise<ParticipantCode[]> {

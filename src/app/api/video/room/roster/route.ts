@@ -4,6 +4,7 @@ import { SIMULCAST_MAIN } from "@/lib/simulcast";
 import {
   applyRoster,
   listCodes,
+  regenerateCodes,
   resetRosterMeta,
   wipeRoom,
 } from "@/lib/participantCodes";
@@ -295,8 +296,15 @@ export async function DELETE(req: Request) {
     const { reset } = await resetRosterMeta(r);
     return NextResponse.json({ ok: true, scope: "names", reset });
   }
+  if (scope === "codes") {
+    const { regenerated } = await regenerateCodes(r);
+    return NextResponse.json({ ok: true, scope: "codes", regenerated });
+  }
   return NextResponse.json(
-    { ok: false, error: "scope must be 'wipe' or 'names', or pass batch=<id>." },
+    {
+      ok: false,
+      error: "scope must be 'wipe', 'names', or 'codes', or pass batch=<id>.",
+    },
     { status: 400 },
   );
 }
