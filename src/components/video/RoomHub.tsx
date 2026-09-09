@@ -279,7 +279,7 @@ export default function RoomHub({
         </h2>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {s.screenBlocks.map((b) => (
-            <ScreenCard key={b.screen} room={s.room} block={b} />
+            <ScreenCard key={b.screen} room={s.room} block={b} role={role} />
           ))}
         </div>
       </section>
@@ -369,7 +369,24 @@ function BoardCard({
   );
 }
 
-function ScreenCard({ room, block }: { room: string; block: ScreenBlock }) {
+function ScreenCard({
+  room,
+  block,
+  role,
+}: {
+  room: string;
+  block: ScreenBlock;
+  role: RoomHubRole;
+}) {
+  // Moderators open the Camera board in display mode — the boards
+  // are typically projected on a physical screen for the room to
+  // see, so the producer chrome (drag/hide/on-air strip) would just
+  // be visual noise on the projected view. Admins get the editable
+  // board by default and can opt into display mode from a link on
+  // that page.
+  const cameraHref = `/video/room/cameras?room=${encodeURIComponent(room)}&screen=${block.screen}${
+    role === "moderator" ? "&display=1" : ""
+  }`;
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-white/12 bg-[#101820] p-4">
       <div className="flex items-baseline justify-between gap-3">
@@ -405,9 +422,13 @@ function ScreenCard({ room, block }: { room: string; block: ScreenBlock }) {
 
       <div className="flex flex-wrap gap-2">
         <a
-          href={`/video/room/cameras?room=${encodeURIComponent(room)}&screen=${block.screen}`}
+          href={cameraHref}
           className="rounded-md border border-white/12 px-3 py-1.5 text-xs text-white hover:bg-white/10"
-          title={`Camera board — only Screen ${block.screen} (slots ${block.from}-${block.to})`}
+          title={
+            role === "moderator"
+              ? `Camera board (display mode) — Screen ${block.screen}, slots ${block.from}-${block.to}, projection-friendly`
+              : `Camera board — only Screen ${block.screen} (slots ${block.from}-${block.to})`
+          }
         >
           Camera board
         </a>
