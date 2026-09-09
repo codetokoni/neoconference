@@ -405,8 +405,9 @@ function ScreenCard({ room, block }: { room: string; block: ScreenBlock }) {
 
       <div className="flex flex-wrap gap-2">
         <a
-          href={`/video/room/cameras?room=${encodeURIComponent(room)}`}
+          href={`/video/room/cameras?room=${encodeURIComponent(room)}&screen=${block.screen}`}
           className="rounded-md border border-white/12 px-3 py-1.5 text-xs text-white hover:bg-white/10"
+          title={`Camera board — only Screen ${block.screen} (slots ${block.from}-${block.to})`}
         >
           Camera board
         </a>

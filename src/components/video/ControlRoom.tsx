@@ -141,8 +141,17 @@ function Tile({
 
 export default function ControlRoom({
   room = SIMULCAST_MAIN,
+  screen,
 }: {
   room?: string;
+  /**
+   * When set to a screen number (1..20), the board shows only that
+   * screen's block of participants (e.g. 1-50 for Screen 1) and
+   * layout persistence writes to that screen's own bucket. When
+   * unset, the board keeps its original "every participant across
+   * every screen" behaviour under the :all layout bucket.
+   */
+  screen?: number;
 }) {
   const [data, setData] = useState<RoomPayload | null>(null);
   const [order, setOrder] = useState<string[]>([]);
@@ -161,7 +170,7 @@ export default function ControlRoom({
       // in one grid, same choice we made for the name board. Per-tile
       // WebRTC only opens on p.live, so empty slots stay free.
       const r = await fetch(
-        `/api/video/room?room=${encodeURIComponent(room)}&screen=all`,
+        `/api/video/room?room=${encodeURIComponent(room)}&screen=${screen ?? "all"}`,
         { cache: "no-store" },
       );
       const j = await r.json();
@@ -176,7 +185,7 @@ export default function ControlRoom({
     } catch {
       /* transient */
     }
-  }, [room]);
+  }, [room, screen]);
 
   useEffect(() => {
     load();
@@ -198,7 +207,7 @@ export default function ControlRoom({
     } catch {
       /* transient */
     }
-  }, [room]);
+  }, [room, screen]);
 
   useEffect(() => {
     loadPreview();
@@ -210,7 +219,7 @@ export default function ControlRoom({
     async (nextOrder: string[], nextHidden: string[]) => {
       try {
         await fetch(
-          `/api/video/room?room=${encodeURIComponent(room)}&screen=all`,
+          `/api/video/room?room=${encodeURIComponent(room)}&screen=${screen ?? "all"}`,
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
@@ -221,7 +230,7 @@ export default function ControlRoom({
         /* the operator still sees their arrangement; it just is not shared yet */
       }
     },
-    [room],
+    [room, screen],
   );
 
   /* Memoised: a fresh [] each render would recompute every list below and

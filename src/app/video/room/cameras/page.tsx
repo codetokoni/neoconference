@@ -16,12 +16,20 @@ export const metadata: Metadata = {
 export default async function CamerasPage({
   searchParams,
 }: {
-  searchParams?: { room?: string };
+  searchParams?: { room?: string; screen?: string };
 }) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
   const room = (searchParams?.room ?? SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "");
+  // Optional screen filter. With ?screen=N the board renders just
+  // that screen's block (Screen 1 = slots 1-50, Screen 2 = 51-100,
+  // …); without it, the historical unified view is unchanged.
+  const rawScreen = Number(searchParams?.screen ?? "");
+  const screen =
+    Number.isFinite(rawScreen) && rawScreen >= 1 && rawScreen <= 20
+      ? Math.floor(rawScreen)
+      : undefined;
 
   return (
     <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-5 px-4 py-8 sm:px-6">
@@ -33,16 +41,34 @@ export default async function CamerasPage({
           ← Hub
         </a>
         <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-          Camera board
+          {screen ? `Screen ${screen} · Camera board` : "Camera board"}
         </h1>
         <p className="max-w-[64ch] text-sm text-white/60">
-          Every participant across every screen in one grid. Drag to rearrange,
-          × to hide, click a tile to open it. Featuring puts that camera
-          full-frame for the public audience until you send it back to the programme.
+          {screen ? (
+            <>
+              Only Screen {screen}&apos;s block of participants. Drag to
+              rearrange, × to hide, click a tile to open it. Featuring puts
+              that camera full-frame for the public audience until you send it
+              back to the programme.{" "}
+              <a
+                href={`/video/room/cameras?room=${encodeURIComponent(room)}`}
+                className="text-emerald-300 hover:text-emerald-200"
+              >
+                See all screens →
+              </a>
+            </>
+          ) : (
+            <>
+              Every participant across every screen in one grid. Drag to
+              rearrange, × to hide, click a tile to open it. Featuring puts
+              that camera full-frame for the public audience until you send it
+              back to the programme.
+            </>
+          )}
         </p>
       </header>
 
-      <ControlRoom room={room} />
+      <ControlRoom room={room} screen={screen} />
     </main>
   );
 }
