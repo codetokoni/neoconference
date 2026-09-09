@@ -1,5 +1,4 @@
-import { AMS_HTTP } from "@/lib/simulcast";
-import { roomMainTrack } from "@/lib/participantCodes";
+import { AMS_HTTP, videoChannelForRoom } from "@/lib/simulcast";
 
 /**
  * Publish URLs a professional broadcaster (OBS, vMix, Wirecast, a
@@ -51,7 +50,15 @@ function parseAms(url: string): { host: string; appName: string } | null {
 export function broadcastEndpointsForRoom(room: string): BroadcastEndpoints | null {
   const parts = parseAms(AMS_HTTP);
   if (!parts) return null;
-  const streamId = roomMainTrack(room);
+  // The programme feed lives on the room's video channel
+  // (`<room>-video`), NOT on the participant main-track wrapper
+  // (`<room>-room`). Pushing to `-room` looks like it works — AMS
+  // accepts the stream — but the audience player subscribes to the
+  // video channel id, so the picture never shows up on
+  // /video/dashboard even though the RTMP session is healthy. Fixed
+  // by using videoChannelForRoom which is the same source of truth
+  // the player uses.
+  const streamId = videoChannelForRoom(room).id;
 
   // WHIP: newer AMS versions expose /<app>/whip/<streamId>. Override
   // via NEXT_PUBLIC_AMS_WHIP_BASE (full base up to just before the
