@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import HealthStrip from "./HealthStrip";
 import RosterPanel from "./RosterPanel";
 import TimerControl from "./TimerControl";
 
@@ -132,6 +133,11 @@ export default function RoomHub({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Ops health strip. Visible to both admin and moderator so
+          whoever's watching the boards spots a translation-worker
+          outage or an AMS drop before the audience does. */}
+      <HealthStrip room={s.room} />
+
       <div className="grid gap-4 rounded-xl border border-white/12 bg-[#141C22] p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
         <div className="flex flex-col gap-1">
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-amber-300/90">
