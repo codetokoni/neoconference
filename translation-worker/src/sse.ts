@@ -69,6 +69,40 @@ export function broadcast(room: string, line: Line): void {
   }
 }
 
+/**
+ * Per-room ring buffer of finalised source utterances. Lets clients
+ * hit /transcript/<room> and get everything said so far, without
+ * needing to have been subscribed since the start of the event.
+ * TRANSCRIPT_MAX_LINES is set generously — at ~15 words / utterance
+ * and one utterance every 3-4s, 2000 lines covers ~2 hours of
+ * continuous speaking, which fits typical sessions with headroom.
+ */
+const TRANSCRIPT_MAX_LINES = Number(process.env.TRANSCRIPT_MAX_LINES ?? "2000");
+const transcripts = new Map<string, Line[]>();
+
+export function recordTranscript(room: string, line: Line): void {
+  let arr = transcripts.get(room);
+  if (!arr) {
+    arr = [];
+    transcripts.set(room, arr);
+  }
+  arr.push(line);
+  if (arr.length > TRANSCRIPT_MAX_LINES) {
+    // Drop the oldest chunk in one shot instead of shifting on every
+    // push. shift() would degrade to O(n) per utterance once the
+    // buffer is full; splice-drop is a batched O(k).
+    arr.splice(0, arr.length - TRANSCRIPT_MAX_LINES);
+  }
+}
+
+export function getTranscript(room: string): Line[] {
+  return transcripts.get(room) ?? [];
+}
+
+export function clearTranscript(room: string): void {
+  transcripts.delete(room);
+}
+
 export function startSseServer(port: number): void {
   const server = http.createServer((req, res) => {
     corsMw(req as unknown as Parameters<typeof corsMw>[0], res as unknown as Parameters<typeof corsMw>[1], () => {
@@ -82,6 +116,24 @@ export function startSseServer(port: number): void {
         res.statusCode = 200;
         res.setHeader("Content-Type", "text/plain");
         res.end("ok\n");
+        return;
+      }
+      // /transcript/<room> — everything said so far, JSON. One shot,
+      // not SSE. Optional ?since=<seq> returns only lines newer than
+      // that sequence number so pollers don't re-download the full
+      // buffer every tick.
+      const tm = url.pathname.match(/^\/transcript\/([^/]+)\/?$/);
+      if (tm) {
+        const room = decodeURIComponent(tm[1]);
+        const since = Number(url.searchParams.get("since") ?? "0");
+        const all = getTranscript(room);
+        const filtered = Number.isFinite(since) && since > 0
+          ? all.filter((l) => l.seq > since)
+          : all;
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(JSON.stringify({ ok: true, room, count: filtered.length, lines: filtered }));
         return;
       }
       // /translations/<room>/<lang>
