@@ -56,6 +56,17 @@ export default function SimulcastPlayer({
   const [serverLive, setServerLive] = useState<Set<string>>(new Set());
   const [viewers, setViewers] = useState(0);
   const [featured, setFeatured] = useState<FeaturedState | null>(null);
+  const [timer, setTimer] = useState<{
+    label: string;
+    durationMs: number;
+    startedAt: number;
+    paused?: number | null;
+    expiresBehaviour: "hold" | "hide";
+  } | null>(null);
+  // Locally ticks so the displayed digits change every second between
+  // server polls. Only advances while a timer is actually running —
+  // no wasted renders when there's no overlay.
+  const [tickNow, setTickNow] = useState<number>(() => Date.now());
 
   // Room prop changing (e.g. via a client-side navigation) resets the
   // selected channel to that room's Floor English.
@@ -150,6 +161,41 @@ export default function SimulcastPlayer({
       clearInterval(t);
     };
   }, [room]);
+
+  // Programme-feed timer. Polled every 5s so an operator setting a
+  // fresh segment from the admin panel sees the overlay within one
+  // heartbeat on viewers' screens. The `tickNow` interval below
+  // handles second-by-second updates in between.
+  useEffect(() => {
+    let stopped = false;
+    const load = async () => {
+      try {
+        const r = await fetch(`/api/video/room/timer?room=${encodeURIComponent(room)}`, {
+          cache: "no-store",
+        });
+        const j = await r.json();
+        if (stopped || !j.ok) return;
+        setTimer(j.timer ?? null);
+      } catch {
+        /* transient */
+      }
+    };
+    load();
+    const t = setInterval(load, 5000);
+    return () => {
+      stopped = true;
+      clearInterval(t);
+    };
+  }, [room]);
+
+  // 1 Hz local tick, but only while the timer is running. A paused
+  // timer holds its digits, and no timer at all means no interval.
+  useEffect(() => {
+    if (!timer) return;
+    if (typeof timer.paused === "number") return;
+    const t = setInterval(() => setTickNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [timer]);
 
   /**
    * Selectable if:
@@ -393,6 +439,54 @@ export default function SimulcastPlayer({
               style={{ display: onAir ? "block" : "none" }}
             />
             <audio ref={featAudioRef} autoPlay muted />
+
+            {/* Programme timer. Producer sets a countdown from the
+                admin panel; every viewer sees the same digits ticking
+                because they're computed from startedAt+duration, not
+                from server-side heartbeats. Hidden when no timer is
+                set OR when expiresBehaviour === "hide" and remaining
+                is zero. Turns amber under 60s, red under 10s. */}
+            {timer && (() => {
+              const remaining =
+                typeof timer.paused === "number"
+                  ? Math.max(0, timer.paused)
+                  : Math.max(0, timer.durationMs - (tickNow - timer.startedAt));
+              const expired = remaining === 0 && timer.paused == null;
+              if (expired && timer.expiresBehaviour === "hide") return null;
+              const totalSec = Math.floor(remaining / 1000);
+              const hh = Math.floor(totalSec / 3600);
+              const mm = Math.floor((totalSec % 3600) / 60);
+              const ss = totalSec % 60;
+              const pad = (n: number) => String(n).padStart(2, "0");
+              const digits = hh > 0 ? `${hh}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
+              const tone = expired
+                ? "border-red-500/70 bg-red-500/25 text-red-100"
+                : remaining <= 10_000
+                  ? "border-red-500/60 bg-red-500/20 text-red-100"
+                  : remaining <= 60_000
+                    ? "border-amber-400/60 bg-amber-500/20 text-amber-100"
+                    : "border-white/20 bg-black/60 text-white";
+              return (
+                <div
+                  className={
+                    "pointer-events-none absolute left-1/2 top-3 z-10 flex -translate-x-1/2 flex-col items-center gap-0.5 rounded-md border px-3 py-1.5 backdrop-blur " +
+                    tone +
+                    (expired && !timer.paused ? " animate-pulse" : "")
+                  }
+                >
+                  <span className="font-mono text-[9.5px] uppercase tracking-[0.16em] opacity-80">
+                    {typeof timer.paused === "number"
+                      ? `${timer.label} · paused`
+                      : expired
+                        ? `${timer.label} · time's up`
+                        : timer.label}
+                  </span>
+                  <span className="font-mono text-lg font-bold leading-tight tabular-nums sm:text-xl">
+                    {digits}
+                  </span>
+                </div>
+              );
+            })()}
 
             {/* Lower third. Rendered only when featured is on air —
                 otherwise the programme feed carries its own graphics
