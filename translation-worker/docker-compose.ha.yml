@@ -1,0 +1,49 @@
+# High-availability translation-worker setup.
+#
+# Runs two independent worker processes on the same host with nginx
+# fronting them. A container restart on translator-a doesn't drop
+# captions because nginx sends every new SSE subscriber to translator-b
+# and vice-versa — least_conn keeps them roughly balanced across rooms.
+#
+# For the "no split brain" case both containers see every subscriber
+# via the same nginx entrypoint and independently start their own
+# ffmpeg+Deepgram pipeline for each room the room a subscriber lands
+# on — worst case that costs 2x Deepgram/DeepL for the fanout window,
+# which is negligible next to the reliability win.
+#
+# Deploy:
+#   cp .env.example .env   # fill in DEEPGRAM_API_KEY / DEEPL_API_KEY
+#   docker compose -f docker-compose.ha.yml up -d --build
+#
+# Point NEXT_PUBLIC_TRANSLATION_SSE at the nginx origin
+# (https://translate.neoconference.app), not directly at either
+# container. See nginx.ha.conf.example for the reverse-proxy config.
+
+services:
+  translator-a:
+    build: .
+    image: neo-translation-worker:latest
+    container_name: neo-translation-worker-a
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8080:8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  translator-b:
+    build: .
+    image: neo-translation-worker:latest
+    container_name: neo-translation-worker-b
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8081:8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

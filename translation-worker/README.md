@@ -87,3 +87,43 @@ If you previously had `ROOM=neoconf` in `.env`, it's no longer read
 and can be deleted. Nothing else changes — same port, same SSE URL
 shape, same client env var. The worker just serves any room the
 browser asks for now, instead of only the one it was booted with.
+
+## Stats and alerting
+
+The worker tracks per-room DeepL char usage and error counts in
+memory and exposes them at:
+
+```
+GET /stats
+```
+
+Returns `{ ok, uptimeSec, rooms: [{ room, charsTotal, charsWindow,
+errorsTotal, errorsWindow, lastErrorAt, lastErrorMessage }] }`.
+`charsWindow` / `errorsWindow` cover the last 60 seconds and reset
+on their own. Anyone (the app's health strip, an external Datadog /
+Prometheus scraper) can pull it without auth — same posture as
+`/healthz`.
+
+Set `SLACK_ALERT_WEBHOOK` (Slack incoming, Discord, or any
+`{ text }`-accepting URL) to receive a one-line ping when the DeepL
+error rate crosses `ALERT_ERROR_THRESHOLD` (default 5) inside a
+60-second window for the same room. Debounced to
+`ALERT_DEBOUNCE_MS` per room (default 10 min) so an outage doesn't
+spam the channel.
+
+## High availability
+
+`docker-compose.ha.yml` boots two worker containers on the same
+host with independent config. Front them with nginx —
+`nginx.ha.conf.example` has the reverse-proxy config with
+`least_conn` upstream selection, SSE-safe timeouts and buffering,
+and a Let's Encrypt SSL block. Point
+`NEXT_PUBLIC_TRANSLATION_SSE` at the nginx origin, not either
+container directly.
+
+Trade-off: both containers independently open their own
+ffmpeg+Deepgram pipeline for whichever rooms have subscribers on
+them, so DeepL / Deepgram spend rises to ~2× during periods when
+both are serving the same room. Worth it for the reliability win
+during a live event — a container restart is invisible to
+audiences.

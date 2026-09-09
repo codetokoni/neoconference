@@ -11,6 +11,7 @@ import {
   startSseServer,
   type Line,
 } from "./sse.js";
+import { postAlert, recordDeeplChars, recordDeeplError } from "./stats.js";
 
 /**
  * NeoConference translation worker.
@@ -115,6 +116,10 @@ async function translateAndBroadcast(
           lang,
           SOURCE_LANG.toUpperCase(),
         );
+        // Success — bill the character count against this room's
+        // stats so the /stats endpoint and the hub health strip can
+        // show what we're spending in near-real-time.
+        recordDeeplChars(room, cleaned.length);
         pipeline.seq += 1;
         const line: Line = {
           lang,
@@ -127,7 +132,18 @@ async function translateAndBroadcast(
         broadcast(room, line);
         if (final) console.log(`[out][${room}][${lang}] ${translated}`);
       } catch (e) {
-        console.error(`[deepl][${room}][${lang}]`, (e as Error).message);
+        const msg = (e as Error).message;
+        console.error(`[deepl][${room}][${lang}]`, msg);
+        // Track for /stats + optionally raise a Slack alert when the
+        // error rate crosses ALERT_ERROR_THRESHOLD within a 60s
+        // window. Debounced ALERT_DEBOUNCE_MS per room so a genuinely
+        // busted key doesn't spam the channel for hours.
+        const shouldAlert = recordDeeplError(room, msg);
+        if (shouldAlert) {
+          void postAlert(
+            `⚠️ NeoConference translation-worker · room=${room} · DeepL errors surged past threshold. Last: ${msg.slice(0, 140)}`,
+          );
+        }
       }
     }),
   );

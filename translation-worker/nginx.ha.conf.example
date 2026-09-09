@@ -1,0 +1,60 @@
+# nginx reverse-proxy for the HA translation-worker pair.
+# Save to /etc/nginx/sites-available/translate.neoconference.app and
+# symlink into sites-enabled. `sudo nginx -t && sudo systemctl reload nginx`.
+#
+# The two upstream lines assume both workers ran with
+# docker-compose.ha.yml on the same host — translator-a bound to
+# 127.0.0.1:8080, translator-b to 127.0.0.1:8081. Adjust hostnames /
+# ports if they live on separate boxes.
+#
+# `least_conn` balances by active connections rather than round-robin,
+# which matters for SSE — a subscriber to Room A holding a connection
+# for 20 minutes shouldn't tip the next round-robin subscriber onto
+# whichever worker just happens to be next in line.
+
+upstream translation_workers {
+    least_conn;
+    server 127.0.0.1:8080 max_fails=3 fail_timeout=10s;
+    server 127.0.0.1:8081 max_fails=3 fail_timeout=10s;
+    keepalive 32;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name translate.neoconference.app;
+
+    # Cert path — assumes Let's Encrypt via certbot. Adjust for your
+    # setup.
+    ssl_certificate     /etc/letsencrypt/live/translate.neoconference.app/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/translate.neoconference.app/privkey.pem;
+
+    # SSE needs three things nginx defaults get wrong:
+    #   1. buffering off so `data: …\n\n` frames flush immediately
+    #   2. long timeouts so connections don't drop after 60s
+    #   3. HTTP/1.1 upstream so Connection: keep-alive works
+    location / {
+        proxy_pass http://translation_workers;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 24h;
+        proxy_send_timeout 24h;
+
+        # Explicit chunked disabled — SSE frames are already
+        # newline-delimited and browsers do the right thing.
+        chunked_transfer_encoding off;
+    }
+}
+
+server {
+    listen 80;
+    server_name translate.neoconference.app;
+    return 301 https://$host$request_uri;
+}

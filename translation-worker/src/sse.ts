@@ -1,5 +1,6 @@
 import http from "node:http";
 import cors from "cors";
+import { snapshotStats } from "./stats.js";
 
 /**
  * Lightweight SSE broadcaster.
@@ -116,6 +117,18 @@ export function startSseServer(port: number): void {
         res.statusCode = 200;
         res.setHeader("Content-Type", "text/plain");
         res.end("ok\n");
+        return;
+      }
+      // /stats — per-room DeepL usage + error snapshot. One shot,
+      // JSON. Callers include the Next.js /api/video/health strip and
+      // any external monitoring (Datadog, Prometheus scraper, etc.)
+      // pointed at this worker.
+      if (url.pathname === "/stats") {
+        const snap = snapshotStats();
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(JSON.stringify({ ok: true, ...snap }));
         return;
       }
       // /transcript/<room> — everything said so far, JSON. One shot,
