@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import RosterPanel from "./RosterPanel";
+import TimerControl from "./TimerControl";
 
 interface ScreenBlock {
   screen: number;
@@ -210,6 +211,8 @@ export default function RoomHub({
       )}
 
       {role === "admin" && <RosterPanel room={s.room} />}
+
+      {role === "admin" && <TimerControl room={s.room} />}
 
       <section className="flex flex-col gap-3">
         <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">

@@ -34,6 +34,10 @@ const isPublicRoute = createRouteMatcher([
   // every future /api/video route, including the staff-only ones.
   '/api/video/status',
   '/api/video/chat',
+  // Programme timer: GET is what audience-facing viewers hit to
+  // render the overlay; POST/PATCH/DELETE guard themselves via
+  // auth() in the route so they're fine to expose here too.
+  '/api/video/room/timer',
   // Participants have no account; the personal code is the credential and
   // the route rate limits hard. /api/video/codes and /feature stay staff-only.
   '/video/join',
