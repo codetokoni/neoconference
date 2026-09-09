@@ -33,7 +33,18 @@ interface Queue {
  * The Send-to-preview action writes to /api/video/preview so the
  * cameras board's preview pane picks it up too.
  */
-export default function QueueBoard({ room, slug }: { room: string; slug: string }) {
+export default function QueueBoard({
+  room,
+  slug,
+  display = false,
+}: {
+  room: string;
+  slug: string;
+  /** Display mode: hide producer controls (delete queue, add form,
+   *  reorder + take-to-air affordances on tiles) so the projected
+   *  view is a clean grid of who's queued. */
+  display?: boolean;
+}) {
   const [queue, setQueue] = useState<Queue | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -235,6 +246,41 @@ export default function QueueBoard({ room, slug }: { room: string; slug: string 
     );
   }
 
+  if (display) {
+    // Projection layout: just the tile grid, edge-to-edge, no
+    // producer chrome. The queue tiles themselves are still marked
+    // with position + NEXT so the room can see who is up.
+    return queue.order.length === 0 ? (
+      <div className="flex min-h-screen items-center justify-center bg-[#0F1519] p-6 text-center">
+        <p className="font-mono text-sm uppercase tracking-[0.14em] text-white/45">
+          {queue.name} · queue is empty
+        </p>
+      </div>
+    ) : (
+      <div className="bg-[#0F1519] p-0">
+        <div className="grid grid-cols-4 gap-[3px] sm:grid-cols-6 lg:grid-cols-10">
+          {queue.order.map((sid, i) => (
+            <QueueTile
+              key={sid}
+              streamId={sid}
+              participant={bySid.get(sid)}
+              position={i + 1}
+              first={i === 0}
+              last={i === queue.order.length - 1}
+              busy={false}
+              display
+              onUp={() => {}}
+              onDown={() => {}}
+              onRemove={() => {}}
+              onTake={() => {}}
+              onPreview={() => {}}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {err && <p className="text-sm text-red-400">{err}</p>}
@@ -334,6 +380,7 @@ function QueueTile({
   first,
   last,
   busy,
+  display = false,
   onUp,
   onDown,
   onRemove,
@@ -346,6 +393,8 @@ function QueueTile({
   first: boolean;
   last: boolean;
   busy: boolean;
+  /** Display mode: no click-to-take, no hover controls, no cursor. */
+  display?: boolean;
   onUp: () => void;
   onDown: () => void;
   onRemove: () => void;
@@ -376,9 +425,10 @@ function QueueTile({
 
   return (
     <div
-      onClick={busy ? undefined : onTake}
+      onClick={display || busy ? undefined : onTake}
       className={
-        "group relative aspect-[4/3] cursor-pointer overflow-hidden rounded border bg-[#16232B] " +
+        "group relative aspect-[4/3] overflow-hidden rounded border bg-[#16232B] " +
+        (display ? "cursor-default " : "cursor-pointer ") +
         (first
           ? "border-amber-400 ring-1 ring-amber-400"
           : participant?.live
@@ -386,9 +436,11 @@ function QueueTile({
             : "border-white/10")
       }
       title={
-        participant
-          ? `Position ${position} — ${participant.name}. Click to take to air.`
-          : streamId
+        display
+          ? participant?.name ?? streamId
+          : participant
+            ? `Position ${position} — ${participant.name}. Click to take to air.`
+            : streamId
       }
     >
       <video ref={ref} playsInline autoPlay muted className="h-full w-full object-cover" />
@@ -419,7 +471,9 @@ function QueueTile({
 
       {/* Hover controls — appear only on hover so a resting tile looks
           like a Camera board tile. stopPropagation on each so clicking
-          them doesn't also trigger the tile's take-to-air. */}
+          them doesn't also trigger the tile's take-to-air. Suppressed
+          entirely in display mode. */}
+      {!display && (
       <div className="absolute inset-x-0 top-[38%] hidden justify-center gap-1 group-hover:flex">
         <button
           type="button"
@@ -469,6 +523,7 @@ function QueueTile({
           ×
         </button>
       </div>
+      )}
     </div>
   );
 }

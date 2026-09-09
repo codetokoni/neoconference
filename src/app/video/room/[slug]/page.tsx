@@ -31,7 +31,7 @@ export default async function RoomQueueShortUrl({
   searchParams,
   params,
 }: {
-  searchParams?: { room?: string };
+  searchParams?: { room?: string; display?: string };
   params: { slug: string };
 }) {
   const { userId } = await auth();
@@ -42,6 +42,15 @@ export default async function RoomQueueShortUrl({
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, "")
     .slice(0, 32);
+  const display = searchParams?.display === "1" || searchParams?.display === "true";
+
+  if (display) {
+    return (
+      <main className="w-full">
+        <QueueBoard room={room} slug={slug} display />
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6">
