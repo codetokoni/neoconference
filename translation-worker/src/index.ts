@@ -4,8 +4,10 @@ import { spawnAudio, type FfmpegAudio } from "./ffmpeg.js";
 import { translate } from "./deepl.js";
 import {
   broadcast,
+  clearTranscript,
   onFirstSubscriberForRoom,
   onLastSubscriberForRoom,
+  recordTranscript,
   startSseServer,
   type Line,
 } from "./sse.js";
@@ -78,6 +80,30 @@ async function translateAndBroadcast(
 ): Promise<void> {
   const cleaned = text.trim();
   if (!cleaned) return;
+
+  // Broadcast the source utterance on its own channel first — the
+  // watch page shows English captions to viewers who don't want the
+  // programme audio in a translated language, and everything
+  // downstream (accessibility, searchable archives, sermon-clip
+  // pipelines) needs the original transcript alongside the
+  // translations. Also record it in the in-memory ring buffer so
+  // /transcript/<room> can hand it back later. Costs one SSE fanout
+  // — negligible next to the DeepL round trips.
+  pipeline.seq += 1;
+  const sourceLine: Line = {
+    lang: SOURCE_LANG,
+    text: cleaned,
+    seq: pipeline.seq,
+    ts: Date.now(),
+    original: cleaned,
+    final,
+  };
+  broadcast(room, sourceLine);
+  if (final) {
+    recordTranscript(room, sourceLine);
+    console.log(`[out][${room}][${SOURCE_LANG}] ${cleaned}`);
+  }
+
   // Fan out to every target language in parallel. If any DeepL call
   // fails, log and drop — the others still land.
   await Promise.all(
@@ -106,6 +132,7 @@ async function translateAndBroadcast(
     }),
   );
 }
+
 
 function connectDeepgram(room: string, pipeline: Pipeline): LiveClient {
   const dg = createClient(DEEPGRAM_KEY);
