@@ -42,6 +42,7 @@ function Tile({
   p,
   featured,
   monitored,
+  display = false,
   onOpen,
   onHide,
   onDragStart,
@@ -50,6 +51,8 @@ function Tile({
   p: Participant;
   featured: boolean;
   monitored: boolean;
+  /** In display mode the tile is inert — no drag handle, no × button. */
+  display?: boolean;
   onOpen: () => void;
   onHide: () => void;
   onDragStart: () => void;
@@ -77,21 +80,30 @@ function Tile({
 
   return (
     <div
-      draggable
-      onDragStart={onDragStart}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setOver(true);
-      }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setOver(false);
-        onDrop();
-      }}
-      onClick={onOpen}
+      draggable={!display}
+      onDragStart={display ? undefined : onDragStart}
+      onDragOver={
+        display
+          ? undefined
+          : (e) => {
+              e.preventDefault();
+              setOver(true);
+            }
+      }
+      onDragLeave={display ? undefined : () => setOver(false)}
+      onDrop={
+        display
+          ? undefined
+          : (e) => {
+              e.preventDefault();
+              setOver(false);
+              onDrop();
+            }
+      }
+      onClick={display ? undefined : onOpen}
       className={[
-        "group relative aspect-[4/3] cursor-grab overflow-hidden rounded border bg-[#16232B]",
+        "group relative aspect-[4/3] overflow-hidden rounded border bg-[#16232B]",
+        display ? "cursor-default" : "cursor-grab",
         featured ? "border-amber-400 ring-1 ring-amber-400" : "border-white/10",
         over ? "ring-2 ring-emerald-400" : "",
       ].join(" ")}
@@ -120,17 +132,19 @@ function Tile({
         </span>
       )}
 
-      <button
-        type="button"
-        aria-label={`Hide ${p.name}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onHide();
-        }}
-        className="absolute right-0.5 top-0.5 hidden h-4 w-4 rounded-sm bg-black/60 text-[11px] leading-none text-white/80 group-hover:block focus:block"
-      >
-        ×
-      </button>
+      {!display && (
+        <button
+          type="button"
+          aria-label={`Hide ${p.name}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onHide();
+          }}
+          className="absolute right-0.5 top-0.5 hidden h-4 w-4 rounded-sm bg-black/60 text-[11px] leading-none text-white/80 group-hover:block focus:block"
+        >
+          ×
+        </button>
+      )}
 
       <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/90 to-transparent px-1.5 py-0.5 text-[10px] font-semibold text-white/90">
         {p.name}
@@ -142,6 +156,7 @@ function Tile({
 export default function ControlRoom({
   room = SIMULCAST_MAIN,
   screen,
+  display = false,
 }: {
   room?: string;
   /**
@@ -152,6 +167,14 @@ export default function ControlRoom({
    * every screen" behaviour under the :all layout bucket.
    */
   screen?: number;
+  /**
+   * Display mode. Strips every producer affordance — the on-air
+   * strip, preview pane, hidden pills, drag/hide/click interactions
+   * on tiles — so the grid is a clean projection of who is on and
+   * off. For moderators putting the board on a physical screen for
+   * the room to see, not for producing.
+   */
+  display?: boolean;
 }) {
   const [data, setData] = useState<RoomPayload | null>(null);
   const [order, setOrder] = useState<string[]>([]);
@@ -387,48 +410,68 @@ export default function ControlRoom({
   const liveCount = participants.filter((p) => p.live).length;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-white/10 bg-[#101A20] text-[#DDE7EC] shadow-2xl">
-      <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2.5">
-        <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
-          {participants.length} slots · {liveCount} live · {hidden.length} hidden
-        </span>
+    <div
+      className={
+        display
+          ? "overflow-hidden bg-[#101A20] text-[#DDE7EC]"
+          : "overflow-hidden rounded-xl border border-white/10 bg-[#101A20] text-[#DDE7EC] shadow-2xl"
+      }
+    >
+      {!display && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2.5">
+          <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
+            {participants.length} slots · {liveCount} live · {hidden.length} hidden
+          </span>
 
-        <span className="ml-auto font-mono text-[10.5px] uppercase tracking-[0.12em] text-amber-300/90">
-          {data?.featured ? `On air — ${data.featured.label}` : "On air — programme feed"}
-        </span>
+          <span className="ml-auto font-mono text-[10.5px] uppercase tracking-[0.12em] text-amber-300/90">
+            {data?.featured ? `On air — ${data.featured.label}` : "On air — programme feed"}
+          </span>
 
-        <button
-          type="button"
-          disabled={busy || !data?.featured}
-          onClick={() => feature(null)}
-          className="rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80 transition hover:bg-white/10 disabled:opacity-40"
-        >
-          Back to programme
-        </button>
-      </div>
+          <button
+            type="button"
+            disabled={busy || !data?.featured}
+            onClick={() => feature(null)}
+            className="rounded-md border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80 transition hover:bg-white/10 disabled:opacity-40"
+          >
+            Back to programme
+          </button>
+        </div>
+      )}
 
       {err && <p className="px-3 py-2 text-sm text-red-400">{err}</p>}
 
       {/* One extra subscription while `preview` is set — the whole point of
           a preview slot is that the operator has audio + full-quality video
-          for the person they are about to cut to. */}
-      <div className="px-3 pt-3">
-        <PreviewPane
-          preview={preview}
-          busy={busy}
-          onTake={takePreviewToAir}
-          onClear={clearPreview}
-        />
-      </div>
+          for the person they are about to cut to. Suppressed in display
+          mode; the projected view stays a pure grid. */}
+      {!display && (
+        <div className="px-3 pt-3">
+          <PreviewPane
+            preview={preview}
+            busy={busy}
+            onTake={takePreviewToAir}
+            onClear={clearPreview}
+          />
+        </div>
+      )}
 
       <div className="relative">
-        <div className="grid grid-cols-4 gap-[5px] p-3 sm:grid-cols-6 lg:grid-cols-10">
+        <div
+          className={
+            display
+              ? "grid grid-cols-4 gap-[3px] p-0 sm:grid-cols-6 lg:grid-cols-10"
+              : "grid grid-cols-4 gap-[5px] p-3 sm:grid-cols-6 lg:grid-cols-10"
+          }
+        >
           {visible.map((p) => (
             <Tile
               key={p.streamId}
               p={p}
               featured={featuredId === p.streamId}
               monitored={monitor === p.streamId}
+              display={display}
+              // Callbacks are still wired but Tile itself is inert in
+              // display mode, so the closures are never invoked.
               onOpen={() => setSpot(p)}
               onHide={() => hide(p)}
               onDragStart={() => {
@@ -439,29 +482,31 @@ export default function ControlRoom({
           ))}
         </div>
 
-        {spot && <Spotlight spot={spot} onClose={() => setSpot(null)} />}
+        {!display && spot && <Spotlight spot={spot} onClose={() => setSpot(null)} />}
       </div>
 
-      <div className="flex min-h-[46px] flex-wrap items-center gap-2 border-t border-white/10 px-3 py-2.5">
-        <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
-          {hiddenList.length ? "Hidden" : "Hidden — none"}
-        </span>
-        {hiddenList.map((p) => (
-          <span
-            key={p.streamId}
-            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 py-1 pl-3 pr-1 text-xs text-white/75"
-          >
-            {p.name}
-            <button
-              type="button"
-              onClick={() => restore(p)}
-              className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] text-white"
-            >
-              restore
-            </button>
+      {!display && (
+        <div className="flex min-h-[46px] flex-wrap items-center gap-2 border-t border-white/10 px-3 py-2.5">
+          <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
+            {hiddenList.length ? "Hidden" : "Hidden — none"}
           </span>
-        ))}
-      </div>
+          {hiddenList.map((p) => (
+            <span
+              key={p.streamId}
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 py-1 pl-3 pr-1 text-xs text-white/75"
+            >
+              {p.name}
+              <button
+                type="button"
+                onClick={() => restore(p)}
+                className="rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] text-white"
+              >
+                restore
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

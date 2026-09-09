@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 export default async function CamerasPage({
   searchParams,
 }: {
-  searchParams?: { room?: string; screen?: string };
+  searchParams?: { room?: string; screen?: string; display?: string };
 }) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
@@ -30,6 +30,19 @@ export default async function CamerasPage({
     Number.isFinite(rawScreen) && rawScreen >= 1 && rawScreen <= 20
       ? Math.floor(rawScreen)
       : undefined;
+  // ?display=1 strips the producer chrome — page header, on-air
+  // strip, preview pane, hidden pills, drag/hide/click affordances
+  // — leaving just the tile grid so a moderator can put the board
+  // on a projector for the room to see.
+  const display = searchParams?.display === "1" || searchParams?.display === "true";
+
+  if (display) {
+    return (
+      <main className="w-full">
+        <ControlRoom room={room} screen={screen} display />
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-5 px-4 py-8 sm:px-6">
@@ -55,6 +68,13 @@ export default async function CamerasPage({
                 className="text-emerald-300 hover:text-emerald-200"
               >
                 See all screens →
+              </a>
+              {" · "}
+              <a
+                href={`/video/room/cameras?room=${encodeURIComponent(room)}&screen=${screen}&display=1`}
+                className="text-emerald-300 hover:text-emerald-200"
+              >
+                Present on screen →
               </a>
             </>
           ) : (
