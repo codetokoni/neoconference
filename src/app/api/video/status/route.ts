@@ -8,17 +8,25 @@ import {
   featuredKey,
   type FeaturedState,
 } from "@/lib/simulcast";
+import { roomMainTrack } from "@/lib/participantCodes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const main = new URL(req.url).searchParams.get("room")?.trim() || SIMULCAST_MAIN;
+  const room = new URL(req.url).searchParams.get("room")?.trim() || SIMULCAST_MAIN;
+  // AMS knows the main-track wrapper as `<room>-room`, not the bare
+  // room slug. Pre-transforming here so both fetchSubtracks and the
+  // "unknown streams" filter agree on the same id — otherwise the
+  // subtracks lookup 404s, the fallback filter matches nothing, and
+  // the audience-facing dashboard reports `live: false` even when a
+  // proper RTMP publisher (OBS, vMix) is pushing to <room>-video.
+  const mainTrack = roomMainTrack(room);
 
   try {
     const [subs, featuredRaw] = await Promise.all([
-      fetchSubtracks(main),
-      kv.get<FeaturedState>(featuredKey(main)).catch(() => null),
+      fetchSubtracks(mainTrack),
+      kv.get<FeaturedState>(featuredKey(room)).catch(() => null),
     ]);
     const liveIds = new Set(
       subs.filter((b) => b.status === "broadcasting").map((b) => b.streamId),
@@ -39,7 +47,7 @@ export async function GET(req: Request) {
     if (featured) {
       const alive = await isBroadcasting(featured.streamId);
       if (!alive) {
-        await kv.del(featuredKey(main)).catch(() => {});
+        await kv.del(featuredKey(room)).catch(() => {});
         featured = null;
       }
     }
@@ -47,7 +55,7 @@ export async function GET(req: Request) {
     return NextResponse.json(
       {
         ok: true,
-        main,
+        main: room,
         live: liveIds.size > 0,
         viewers,
         featured,
@@ -57,7 +65,7 @@ export async function GET(req: Request) {
           .filter(
             (b) =>
               b.status === "broadcasting" &&
-              b.streamId !== main &&
+              b.streamId !== mainTrack &&
               !SIMULCAST_CHANNELS.some((c) => c.id === b.streamId),
           )
           .map((b) => b.streamId),
@@ -68,7 +76,7 @@ export async function GET(req: Request) {
     return NextResponse.json(
       {
         ok: false,
-        main,
+        main: room,
         live: false,
         viewers: 0,
         channels: [],
