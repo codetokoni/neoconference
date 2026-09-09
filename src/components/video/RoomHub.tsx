@@ -217,15 +217,23 @@ export default function RoomHub({
         </h2>
         <div className="grid gap-3 md:grid-cols-2">
           <BoardCard
-            href={`/video/room/cameras?room=${encodeURIComponent(s.room)}`}
+            href={`/video/room/cameras?room=${encodeURIComponent(s.room)}${role === "moderator" ? "&display=1" : ""}`}
             title="Camera board"
-            subtitle="Grid of live cameras — drag, hide, feature to air."
+            subtitle={
+              role === "moderator"
+                ? "Grid of live cameras — projection-friendly display view."
+                : "Grid of live cameras — drag, hide, feature to air."
+            }
             costHint="One viewer slot per live camera in the room."
           />
           <BoardCard
-            href={`/video/room/names?room=${encodeURIComponent(s.room)}&screen=1`}
+            href={`/video/room/names?room=${encodeURIComponent(s.room)}${role === "moderator" ? "&display=1" : ""}`}
             title="Name board"
-            subtitle="Who is here and who is not, without the video."
+            subtitle={
+              role === "moderator"
+                ? "Who is here and who is not, without the video — projection-friendly."
+                : "Who is here and who is not, without the video."
+            }
             costHint="Zero viewer slots used. Poll only."
             cheap
           />
@@ -254,21 +262,27 @@ export default function RoomHub({
           </a>
         ) : (
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {queues.map((q) => (
-              <a
-                key={q.slug}
-                href={`/video/room/${encodeURIComponent(q.slug)}?room=${encodeURIComponent(s.room)}`}
-                className="flex flex-col gap-1.5 rounded-lg border border-white/12 bg-[#101820] p-4 transition hover:border-white/25 hover:bg-white/[0.04]"
-              >
-                <h3 className="text-base font-semibold text-white">{q.name}</h3>
-                <p className="text-xs text-white/60">
-                  {q.order.length} staged
-                </p>
-                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/35">
-                  /video/room/{q.slug}
-                </p>
-              </a>
-            ))}
+            {queues.map((q) => {
+              // Moderator role opens each queue in display mode so the
+              // projected view shows a clean tile grid, no producer
+              // chrome. Admin role keeps the editable board.
+              const suffix = role === "moderator" ? "&display=1" : "";
+              return (
+                <a
+                  key={q.slug}
+                  href={`/video/room/${encodeURIComponent(q.slug)}?room=${encodeURIComponent(s.room)}${suffix}`}
+                  className="flex flex-col gap-1.5 rounded-lg border border-white/12 bg-[#101820] p-4 transition hover:border-white/25 hover:bg-white/[0.04]"
+                >
+                  <h3 className="text-base font-semibold text-white">{q.name}</h3>
+                  <p className="text-xs text-white/60">
+                    {q.order.length} staged
+                  </p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/35">
+                    /video/room/{q.slug}
+                  </p>
+                </a>
+              );
+            })}
           </div>
         )}
       </section>
@@ -387,6 +401,9 @@ function ScreenCard({
   const cameraHref = `/video/room/cameras?room=${encodeURIComponent(room)}&screen=${block.screen}${
     role === "moderator" ? "&display=1" : ""
   }`;
+  const nameHref = `/video/room/names?room=${encodeURIComponent(room)}&screen=${block.screen}${
+    role === "moderator" ? "&display=1" : ""
+  }`;
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-white/12 bg-[#101820] p-4">
       <div className="flex items-baseline justify-between gap-3">
@@ -433,8 +450,13 @@ function ScreenCard({
           Camera board
         </a>
         <a
-          href={`/video/room/names?room=${encodeURIComponent(room)}`}
+          href={nameHref}
           className="rounded-md border border-white/12 px-3 py-1.5 text-xs text-white hover:bg-white/10"
+          title={
+            role === "moderator"
+              ? `Name board (display mode) — Screen ${block.screen}, slots ${block.from}-${block.to}, projection-friendly`
+              : `Name board — Screen ${block.screen} (slots ${block.from}-${block.to})`
+          }
         >
           Name board
         </a>
