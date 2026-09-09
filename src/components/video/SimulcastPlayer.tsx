@@ -394,6 +394,32 @@ export default function SimulcastPlayer({
             />
             <audio ref={featAudioRef} autoPlay muted />
 
+            {/* Lower third. Rendered only when featured is on air —
+                otherwise the programme feed carries its own graphics
+                and shouldn't have a name banner over it. Condition and
+                country come from the roster meta captured at feature
+                time, so this is a zero-network overlay: the info is
+                already in `featured`. */}
+            {onAir && featured && (
+              <div className="pointer-events-none absolute inset-x-4 bottom-4 z-10 flex flex-col gap-1 rounded-md border-l-[3px] border-l-emerald-400 bg-gradient-to-r from-black/85 via-black/70 to-transparent px-4 py-2.5 sm:inset-x-6 sm:bottom-6 sm:max-w-[52ch] sm:px-5 sm:py-3">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="text-lg font-bold uppercase tracking-wide text-white sm:text-xl">
+                    {featured.label}
+                  </span>
+                  {featured.country && (
+                    <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-white/70">
+                      {featured.country}
+                    </span>
+                  )}
+                </div>
+                {featured.condition && (
+                  <span className="line-clamp-2 text-sm font-medium text-white/85 sm:text-[15px]">
+                    {featured.condition}
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* one audio element per language subtrack (WebRTC mode) */}
             {Object.entries(audioStreams).map(([id, stream]) => (
               <audio

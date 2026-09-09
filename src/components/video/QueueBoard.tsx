@@ -10,6 +10,10 @@ interface Participant {
   streamId: string;
   live: boolean;
   claimed: boolean;
+  /** Roster meta — used to overlay a lower third on the featured
+   *  video when this participant is taken to air. Optional; rooms
+   *  without a roster upload have no meta. */
+  meta?: Record<string, string>;
 }
 
 interface Queue {
@@ -178,10 +182,21 @@ export default function QueueBoard({
       if (!queue) return;
       setBusy(true);
       try {
+        // Pull condition + country from the participant's roster meta
+        // so the featured video renders a proper lower third instead
+        // of just a name. Missing fields are fine — the overlay
+        // collapses gracefully. Look up via participants array to
+        // avoid a use-before-declaration on bySid.
+        const p = participants.find((x) => x.streamId === streamId);
         await fetch(`/api/video/feature?room=${encodeURIComponent(room)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ streamId, label }),
+          body: JSON.stringify({
+            streamId,
+            label,
+            condition: p?.meta?.condition,
+            country: p?.meta?.country,
+          }),
         });
         // Broadcast convention: after a Take, drop from queue. Producer can
         // re-queue the entry if they want to bring them back.
@@ -190,7 +205,7 @@ export default function QueueBoard({
         setBusy(false);
       }
     },
-    [room, queue, patchOrder],
+    [room, queue, patchOrder, participants],
   );
 
   const sendToPreview = useCallback(

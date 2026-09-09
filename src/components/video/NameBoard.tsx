@@ -95,7 +95,12 @@ export default function NameBoard({
         await fetch(`/api/video/feature?room=${encodeURIComponent(room)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ streamId: p.streamId, label: p.name }),
+          body: JSON.stringify({
+            streamId: p.streamId,
+            label: p.name,
+            condition: p.meta?.condition,
+            country: p.meta?.country,
+          }),
         });
       } finally {
         setBusy(false);
