@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import BroadcasterCard from "./BroadcasterCard";
 import HealthStrip from "./HealthStrip";
 import RecordingPanel from "./RecordingPanel";
 import RosterPanel from "./RosterPanel";
 import TimerControl from "./TimerControl";
+import { broadcastEndpointsForRoom } from "@/lib/broadcastUrls";
 
 interface ScreenBlock {
   screen: number;
@@ -197,6 +199,15 @@ export default function RoomHub({
             it opens the hub and boards for this room.
           </p>
         </div>
+        {(() => {
+          // Rendered inline so the endpoints object is derived once
+          // per room and passed to BroadcasterCard as a plain prop.
+          // Returns null when AMS_HTTP is malformed — the card
+          // silently disappears rather than showing broken URLs.
+          const endpoints = broadcastEndpointsForRoom(s.room);
+          return endpoints ? <BroadcasterCard endpoints={endpoints} /> : null;
+        })()}
+
         <div className="flex flex-col gap-2">
           <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
             Personal codes
