@@ -11,6 +11,15 @@ function room(req: Request) {
   return (r || SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 64);
 }
 
+// Same control-char strip + length cap on every text field. Condition
+// is longer than label because roster conditions are often comma-
+// separated clinical notes ("SOFT TISSUE CARCINOMA, ANEMIA").
+function cleanText(raw: unknown, cap: number): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, cap);
+  return trimmed || undefined;
+}
+
 /**
  * Puts one participant on air, or clears back to the programme feed.
  *
@@ -18,6 +27,11 @@ function room(req: Request) {
  * second peer connection straight to the participant's own stream id and
  * swaps the rendered element once it has frames. Nothing is re-encoded, and
  * clearing is instant because the programme connection was never dropped.
+ *
+ * `condition` and `country` are captured at feature time so the watch
+ * page can render them as a lower third on the featured video without
+ * a separate lookup. They come from the roster meta on whichever
+ * board triggered the feature (Camera, Name, Queue).
  *
  * Requires a signed-in Clerk account (any account — no role gate).
  * Featuring a participant on air mutates broadcast state and needs a
@@ -31,7 +45,12 @@ export async function POST(req: Request) {
   }
   const r = room(req);
 
-  let body: { streamId?: string | null; label?: string };
+  let body: {
+    streamId?: string | null;
+    label?: string;
+    condition?: string;
+    country?: string;
+  };
   try {
     body = await req.json();
   } catch {
@@ -50,10 +69,9 @@ export async function POST(req: Request) {
 
   const featured: FeaturedState = {
     streamId,
-    label: String(body.label ?? streamId)
-      .replace(/[\u0000-\u001F\u007F]/g, "")
-      .trim()
-      .slice(0, 64),
+    label: cleanText(body.label, 64) ?? streamId,
+    condition: cleanText(body.condition, 200),
+    country: cleanText(body.country, 60),
     at: Date.now(),
   };
 

@@ -292,7 +292,17 @@ export default function ControlRoom({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
-            p ? { streamId: p.streamId, label: p.name } : { streamId: null },
+            p
+              ? {
+                  streamId: p.streamId,
+                  label: p.name,
+                  // Roster meta overlays as a lower third on the
+                  // featured video. Absent fields collapse; the
+                  // player never renders an empty label.
+                  condition: p.meta?.condition,
+                  country: p.meta?.country,
+                }
+              : { streamId: null },
           ),
         });
         await load();

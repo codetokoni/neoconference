@@ -92,6 +92,14 @@ export interface FeaturedState {
   streamId: string;
   /** Shown under the player while they are on air. */
   label: string;
+  /**
+   * Roster fields captured at feature-time and displayed as a lower
+   * third over the featured video. Optional — a featured participant
+   * from a room without a roster upload has neither, and the overlay
+   * gracefully collapses to just the label.
+   */
+  condition?: string;
+  country?: string;
   at: number;
 }
 
