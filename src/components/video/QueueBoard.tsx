@@ -152,28 +152,65 @@ export default function QueueBoard({
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!queue) return;
-      const raw = addInput.trim();
-      if (!raw) return;
+      // Bulk-friendly parse: split on any whitespace, comma, or
+      // semicolon so an operator can paste a WhatsApp list, a CSV
+      // column, or a space-separated cheat sheet. Empty tokens are
+      // filtered out so trailing punctuation doesn't create ghost
+      // entries.
+      const tokens = addInput
+        .split(/[\s,;]+/)
+        .map((t) => t.trim())
+        .filter(Boolean);
+      if (tokens.length === 0) return;
 
-      let target: Participant | undefined;
-      const asSlot = Number(raw);
-      if (Number.isFinite(asSlot) && asSlot > 0) {
-        target = participants.find((p) => p.slot === asSlot);
-      }
-      if (!target) {
+      const resolveToken = (raw: string): Participant | undefined => {
+        const asSlot = Number(raw);
+        if (Number.isFinite(asSlot) && asSlot > 0) {
+          const bySlot = participants.find((p) => p.slot === asSlot);
+          if (bySlot) return bySlot;
+        }
         const upper = raw.toUpperCase();
-        target = participants.find((p) => p.code.toUpperCase() === upper);
+        return participants.find((p) => p.code.toUpperCase() === upper);
+      };
+
+      const alreadyQueued: string[] = [];
+      const notFound: string[] = [];
+      const seen = new Set(queue.order);
+      const toAdd: string[] = [];
+
+      for (const raw of tokens) {
+        const p = resolveToken(raw);
+        if (!p) {
+          notFound.push(raw);
+          continue;
+        }
+        if (seen.has(p.streamId)) {
+          alreadyQueued.push(p.name);
+          continue;
+        }
+        seen.add(p.streamId);
+        toAdd.push(p.streamId);
       }
-      if (!target) {
-        setErr(`No participant matches "${raw}".`);
+
+      const parts: string[] = [];
+      if (toAdd.length > 0) parts.push(`${toAdd.length} added`);
+      if (alreadyQueued.length > 0) {
+        parts.push(
+          `${alreadyQueued.length} already queued (${alreadyQueued.slice(0, 3).join(", ")}${alreadyQueued.length > 3 ? "…" : ""})`,
+        );
+      }
+      if (notFound.length > 0) {
+        parts.push(
+          `${notFound.length} not found (${notFound.slice(0, 3).join(", ")}${notFound.length > 3 ? "…" : ""})`,
+        );
+      }
+
+      if (toAdd.length === 0) {
+        setErr(parts.join(" · ") || `No participant matches "${addInput.trim()}".`);
         return;
       }
-      if (queue.order.includes(target.streamId)) {
-        setErr(`${target.name} is already queued.`);
-        return;
-      }
-      setErr(null);
-      await patchOrder([...queue.order, target.streamId]);
+      setErr(notFound.length + alreadyQueued.length > 0 ? parts.join(" · ") : null);
+      await patchOrder([...queue.order, ...toAdd]);
       setAddInput("");
     },
     [addInput, participants, queue, patchOrder],
@@ -330,14 +367,26 @@ export default function QueueBoard({
       >
         <label className="flex flex-1 flex-col gap-1">
           <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/45">
-            Add participant — slot number or code
+            Add participants — slot numbers or codes (space, comma, or newline)
           </span>
-          <input
+          {/* textarea, not input, so a paste from WhatsApp / a CSV /
+              a sheet can span multiple lines. maxLength stays generous
+              — the tokeniser handles whatever the operator pastes. */}
+          <textarea
             value={addInput}
             onChange={(e) => setAddInput(e.target.value)}
-            maxLength={16}
-            placeholder="e.g. 7  or  528401"
-            className="w-full rounded-md border border-white/12 bg-[#0B1319] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:ring-2 focus:ring-emerald-500"
+            maxLength={2000}
+            rows={2}
+            onKeyDown={(e) => {
+              // Enter submits, Shift+Enter inserts a newline — matches
+              // how chat inputs work, so the muscle memory carries.
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                (e.currentTarget.form as HTMLFormElement | null)?.requestSubmit();
+              }
+            }}
+            placeholder="e.g. 7  528401  964270 753749"
+            className="w-full resize-y rounded-md border border-white/12 bg-[#0B1319] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:ring-2 focus:ring-emerald-500"
           />
         </label>
         <button
