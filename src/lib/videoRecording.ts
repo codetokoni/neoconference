@@ -77,12 +77,30 @@ export async function getRecordingState(
   if (!r.ok) await throwAmsError(r);
   const body = (await r.json()) as {
     streamId?: string;
-    recordType?: RecordType;
+    // AMS's broadcast object doesn't have a single `recordType`
+    // field — it has per-format flags. Recording state lives here:
+    mp4Enabled?: number;
+    webMEnabled?: number;
+    hlsEnabled?: number;
     status?: string;
     updateTime?: number;
   };
+  // Derive the RecordType we expose to callers from the AMS flags.
+  // An earlier version of this code read `body.recordType`, which
+  // AMS never returns — the field always came back undefined, so we
+  // always reported "NONE" even while AMS was actively recording an
+  // MP4. That mismatch made the panel say "Recording off" while
+  // AMS's mp4Enabled was 1, and clicking Start Recording sent AMS a
+  // toggle it refused ("mp4 recording couldn't be started")
+  // because recording was already on.
   const recordType: RecordType =
-    (body.recordType as RecordType | undefined) ?? "NONE";
+    body.mp4Enabled === 1
+      ? "MP4"
+      : body.webMEnabled === 1
+        ? "WEBM"
+        : body.hlsEnabled === 1
+          ? "HLS"
+          : "NONE";
   return {
     streamId,
     recordType,
