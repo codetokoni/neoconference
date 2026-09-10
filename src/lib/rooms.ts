@@ -1,7 +1,7 @@
 import { kv } from "@vercel/kv";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 import { listCodes, mintCodes } from "@/lib/participantCodes";
-import { ensureMainTrackWrapper } from "@/lib/amsMainTrack";
+import { ensureRoomBroadcasts } from "@/lib/amsMainTrack";
 
 /**
  * Registry of video rooms.
@@ -101,11 +101,14 @@ export async function createRoom(
   const room: Room = { slug, name, slotCount, createdAt: Date.now() };
   await kv.hset(roomsKey(), { [slug]: JSON.stringify(room) });
   await mintCodes(slug, slotCount);
-  // Pre-create the AMS main-track wrapper so the first vMix/OBS push
-  // has a group to subtrack into. Missing this wrapper is what left
-  // us with a black dashboard mid-event on 2026-09-10 — the /status
-  // route also self-heals if AMS ever GCs it, but doing it up-front
-  // means the very first broadcast just works.
-  await ensureMainTrackWrapper(slug, name);
+  // Pre-create the AMS broadcast objects the room needs: the
+  // `<slug>-room` multi-track wrapper AND the `<slug>-video` subtrack
+  // wired as its child. Missing either is a class of bug we've hit
+  // twice — the wrapper gap gave us a black dashboard mid-event on
+  // 2026-09-10, and the missing subtrack made the recording toggle
+  // fail with "No stream for this id: <slug>-video". The /status and
+  // /recording routes also self-heal if AMS ever GCs them, but
+  // pre-creating means the very first broadcast just works.
+  await ensureRoomBroadcasts(slug, name);
   return room;
 }

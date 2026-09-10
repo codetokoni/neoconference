@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 import { isVideoRoomAdmin } from "@/lib/videoAdmin";
+import { ensureRoomBroadcastsInBackground } from "@/lib/amsMainTrack";
 import {
   deleteRecording,
   getRecordingState,
@@ -55,6 +56,13 @@ export async function GET(req: Request) {
       getRecordingState(room),
       listRecordings(room),
     ]);
+    // Self-heal: if AMS has no broadcast entity for this room's video
+    // subtrack, pre-create it (and the wrapper) in the background so
+    // the operator's next click actually works. Debounced 30s/room in
+    // the helper, so a poll storm doesn't hammer AMS.
+    if (stateResult.status === "fulfilled" && stateResult.value === null) {
+      ensureRoomBroadcastsInBackground(room);
+    }
     return NextResponse.json({
       ok: true,
       room,

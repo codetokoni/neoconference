@@ -9,7 +9,7 @@ import {
   type FeaturedState,
 } from "@/lib/simulcast";
 import { roomMainTrack } from "@/lib/participantCodes";
-import { ensureMainTrackWrapperInBackground } from "@/lib/amsMainTrack";
+import { ensureRoomBroadcastsInBackground } from "@/lib/amsMainTrack";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,13 +33,15 @@ export async function GET(req: Request) {
       subs.filter((b) => b.status === "broadcasting").map((b) => b.streamId),
     );
 
-    // Self-heal the main-track wrapper if AMS has GC'd it. `subs`
-    // being empty AND no featured pointer is the same shape as the
-    // mid-event outage on 2026-09-10 where `neoconf-room` had vanished
-    // from AMS. Fire in the background (debounced 30s/room in the
-    // helper) so the status poll itself never blocks on a create call.
+    // Self-heal the room's AMS broadcast objects (wrapper + video
+    // subtrack) if AMS has GC'd them. `subs` being empty is the same
+    // shape as the mid-event outage on 2026-09-10 where `neoconf-room`
+    // had vanished, and the same shape as the missing `neoconf-video`
+    // that made the recording toggle fail after that. Fire in the
+    // background (debounced 30s/room in the helper) so the status
+    // poll itself never blocks on a create call.
     if (subs.length === 0) {
-      ensureMainTrackWrapperInBackground(room);
+      ensureRoomBroadcastsInBackground(room);
     }
 
     const viewers = subs.reduce(
