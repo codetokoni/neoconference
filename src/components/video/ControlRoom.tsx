@@ -100,10 +100,17 @@ function Tile({
               onDrop();
             }
       }
-      onClick={display ? undefined : onOpen}
+      // Click still opens the fullscreen Spotlight in display mode —
+      // a moderator projecting the board can tap any participant to
+      // open their individual feed for the room to see.
+      onClick={onOpen}
       className={[
-        "group relative aspect-[4/3] overflow-hidden rounded border bg-[#16232B]",
-        display ? "cursor-default" : "cursor-grab",
+        // In display mode the tile fills its grid cell (rows are set
+        // to `1fr` on the parent so N rows split the viewport evenly).
+        // In producer mode the classic 4:3 aspect stays in force so
+        // the board looks the same as before.
+        "group relative overflow-hidden rounded border bg-[#16232B]",
+        display ? "h-full w-full cursor-pointer" : "aspect-[4/3] cursor-grab",
         featured ? "border-amber-400 ring-1 ring-amber-400" : "border-white/10",
         over ? "ring-2 ring-emerald-400" : "",
       ].join(" ")}
@@ -423,7 +430,7 @@ export default function ControlRoom({
     <div
       className={
         display
-          ? "overflow-hidden bg-[#101A20] text-[#DDE7EC]"
+          ? "flex h-full flex-col overflow-hidden bg-[#101A20] text-[#DDE7EC]"
           : "overflow-hidden rounded-xl border border-white/10 bg-[#101A20] text-[#DDE7EC] shadow-2xl"
       }
     >
@@ -465,11 +472,11 @@ export default function ControlRoom({
         </div>
       )}
 
-      <div className="relative">
+      <div className={display ? "relative flex-1 min-h-0" : "relative"}>
         <div
           className={
             display
-              ? "grid grid-cols-4 gap-[3px] p-0 sm:grid-cols-6 lg:grid-cols-10"
+              ? "grid h-full auto-rows-fr grid-cols-4 gap-[3px] p-0 sm:grid-cols-6 lg:grid-cols-10"
               : "grid grid-cols-4 gap-[5px] p-3 sm:grid-cols-6 lg:grid-cols-10"
           }
         >
@@ -480,8 +487,6 @@ export default function ControlRoom({
               featured={featuredId === p.streamId}
               monitored={monitor === p.streamId}
               display={display}
-              // Callbacks are still wired but Tile itself is inert in
-              // display mode, so the closures are never invoked.
               onOpen={() => setSpot(p)}
               onHide={() => hide(p)}
               onDragStart={() => {
@@ -492,7 +497,7 @@ export default function ControlRoom({
           ))}
         </div>
 
-        {!display && spot && <Spotlight spot={spot} onClose={() => setSpot(null)} />}
+        {spot && <Spotlight spot={spot} onClose={() => setSpot(null)} />}
       </div>
 
       {!display && (

@@ -37,8 +37,14 @@ export default async function CamerasPage({
   const display = searchParams?.display === "1" || searchParams?.display === "true";
 
   if (display) {
+    // Display mode is meant for a projector or dedicated screen — the
+    // whole visible area under the site nav should be the grid, no
+    // dead space at the bottom. 65px matches the nav height in
+    // src/app/layout.tsx's `min-h-[calc(100vh-65px)]`; `100dvh` keeps
+    // this correct on mobile browsers whose viewport shrinks under
+    // the URL bar.
     return (
-      <main className="w-full">
+      <main className="flex h-[calc(100dvh-65px)] w-full flex-col overflow-hidden">
         <ControlRoom room={room} screen={screen} display />
       </main>
     );
