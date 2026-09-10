@@ -38,10 +38,16 @@ interface Queue {
  * The Send-to-preview action writes to /api/video/preview so the
  * cameras board's preview pane picks it up too.
  */
+/** How many entries fit on one projected screen. Matches the
+ *  camera / name board screen size so operators only need to
+ *  remember one number. */
+const PAGE_SIZE = 50;
+
 export default function QueueBoard({
   room,
   slug,
   display = false,
+  screen,
 }: {
   room: string;
   slug: string;
@@ -49,6 +55,12 @@ export default function QueueBoard({
    *  reorder + take-to-air affordances on tiles) so the projected
    *  view is a clean grid of who's queued. */
   display?: boolean;
+  /** Display mode only. 1-indexed page number — page 1 shows the
+   *  first PAGE_SIZE entries, page 2 the next PAGE_SIZE, and so on.
+   *  A queue longer than PAGE_SIZE auto-creates pages; a moderator
+   *  puts one on each projector. Ignored outside display mode; the
+   *  producer view always shows the whole queue. */
+  screen?: number;
 }) {
   const [queue, setQueue] = useState<Queue | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -304,6 +316,11 @@ export default function QueueBoard({
     // Projection layout: just the tile grid, edge-to-edge, no
     // producer chrome. The queue tiles themselves are still marked
     // with position + NEXT so the room can see who is up.
+    const pages = Math.max(1, Math.ceil(queue.order.length / PAGE_SIZE));
+    const page = Math.min(Math.max(1, screen ?? 1), pages);
+    const startIdx = (page - 1) * PAGE_SIZE;
+    const pageEntries = queue.order.slice(startIdx, startIdx + PAGE_SIZE);
+
     return queue.order.length === 0 ? (
       <div className="flex min-h-screen items-center justify-center bg-[#0F1519] p-6 text-center">
         <p className="font-mono text-sm uppercase tracking-[0.14em] text-white/45">
@@ -312,27 +329,44 @@ export default function QueueBoard({
       </div>
     ) : (
       <div className="bg-[#0F1519] p-0">
+        {/* Screen-of-N chip so the moderator can confirm which page a
+            given projector is on. Only shown when the queue actually
+            spans more than one page — a single-screen queue doesn't
+            need the chrome. */}
+        {pages > 1 && (
+          <div className="flex items-center justify-between border-b border-white/8 bg-black/30 px-3 py-1.5">
+            <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/60">
+              {queue.name} · screen {page} of {pages}
+            </span>
+            <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/40">
+              positions {startIdx + 1}–{startIdx + pageEntries.length}
+            </span>
+          </div>
+        )}
         <div
           className="grid gap-[3px]"
           style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}
         >
-          {queue.order.map((sid, i) => (
-            <QueueTile
-              key={sid}
-              streamId={sid}
-              participant={bySid.get(sid)}
-              position={i + 1}
-              first={i === 0}
-              last={i === queue.order.length - 1}
-              busy={false}
-              display
-              onUp={() => {}}
-              onDown={() => {}}
-              onRemove={() => {}}
-              onTake={() => {}}
-              onPreview={() => {}}
-            />
-          ))}
+          {pageEntries.map((sid, iOnPage) => {
+            const globalIdx = startIdx + iOnPage;
+            return (
+              <QueueTile
+                key={sid}
+                streamId={sid}
+                participant={bySid.get(sid)}
+                position={globalIdx + 1}
+                first={globalIdx === 0}
+                last={globalIdx === queue.order.length - 1}
+                busy={false}
+                display
+                onUp={() => {}}
+                onDown={() => {}}
+                onRemove={() => {}}
+                onTake={() => {}}
+                onPreview={() => {}}
+              />
+            );
+          })}
         </div>
       </div>
     );
@@ -406,6 +440,38 @@ export default function QueueBoard({
       <p className="rounded-md border border-white/8 bg-white/[0.02] px-3 py-2 text-xs text-white/60">
         Click a tile to preview. Use the red <span className="mx-0.5 rounded-sm bg-red-600 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-white">AIR</span> button on a tile to take that participant to air (removes them from the queue). Hover for reorder / preview / remove.
       </p>
+
+      {/* Projector links — one URL per 50-entry page. The queue only
+          needs page 2+ when the roster has grown past PAGE_SIZE; up
+          to that point the single default link is all a moderator
+          uses. Opening each URL in its own browser window (or
+          casting to a projector) puts different positions on
+          different screens. */}
+      {queue.order.length > 0 && (
+        <div className="rounded-md border border-white/8 bg-white/[0.02] px-3 py-2 text-xs text-white/60">
+          <span className="mr-2 font-mono text-[10px] uppercase tracking-[0.14em] text-white/45">
+            Present on screen
+          </span>
+          {Array.from(
+            { length: Math.max(1, Math.ceil(queue.order.length / PAGE_SIZE)) },
+            (_, i) => i + 1,
+          ).map((n) => {
+            const start = (n - 1) * PAGE_SIZE + 1;
+            const end = Math.min(n * PAGE_SIZE, queue.order.length);
+            return (
+              <a
+                key={n}
+                href={`/video/room/${encodeURIComponent(slug)}?room=${encodeURIComponent(room)}&display=1&screen=${n}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mr-2 inline-flex items-center gap-1 rounded-sm border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-200 hover:bg-emerald-500/20"
+              >
+                Screen {n} <span className="font-mono text-[10px] text-emerald-300/70">({start}–{end})</span>
+              </a>
+            );
+          })}
+        </div>
+      )}
 
       {queue.order.length === 0 ? (
         <p className="rounded-lg border border-white/12 bg-[#101820] p-4 text-sm text-white/60">

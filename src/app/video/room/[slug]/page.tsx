@@ -31,7 +31,7 @@ export default async function RoomQueueShortUrl({
   searchParams,
   params,
 }: {
-  searchParams?: { room?: string; display?: string };
+  searchParams?: { room?: string; display?: string; screen?: string };
   params: { slug: string };
 }) {
   const { userId } = await auth();
@@ -43,11 +43,20 @@ export default async function RoomQueueShortUrl({
     .replace(/[^a-z0-9-]/g, "")
     .slice(0, 32);
   const display = searchParams?.display === "1" || searchParams?.display === "true";
+  // ?screen=N paginates the queue display into 50-entry pages so a
+  // moderator running >50 people through the same queue can put one
+  // page on each of several projectors. 1-20 mirrors the roster
+  // screen model; the queue board renders as many pages as needed.
+  const rawScreen = Number(searchParams?.screen ?? "");
+  const screen =
+    Number.isFinite(rawScreen) && rawScreen >= 1 && rawScreen <= 20
+      ? Math.floor(rawScreen)
+      : undefined;
 
   if (display) {
     return (
       <main className="w-full">
-        <QueueBoard room={room} slug={slug} display />
+        <QueueBoard room={room} slug={slug} screen={screen} display />
       </main>
     );
   }
