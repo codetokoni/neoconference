@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { roomLink } from "@/lib/simulcast";
 
 interface Queue {
   slug: string;
@@ -122,7 +123,7 @@ export default function QueueList({ room }: { room: string }) {
           {queues.map((q) => (
             <a
               key={q.slug}
-              href={`/video/room/${encodeURIComponent(q.slug)}?room=${encodeURIComponent(room)}`}
+              href={`/video/room/${encodeURIComponent(q.slug)}${roomLink(room)}`}
               className="flex flex-col gap-1.5 rounded-lg border border-white/12 bg-[#101820] p-4 transition hover:border-white/25 hover:bg-white/[0.04]"
             >
               <h3 className="text-lg font-semibold text-white">{q.name}</h3>

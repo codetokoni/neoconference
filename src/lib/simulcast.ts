@@ -75,6 +75,36 @@ export function videoChannelForRoom(room = SIMULCAST_MAIN): SimulcastChannel {
   return chans.find((c) => c.video) ?? chans[0];
 }
 
+/**
+ * Build the query string portion of an internal moderator URL. Drops
+ * `?room=<slug>` when the slug is the SIMULCAST_MAIN default, so a
+ * URL like `/video/room/testtest?display=2` is the norm and only
+ * multi-room events pay the visual weight of `?room=<other-slug>`.
+ *
+ * Extras are appended in the order the caller passed them; falsy
+ * values (undefined / null / empty string) are dropped so
+ * `roomLink(room, { screen: undefined })` doesn't emit `screen=`.
+ * Values are `encodeURIComponent`-encoded on the way out.
+ *
+ * Returns `""` when there are no params to append — callers can
+ * write `\`/video/room/cameras${roomLink(room)}\`` and the URL stays
+ * clean when both the room and the extras collapse to nothing.
+ */
+export function roomLink(
+  room: string,
+  extras: Record<string, string | number | boolean | undefined | null> = {},
+): string {
+  const parts: string[] = [];
+  if (room && room !== SIMULCAST_MAIN) {
+    parts.push(`room=${encodeURIComponent(room)}`);
+  }
+  for (const [k, v] of Object.entries(extras)) {
+    if (v === undefined || v === null || v === "" || v === false) continue;
+    parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+  }
+  return parts.length ? `?${parts.join("&")}` : "";
+}
+
 export function channelTrackIdsForRoom(room = SIMULCAST_MAIN): string[] {
   return channelsForRoom(room).map((c) => c.id);
 }

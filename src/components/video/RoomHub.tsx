@@ -7,6 +7,7 @@ import RecordingPanel from "./RecordingPanel";
 import RosterPanel from "./RosterPanel";
 import TimerControl from "./TimerControl";
 import { broadcastEndpointsForRoom } from "@/lib/broadcastUrls";
+import { roomLink } from "@/lib/simulcast";
 
 interface ScreenBlock {
   screen: number;
@@ -240,7 +241,7 @@ export default function RoomHub({
         </h2>
         <div className="grid gap-3 md:grid-cols-2">
           <BoardCard
-            href={`/video/room/cameras?room=${encodeURIComponent(s.room)}${role === "moderator" ? "&display=1" : ""}`}
+            href={`/video/room/cameras${roomLink(s.room, { display: role === "moderator" ? 1 : undefined })}`}
             title="Camera board"
             subtitle={
               role === "moderator"
@@ -250,7 +251,7 @@ export default function RoomHub({
             costHint="One viewer slot per live camera in the room."
           />
           <BoardCard
-            href={`/video/room/names?room=${encodeURIComponent(s.room)}${role === "moderator" ? "&display=1" : ""}`}
+            href={`/video/room/names${roomLink(s.room, { display: role === "moderator" ? 1 : undefined })}`}
             title="Name board"
             subtitle={
               role === "moderator"
@@ -269,7 +270,7 @@ export default function RoomHub({
             Queues
           </h2>
           <a
-            href={`/video/room/queue?room=${encodeURIComponent(s.room)}`}
+            href={`/video/room/queue${roomLink(s.room)}`}
             className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-emerald-300 hover:text-emerald-200"
           >
             Manage →
@@ -277,7 +278,7 @@ export default function RoomHub({
         </div>
         {queues.length === 0 ? (
           <a
-            href={`/video/room/queue?room=${encodeURIComponent(s.room)}`}
+            href={`/video/room/queue${roomLink(s.room)}`}
             className="rounded-lg border border-white/12 bg-[#101820] p-4 text-sm text-white/60 transition hover:border-white/25 hover:bg-white/[0.04]"
           >
             No queues yet. Create one to stage the participants who are online out
@@ -289,11 +290,11 @@ export default function RoomHub({
               // Moderator role opens each queue in display mode so the
               // projected view shows a clean tile grid, no producer
               // chrome. Admin role keeps the editable board.
-              const suffix = role === "moderator" ? "&display=1" : "";
+              const displayN = role === "moderator" ? 1 : undefined;
               return (
                 <a
                   key={q.slug}
-                  href={`/video/room/${encodeURIComponent(q.slug)}?room=${encodeURIComponent(s.room)}${suffix}`}
+                  href={`/video/room/${encodeURIComponent(q.slug)}${roomLink(s.room, { display: displayN })}`}
                   className="flex flex-col gap-1.5 rounded-lg border border-white/12 bg-[#101820] p-4 transition hover:border-white/25 hover:bg-white/[0.04]"
                 >
                   <h3 className="text-base font-semibold text-white">{q.name}</h3>
@@ -421,12 +422,14 @@ function ScreenCard({
   // be visual noise on the projected view. Admins get the editable
   // board by default and can opt into display mode from a link on
   // that page.
-  const cameraHref = `/video/room/cameras?room=${encodeURIComponent(room)}&screen=${block.screen}${
-    role === "moderator" ? "&display=1" : ""
-  }`;
-  const nameHref = `/video/room/names?room=${encodeURIComponent(room)}&screen=${block.screen}${
-    role === "moderator" ? "&display=1" : ""
-  }`;
+  const cameraHref = `/video/room/cameras${roomLink(room, {
+    screen: block.screen,
+    display: role === "moderator" ? 1 : undefined,
+  })}`;
+  const nameHref = `/video/room/names${roomLink(room, {
+    screen: block.screen,
+    display: role === "moderator" ? 1 : undefined,
+  })}`;
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-white/12 bg-[#101820] p-4">
       <div className="flex items-baseline justify-between gap-3">

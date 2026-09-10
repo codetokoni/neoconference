@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import NameBoard from "@/components/video/NameBoard";
-import { SIMULCAST_MAIN } from "@/lib/simulcast";
+import { roomLink, SIMULCAST_MAIN } from "@/lib/simulcast";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +53,7 @@ export default async function NamesPage({
     <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-5 px-4 py-8 sm:px-6">
       <header className="flex flex-col gap-1">
         <a
-          href={`/video/room?room=${encodeURIComponent(room)}`}
+          href={`/video/room${roomLink(room)}`}
           className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45 hover:text-white/80"
         >
           ← Hub
@@ -66,14 +66,14 @@ export default async function NamesPage({
           any row to open that child fullscreen, feature to air, or send to
           preview. Auto-refreshes every few seconds.{" "}
           <a
-            href={`/video/room/names?room=${encodeURIComponent(room)}${screen ? `&screen=${screen}` : ""}&display=1`}
+            href={`/video/room/names${roomLink(room, { screen, display: 1 })}`}
             className="text-emerald-300 hover:text-emerald-200"
           >
             Present on screen →
           </a>
           {" · "}
           <a
-            href={`/video/room/names?room=${encodeURIComponent(room)}${screen ? `&screen=${screen}` : ""}&display=1&codes=1`}
+            href={`/video/room/names${roomLink(room, { screen, display: 1, codes: 1 })}`}
             className="text-amber-300 hover:text-amber-200"
             title="Includes join codes — for a moderator's own screen, never a public projector."
           >
