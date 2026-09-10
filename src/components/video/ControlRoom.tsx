@@ -497,7 +497,20 @@ export default function ControlRoom({
           ))}
         </div>
 
-        {spot && <Spotlight spot={spot} onClose={() => setSpot(null)} />}
+        {spot && (
+          <Spotlight
+            spot={spot}
+            onClose={() => setSpot(null)}
+            onPrev={() => {
+              const i = visible.findIndex((p) => p.streamId === spot.streamId);
+              if (i > 0) setSpot(visible[i - 1]);
+            }}
+            onNext={() => {
+              const i = visible.findIndex((p) => p.streamId === spot.streamId);
+              if (i >= 0 && i < visible.length - 1) setSpot(visible[i + 1]);
+            }}
+          />
+        )}
       </div>
 
       {!display && (
