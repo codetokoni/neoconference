@@ -105,12 +105,12 @@ function Tile({
       // open their individual feed for the room to see.
       onClick={onOpen}
       className={[
-        // In display mode the tile fills its grid cell (rows are set
-        // to `1fr` on the parent so N rows split the viewport evenly).
-        // In producer mode the classic 4:3 aspect stays in force so
-        // the board looks the same as before.
-        "group relative overflow-hidden rounded border bg-[#16232B]",
-        display ? "h-full w-full cursor-pointer" : "aspect-[4/3] cursor-grab",
+        // Tiles keep a comfortable 4:3 aspect at all sizes — auto-fitting
+        // rows to viewport height (an earlier revision) squished tiles
+        // into unreadable slivers as soon as a roster grew past 50.
+        // The page scrolls now instead.
+        "group relative aspect-[4/3] overflow-hidden rounded border bg-[#16232B]",
+        display ? "cursor-pointer" : "cursor-grab",
         featured ? "border-amber-400 ring-1 ring-amber-400" : "border-white/10",
         over ? "ring-2 ring-emerald-400" : "",
       ].join(" ")}
@@ -430,7 +430,7 @@ export default function ControlRoom({
     <div
       className={
         display
-          ? "flex h-full flex-col overflow-hidden bg-[#101A20] text-[#DDE7EC]"
+          ? "bg-[#101A20] text-[#DDE7EC]"
           : "overflow-hidden rounded-xl border border-white/10 bg-[#101A20] text-[#DDE7EC] shadow-2xl"
       }
     >
@@ -472,11 +472,11 @@ export default function ControlRoom({
         </div>
       )}
 
-      <div className={display ? "relative flex-1 min-h-0" : "relative"}>
+      <div className="relative">
         <div
           className={
             display
-              ? "grid h-full auto-rows-fr grid-cols-4 gap-[3px] p-0 sm:grid-cols-6 lg:grid-cols-10"
+              ? "grid grid-cols-4 gap-[3px] p-0 sm:grid-cols-6 lg:grid-cols-10"
               : "grid grid-cols-4 gap-[5px] p-3 sm:grid-cols-6 lg:grid-cols-10"
           }
         >
