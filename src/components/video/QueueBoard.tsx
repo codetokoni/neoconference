@@ -361,6 +361,10 @@ export default function QueueBoard({
                 last={globalIdx === queue.order.length - 1}
                 busy={false}
                 display
+                onOpen={() => {
+                  const p = bySid.get(sid);
+                  if (p) setSpot(p);
+                }}
                 onUp={() => {}}
                 onDown={() => {}}
                 onRemove={() => {}}
@@ -370,6 +374,33 @@ export default function QueueBoard({
             );
           })}
         </div>
+
+        {/* Spotlight in display mode too — a moderator projecting the
+            queue can tap any tile to pull that participant's camera
+            up full-screen for the room to see. ← / → walk the queue
+            order (from #210). */}
+        {spot && (
+          <Spotlight
+            spot={spot}
+            onClose={() => setSpot(null)}
+            onPrev={() => {
+              const order = queue.order;
+              const i = order.findIndex((s) => s === spot.streamId);
+              if (i > 0) {
+                const p = bySid.get(order[i - 1]);
+                if (p) setSpot(p);
+              }
+            }}
+            onNext={() => {
+              const order = queue.order;
+              const i = order.findIndex((s) => s === spot.streamId);
+              if (i >= 0 && i < order.length - 1) {
+                const p = bySid.get(order[i + 1]);
+                if (p) setSpot(p);
+              }
+            }}
+          />
+        )}
       </div>
     );
   }
@@ -609,14 +640,17 @@ function QueueTile({
 
   return (
     <div
-      onClick={display || busy ? undefined : onOpen}
+      // Click opens Spotlight in BOTH modes now. Take-to-air stays on
+      // the persistent red AIR button (producer only) so the whole-tile
+      // click never triggers something destructive.
+      onClick={busy ? undefined : onOpen}
       className={
         "group relative overflow-hidden rounded border bg-[#16232B] " +
         // In display mode the tile fills its grid cell (parent uses
         // `auto-rows-fr` with fixed cols so 50 tiles split the
         // viewport into a 10x5 mosaic). Producer mode keeps the 4:3
         // aspect so scrolling grids look uniform.
-        (display ? "h-full w-full cursor-default " : "aspect-[4/3] cursor-pointer ") +
+        (display ? "h-full w-full cursor-pointer " : "aspect-[4/3] cursor-pointer ") +
         (first
           ? "border-amber-400 ring-1 ring-amber-400"
           : participant?.live
