@@ -139,7 +139,7 @@ export default function RecordingPanel({ room }: { room: string }) {
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/12 bg-[#141C22] p-4">
         <div className="flex flex-col leading-tight">
           <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/45">
-            Main broadcaster {data?.state?.streamId ? `· ${data.state.streamId}` : ""}
+            Programme feed {data?.state?.streamId ? `· ${data.state.streamId}` : ""}
           </span>
           <span className="text-lg font-bold text-white">
             {recording ? (
