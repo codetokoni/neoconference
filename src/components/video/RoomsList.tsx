@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { roomLink } from "@/lib/simulcast";
 
 interface Room {
   slug: string;
@@ -141,7 +140,13 @@ export default function RoomsList() {
           {rooms.map((r) => (
             <a
               key={r.slug}
-              href={`/video/room${roomLink(r.slug)}`}
+              // Rooms directory is the ONE place we always include the
+              // slug — so every card in the list looks identical,
+              // whether it's the default room or a named event.
+              // roomLink's collapse rule (drop ?room= on default)
+              // still applies to every OTHER internal link so that
+              // once you're inside a room, the URL stays short.
+              href={`/video/room?room=${encodeURIComponent(r.slug)}`}
               className="flex flex-col gap-1.5 rounded-lg border border-white/12 bg-[#101820] p-4 transition hover:border-white/25 hover:bg-white/[0.04]"
             >
               <h3 className="text-lg font-semibold text-white">{r.name}</h3>
