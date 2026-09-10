@@ -184,7 +184,10 @@ export default function NameBoard({
         </div>
       </div>
 
-      {!display && spot && <Spotlight spot={spot} onClose={() => setSpot(null)} />}
+      {/* Spotlight opens in display mode too — a moderator projecting
+          the name board can tap any row to pull that participant's
+          camera up full-screen for the room to see. */}
+      {spot && <Spotlight spot={spot} onClose={() => setSpot(null)} />}
     </>
   );
 }
@@ -204,12 +207,26 @@ function Row({
       ? { label: "JOINED", tone: "bg-amber-500/20 text-amber-300 border-amber-400/40" }
       : { label: "NOT JOINED", tone: "bg-white/[0.04] text-white/45 border-white/10" };
 
+  // Text scales up in display mode so numbers + names are legible
+  // when the board is projected on a physical screen from a few
+  // meters away. Producer-mode chrome (compact rows) is unchanged.
+  const slotClass = display
+    ? "w-10 font-mono text-sm text-white/60"
+    : "w-8 font-mono text-[10px] text-white/45";
+  const nameClass = display
+    ? "flex-1 truncate text-lg font-semibold text-white"
+    : "flex-1 truncate text-sm font-semibold text-white";
+  const statusClass = display
+    ? "rounded-sm border px-2 py-1 font-mono text-[11px] uppercase tracking-[0.14em] "
+    : "rounded-sm border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ";
+  const rowClass = display
+    ? "flex w-full items-center gap-3 rounded-md border border-white/10 bg-white/[0.02] px-3 py-3 text-left transition hover:border-white/25 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
+    : "flex w-full items-center gap-3 rounded-md border border-white/10 bg-white/[0.02] px-3 py-2 text-left transition hover:border-white/25 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400";
+
   const body = (
     <>
-      <span className="w-8 font-mono text-[10px] text-white/45">
-        {String(p.slot).padStart(2, "0")}
-      </span>
-      <span className="flex-1 truncate text-sm font-semibold text-white">{p.name}</span>
+      <span className={slotClass}>{String(p.slot).padStart(2, "0")}</span>
+      <span className={nameClass}>{p.name}</span>
       {/* Passcode is deliberately omitted in display mode — the name
           board is often projected on a physical screen for the whole
           room to see, and showing every participant's code there would
@@ -217,30 +234,18 @@ function Row({
       {!display && (
         <span className="font-mono text-[10px] text-white/45">{p.code}</span>
       )}
-      <span
-        className={
-          "rounded-sm border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] " +
-          state.tone
-        }
-      >
-        {state.label}
-      </span>
+      <span className={statusClass + state.tone}>{state.label}</span>
     </>
   );
 
-  if (display) {
-    return (
-      <div className="flex w-full items-center gap-3 rounded-md border border-white/10 bg-white/[0.02] px-3 py-2 text-left">
-        {body}
-      </div>
-    );
-  }
-
+  // Rows are now buttons in every mode so a moderator can tap any
+  // name in display mode to open that participant's camera fullscreen
+  // (matches the camera-board affordance).
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="flex w-full items-center gap-3 rounded-md border border-white/10 bg-white/[0.02] px-3 py-2 text-left transition hover:border-white/25 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
+      className={rowClass}
       aria-label={`Open ${p.name} fullscreen`}
     >
       {body}
