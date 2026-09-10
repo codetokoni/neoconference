@@ -37,14 +37,14 @@ export default async function CamerasPage({
   const display = searchParams?.display === "1" || searchParams?.display === "true";
 
   if (display) {
-    // Display mode is meant for a projector or dedicated screen — the
-    // whole visible area under the site nav should be the grid, no
-    // dead space at the bottom. 65px matches the nav height in
-    // src/app/layout.tsx's `min-h-[calc(100vh-65px)]`; `100dvh` keeps
-    // this correct on mobile browsers whose viewport shrinks under
-    // the URL bar.
+    // Display mode targets projectors AND huge rosters. Tiles keep a
+    // comfortable 4:3 aspect so a moderator can read names on a
+    // 2000-slot event; the page scrolls when the roster exceeds the
+    // viewport. `min-h-[calc(100dvh-65px)]` keeps the background dark
+    // even when the roster is small enough to leave space below the
+    // last row. 65px matches the site-nav height in src/app/layout.tsx.
     return (
-      <main className="flex h-[calc(100dvh-65px)] w-full flex-col overflow-hidden">
+      <main className="w-full min-h-[calc(100dvh-65px)]">
         <ControlRoom room={room} screen={screen} display />
       </main>
     );
