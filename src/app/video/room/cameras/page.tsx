@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import ControlRoom from "@/components/video/ControlRoom";
-import { SIMULCAST_MAIN } from "@/lib/simulcast";
+import { roomLink, SIMULCAST_MAIN } from "@/lib/simulcast";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +54,7 @@ export default async function CamerasPage({
     <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-5 px-4 py-8 sm:px-6">
       <header className="flex flex-col gap-1">
         <a
-          href={`/video/room?room=${encodeURIComponent(room)}`}
+          href={`/video/room${roomLink(room)}`}
           className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45 hover:text-white/80"
         >
           ← Hub
@@ -70,14 +70,14 @@ export default async function CamerasPage({
               that camera full-frame for the public audience until you send it
               back to the programme.{" "}
               <a
-                href={`/video/room/cameras?room=${encodeURIComponent(room)}`}
+                href={`/video/room/cameras${roomLink(room)}`}
                 className="text-emerald-300 hover:text-emerald-200"
               >
                 See all screens →
               </a>
               {" · "}
               <a
-                href={`/video/room/cameras?room=${encodeURIComponent(room)}&screen=${screen}&display=1`}
+                href={`/video/room/cameras${roomLink(room, { screen, display: 1 })}`}
                 className="text-emerald-300 hover:text-emerald-200"
               >
                 Present on screen →

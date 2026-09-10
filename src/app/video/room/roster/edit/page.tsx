@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import RosterEditor from "@/components/video/RosterEditor";
 import { requireRole } from "@/lib/roles";
 import { getRoom } from "@/lib/rooms";
-import { SIMULCAST_MAIN } from "@/lib/simulcast";
+import { roomLink, SIMULCAST_MAIN } from "@/lib/simulcast";
 import { isVideoRoomAdmin } from "@/lib/videoAdmin";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +36,7 @@ export default async function RosterEditPage({
     <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 px-4 py-8 sm:px-6">
       <header className="flex flex-col gap-1">
         <a
-          href={`/video/room?room=${encodeURIComponent(room)}`}
+          href={`/video/room${roomLink(room)}`}
           className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45 hover:text-white/80"
         >
           ← Hub

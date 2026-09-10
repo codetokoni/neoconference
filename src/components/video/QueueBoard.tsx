@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAmsMultitrack } from "./useAmsMultitrack";
 import Spotlight from "./Spotlight";
+import { roomLink } from "@/lib/simulcast";
 
 interface Participant {
   slot: number;
@@ -288,7 +289,7 @@ export default function QueueBoard({
       `/api/video/queues/${encodeURIComponent(slug)}?room=${encodeURIComponent(room)}`,
       { method: "DELETE" },
     );
-    window.location.href = `/video/room/queue?room=${encodeURIComponent(room)}`;
+    window.location.href = `/video/room/queue${roomLink(room)}`;
   }, [room, slug, queue]);
 
   const bySid = useMemo(
@@ -499,7 +500,7 @@ export default function QueueBoard({
             return (
               <a
                 key={n}
-                href={`/video/room/${encodeURIComponent(slug)}?room=${encodeURIComponent(room)}&display=${n}`}
+                href={`/video/room/${encodeURIComponent(slug)}${roomLink(room, { display: n })}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mr-2 inline-flex items-center gap-1 rounded-sm border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-200 hover:bg-emerald-500/20"

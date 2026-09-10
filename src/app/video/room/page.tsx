@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import RoomHub from "@/components/video/RoomHub";
 import { requireRole } from "@/lib/roles";
 import { getRoom } from "@/lib/rooms";
-import { SIMULCAST_MAIN } from "@/lib/simulcast";
+import { roomLink, SIMULCAST_MAIN } from "@/lib/simulcast";
 import { isVideoRoomAdmin } from "@/lib/videoAdmin";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +28,7 @@ export default async function VideoRoomPage({
   // upload/download, code prefix. Staff without an admin-listed email
   // land on the moderator view for the same room instead.
   if (!(await isVideoRoomAdmin())) {
-    redirect(`/video/room/moderate?room=${encodeURIComponent(room)}`);
+    redirect(`/video/room/moderate${roomLink(room)}`);
   }
   const roomRecord = await getRoom(room);
   const roomName = roomRecord?.name ?? room;

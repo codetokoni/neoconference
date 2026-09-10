@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import QueueBoard from "@/components/video/QueueBoard";
-import { SIMULCAST_MAIN } from "@/lib/simulcast";
+import { roomLink, SIMULCAST_MAIN } from "@/lib/simulcast";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +33,7 @@ export default async function QueueDetail({
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6">
       <header className="flex flex-col gap-1">
         <a
-          href={`/video/room/queue?room=${encodeURIComponent(room)}`}
+          href={`/video/room/queue${roomLink(room)}`}
           className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45 hover:text-white/80"
         >
           ← Queues
