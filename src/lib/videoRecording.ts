@@ -1,14 +1,16 @@
-import { AMS_HTTP, AMS_REST } from "@/lib/simulcast";
+import { AMS_HTTP, AMS_REST, videoChannelForRoom } from "@/lib/simulcast";
 
 /**
  * Programme-feed recording control via Ant Media Server REST.
  *
- * AMS records each broadcast to an MP4 (or WebM / HLS, but MP4 is
- * what a viewer expects to download) when `recordType` is set on the
- * broadcast. We toggle that field on the room's MAIN track — the
- * `${room}-room` broadcaster — so the programme feed is captured;
- * per-participant recording is a separate opt-in and not needed for
- * "distribute a clip after the event" workflows.
+ * The recording target is the room's VIDEO subtrack
+ * (`videoChannelForRoom(room).id`, e.g. `<room>-video`), NOT the
+ * `<room>-room` multi-track wrapper. The wrapper is a placeholder
+ * that has no media of its own — subtracks carry the frames — and
+ * AMS returns 400 when asked to toggle recordType on it. The
+ * `<room>-video` subtrack is where vMix/OBS actually pushes the
+ * mixed programme feed, so recording it captures exactly what the
+ * audience sees.
  *
  * Recorded files land under `${AMS_HTTP}/streams/<name>.mp4` and are
  * enumerated via the `/vods/*` REST endpoint. The file naming
@@ -37,22 +39,33 @@ export interface RecordedVod {
 
 const REST_TIMEOUT_MS = 5000;
 
-function ok<T = unknown>(res: Response): Promise<T> {
-  if (!res.ok) {
-    throw new Error(`AMS ${res.status} ${res.statusText}`);
-  }
-  return res.json() as Promise<T>;
+/**
+ * Turn an unsuccessful AMS response into an error that names the
+ * status AND the response body. Without the body, a 400 from AMS is
+ * indistinguishable from every other 400 and every debug session
+ * starts by curl-ing the same endpoint by hand — a preventable tax.
+ */
+async function throwAmsError(r: Response): Promise<never> {
+  const body = await r
+    .text()
+    .then((t) => t.slice(0, 200).replace(/\s+/g, " ").trim())
+    .catch(() => "");
+  throw new Error(`AMS ${r.status}${body ? `: ${body}` : ""}`);
+}
+
+function recordingTargetFor(room: string): string {
+  return videoChannelForRoom(room).id;
 }
 
 /**
- * Read the current recording state of the room's main broadcaster.
+ * Read the current recording state of the room's programme feed.
  * Returns null when AMS has no record of the broadcast — either the
- * broadcaster hasn't been created yet, or the id doesn't match.
+ * publisher hasn't ever pushed frames, or the id doesn't match.
  */
 export async function getRecordingState(
   room: string,
 ): Promise<RecordingState | null> {
-  const streamId = `${room}-room`;
+  const streamId = recordingTargetFor(room);
   const r = await fetch(
     `${AMS_REST}/broadcasts/${encodeURIComponent(streamId)}`,
     {
@@ -61,12 +74,13 @@ export async function getRecordingState(
     },
   );
   if (r.status === 404) return null;
-  const body = await ok<{
+  if (!r.ok) await throwAmsError(r);
+  const body = (await r.json()) as {
     streamId?: string;
     recordType?: RecordType;
     status?: string;
     updateTime?: number;
-  }>(r);
+  };
   const recordType: RecordType =
     (body.recordType as RecordType | undefined) ?? "NONE";
   return {
@@ -81,9 +95,15 @@ export async function getRecordingState(
 }
 
 /**
- * Turn recording on for the room's main broadcaster. Uses PUT to
- * update just the `recordType` field so we don't touch anything else
- * about the broadcast configuration.
+ * Turn recording on for the room's programme feed. Uses AMS's
+ * dedicated recording toggle endpoint:
+ *
+ *   PUT /rest/v2/broadcasts/{id}/recording/{true|false}?recordType=MP4
+ *
+ * Older code tried to PUT a partial broadcast body against
+ * `/broadcasts/{id}` — that returns 400 on every AMS version we've
+ * seen. The dedicated endpoint is what the AMS admin console itself
+ * calls and is stable across 2.9 → 2.14.
  *
  * `recordType=MP4` — the file lands as one contiguous MP4 when the
  * broadcast ends, which is what people expect to download. HLS
@@ -94,27 +114,26 @@ export async function setRecording(
   room: string,
   recordType: RecordType,
 ): Promise<RecordingState | null> {
-  const streamId = `${room}-room`;
-  // AMS accepts PUT with a partial broadcast body; the field name is
-  // `recordType` on the broadcast object.
-  const r = await fetch(
-    `${AMS_REST}/broadcasts/${encodeURIComponent(streamId)}`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ streamId, recordType }),
-      signal: AbortSignal.timeout(REST_TIMEOUT_MS),
-    },
-  );
+  const streamId = recordingTargetFor(room);
+  const enable = recordType !== "NONE";
+  const type = enable ? recordType : "MP4"; // AMS wants a valid type even when disabling
+  const url =
+    `${AMS_REST}/broadcasts/${encodeURIComponent(streamId)}` +
+    `/recording/${enable ? "true" : "false"}` +
+    `?recordType=${encodeURIComponent(type)}`;
+  const r = await fetch(url, {
+    method: "PUT",
+    signal: AbortSignal.timeout(REST_TIMEOUT_MS),
+  });
   if (r.status === 404) return null;
-  if (!r.ok) throw new Error(`AMS ${r.status} ${r.statusText}`);
+  if (!r.ok) await throwAmsError(r);
   // Re-read so the returned state reflects what AMS actually stored
   // (some versions coerce the recordType field silently).
   return getRecordingState(room);
 }
 
 /**
- * List MP4 files AMS has recorded for the room's main broadcaster.
+ * List MP4 files AMS has recorded for the room's programme feed.
  * Filters by filename prefix so the caller doesn't accidentally get
  * VODs from unrelated broadcasters on the same AMS instance.
  *
@@ -122,12 +141,12 @@ export async function setRecording(
  * "grab the clip from the segment that just finished."
  */
 export async function listRecordings(room: string): Promise<RecordedVod[]> {
-  const streamId = `${room}-room`;
+  const streamId = recordingTargetFor(room);
   const r = await fetch(`${AMS_REST}/vods/list/0/200`, {
     cache: "no-store",
     signal: AbortSignal.timeout(REST_TIMEOUT_MS),
   });
-  if (!r.ok) throw new Error(`AMS ${r.status} ${r.statusText}`);
+  if (!r.ok) await throwAmsError(r);
   const list = (await r.json()) as Array<{
     vodId?: string;
     vodName?: string;
@@ -141,8 +160,8 @@ export async function listRecordings(room: string): Promise<RecordedVod[]> {
   for (const v of list) {
     const filename = v.vodName || v.filePath?.split("/").pop() || "";
     if (!filename) continue;
-    // Only keep recordings that belong to this room's main
-    // broadcaster. AMS names files like `<streamId>_<timestamp>.mp4`.
+    // Only keep recordings that belong to this room's programme feed.
+    // AMS names files like `<streamId>_<timestamp>.mp4`.
     const belongsToRoom =
       v.streamId === streamId || filename.startsWith(streamId + "_");
     if (!belongsToRoom) continue;
@@ -166,6 +185,6 @@ export async function deleteRecording(vodId: string): Promise<boolean> {
     signal: AbortSignal.timeout(REST_TIMEOUT_MS),
   });
   if (r.status === 404) return false;
-  if (!r.ok) throw new Error(`AMS ${r.status} ${r.statusText}`);
+  if (!r.ok) await throwAmsError(r);
   return true;
 }
