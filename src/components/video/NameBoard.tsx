@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Spotlight from "./Spotlight";
 
 interface Participant {
@@ -63,6 +63,8 @@ export default function NameBoard({
   const [err, setErr] = useState<string | null>(null);
   const [spot, setSpot] = useState<Participant | null>(null);
   const [busy, setBusy] = useState(false);
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
   const scopeParam = screen ? String(screen) : "all";
 
@@ -93,6 +95,31 @@ export default function NameBoard({
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   }, [load]);
+
+  // `/` focuses the search box (Gmail / GitHub muscle memory); Esc
+  // while focused clears the query. Skip when the user is already
+  // typing somewhere else so we don't steal keystrokes.
+  useEffect(() => {
+    const isTypingElsewhere = () => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      return (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        el.isContentEditable
+      );
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "/" && !isTypingElsewhere() && !spot) {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [spot]);
 
   const feature = useCallback(
     async (p: Participant) => {
@@ -146,6 +173,19 @@ export default function NameBoard({
   const joinedCount = data.participants.filter((p) => !p.live && p.claimed).length;
   const notJoinedCount = data.participants.filter((p) => !p.claimed).length;
 
+  // Search matches name (case-insensitive substring), code (any
+  // substring), or slot number (as digits). Empty query = show all.
+  // Uses the RAW list every render — cheap even at 2000 rows since
+  // each participant is a couple of string checks.
+  const filtered = data.participants.filter((p) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    if (p.name.toLowerCase().includes(q)) return true;
+    if (p.code.toLowerCase().includes(q)) return true;
+    if (String(p.slot).includes(q)) return true;
+    return false;
+  });
+
   return (
     <>
       <div
@@ -158,8 +198,9 @@ export default function NameBoard({
         {!display && (
           <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2.5">
             <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
-              {data.participants.length} slots · {data.screens} screen
-              {data.screens === 1 ? "" : "s"}
+              {query ? `${filtered.length} of ${data.participants.length}` : `${data.participants.length} slots`}
+              {" · "}
+              {data.screens} screen{data.screens === 1 ? "" : "s"}
             </span>
 
             <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
@@ -172,6 +213,61 @@ export default function NameBoard({
           </div>
         )}
 
+        {/* Search bar. Sticky at the top so it stays reachable while
+            scrolling a 2000-row roster. Same shape in producer and
+            display modes; the sizing scales with legibility rules. */}
+        <div
+          className={
+            display
+              ? "sticky top-0 z-10 border-b border-white/10 bg-[#101820]/95 px-3 py-2 backdrop-blur"
+              : "sticky top-0 z-10 border-b border-white/10 bg-[#101820]/95 px-3 py-2 backdrop-blur"
+          }
+        >
+          <div className="relative">
+            <input
+              ref={searchRef}
+              type="search"
+              inputMode="search"
+              placeholder={
+                display
+                  ? "Search name, code, or slot number"
+                  : "Search name, code, or slot number   (press / to focus)"
+              }
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setQuery("");
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              className={
+                display
+                  ? "w-full rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-base text-white placeholder:text-white/40 focus:border-emerald-400/60 focus:outline-none"
+                  : "w-full rounded-md border border-white/15 bg-white/[0.04] px-3 py-1.5 text-sm text-white placeholder:text-white/40 focus:border-emerald-400/60 focus:outline-none"
+              }
+            />
+            {query && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => {
+                  setQuery("");
+                  searchRef.current?.focus();
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-xs text-white/60 hover:bg-white/10 hover:text-white/90"
+              >
+                clear
+              </button>
+            )}
+          </div>
+          {display && query && (
+            <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
+              {filtered.length} of {data.participants.length}
+            </p>
+          )}
+        </div>
+
         <div
           className={
             display
@@ -179,7 +275,7 @@ export default function NameBoard({
               : "grid gap-[3px] p-3 sm:grid-cols-2 lg:grid-cols-3"
           }
         >
-          {data.participants.map((p) => (
+          {filtered.map((p) => (
             <Row
               key={p.streamId}
               p={p}
@@ -188,6 +284,11 @@ export default function NameBoard({
               onOpen={() => setSpot(p)}
             />
           ))}
+          {filtered.length === 0 && (
+            <p className="col-span-full px-3 py-8 text-center text-sm text-white/50">
+              No participants match &ldquo;{query}&rdquo;.
+            </p>
+          )}
         </div>
       </div>
 
@@ -202,14 +303,15 @@ export default function NameBoard({
           spot={spot}
           onClose={() => setSpot(null)}
           onPrev={() => {
-            const list = data.participants;
-            const i = list.findIndex((p) => p.streamId === spot.streamId);
-            if (i > 0) setSpot(list[i - 1]);
+            // Walk the FILTERED list, so arrow-key navigation follows
+            // the search results the moderator is looking at rather
+            // than jumping back into rows they've filtered out.
+            const i = filtered.findIndex((p) => p.streamId === spot.streamId);
+            if (i > 0) setSpot(filtered[i - 1]);
           }}
           onNext={() => {
-            const list = data.participants;
-            const i = list.findIndex((p) => p.streamId === spot.streamId);
-            if (i >= 0 && i < list.length - 1) setSpot(list[i + 1]);
+            const i = filtered.findIndex((p) => p.streamId === spot.streamId);
+            if (i >= 0 && i < filtered.length - 1) setSpot(filtered[i + 1]);
           }}
         />
       )}
