@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { roomLink } from "@/lib/simulcast";
 
 interface Room {
   slug: string;
@@ -140,7 +141,7 @@ export default function RoomsList() {
           {rooms.map((r) => (
             <a
               key={r.slug}
-              href={`/video/room?room=${encodeURIComponent(r.slug)}`}
+              href={`/video/room${roomLink(r.slug)}`}
               className="flex flex-col gap-1.5 rounded-lg border border-white/12 bg-[#101820] p-4 transition hover:border-white/25 hover:bg-white/[0.04]"
             >
               <h3 className="text-lg font-semibold text-white">{r.name}</h3>
