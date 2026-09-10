@@ -6,6 +6,7 @@ import ChannelRail from "./ChannelRail";
 import LiveChat from "./LiveChat";
 import TranslationOverlay from "./TranslationOverlay";
 import { useAmsMultitrack } from "./useAmsMultitrack";
+import { roomMainTrack } from "@/lib/participantCodes";
 import {
   SIMULCAST_MAIN,
   channelById as channelByIdInList,
@@ -102,8 +103,15 @@ export default function SimulcastPlayer({
   const hlsVideo = useRef<Destroyable | null>(null);
   const hlsAudio = useRef<Destroyable | null>(null);
 
+  // AMS knows the main-track wrapper as `<room>-room`, not the bare
+  // room slug — same convention roomMainTrack() encodes and every
+  // publisher (browser Studio, RTMP push) writes to. Subscribing with
+  // the bare slug matched no broadcast at all, so the WebRTC session
+  // opened cleanly then sat on "Waiting for the feed" forever. Sibling
+  // bug to #197 in a different file.
+  const mainTrack = useMemo(() => roomMainTrack(room), [room]);
   const { state, videoStream, audioStreams, liveTrackIds, setTrackEnabled, restart } =
-    useAmsMultitrack(room, mode === "webrtc", channelTrackIds);
+    useAmsMultitrack(mainTrack, mode === "webrtc", channelTrackIds);
 
   /**
    * A featured participant is played on its OWN connection, straight to their
