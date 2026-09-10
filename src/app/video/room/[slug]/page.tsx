@@ -42,16 +42,31 @@ export default async function RoomQueueShortUrl({
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, "")
     .slice(0, 32);
-  const display = searchParams?.display === "1" || searchParams?.display === "true";
-  // ?screen=N paginates the queue display into 50-entry pages so a
-  // moderator running >50 people through the same queue can put one
-  // page on each of several projectors. 1-20 mirrors the roster
-  // screen model; the queue board renders as many pages as needed.
+  // Display mode has two accepted URL shapes:
+  //   ?display=1                          → screen 1 (default page)
+  //   ?display=2                          → screen 2 (short form)
+  //   ?display=1&screen=2                 → screen 2 (long form, kept
+  //                                         so old bookmarks still work)
+  //   ?display=true                       → screen 1 (implicit)
+  // An explicit `screen` param wins over the number inside `display`
+  // when both are set — so a URL like `?display=2&screen=3` renders
+  // page 3, matching how humans read \"screen 3\".
+  const displayRaw = String(searchParams?.display ?? "").trim();
+  const displayAsNum = Number(displayRaw);
+  const displayScreen =
+    Number.isFinite(displayAsNum) && displayAsNum >= 1 && displayAsNum <= 20
+      ? Math.floor(displayAsNum)
+      : undefined;
+  const display =
+    displayScreen !== undefined ||
+    displayRaw === "true" ||
+    displayRaw === "1";
   const rawScreen = Number(searchParams?.screen ?? "");
-  const screen =
+  const explicitScreen =
     Number.isFinite(rawScreen) && rawScreen >= 1 && rawScreen <= 20
       ? Math.floor(rawScreen)
       : undefined;
+  const screen = explicitScreen ?? displayScreen;
 
   if (display) {
     // Display mode is capped at 50 entries per screen (PAGE_SIZE in

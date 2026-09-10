@@ -491,10 +491,15 @@ export default function QueueBoard({
           ).map((n) => {
             const start = (n - 1) * PAGE_SIZE + 1;
             const end = Math.min(n * PAGE_SIZE, queue.order.length);
+            // Short form: `?display=N` encodes both "display mode on"
+            // and "page N" in one param. The `[slug]/page` route
+            // still accepts the older `?display=1&screen=N` too, so
+            // any bookmark already saved from a previous version
+            // keeps working.
             return (
               <a
                 key={n}
-                href={`/video/room/${encodeURIComponent(slug)}?room=${encodeURIComponent(room)}&display=1&screen=${n}`}
+                href={`/video/room/${encodeURIComponent(slug)}?room=${encodeURIComponent(room)}&display=${n}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mr-2 inline-flex items-center gap-1 rounded-sm border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-200 hover:bg-emerald-500/20"
