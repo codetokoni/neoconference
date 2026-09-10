@@ -83,6 +83,18 @@ export default function RecordingPanel({ room }: { room: string }) {
           return;
         }
         setData((d) => (d ? { ...d, state: j.state ?? d.state } : d));
+        // Sanity-check: AMS occasionally returns HTTP 200 + success
+        // but the state field lags by a poll. If the returned state
+        // does not match what we requested, do NOT tell the operator
+        // "recording as MP4" — that message must be trustworthy.
+        const actual = (j.state?.recordType ?? "NONE") as RecordType;
+        if (actual !== next) {
+          setMsg({
+            kind: "err",
+            text: `AMS accepted the request but the stream still reports ${actual}. Try again in a few seconds.`,
+          });
+          return;
+        }
         setMsg({
           kind: "ok",
           text: next === "NONE" ? "Recording stopped." : `Recording as ${next}.`,
@@ -148,7 +160,9 @@ export default function RecordingPanel({ room }: { room: string }) {
                 Recording {live ? "· live" : "· ready"}
               </span>
             ) : (
-              <span className="text-white/70">Recording off</span>
+              <span className="text-white/70">
+                Recording off {!live && <span className="text-xs text-white/45">· waiting for publisher</span>}
+              </span>
             )}
           </span>
         </div>
@@ -166,8 +180,13 @@ export default function RecordingPanel({ room }: { room: string }) {
             <button
               type="button"
               onClick={() => toggle("MP4")}
-              disabled={busy}
-              className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-40"
+              disabled={busy || !live}
+              title={
+                live
+                  ? "Start recording the programme feed as MP4"
+                  : "The programme feed must be broadcasting before AMS will start recording. Push from vMix / OBS first, then click here."
+              }
+              className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-40 disabled:hover:bg-red-600"
             >
               Start recording (MP4)
             </button>

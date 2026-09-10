@@ -127,6 +127,20 @@ export async function setRecording(
   });
   if (r.status === 404) return null;
   if (!r.ok) await throwAmsError(r);
+  // AMS returns HTTP 200 for BOTH success and failure and encodes the
+  // real outcome as `{success: bool, message: string}` in the body.
+  // A previous version of this function only checked r.ok and would
+  // happily report "Recording as MP4" while AMS was actually
+  // returning success:false because the stream was not being
+  // broadcasted. Read the body and treat success:false as an error
+  // so the UI never lies to the operator.
+  const body = (await r.json().catch(() => null)) as
+    | { success?: boolean; message?: string; dataId?: string }
+    | null;
+  if (body && body.success === false) {
+    const msg = body.message?.trim() || "recording toggle refused";
+    throw new Error(`AMS: ${msg}`);
+  }
   // Re-read so the returned state reflects what AMS actually stored
   // (some versions coerce the recordType field silently).
   return getRecordingState(room);
