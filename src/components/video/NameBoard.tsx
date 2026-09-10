@@ -193,8 +193,26 @@ export default function NameBoard({
 
       {/* Spotlight opens in display mode too — a moderator projecting
           the name board can tap any row to pull that participant's
-          camera up full-screen for the room to see. */}
-      {spot && <Spotlight spot={spot} onClose={() => setSpot(null)} />}
+          camera up full-screen for the room to see. Arrow keys walk
+          the roster in the order it's rendered on screen so a
+          "one-by-one" flow doesn't need a return to the board
+          between people. */}
+      {spot && (
+        <Spotlight
+          spot={spot}
+          onClose={() => setSpot(null)}
+          onPrev={() => {
+            const list = data.participants;
+            const i = list.findIndex((p) => p.streamId === spot.streamId);
+            if (i > 0) setSpot(list[i - 1]);
+          }}
+          onNext={() => {
+            const list = data.participants;
+            const i = list.findIndex((p) => p.streamId === spot.streamId);
+            if (i >= 0 && i < list.length - 1) setSpot(list[i + 1]);
+          }}
+        />
+      )}
     </>
   );
 }
