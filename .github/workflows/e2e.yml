@@ -1,0 +1,59 @@
+name: e2e
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "URL to run the smoke suite against (defaults to production)."
+        required: false
+
+# Cancel any in-flight run for the same PR when a new commit lands —
+# no point burning CI minutes on stale code, and the newer run's
+# result is the one that actually gates merge.
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        # Chromium only — this suite runs in one project (see
+        # playwright.config.ts) so pulling all browsers would waste
+        # ~200 MB of cache per run.
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E smoke suite
+        env:
+          # Prefer an explicit input, then a repo variable, else prod.
+          # Prod is a safe default because the whole suite is read-only.
+          PLAYWRIGHT_BASE_URL: >-
+            ${{
+              github.event.inputs.base_url
+              || vars.PLAYWRIGHT_BASE_URL
+              || 'https://www.neoconference.app'
+            }}
+          CI: "1"
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 14
