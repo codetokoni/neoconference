@@ -191,8 +191,10 @@ export default function ControlRoom({
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const dragId = useRef<string | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -245,6 +247,27 @@ export default function ControlRoom({
     return () => clearInterval(t);
   }, [loadPreview]);
 
+  // `/` focuses search (matches NameBoard, Gmail / GitHub muscle
+  // memory). Skipped when the user is already typing in an input or
+  // when Spotlight is open — its own shortcuts win.
+  useEffect(() => {
+    const isTypingElsewhere = () => {
+      const el = document.activeElement as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "/" && !isTypingElsewhere() && !spot) {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [spot]);
+
   const saveLayout = useCallback(
     async (nextOrder: string[], nextHidden: string[]) => {
       try {
@@ -283,6 +306,20 @@ export default function ControlRoom({
       return ai - bi;
     });
   }, [participants, order, hidden]);
+
+  // Filter `visible` by search query. Hidden participants stay hidden
+  // (moderator explicitly dismissed them; a search shouldn't drag
+  // them back into the grid). Matches name, code, or slot number.
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return visible;
+    return visible.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.code.toLowerCase().includes(q) ||
+        String(p.slot).includes(q),
+    );
+  }, [visible, query]);
 
   const hiddenList = useMemo(
     () => hidden.map((id) => bySlot.get(id)).filter(Boolean) as Participant[],
@@ -437,7 +474,9 @@ export default function ControlRoom({
       {!display && (
         <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2.5">
           <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
-            {participants.length} slots · {liveCount} live · {hidden.length} hidden
+            {query ? `${shown.length} of ${participants.length}` : `${participants.length} slots`}
+            {" · "}
+            {liveCount} live · {hidden.length} hidden
           </span>
 
           <span className="ml-auto font-mono text-[10.5px] uppercase tracking-[0.12em] text-amber-300/90">
@@ -454,6 +493,55 @@ export default function ControlRoom({
           </button>
         </div>
       )}
+
+      {/* Search bar. Same shape as the name board — matches name, code
+          or slot number. Sticky at the top so it stays reachable while
+          scrolling a big roster. */}
+      <div className="sticky top-0 z-10 border-b border-white/10 bg-[#101A20]/95 px-3 py-2 backdrop-blur">
+        <div className="relative">
+          <input
+            ref={searchRef}
+            type="search"
+            inputMode="search"
+            placeholder={
+              display
+                ? "Search name, code, or slot number"
+                : "Search name, code, or slot number   (press / to focus)"
+            }
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setQuery("");
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            className={
+              display
+                ? "w-full rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-base text-white placeholder:text-white/40 focus:border-emerald-400/60 focus:outline-none"
+                : "w-full rounded-md border border-white/15 bg-white/[0.04] px-3 py-1.5 text-sm text-white placeholder:text-white/40 focus:border-emerald-400/60 focus:outline-none"
+            }
+          />
+          {query && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => {
+                setQuery("");
+                searchRef.current?.focus();
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-xs text-white/60 hover:bg-white/10 hover:text-white/90"
+            >
+              clear
+            </button>
+          )}
+        </div>
+        {display && query && (
+          <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
+            {shown.length} of {participants.length}
+          </p>
+        )}
+      </div>
 
       {err && <p className="px-3 py-2 text-sm text-red-400">{err}</p>}
 
@@ -480,7 +568,7 @@ export default function ControlRoom({
               : "grid grid-cols-4 gap-[5px] p-3 sm:grid-cols-6 lg:grid-cols-10"
           }
         >
-          {visible.map((p) => (
+          {shown.map((p) => (
             <Tile
               key={p.streamId}
               p={p}
@@ -495,6 +583,13 @@ export default function ControlRoom({
               onDrop={() => dropOn(p)}
             />
           ))}
+          {shown.length === 0 && (
+            <p className="col-span-full px-3 py-8 text-center text-sm text-white/50">
+              {query
+                ? `No participants match "${query}".`
+                : "No participants."}
+            </p>
+          )}
         </div>
 
         {spot && (
@@ -502,12 +597,14 @@ export default function ControlRoom({
             spot={spot}
             onClose={() => setSpot(null)}
             onPrev={() => {
-              const i = visible.findIndex((p) => p.streamId === spot.streamId);
-              if (i > 0) setSpot(visible[i - 1]);
+              // Walk the filtered subset so search + arrow keys walks
+              // only the matching tiles.
+              const i = shown.findIndex((p) => p.streamId === spot.streamId);
+              if (i > 0) setSpot(shown[i - 1]);
             }}
             onNext={() => {
-              const i = visible.findIndex((p) => p.streamId === spot.streamId);
-              if (i >= 0 && i < visible.length - 1) setSpot(visible[i + 1]);
+              const i = shown.findIndex((p) => p.streamId === spot.streamId);
+              if (i >= 0 && i < shown.length - 1) setSpot(shown[i + 1]);
             }}
           />
         )}
