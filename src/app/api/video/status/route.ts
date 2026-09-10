@@ -9,6 +9,7 @@ import {
   type FeaturedState,
 } from "@/lib/simulcast";
 import { roomMainTrack } from "@/lib/participantCodes";
+import { ensureMainTrackWrapperInBackground } from "@/lib/amsMainTrack";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,15 @@ export async function GET(req: Request) {
     const liveIds = new Set(
       subs.filter((b) => b.status === "broadcasting").map((b) => b.streamId),
     );
+
+    // Self-heal the main-track wrapper if AMS has GC'd it. `subs`
+    // being empty AND no featured pointer is the same shape as the
+    // mid-event outage on 2026-09-10 where `neoconf-room` had vanished
+    // from AMS. Fire in the background (debounced 30s/room in the
+    // helper) so the status poll itself never blocks on a create call.
+    if (subs.length === 0) {
+      ensureMainTrackWrapperInBackground(room);
+    }
 
     const viewers = subs.reduce(
       (n, b) => n + (b.webRTCViewerCount ?? 0) + (b.hlsViewerCount ?? 0),

@@ -1,6 +1,7 @@
 import { kv } from "@vercel/kv";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 import { listCodes, mintCodes } from "@/lib/participantCodes";
+import { ensureMainTrackWrapper } from "@/lib/amsMainTrack";
 
 /**
  * Registry of video rooms.
@@ -100,5 +101,11 @@ export async function createRoom(
   const room: Room = { slug, name, slotCount, createdAt: Date.now() };
   await kv.hset(roomsKey(), { [slug]: JSON.stringify(room) });
   await mintCodes(slug, slotCount);
+  // Pre-create the AMS main-track wrapper so the first vMix/OBS push
+  // has a group to subtrack into. Missing this wrapper is what left
+  // us with a black dashboard mid-event on 2026-09-10 — the /status
+  // route also self-heals if AMS ever GCs it, but doing it up-front
+  // means the very first broadcast just works.
+  await ensureMainTrackWrapper(slug, name);
   return room;
 }
