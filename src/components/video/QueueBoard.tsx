@@ -322,13 +322,13 @@ export default function QueueBoard({
     const pageEntries = queue.order.slice(startIdx, startIdx + PAGE_SIZE);
 
     return queue.order.length === 0 ? (
-      <div className="flex min-h-screen items-center justify-center bg-[#0F1519] p-6 text-center">
+      <div className="flex h-full items-center justify-center bg-[#0F1519] p-6 text-center">
         <p className="font-mono text-sm uppercase tracking-[0.14em] text-white/45">
           {queue.name} · queue is empty
         </p>
       </div>
     ) : (
-      <div className="bg-[#0F1519] p-0">
+      <div className="flex h-full flex-col overflow-hidden bg-[#0F1519] p-0">
         {/* Screen-of-N chip so the moderator can confirm which page a
             given projector is on. Only shown when the queue actually
             spans more than one page — a single-screen queue doesn't
@@ -343,10 +343,12 @@ export default function QueueBoard({
             </span>
           </div>
         )}
-        <div
-          className="grid gap-[3px]"
-          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}
-        >
+        {/* 10 cols × 5 rows = PAGE_SIZE (50) tiles that split the
+            viewport evenly. Tiles drop their 4:3 aspect in display
+            mode and fill the grid cell. This ONLY works because
+            display mode is paginated at 50 — see the display branch
+            in page.tsx for why fit-to-viewport is safe here. */}
+        <div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-4 gap-[3px] sm:grid-cols-6 lg:grid-cols-10">
           {pageEntries.map((sid, iOnPage) => {
             const globalIdx = startIdx + iOnPage;
             return (
@@ -479,17 +481,12 @@ export default function QueueBoard({
         </p>
       ) : (
         <div className="rounded-xl border border-white/12 bg-[#0F1519] p-3">
-          {/* Auto-fit tiles instead of a fixed 10-col grid. The old
-              layout gave ~90px wide tiles in a max-w-4xl container
-              with only a handful of entries — the AIR button and the
-              name both got squished. `minmax(200px, 1fr)` keeps tiles
-              readable when the queue is short, and still packs
-              tightly when it's long (a 4xl container fits 4 columns
-              at 200px min). */}
-          <div
-            className="grid gap-2"
-            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}
-          >
+          {/* Same 4/6/10-col grid as the Camera board (ControlRoom)
+              so a moderator switching between boards sees identical
+              tile density. The parent container is max-w-[1600px]
+              to match, giving ~153px tiles at lg — plenty of room
+              for the AIR button and the name at rest. */}
+          <div className="grid grid-cols-4 gap-[5px] sm:grid-cols-6 lg:grid-cols-10">
             {queue.order.map((sid, i) => (
               <QueueTile
                 key={sid}
@@ -614,8 +611,12 @@ function QueueTile({
     <div
       onClick={display || busy ? undefined : onOpen}
       className={
-        "group relative aspect-[4/3] overflow-hidden rounded border bg-[#16232B] " +
-        (display ? "cursor-default " : "cursor-pointer ") +
+        "group relative overflow-hidden rounded border bg-[#16232B] " +
+        // In display mode the tile fills its grid cell (parent uses
+        // `auto-rows-fr` with fixed cols so 50 tiles split the
+        // viewport into a 10x5 mosaic). Producer mode keeps the 4:3
+        // aspect so scrolling grids look uniform.
+        (display ? "h-full w-full cursor-default " : "aspect-[4/3] cursor-pointer ") +
         (first
           ? "border-amber-400 ring-1 ring-amber-400"
           : participant?.live

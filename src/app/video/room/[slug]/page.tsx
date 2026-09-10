@@ -54,15 +54,20 @@ export default async function RoomQueueShortUrl({
       : undefined;
 
   if (display) {
+    // Display mode is capped at 50 entries per screen (PAGE_SIZE in
+    // QueueBoard), so fit-to-viewport IS the right model — unlike the
+    // roster boards (see [[projector-boards-scale-to-thousands]]) which
+    // must scroll because they're uncapped. 65px matches the site-nav
+    // height in src/app/layout.tsx.
     return (
-      <main className="w-full">
+      <main className="flex h-[calc(100dvh-65px)] w-full flex-col overflow-hidden">
         <QueueBoard room={room} slug={slug} screen={screen} display />
       </main>
     );
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8 sm:px-6">
+    <main className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-8 sm:px-6">
       <header className="flex flex-col gap-1">
         <a
           href={`/video/room/queue?room=${encodeURIComponent(room)}`}
