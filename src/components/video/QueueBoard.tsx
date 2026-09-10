@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAmsMultitrack } from "./useAmsMultitrack";
+import Spotlight from "./Spotlight";
 
 interface Participant {
   slot: number;
@@ -54,6 +55,7 @@ export default function QueueBoard({
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [addInput, setAddInput] = useState("");
+  const [spot, setSpot] = useState<Participant | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -344,6 +346,15 @@ export default function QueueBoard({
         </button>
       </form>
 
+      {/* Cheat sheet for the click model — a moderator hitting this
+          page for the first time was clicking tiles expecting a
+          preview, but tile-click used to take-to-air (and drop from
+          the queue) which read as "the tile just closed". Now click
+          previews; the red AIR button is the explicit go-to-air. */}
+      <p className="rounded-md border border-white/8 bg-white/[0.02] px-3 py-2 text-xs text-white/60">
+        Click a tile to preview. Use the red <span className="mx-0.5 rounded-sm bg-red-600 px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-white">AIR</span> button on a tile to take that participant to air (removes them from the queue). Hover for reorder / preview / remove.
+      </p>
+
       {queue.order.length === 0 ? (
         <p className="rounded-lg border border-white/12 bg-[#101820] p-4 text-sm text-white/60">
           No entries yet. Add participants by slot number or code above.
@@ -360,6 +371,10 @@ export default function QueueBoard({
                 first={i === 0}
                 last={i === queue.order.length - 1}
                 busy={busy}
+                onOpen={() => {
+                  const p = bySid.get(sid);
+                  if (p) setSpot(p);
+                }}
                 onUp={() => moveEntry(sid, -1)}
                 onDown={() => moveEntry(sid, 1)}
                 onRemove={() => removeEntry(sid)}
@@ -374,6 +389,31 @@ export default function QueueBoard({
           </div>
         </div>
       )}
+
+      {spot && (
+        <Spotlight
+          spot={spot}
+          onClose={() => setSpot(null)}
+          onPrev={() => {
+            if (!queue) return;
+            const order = queue.order;
+            const i = order.findIndex((s) => s === spot.streamId);
+            if (i > 0) {
+              const p = bySid.get(order[i - 1]);
+              if (p) setSpot(p);
+            }
+          }}
+          onNext={() => {
+            if (!queue) return;
+            const order = queue.order;
+            const i = order.findIndex((s) => s === spot.streamId);
+            if (i >= 0 && i < order.length - 1) {
+              const p = bySid.get(order[i + 1]);
+              if (p) setSpot(p);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -384,9 +424,11 @@ export default function QueueBoard({
  * participants) so a producer flipping between the two boards reads
  * the layout instantly.
  *
- * The whole tile is clickable to take-to-air — matches the "one click
- * to feature" language on the hub. Hover actions add preview / remove
- * / reorder without cluttering the tile at rest.
+ * Click model: tile click opens Spotlight (safe preview, same as the
+ * camera board). The persistent red AIR button in the bottom-right
+ * takes to air — the destructive action lives on an explicit
+ * affordance, not on the whole tile, so a moderator never puts
+ * someone on air by mistake.
  */
 function QueueTile({
   streamId,
@@ -396,6 +438,7 @@ function QueueTile({
   last,
   busy,
   display = false,
+  onOpen,
   onUp,
   onDown,
   onRemove,
@@ -410,6 +453,7 @@ function QueueTile({
   busy: boolean;
   /** Display mode: no click-to-take, no hover controls, no cursor. */
   display?: boolean;
+  onOpen?: () => void;
   onUp: () => void;
   onDown: () => void;
   onRemove: () => void;
@@ -440,7 +484,7 @@ function QueueTile({
 
   return (
     <div
-      onClick={display || busy ? undefined : onTake}
+      onClick={display || busy ? undefined : onOpen}
       className={
         "group relative aspect-[4/3] overflow-hidden rounded border bg-[#16232B] " +
         (display ? "cursor-default " : "cursor-pointer ") +
@@ -454,7 +498,7 @@ function QueueTile({
         display
           ? participant?.name ?? streamId
           : participant
-            ? `Position ${position} — ${participant.name}. Click to take to air.`
+            ? `Position ${position} — ${participant.name}. Click to preview; use AIR to take to air.`
             : streamId
       }
     >
@@ -480,9 +524,28 @@ function QueueTile({
         </span>
       )}
 
-      <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/90 to-transparent px-1.5 py-0.5 text-[10px] font-semibold text-white/90">
+      <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/90 to-transparent px-1.5 py-0.5 pr-12 text-[10px] font-semibold text-white/90">
         {participant?.name ?? streamId}
       </span>
+
+      {/* Persistent AIR button — the destructive "take to air" now
+          lives on an explicit affordance, not the whole tile. Red to
+          telegraph "this is broadcast-live", stopPropagation so the
+          click doesn't also fire the tile's preview open. */}
+      {!display && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onTake();
+          }}
+          disabled={busy}
+          className="absolute bottom-1 right-1 rounded-sm bg-red-600 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow hover:bg-red-500 disabled:opacity-40"
+          title="Take this participant to air (removes them from the queue)"
+        >
+          Air ▶
+        </button>
+      )}
 
       {/* Hover controls — appear only on hover so a resting tile looks
           like a Camera board tile. stopPropagation on each so clicking
