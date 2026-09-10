@@ -38,3 +38,5 @@ next-env.d.ts
 # local agent config
 .claude/
 .clerk/
+playwright-report/
+test-results/
