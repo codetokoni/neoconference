@@ -275,7 +275,10 @@ export default function QueueBoard({
       </div>
     ) : (
       <div className="bg-[#0F1519] p-0">
-        <div className="grid grid-cols-4 gap-[3px] sm:grid-cols-6 lg:grid-cols-10">
+        <div
+          className="grid gap-[3px]"
+          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}
+        >
           {queue.order.map((sid, i) => (
             <QueueTile
               key={sid}
@@ -361,7 +364,17 @@ export default function QueueBoard({
         </p>
       ) : (
         <div className="rounded-xl border border-white/12 bg-[#0F1519] p-3">
-          <div className="grid grid-cols-4 gap-[6px] sm:grid-cols-6 lg:grid-cols-10">
+          {/* Auto-fit tiles instead of a fixed 10-col grid. The old
+              layout gave ~90px wide tiles in a max-w-4xl container
+              with only a handful of entries — the AIR button and the
+              name both got squished. `minmax(200px, 1fr)` keeps tiles
+              readable when the queue is short, and still packs
+              tightly when it's long (a 4xl container fits 4 columns
+              at 200px min). */}
+          <div
+            className="grid gap-2"
+            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}
+          >
             {queue.order.map((sid, i) => (
               <QueueTile
                 key={sid}
