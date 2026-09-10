@@ -116,7 +116,16 @@ export async function setRecording(
 ): Promise<RecordingState | null> {
   const streamId = recordingTargetFor(room);
   const enable = recordType !== "NONE";
-  const type = enable ? recordType : "MP4"; // AMS wants a valid type even when disabling
+  // AMS's recording endpoint parses `recordType` as a lowercase enum
+  // ("mp4" / "webm" / "hls"). Passing the uppercase form we hold
+  // internally makes AMS return
+  //   {"success":false,"message":"No stream for this id: <id> or
+  //    unexpected record type. Record type is null"}
+  // — a compound error that also covers the "broadcast missing"
+  // branch, which sent us on a long detour. Confirmed against the
+  // live AMS box on 2026-09-10: `?recordType=mp4` → success:true,
+  // `?recordType=MP4` → success:false with the misleading message.
+  const type = (enable ? recordType : "MP4").toLowerCase();
   const url =
     `${AMS_REST}/broadcasts/${encodeURIComponent(streamId)}` +
     `/recording/${enable ? "true" : "false"}` +
