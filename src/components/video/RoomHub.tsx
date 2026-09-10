@@ -74,18 +74,23 @@ export default function RoomHub({
   const [moderatorUrl, setModeratorUrl] = useState("");
 
   useEffect(() => {
-    // Include the room slug on every URL so a second event's links go to
-    // the right room. The default room's URLs keep the query too — cheap
-    // price for consistency across every room's handouts.
+    // Handout URLs for the DEFAULT room drop the `?room=` param
+    // (every destination page defaults to it anyway). Named rooms
+    // still carry `?room=<slug>` so a second event's links reach
+    // the right room. This is what `roomLink` collapses per the
+    // sitewide URL policy (#220 / #221) — an earlier version of this
+    // effect kept the query for "consistency across every room's
+    // handouts", but the operator prefers short URLs on the default
+    // room over that consistency.
     const origin = window.location.origin;
-    const q = encodeURIComponent(room);
-    setJoinUrl(`${origin}/video/join?room=${q}`);
-    setStreamingUrl(`${origin}/video/dashboard?room=${q}`);
-    setStudioUrl(`${origin}/video/studio?room=${q}`);
+    const q = roomLink(room);
+    setJoinUrl(`${origin}/video/join${q}`);
+    setStreamingUrl(`${origin}/video/dashboard${q}`);
+    setStudioUrl(`${origin}/video/studio${q}`);
     // Moderator URL is the sanitised handout — /video/room/moderate, not
     // this /video/room admin URL. Admins hand it out; nobody sees the
     // admin URL unless they know it.
-    setModeratorUrl(`${origin}/video/room/moderate?room=${q}`);
+    setModeratorUrl(`${origin}/video/room/moderate${q}`);
   }, [room]);
 
   const load = useCallback(async () => {
