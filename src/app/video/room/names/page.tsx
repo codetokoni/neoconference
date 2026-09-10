@@ -16,7 +16,12 @@ export const metadata: Metadata = {
 export default async function NamesPage({
   searchParams,
 }: {
-  searchParams?: { room?: string; screen?: string; display?: string };
+  searchParams?: {
+    room?: string;
+    screen?: string;
+    display?: string;
+    codes?: string;
+  };
 }) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
@@ -28,11 +33,18 @@ export default async function NamesPage({
       ? Math.floor(rawScreen)
       : undefined;
   const display = searchParams?.display === "1" || searchParams?.display === "true";
+  // `?codes=1` is an explicit opt-in for showing passcodes in
+  // display mode — for a moderator running the projected view on
+  // their own laptop, not on a physical screen the audience can
+  // see. Default stays projector-safe (codes hidden) so a URL like
+  // `?display=1` is always safe to cast without leaking join
+  // credentials to anyone with a camera in the room.
+  const showCodes = searchParams?.codes === "1" || searchParams?.codes === "true";
 
   if (display) {
     return (
       <main className="w-full">
-        <NameBoard room={room} screen={screen} display />
+        <NameBoard room={room} screen={screen} display showCodes={showCodes} />
       </main>
     );
   }
@@ -58,6 +70,14 @@ export default async function NamesPage({
             className="text-emerald-300 hover:text-emerald-200"
           >
             Present on screen →
+          </a>
+          {" · "}
+          <a
+            href={`/video/room/names?room=${encodeURIComponent(room)}${screen ? `&screen=${screen}` : ""}&display=1&codes=1`}
+            className="text-amber-300 hover:text-amber-200"
+            title="Includes join codes — for a moderator's own screen, never a public projector."
+          >
+            Moderator display (with codes) →
           </a>
         </p>
       </header>

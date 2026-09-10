@@ -43,6 +43,7 @@ export default function NameBoard({
   room,
   screen,
   display = false,
+  showCodes = false,
 }: {
   room: string;
   /** Scope the board to just one screen's block of participants
@@ -52,6 +53,11 @@ export default function NameBoard({
    *  so a moderator can project this to a physical screen without
    *  leaking passcodes to the audience. */
   display?: boolean;
+  /** Opt-in override that reveals passcodes even in display mode.
+   *  For a moderator running the projected view on their own laptop,
+   *  never on a screen the audience can see. Ignored outside display
+   *  mode (producer mode already shows codes). */
+  showCodes?: boolean;
 }) {
   const [data, setData] = useState<RoomPayload | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -178,6 +184,7 @@ export default function NameBoard({
               key={p.streamId}
               p={p}
               display={display}
+              showCodes={showCodes}
               onOpen={() => setSpot(p)}
             />
           ))}
@@ -195,10 +202,12 @@ export default function NameBoard({
 function Row({
   p,
   display,
+  showCodes,
   onOpen,
 }: {
   p: Participant;
   display: boolean;
+  showCodes: boolean;
   onOpen: () => void;
 }) {
   const state = p.live
@@ -227,12 +236,19 @@ function Row({
     <>
       <span className={slotClass}>{String(p.slot).padStart(2, "0")}</span>
       <span className={nameClass}>{p.name}</span>
-      {/* Passcode is deliberately omitted in display mode — the name
+      {/* Passcode is omitted in display mode by default — the name
           board is often projected on a physical screen for the whole
-          room to see, and showing every participant's code there would
-          leak private join credentials. */}
+          room to see, and showing every participant's code there
+          would leak private join credentials. Producer mode always
+          shows the code (it's the operator's own screen). A
+          moderator running display mode on their OWN laptop can pass
+          `?codes=1` to opt in; the code text scales up so they can
+          read it from a normal seating distance. */}
       {!display && (
         <span className="font-mono text-[10px] text-white/45">{p.code}</span>
+      )}
+      {display && showCodes && (
+        <span className="font-mono text-base text-amber-200/85">{p.code}</span>
       )}
       <span className={statusClass + state.tone}>{state.label}</span>
     </>
