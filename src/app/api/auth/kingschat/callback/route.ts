@@ -126,31 +126,88 @@ async function handle(req: Request) {
     if (list.data && list.data.length > 0) user = list.data[0];
   } catch {}
 
+  // Surface Clerk's full error shape (code + message + param) so a
+  // future auth failure names itself instead of "missing data". Clerk
+  // errors look like { code: 'form_param_missing', message: '...',
+  // meta: { param_name: 'email_address' } }. The URL-safe form makes
+  // the operator's debug URL directly interpretable.
+  const clerkMsg = (e: unknown): string => {
+    const anyE = e as { errors?: Array<{ code?: string; message?: string; meta?: { param_name?: string } }>; message?: string };
+    const err = anyE?.errors?.[0];
+    if (err) {
+      const parts = [err.code || 'error', err.message || ''];
+      if (err.meta?.param_name) parts.push('[' + err.meta.param_name + ']');
+      return parts.filter(Boolean).join(':');
+    }
+    return anyE?.message || 'unknown';
+  };
+
   if (!user && email) {
     try {
       const list = await cc.users.getUserList({ emailAddress: [email], limit: 1 });
       if (list.data && list.data.length > 0) {
-        const existing = list.data[0]; try { await cc.users.updateUser(existing.id, { externalId, publicMetadata: { ...(existing.publicMetadata || {}), kingschat: { id: kcId, username: kcUsername, linkedAt: new Date().toISOString() } } } as any); user = { id: existing.id }; } catch (e: any) { console.error('[kc-callback] auto-link failed', e); const msg = (e && (e.errors?.[0]?.message || e.message)) || 'unknown'; return errorRedirect(req, 'link_failed', msg.slice(0, 200)); }
+        const existing = list.data[0];
+        try {
+          await cc.users.updateUser(existing.id, {
+            externalId,
+            publicMetadata: {
+              ...(existing.publicMetadata || {}),
+              kingschat: { id: kcId, username: kcUsername, linkedAt: new Date().toISOString() },
+            },
+          } as any);
+          user = { id: existing.id };
+        } catch (e) {
+          console.error('[kc-callback] auto-link failed', e);
+          return errorRedirect(req, 'link_failed', clerkMsg(e).slice(0, 200));
+        }
       }
     } catch {}
   }
 
   if (!user) {
+    // Clerk requires at least one identifier (email, phone, or
+    // username) to create a user. KingsChat sometimes returns
+    // neither an email nor a username on its profile — the user
+    // signed up with only a phone on KC and never linked an email.
+    // Synthesize a username from the kcId so the create succeeds;
+    // it's guaranteed unique and stable (same person always maps
+    // to the same synthesized value).
+    const safeKcId = String(kcId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24);
+    const usernameFallback = (kcUsername && kcUsername.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32)) || ('kc' + safeKcId);
     try {
       const created = await cc.users.createUser({
         externalId,
         emailAddress: email ? [email] : undefined,
         firstName: firstName || undefined,
         lastName: lastName || undefined,
-        username: kcUsername || undefined,
+        username: usernameFallback,
         skipPasswordRequirement: true,
         publicMetadata: { kingschat: { id: kcId, username: kcUsername } },
       } as any);
       user = { id: created.id };
-    } catch (e: any) {
+
+      // Mark the email verified. KingsChat already proved the user
+      // owns it (we got here via an OAuth flow they completed) so
+      // Clerk demanding a fresh email code before letting them in
+      // ("additional verification required") is friction with no
+      // security value. Only touchable via the emailAddresses
+      // resource — createUser doesn't take a verified flag.
+      if (email) {
+        try {
+          const fresh = await cc.users.getUser(created.id);
+          const emailRec = fresh.emailAddresses?.find(
+            (e) => e.emailAddress?.toLowerCase() === email.toLowerCase(),
+          );
+          if (emailRec?.id) {
+            await (cc as any).emailAddresses.updateEmailAddress(emailRec.id, { verified: true });
+          }
+        } catch (e) {
+          console.warn('[kc-callback] mark email verified failed', e);
+        }
+      }
+    } catch (e) {
       console.error('[kc-callback] createUser failed', e);
-      const msg = (e && (e.errors?.[0]?.message || e.message)) || 'unknown';
-      return errorRedirect(req, 'create_failed', msg.slice(0, 200));
+      return errorRedirect(req, 'create_failed', clerkMsg(e).slice(0, 200));
     }
   } else {
     try {

@@ -149,9 +149,36 @@ export async function GET(request: Request) {
         publicMetadata: { neoemail: { sub, email } },
       } as never);
       userId = created.id;
+
+      // Mark the email verified. Neoemail already proved ownership
+      // (its token exchange succeeded and returned this email as
+      // the identity) so Clerk demanding a fresh code before letting
+      // them in ("additional verification required") is friction
+      // with no security value.
+      try {
+        const fresh = await cc.users.getUser(created.id);
+        const emailRec = fresh.emailAddresses?.find(
+          (e) => e.emailAddress?.toLowerCase() === email.toLowerCase(),
+        );
+        if (emailRec?.id) {
+          await (cc as unknown as {
+            emailAddresses: { updateEmailAddress: (id: string, body: { verified: boolean }) => Promise<unknown> };
+          }).emailAddresses.updateEmailAddress(emailRec.id, { verified: true });
+        }
+      } catch (e) {
+        console.warn('[neoemail-callback] mark email verified failed', e);
+      }
     } catch (error) {
       console.error('[neoemail-callback] createUser failed', error);
-      return errorRedirect(request, 'create_failed', redirectUrl);
+      // Surface Clerk's real error code + param so the operator can
+      // see the actual reason instead of a bare "create_failed".
+      const anyE = error as { errors?: Array<{ code?: string; message?: string; meta?: { param_name?: string } }>; message?: string };
+      const err = anyE?.errors?.[0];
+      const debug = err
+        ? [err.code || 'error', err.message || '', err.meta?.param_name ? '[' + err.meta.param_name + ']' : '']
+            .filter(Boolean).join(':').slice(0, 200)
+        : (anyE?.message || 'unknown').slice(0, 200);
+      return errorRedirect(request, 'create_failed', redirectUrl, debug);
     }
   }
 
