@@ -135,6 +135,13 @@ export default function LiveTranslation() {
   // one finishes — otherwise back-to-back captions would each
   // start-and-end the duck, causing volume pumping.
   const activeUtteranceCount = useRef(0);
+  // Pre-duck volume/muted state per element, so `restore` puts every
+  // element BACK to what it was — not blindly to 1.0. LiveKit
+  // legitimately mutes some `<video>` elements (own-preview, tiles
+  // showing muted participants) and we mustn't clobber that. Also
+  // means late-joining or newly-published tracks aren't accidentally
+  // amplified past their original.
+  const preDuckState = useRef<Map<HTMLMediaElement, { volume: number; muted: boolean }>>(new Map());
 
   // Load / persist per-viewer preference.
   useEffect(() => {
@@ -310,11 +317,26 @@ export default function LiveTranslation() {
             bumpDiag({ spoke: diagRef.current.spoke + 1 });
             activeUtteranceCount.current += 1;
             if (activeUtteranceCount.current === 1) {
-              // Every <audio> in the room page belongs to
-              // <RoomAudioRenderer> — LiveKit's built-in
-              // participant-audio component. Duck them all.
-              document.querySelectorAll('audio').forEach((a) => {
-                a.volume = duckLevelRef.current;
+              const level = duckLevelRef.current;
+              // Every media element in the room — <audio> AND <video>.
+              // Original ducker only touched <audio>, but a
+              // participant tile's <video> can also carry the audio
+              // track in some LiveKit component setups, which is
+              // exactly the "I put floor to zero and still hear" bug
+              // the operator hit. Ducking both covers it. And at
+              // level 0 we hard-mute via el.muted because volume=0
+              // alone still leaks decoded frames in some browsers.
+              const els = document.querySelectorAll('audio, video');
+              els.forEach((raw) => {
+                const el = raw as HTMLMediaElement;
+                if (!preDuckState.current.has(el)) {
+                  preDuckState.current.set(el, {
+                    volume: el.volume,
+                    muted: el.muted,
+                  });
+                }
+                el.volume = level;
+                if (level === 0) el.muted = true;
               });
             }
           };
@@ -324,9 +346,17 @@ export default function LiveTranslation() {
               activeUtteranceCount.current - 1,
             );
             if (activeUtteranceCount.current === 0) {
-              document.querySelectorAll('audio').forEach((a) => {
-                a.volume = 1;
+              // Restore each element to its PRE-DUCK state, not
+              // blindly to volume=1 / muted=false. LiveKit
+              // legitimately keeps some <video> elements muted
+              // (own preview to prevent echo, participants who
+              // muted themselves) and we mustn't clobber that.
+              preDuckState.current.forEach((prev, el) => {
+                if (!document.body.contains(el)) return;
+                el.volume = prev.volume;
+                el.muted = prev.muted;
               });
+              preDuckState.current.clear();
             }
           };
           utt.onend = restoreVolume;
@@ -352,13 +382,16 @@ export default function LiveTranslation() {
         // ignore
       }
       // Safety: if we're unmounting mid-utterance, `onend` won't
-      // fire. Force-restore every <audio> to volume 1 so a viewer
-      // who toggles translation off doesn't hear a permanently
-      // ducked room.
+      // fire. Restore every ducked element to its pre-duck state
+      // (rather than blindly setting volume = 1) so we never
+      // clobber elements that were muted for a legitimate reason.
       activeUtteranceCount.current = 0;
-      document.querySelectorAll('audio').forEach((a) => {
-        a.volume = 1;
+      preDuckState.current.forEach((prev, el) => {
+        if (!document.body.contains(el)) return;
+        el.volume = prev.volume;
+        el.muted = prev.muted;
       });
+      preDuckState.current.clear();
     };
   }, [room, targetLang, voice]);
 
