@@ -24,6 +24,17 @@ import {
 /** true = also ask AMS to stop sending unselected audio subtracks (saves bandwidth, ~1s switch). */
 const BANDWIDTH_SAVER = false;
 
+/**
+ * Volume the floor (source language) plays at when a translation is
+ * selected. Standard conference-interpretation practice — the room
+ * still hears the original speaker but the interpreter's voice is
+ * dominant. Set to 0 to mute the floor entirely (many venues do); a
+ * value between 0.10-0.25 keeps the source audible in the background.
+ * Kept as a bandwidth-saver-tier flag so a future toggle in the UI
+ * can override per listener.
+ */
+const FLOOR_DUCK_VOLUME = 0.15;
+
 /** How long WebRTC gets before we fall back to HLS. */
 const WEBRTC_TIMEOUT_MS = 8000;
 
@@ -284,7 +295,13 @@ export default function SimulcastPlayer({
     if (!el.muted) el.play().catch(() => setMuted(true));
   }, [feat.audioStreams, muted, onAir]);
 
-  /* ---- WebRTC: exactly one audio element unmuted ----
+  /* ---- WebRTC: selected channel at full volume, floor ducked underneath ----
+     Standard interpretation-booth UX: when a viewer picks a translation,
+     the floor keeps playing at FLOOR_DUCK_VOLUME so the room still hears
+     the original speaker in the background while the interpreter's voice
+     is dominant. When the viewer is on the floor itself (no translation
+     picked) the floor plays at full volume, nothing else.
+
      While a participant is on air their mic replaces the floor, so every
      language element goes quiet. The booths are still interpreting the host,
      which is why featuring is meant to be short. ---- */
@@ -292,16 +309,25 @@ export default function SimulcastPlayer({
     if (mode !== "webrtc") return;
     if (videoRef.current) videoRef.current.muted = true;
 
+    const activeIsTranslation = active !== videoChannel.id;
+
     Object.entries(audioRefs.current).forEach(([id, el]) => {
       if (!el) return;
-      const shouldPlay = id === active && !muted && !onAir;
+      const isFloor = id === videoChannel.id;
+      const isActive = id === active;
+      // Floor plays under a translation at reduced volume; the
+      // selected channel always plays at full volume; everything
+      // else is silent. On-air featuring silences all language
+      // channels — the featured mic is on the floor stream.
+      const shouldPlay =
+        !muted && !onAir && (isActive || (isFloor && activeIsTranslation));
       el.muted = !shouldPlay;
-      el.volume = 1;
+      el.volume = shouldPlay && isFloor && activeIsTranslation ? FLOOR_DUCK_VOLUME : 1;
       if (shouldPlay) {
         el.play().catch(() => setMuted(true));
       }
     });
-  }, [active, muted, audioStreams, mode, onAir]);
+  }, [active, muted, audioStreams, mode, onAir, videoChannel.id]);
 
   /* ---- optional: stop receiving the languages nobody is listening to ---- */
   useEffect(() => {
@@ -354,17 +380,26 @@ export default function SimulcastPlayer({
     if (!video || !audio) return;
 
     const onFloor = active === videoChannel.id;
-    video.muted = muted || !onFloor;
 
     hlsAudio.current?.destroy();
     hlsAudio.current = null;
 
     if (onFloor) {
+      // No translation selected — the video element plays the floor
+      // audio at full volume, nothing else is running.
+      video.muted = muted;
+      video.volume = 1;
       audio.pause();
       audio.removeAttribute("src");
       audio.load();
       return;
     }
+
+    // Translation selected — video keeps carrying the floor audio at
+    // reduced volume (see FLOOR_DUCK_VOLUME) and the translation
+    // audio plays on top at full volume. Mirrors the WebRTC path.
+    video.muted = muted;
+    video.volume = FLOOR_DUCK_VOLUME;
 
     let cancelled = false;
 
