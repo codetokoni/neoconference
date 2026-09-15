@@ -219,6 +219,27 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
     }
   }, [busy, canControl, enabled, broadcastState, roomName, eventSlug]);
 
+  // Auto-enable when LiveTranslation asks. When a viewer picks a
+  // target language, they need captions to be ON for anything to
+  // happen — the LiveKit transcription pipeline only fires while
+  // captions are on. If this local participant CAN control (host or
+  // cohost) and captions are currently off, quietly flip them on
+  // instead of forcing the operator to click both CC and the
+  // language picker. Non-controllers get a no-op — same as today,
+  // they still need a host to enable — but that's a follow-up UX
+  // ("ask the host to enable captions") not a blocker for the
+  // common case where the operator IS the host.
+  useEffect(() => {
+    const onRequest = () => {
+      if (!canControl) return;
+      if (enabled) return;
+      if (busy) return;
+      void toggle();
+    };
+    window.addEventListener('neo:request-captions', onRequest);
+    return () => window.removeEventListener('neo:request-captions', onRequest);
+  }, [canControl, enabled, busy, toggle]);
+
   // Hide the pill entirely if captions are off AND user can't control them.
   // This keeps the toolbar uncluttered for normal attendees until a host
   // turns captions on.

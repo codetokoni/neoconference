@@ -176,6 +176,22 @@ export default function LiveTranslation() {
     }
     diagRef.current = EMPTY_DIAG;
     setDiag(EMPTY_DIAG);
+
+    // Picking any non-off language implicitly asks for captions to
+    // be ON — the LiveKit transcription pipeline only fires while
+    // captions are enabled, so a viewer who picked a language but
+    // still needed to click CC first would see nothing until they
+    // did. CaptionsToggle listens for this event and, if the local
+    // participant can control captions (host / cohost), flips them
+    // on. For non-controllers this is a no-op today; the panel
+    // still reflects the correct off state.
+    if (next !== 'off' && typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new CustomEvent('neo:request-captions'));
+      } catch {
+        // ignore — feature-detect isn't worth the noise
+      }
+    }
   }, []);
 
   // Warn once if TTS is unavailable — no user-facing error, just a
