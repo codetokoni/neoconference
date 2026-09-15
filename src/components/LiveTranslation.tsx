@@ -31,7 +31,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Languages } from 'lucide-react';
-import { useRoomContext } from '@livekit/components-react';
+import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
 import {
   RoomEvent,
   type Participant,
@@ -109,6 +109,29 @@ const EMPTY_DIAG: Diagnostics = {
 
 export default function LiveTranslation() {
   const room = useRoomContext();
+  // When the viewer unmutes their own mic, they're the one talking —
+  // translating what they just said back to them is echo they'll
+  // rip the headphones off for. useLocalParticipant re-renders on
+  // mic mute/unmute so isMicrophoneEnabled tracks in real time; we
+  // mirror it into a ref so the async caption handler reads the
+  // latest value without needing to be in the dep array (which
+  // would tear down and rebuild the RoomEvent listener on every
+  // toggle).
+  const { isMicrophoneEnabled } = useLocalParticipant();
+  const micOnRef = useRef(false);
+  useEffect(() => {
+    micOnRef.current = Boolean(isMicrophoneEnabled);
+    // If the mic just went hot mid-utterance, kill queued translations
+    // immediately so the speaker doesn't hear the tail of their own
+    // last sentence being read back to them.
+    if (isMicrophoneEnabled) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // ignore
+      }
+    }
+  }, [isMicrophoneEnabled]);
   const [targetLang, setTargetLangState] = useState<string>('off');
   const [open, setOpen] = useState(false);
   const [diag, setDiag] = useState<Diagnostics>(EMPTY_DIAG);
@@ -280,6 +303,13 @@ export default function LiveTranslation() {
         bumpDiag({ finalsSeen: diagRef.current.finalsSeen + 1 });
         const text = (seg.text || '').trim();
         if (!text) continue;
+        // Skip if this viewer is the one currently talking. When
+        // their mic is hot, translating their own words back to
+        // them is echo they will pull the headphones off for. Also
+        // saves a DeepL request per sentence they say. Mic-off
+        // viewers keep translating as normal — they're listening,
+        // not talking.
+        if (micOnRef.current) continue;
         // Skip if the caption is already in the viewer's target
         // language (common when a caption worker is multi-language).
         const source = (seg as { language?: string }).language || '';
