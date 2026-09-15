@@ -198,6 +198,20 @@ export default function LiveTranslation() {
       } catch {
         // ignore — feature-detect isn't worth the noise
       }
+      // Scroll the popover to the bottom so the slider is immediately
+      // visible on mobile. Without this, tapping a language leaves
+      // the slider off-screen below 60vh worth of language options
+      // and the operator sees only the language list — the exact
+      // symptom of the "on mobile am not seeing the slider" bug.
+      // popoverEl is stable across renders once the popover opens.
+      requestAnimationFrame(() => {
+        if (popoverElRef.current) {
+          popoverElRef.current.scrollTo({
+            top: popoverElRef.current.scrollHeight,
+            behavior: 'smooth',
+          });
+        }
+      });
     }
   }, []);
 
@@ -217,6 +231,15 @@ export default function LiveTranslation() {
   // document.body so contains() checks have to cover both button and
   // the popover DOM. Track the popover element via callback ref.
   const [popoverEl, setPopoverEl] = useState<HTMLDivElement | null>(null);
+  // Mirror ref so setTargetLang (which needs to scroll the popover on
+  // language pick) can read the current element without re-creating
+  // the callback on every popover mount / unmount. Kept in sync via
+  // the callback ref that also sets popoverEl.
+  const popoverElRef = useRef<HTMLDivElement | null>(null);
+  const attachPopover = useCallback((el: HTMLDivElement | null) => {
+    setPopoverEl(el);
+    popoverElRef.current = el;
+  }, []);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -421,7 +444,7 @@ export default function LiveTranslation() {
 
   const popover = open && typeof document !== 'undefined' ? createPortal(
     <div
-      ref={setPopoverEl}
+      ref={attachPopover}
       role="menu"
       style={{
         position: 'fixed',
@@ -481,15 +504,28 @@ export default function LiveTranslation() {
       </div>
       {/* Floor-duck slider — how quiet the ORIGINAL speaker plays
           while the browser is speaking the translation. Only useful
-          once a target language is picked; hidden while Off. */}
+          once a target language is picked; hidden while Off.
+          Sticky at the bottom of the popover so it stays visible on
+          mobile where the language list scrolls past 60vh — the
+          operator report was "on mobile am not seeing the slider"
+          because it fell below the popover fold.
+          Touch target sized ≥ 44px tall + explicit `-webkit-appearance:
+          none` overrides so the thumb is easy to grab on a phone. */}
       {targetLang !== 'off' && (
         <div
           style={{
+            position: 'sticky',
+            bottom: 0,
             display: 'flex',
+            flexWrap: 'wrap',
             alignItems: 'center',
-            gap: 8,
-            padding: '8px 10px',
-            borderTop: '1px solid rgba(255,255,255,0.06)',
+            gap: 10,
+            padding: '10px 12px',
+            borderTop: '1px solid rgba(255,255,255,0.1)',
+            background: 'rgba(11,16,32,0.98)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            minHeight: 44,
           }}
         >
           <span
@@ -497,8 +533,8 @@ export default function LiveTranslation() {
               fontSize: 10,
               letterSpacing: 0.5,
               textTransform: 'uppercase',
-              color: 'rgba(255,255,255,0.55)',
-              minWidth: 74,
+              color: 'rgba(255,255,255,0.7)',
+              flex: '0 0 auto',
             }}
           >
             Floor level
@@ -511,16 +547,26 @@ export default function LiveTranslation() {
             value={duckLevel}
             onChange={(e) => updateDuckLevel(Number(e.target.value))}
             aria-label="Original-speaker volume while translation is speaking"
-            style={{ flex: 1, minWidth: 0, accentColor: '#22d3ee' }}
+            style={{
+              flex: '1 1 140px',
+              minWidth: 120,
+              height: 32,
+              accentColor: '#22d3ee',
+              // Bigger thumb on WebKit for phone tapping — the default
+              // 12px thumb is a miss on a touchscreen.
+              WebkitAppearance: 'none',
+              background: 'transparent',
+            }}
           />
           <span
             style={{
-              minWidth: 40,
+              minWidth: 44,
               textAlign: 'right',
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-              fontSize: 11,
-              color: 'rgba(255,255,255,0.55)',
+              fontSize: 12,
+              color: 'rgba(255,255,255,0.85)',
               fontVariantNumeric: 'tabular-nums',
+              flex: '0 0 auto',
             }}
           >
             {duckLevel === 0 ? 'mute' : Math.round(duckLevel * 100) + '%'}
