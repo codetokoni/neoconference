@@ -26,30 +26,40 @@ const BANDWIDTH_SAVER = false;
 
 /**
  * Volume the floor (source language) plays at when a translation is
- * selected. Dropped from 0.15 (#227) to 0.05 after operator feedback
- * "the translation should be louder than the speaker" — 0.15 was
- * still competing with the interpreter's voice. Now the floor is a
- * whisper: audible for ambient cues (applause, cheers) but nowhere
- * close to talkover. Ratio against a boosted translation is roughly
- * 30x.
- * Set to 0 to mute the floor entirely — some venues prefer that.
+ * selected.
+ *
+ * Iteration history:
+ *   #227  0.15  — first duck ("floor still audible in background")
+ *   #229  0.05  — dropped after "translation should be louder";
+ *                 misread as "duck the floor further" when the ask
+ *                 was really "boost the translation"
+ *   this  1.0   — floor is NOT ducked; the source keeps playing at
+ *                 full volume and the translation is made louder
+ *                 purely via TRANSLATION_BOOST below. Operator: "you
+ *                 still reduce the floor audio again" — this respects
+ *                 that literally.
+ *
+ * Keep the constant instead of removing the code path: some venues
+ * do want the classic interpretation-booth duck, and a per-viewer
+ * toggle in the UI would drop straight in.
  */
-const FLOOR_DUCK_VOLUME = 0.05;
+const FLOOR_DUCK_VOLUME = 1.0;
 
 /**
  * Gain applied to the selected translation via Web Audio. A plain
  * <audio> element's `.volume` caps at 1.0; to make the interpreter
- * genuinely louder than a hot-mic speaker we run the element through
- * an AudioContext + GainNode. 1.6 gives a ~4dB lift over unity —
- * clearly perceptible without pushing into distortion for
- * well-recorded booth audio.
+ * genuinely louder than the floor speaker we run the element through
+ * an AudioContext + GainNode. Raised from 1.6 (#229) to 2.4 so the
+ * translation is clearly dominant even with the floor now at full
+ * volume — ratio ~2.4x on top of natural mix. Well-recorded booth
+ * audio handles this range without distortion; if it starts
+ * clipping in the field, drop toward 1.8.
  *
- * If Web Audio setup fails for any reason (very old browser, an
- * element already attached to a different context) we silently fall
- * back to `.volume = 1` and skip the boost. Nothing depends on the
- * boost working.
+ * If Web Audio setup fails (very old browser, an element already
+ * attached to a different context) we silently fall back to
+ * `.volume = 1` and skip the boost. Nothing depends on it working.
  */
-const TRANSLATION_BOOST = 1.6;
+const TRANSLATION_BOOST = 2.4;
 
 /** How long WebRTC gets before we fall back to HLS. */
 const WEBRTC_TIMEOUT_MS = 8000;
