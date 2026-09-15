@@ -26,14 +26,30 @@ const BANDWIDTH_SAVER = false;
 
 /**
  * Volume the floor (source language) plays at when a translation is
- * selected. Standard conference-interpretation practice — the room
- * still hears the original speaker but the interpreter's voice is
- * dominant. Set to 0 to mute the floor entirely (many venues do); a
- * value between 0.10-0.25 keeps the source audible in the background.
- * Kept as a bandwidth-saver-tier flag so a future toggle in the UI
- * can override per listener.
+ * selected. Dropped from 0.15 (#227) to 0.05 after operator feedback
+ * "the translation should be louder than the speaker" — 0.15 was
+ * still competing with the interpreter's voice. Now the floor is a
+ * whisper: audible for ambient cues (applause, cheers) but nowhere
+ * close to talkover. Ratio against a boosted translation is roughly
+ * 30x.
+ * Set to 0 to mute the floor entirely — some venues prefer that.
  */
-const FLOOR_DUCK_VOLUME = 0.15;
+const FLOOR_DUCK_VOLUME = 0.05;
+
+/**
+ * Gain applied to the selected translation via Web Audio. A plain
+ * <audio> element's `.volume` caps at 1.0; to make the interpreter
+ * genuinely louder than a hot-mic speaker we run the element through
+ * an AudioContext + GainNode. 1.6 gives a ~4dB lift over unity —
+ * clearly perceptible without pushing into distortion for
+ * well-recorded booth audio.
+ *
+ * If Web Audio setup fails for any reason (very old browser, an
+ * element already attached to a different context) we silently fall
+ * back to `.volume = 1` and skip the boost. Nothing depends on the
+ * boost working.
+ */
+const TRANSLATION_BOOST = 1.6;
 
 /** How long WebRTC gets before we fall back to HLS. */
 const WEBRTC_TIMEOUT_MS = 8000;
@@ -92,6 +108,48 @@ export default function SimulcastPlayer({
   const featVideoRef = useRef<HTMLVideoElement | null>(null);
   const featAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
+
+  // Web Audio graph for the translation boost. One AudioContext per
+  // player instance, one MediaElementSource per channel <audio>. Both
+  // are one-shot: once an <audio> element has been attached to a
+  // MediaElementSource the browser refuses a second attachment, and
+  // once created the source can't be re-parented, so the maps are
+  // append-only for the life of the component.
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const gainNodesRef = useRef<Record<string, GainNode>>({});
+  const wiredElsRef = useRef<Set<string>>(new Set());
+
+  // Lazily wire one language <audio> through the AudioContext so its
+  // output goes through a GainNode we can push above 1.0. Returns the
+  // GainNode on success, or null if Web Audio isn't usable in this
+  // browser / already-attached collision — the caller then falls back
+  // to native `.volume` (which caps at 1) and the boost silently
+  // degrades.
+  const wireBoost = useCallback((id: string, el: HTMLAudioElement): GainNode | null => {
+    if (wiredElsRef.current.has(id)) return gainNodesRef.current[id] ?? null;
+    try {
+      const Ctx: typeof AudioContext | undefined =
+        typeof window !== "undefined"
+          ? (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)
+          : undefined;
+      if (!Ctx) return null;
+      if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+      const ctx = audioCtxRef.current;
+      const source = ctx.createMediaElementSource(el);
+      const gain = ctx.createGain();
+      gain.gain.value = 1;
+      source.connect(gain);
+      gain.connect(ctx.destination);
+      gainNodesRef.current[id] = gain;
+      wiredElsRef.current.add(id);
+      return gain;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[player] Web Audio boost unavailable for", id, err);
+      wiredElsRef.current.add(id); // don't retry forever
+      return null;
+    }
+  }, []);
 
   // Track the browser's fullscreen state so the button label and icon
   // reflect reality when the user presses Esc to exit.
@@ -316,18 +374,41 @@ export default function SimulcastPlayer({
       const isFloor = id === videoChannel.id;
       const isActive = id === active;
       // Floor plays under a translation at reduced volume; the
-      // selected channel always plays at full volume; everything
-      // else is silent. On-air featuring silences all language
-      // channels — the featured mic is on the floor stream.
+      // selected channel always plays at full volume (boosted for
+      // translations); everything else is silent. On-air featuring
+      // silences all language channels — the featured mic is on
+      // the floor stream.
       const shouldPlay =
         !muted && !onAir && (isActive || (isFloor && activeIsTranslation));
-      el.muted = !shouldPlay;
-      el.volume = shouldPlay && isFloor && activeIsTranslation ? FLOOR_DUCK_VOLUME : 1;
+
+      // Wire non-floor channels through Web Audio the first time we
+      // touch them so we can push output above 1.0. Floor stays on
+      // native volume — it never needs boost, only duck.
+      const gain = !isFloor && shouldPlay ? wireBoost(id, el) : gainNodesRef.current[id] ?? null;
+
+      if (gain) {
+        // Boosted path: element itself stays at max, GainNode does
+        // the level control. Setting gain to 0 while muting is
+        // enough — leaving el.muted false lets play() succeed
+        // without needing another user gesture.
+        el.volume = 1;
+        el.muted = false;
+        gain.gain.value = shouldPlay ? (isActive ? TRANSLATION_BOOST : 0) : 0;
+      } else {
+        // Native path: floor + any channel where Web Audio setup
+        // was refused. Standard mute/volume pattern.
+        el.muted = !shouldPlay;
+        el.volume = shouldPlay && isFloor && activeIsTranslation ? FLOOR_DUCK_VOLUME : 1;
+      }
+
       if (shouldPlay) {
+        // Resume the context if the browser suspended it (some
+        // autoplay policies do this after tab switch).
+        audioCtxRef.current?.resume().catch(() => {});
         el.play().catch(() => setMuted(true));
       }
     });
-  }, [active, muted, audioStreams, mode, onAir, videoChannel.id]);
+  }, [active, muted, audioStreams, mode, onAir, videoChannel.id, wireBoost]);
 
   /* ---- optional: stop receiving the languages nobody is listening to ---- */
   useEffect(() => {
