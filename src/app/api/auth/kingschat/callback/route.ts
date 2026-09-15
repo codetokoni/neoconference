@@ -166,44 +166,63 @@ async function handle(req: Request) {
 
   if (!user) {
     // Clerk requires at least one identifier (email, phone, or
-    // username) to create a user. KingsChat sometimes returns
-    // neither an email nor a username on its profile — the user
-    // signed up with only a phone on KC and never linked an email.
-    // Synthesize a username from the kcId so the create succeeds;
-    // it's guaranteed unique and stable (same person always maps
-    // to the same synthesized value).
+    // username) to create a user AND this instance additionally
+    // requires an email address on the account (that's what "form_
+    // data_missing" — surfaced after #225 — is telling us).
+    //
+    // #225 synthesized a username fallback but Clerk still rejected
+    // KC users who joined with a phone only. Synthesize an EMAIL
+    // fallback too — stable, deterministic, one placeholder per KC
+    // id — using a domain we control that will never route real
+    // mail. The email is marked verified because KC already proved
+    // account ownership (that's what the OAuth flow does); the
+    // placeholder just satisfies Clerk's schema, it is NOT a
+    // reachable communication channel.
+    //
+    // If KC did give us a real email we of course use that; the
+    // synthesis is fallback-only.
     const safeKcId = String(kcId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24);
     const usernameFallback = (kcUsername && kcUsername.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32)) || ('kc' + safeKcId);
+    const synthesizedEmail = 'kc-' + safeKcId + '@kingschat.local';
+    const effectiveEmail = email || synthesizedEmail;
     try {
       const created = await cc.users.createUser({
         externalId,
-        emailAddress: email ? [email] : undefined,
+        emailAddress: [effectiveEmail],
         firstName: firstName || undefined,
         lastName: lastName || undefined,
         username: usernameFallback,
         skipPasswordRequirement: true,
-        publicMetadata: { kingschat: { id: kcId, username: kcUsername } },
+        publicMetadata: {
+          kingschat: {
+            id: kcId,
+            username: kcUsername,
+            // Marks that the primary email is a placeholder AND
+            // preserves the fact that KC never gave us a real one,
+            // so a moderator can see it in the Clerk dashboard.
+            emailIsPlaceholder: !email,
+          },
+        },
       } as any);
       user = { id: created.id };
 
-      // Mark the email verified. KingsChat already proved the user
-      // owns it (we got here via an OAuth flow they completed) so
-      // Clerk demanding a fresh email code before letting them in
-      // ("additional verification required") is friction with no
-      // security value. Only touchable via the emailAddresses
-      // resource — createUser doesn't take a verified flag.
-      if (email) {
-        try {
-          const fresh = await cc.users.getUser(created.id);
-          const emailRec = fresh.emailAddresses?.find(
-            (e) => e.emailAddress?.toLowerCase() === email.toLowerCase(),
-          );
-          if (emailRec?.id) {
-            await (cc as any).emailAddresses.updateEmailAddress(emailRec.id, { verified: true });
-          }
-        } catch (e) {
-          console.warn('[kc-callback] mark email verified failed', e);
+      // Mark the primary email verified. KingsChat already proved
+      // ownership (real email) OR it's a placeholder that satisfies
+      // schema (synthesized email) — either way Clerk demanding a
+      // verification code before letting the user in is friction
+      // with no security value. Only touchable via the
+      // emailAddresses resource — createUser doesn't take a
+      // verified flag.
+      try {
+        const fresh = await cc.users.getUser(created.id);
+        const emailRec = fresh.emailAddresses?.find(
+          (e) => e.emailAddress?.toLowerCase() === effectiveEmail.toLowerCase(),
+        );
+        if (emailRec?.id) {
+          await (cc as any).emailAddresses.updateEmailAddress(emailRec.id, { verified: true });
         }
+      } catch (e) {
+        console.warn('[kc-callback] mark email verified failed', e);
       }
     } catch (e) {
       console.error('[kc-callback] createUser failed', e);
