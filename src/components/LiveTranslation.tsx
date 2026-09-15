@@ -41,6 +41,13 @@ import {
 import { CAPTION_LOCALES } from '@/lib/locales';
 
 const STORAGE_KEY = 'neo:translation:target';
+const DUCK_STORAGE_KEY = 'neo:translation:duckLevel';
+/** Default room-audio volume while the browser is speaking a
+ *  translation. 0.15 puts the original speaker at background level
+ *  so the interpreter's voice dominates without silencing the
+ *  applause / laughter / speaker's inflection entirely. Viewer can
+ *  override via the slider below the language picker. */
+const DEFAULT_DUCK_LEVEL = 0.15;
 // DeepL doesn't cover ar / hi at the time of writing — filter them out
 // so the picker only lists languages that actually round-trip. Keeping
 // this list on the client too means we never post a request that we
@@ -115,12 +122,40 @@ export default function LiveTranslation() {
   const warnedNoTts = useRef(false);
   const voice = useSpeechVoice(targetLang === 'off' ? 'en' : targetLang);
 
+  // How loud the ORIGINAL speaker audio plays while a translation is
+  // being spoken. 0 = fully mute the room while the interpreter
+  // talks (some listeners prefer this); 1 = don't duck at all.
+  // Persisted per viewer so a listener's mix follows them.
+  const [duckLevel, setDuckLevel] = useState<number>(DEFAULT_DUCK_LEVEL);
+  const duckLevelRef = useRef(duckLevel);
+  useEffect(() => {
+    duckLevelRef.current = duckLevel;
+  }, [duckLevel]);
+  // Refcount of active utterances. Restore volume only when the last
+  // one finishes — otherwise back-to-back captions would each
+  // start-and-end the duck, causing volume pumping.
+  const activeUtteranceCount = useRef(0);
+
   // Load / persist per-viewer preference.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
       const v = window.localStorage.getItem(STORAGE_KEY);
       if (v) setTargetLangState(v);
+      const d = window.localStorage.getItem(DUCK_STORAGE_KEY);
+      if (d != null) {
+        const n = Number(d);
+        if (Number.isFinite(n) && n >= 0 && n <= 1) setDuckLevel(n);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+  const updateDuckLevel = useCallback((v: number) => {
+    const clamped = Math.min(1, Math.max(0, v));
+    setDuckLevel(clamped);
+    try {
+      window.localStorage.setItem(DUCK_STORAGE_KEY, String(clamped));
     } catch {
       // ignore
     }
@@ -247,9 +282,42 @@ export default function LiveTranslation() {
           utt.lang = targetLang;
           if (voice) utt.voice = voice;
           utt.rate = 1.15;
-          utt.onstart = () => bumpDiag({ spoke: diagRef.current.spoke + 1 });
-          utt.onerror = (ev) =>
+          // Duck the LiveKit room audio while the interpreter is
+          // speaking so the translation dominates. SpeechSynthesis
+          // output goes straight to the OS speaker (not through Web
+          // Audio) so we can't boost the TTS above 1.0; the reliable
+          // path is to lower the competing source audio instead.
+          // Ref-count active utterances so back-to-back captions
+          // don't cause volume pumping — restore only when the LAST
+          // utterance ends.
+          utt.onstart = () => {
+            bumpDiag({ spoke: diagRef.current.spoke + 1 });
+            activeUtteranceCount.current += 1;
+            if (activeUtteranceCount.current === 1) {
+              // Every <audio> in the room page belongs to
+              // <RoomAudioRenderer> — LiveKit's built-in
+              // participant-audio component. Duck them all.
+              document.querySelectorAll('audio').forEach((a) => {
+                a.volume = duckLevelRef.current;
+              });
+            }
+          };
+          const restoreVolume = () => {
+            activeUtteranceCount.current = Math.max(
+              0,
+              activeUtteranceCount.current - 1,
+            );
+            if (activeUtteranceCount.current === 0) {
+              document.querySelectorAll('audio').forEach((a) => {
+                a.volume = 1;
+              });
+            }
+          };
+          utt.onend = restoreVolume;
+          utt.onerror = (ev) => {
             bumpDiag({ lastError: 'TTS error: ' + (ev.error || 'unknown') });
+            restoreVolume();
+          };
           window.speechSynthesis.speak(utt);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
@@ -267,6 +335,14 @@ export default function LiveTranslation() {
       } catch {
         // ignore
       }
+      // Safety: if we're unmounting mid-utterance, `onend` won't
+      // fire. Force-restore every <audio> to volume 1 so a viewer
+      // who toggles translation off doesn't hear a permanently
+      // ducked room.
+      activeUtteranceCount.current = 0;
+      document.querySelectorAll('audio').forEach((a) => {
+        a.volume = 1;
+      });
     };
   }, [room, targetLang, voice]);
 
@@ -354,6 +430,54 @@ export default function LiveTranslation() {
         to work — if you don&apos;t hear anything, ask the host to turn
         Captions on.
       </div>
+      {/* Floor-duck slider — how quiet the ORIGINAL speaker plays
+          while the browser is speaking the translation. Only useful
+          once a target language is picked; hidden while Off. */}
+      {targetLang !== 'off' && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 10px',
+            borderTop: '1px solid rgba(255,255,255,0.06)',
+          }}
+        >
+          <span
+            style={{
+              fontSize: 10,
+              letterSpacing: 0.5,
+              textTransform: 'uppercase',
+              color: 'rgba(255,255,255,0.55)',
+              minWidth: 74,
+            }}
+          >
+            Floor level
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={duckLevel}
+            onChange={(e) => updateDuckLevel(Number(e.target.value))}
+            aria-label="Original-speaker volume while translation is speaking"
+            style={{ flex: 1, minWidth: 0, accentColor: '#22d3ee' }}
+          />
+          <span
+            style={{
+              minWidth: 40,
+              textAlign: 'right',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              fontSize: 11,
+              color: 'rgba(255,255,255,0.55)',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {duckLevel === 0 ? 'mute' : Math.round(duckLevel * 100) + '%'}
+          </span>
+        </div>
+      )}
       {targetLang !== 'off' && diag.spoke === 0 && (
         <button
           type="button"
