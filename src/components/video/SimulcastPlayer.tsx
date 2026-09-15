@@ -102,6 +102,36 @@ export default function SimulcastPlayer({
 
   const [active, setActive] = useState(videoChannel.id);
   const [muted, setMuted] = useState(true);
+
+  // Floor level when a translation is picked. Persisted per viewer
+  // via localStorage — a listener who has settled on their preferred
+  // mix (e.g. "I like the source at 0.3, others prefer 0") gets that
+  // level back every time they open the player, on every device.
+  // Default matches FLOOR_DUCK_VOLUME so the initial UX is
+  // consistent with the constant-only behavior from before the
+  // slider existed.
+  const FLOOR_LEVEL_KEY = "nc:floorLevel";
+  const [floorLevel, setFloorLevel] = useState<number>(FLOOR_DUCK_VOLUME);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(FLOOR_LEVEL_KEY);
+      if (raw != null) {
+        const n = Number(raw);
+        if (Number.isFinite(n) && n >= 0 && n <= 1) setFloorLevel(n);
+      }
+    } catch {
+      /* localStorage unavailable in private mode etc. — use default */
+    }
+  }, []);
+  const updateFloorLevel = useCallback((v: number) => {
+    const clamped = Math.min(1, Math.max(0, v));
+    setFloorLevel(clamped);
+    try {
+      window.localStorage.setItem(FLOOR_LEVEL_KEY, String(clamped));
+    } catch {
+      /* ignore persistence failure — the level still applies for this session */
+    }
+  }, []);
   const [mode, setMode] = useState<"webrtc" | "hls">("webrtc");
   const [serverLive, setServerLive] = useState<Set<string>>(new Set());
   const [viewers, setViewers] = useState(0);
@@ -420,7 +450,10 @@ export default function SimulcastPlayer({
         // Native path: floor + any channel where Web Audio setup
         // was refused. Standard mute/volume pattern.
         el.muted = !shouldPlay;
-        el.volume = shouldPlay && isFloor && activeIsTranslation ? FLOOR_DUCK_VOLUME : 1;
+        // Floor level comes from the viewer-controlled slider now
+        // (persisted per viewer via localStorage). The constant
+        // FLOOR_DUCK_VOLUME remains as the initial default only.
+        el.volume = shouldPlay && isFloor && activeIsTranslation ? floorLevel : 1;
       }
 
       if (shouldPlay) {
@@ -430,7 +463,7 @@ export default function SimulcastPlayer({
         el.play().catch(() => setMuted(true));
       }
     });
-  }, [active, muted, audioStreams, mode, onAir, videoChannel.id, wireBoost]);
+  }, [active, muted, audioStreams, mode, onAir, videoChannel.id, wireBoost, floorLevel]);
 
   /* ---- optional: stop receiving the languages nobody is listening to ---- */
   useEffect(() => {
@@ -499,10 +532,11 @@ export default function SimulcastPlayer({
     }
 
     // Translation selected — video keeps carrying the floor audio at
-    // reduced volume (see FLOOR_DUCK_VOLUME) and the translation
-    // audio plays on top at full volume. Mirrors the WebRTC path.
+    // the viewer-chosen level (persisted from the slider) and the
+    // translation audio plays on top at full volume. Mirrors the
+    // WebRTC path.
     video.muted = muted;
-    video.volume = FLOOR_DUCK_VOLUME;
+    video.volume = floorLevel;
 
     let cancelled = false;
 
@@ -538,7 +572,7 @@ export default function SimulcastPlayer({
       hlsAudio.current?.destroy();
       hlsAudio.current = null;
     };
-  }, [mode, active, muted, videoChannel.id]);
+  }, [mode, active, muted, videoChannel.id, floorLevel]);
 
   const unmute = useCallback(() => setMuted(false), []);
 
@@ -790,6 +824,33 @@ export default function SimulcastPlayer({
           <div style={onAir ? { opacity: 0.45, pointerEvents: "none" } : undefined}>
             <ChannelRail channels={channels} live={live} active={active} onSelect={setActive} />
           </div>
+
+          {/* Floor-level slider. Only relevant when a translation is
+              picked — no reason to show it while the floor IS the
+              only thing playing. Persisted per viewer in localStorage
+              so a listener's preferred mix follows them across
+              sessions. Also hidden while a participant is on air —
+              the floor is silenced by featuring in that case. */}
+          {active !== videoChannel.id && !onAir && (
+            <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+              <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/60">
+                Floor
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={floorLevel}
+                onChange={(e) => updateFloorLevel(Number(e.target.value))}
+                aria-label="Original-language (floor) volume"
+                className="min-w-0 flex-1 accent-emerald-400"
+              />
+              <span className="w-10 text-right font-mono text-[11px] tabular-nums text-white/60">
+                {floorLevel === 0 ? "mute" : Math.round(floorLevel * 100) + "%"}
+              </span>
+            </div>
+          )}
           {onAir && (
             <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-amber-400/80">
               Language channels resume when the programme returns
