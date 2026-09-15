@@ -192,23 +192,53 @@ export async function GET(req: NextRequest) {
     }
     const planLimits = hostPlan ? getPlanLimits(hostPlan) : null;
 
-    if (planLimits && planLimits.maxParticipants > 0) {
+    // Platform-admin bypass. If the person joining is a NeoConference
+    // admin (isAdmin(email) — the same list that lets you into
+    // /admin), let them through regardless of the host's plan cap.
+    // A room-full lockout on your own product mid-event is a worse
+    // outcome than briefly exceeding the plan cap for one operator.
+    let isAdminJoiner = false;
+    try {
+      const u = await currentUser().catch(() => null);
+      const emails = (u?.emailAddresses || []).map(
+        (e: { emailAddress: string }) => e.emailAddress.toLowerCase(),
+      );
+      isAdminJoiner = emails.some((e) => isAdmin(e));
+    } catch {}
+
+    if (planLimits && planLimits.maxParticipants > 0 && !isAdminJoiner) {
       try {
         const svc = new RoomServiceClient(wsUrl, apiKey, apiSecret);
         const parts = await svc.listParticipants(room).catch(() => []);
         const alreadyIn = parts.some((p) => p.identity === userId);
         if (!alreadyIn && parts.length >= planLimits.maxParticipants) {
+          // Log with enough context to actually diagnose the "but I
+          // upgraded the plan" support ticket. Includes the resolved
+          // host plan, the cap, and the current occupancy so we can
+          // tell "wrong plan enforced" apart from "genuinely full".
+          console.warn(
+            "[livekit/token] room_full",
+            JSON.stringify({
+              room,
+              hostPlan,
+              limit: planLimits.maxParticipants,
+              occupancy: parts.length,
+            }),
+          );
           return NextResponse.json(
             {
               error: "room_full",
               hostPlan,
               limit: planLimits.maxParticipants,
+              occupancy: parts.length,
               message:
                 hostPlan === "free"
                   ? "This room is full. The host is on the Free plan (max " +
                     planLimits.maxParticipants +
-                    " participants). Ask the host to upgrade."
-                  : "Room is at capacity (" + planLimits.maxParticipants + " participants).",
+                    " participants; currently " + parts.length +
+                    " in the room). Ask the host to upgrade."
+                  : "Room is at capacity: " + parts.length + " of " +
+                    planLimits.maxParticipants + " (host plan: " + hostPlan + ").",
             },
             { status: 403 }
           );
