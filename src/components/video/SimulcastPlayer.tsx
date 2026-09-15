@@ -28,26 +28,36 @@ const BANDWIDTH_SAVER = false;
  * Volume the floor (source language) plays at when a translation is
  * selected.
  *
- * Iteration history:
- *   #227  0.15  — first duck ("floor still audible in background")
+ * Iteration history — this constant has been pushed around more than
+ * anything else in the file. Recording the full path so a future
+ * contributor sees the shape of the tolerance window:
+ *
+ *   #227  0.15  — first duck, no loudness complaint at this value
  *   #229  0.05  — a whisper. Rejected: "0.05 — a whisper"
  *   #231  1.0   — no duck, boost-only. Rejected: "the audio is still
  *                 louder than the translation"
- *   this  0.4   — moderate duck. Not a whisper (audible cues, tone,
- *                 applause come through) but clearly below the
- *                 translation regardless of whether the Web Audio
- *                 boost engages.
+ *   #233  0.4   — moderate duck. Rejected: "floor still too loud"
+ *   this  0.15  — returning to the #227 value. That version was
+ *                 never called "too loud"; the "whisper" complaint
+ *                 came from #229's 0.05. Sits comfortably between
+ *                 the two known-bad values.
  *
  * Why we can't get by on boost alone: <audio>-element Web Audio
  * boost is fragile — autoplay policies suspend the AudioContext on
  * some browsers, MediaElementSource can refuse a second attachment
  * after hot-reload, and when the boost silently degrades the
- * translation ends up at native 1.0 = floor 1.0. Since interpreter
- * mics typically run softer than a stage mic, that reads as
- * "translation is quieter". The floor duck is the reliable half of
- * the ratio; the boost is the extra headroom when it works.
+ * translation ends up at native 1.0 = floor 1.0. The floor duck is
+ * the reliable half of the ratio; the boost is extra headroom.
+ *
+ * Ratios at 0.15:
+ *   boost engaged   →  2.4 / 0.15 = 16× (translation dominant)
+ *   boost failed    →  1.0 / 0.15 ≈  7× (translation still clearly louder)
+ *
+ * If this still isn't right, the next iteration should be a
+ * viewer-facing volume slider rather than another blind number
+ * change — this constant has already been moved four times.
  */
-const FLOOR_DUCK_VOLUME = 0.4;
+const FLOOR_DUCK_VOLUME = 0.15;
 
 /**
  * Gain applied to the selected translation via Web Audio. A plain
