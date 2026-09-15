@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
   }
 
-  let body: { slug?: unknown; id?: unknown; newOwnerEmail?: unknown };
+  let body: { slug?: unknown; id?: unknown; newOwnerEmail?: unknown; self?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -46,9 +46,18 @@ export async function POST(req: Request) {
   const email = typeof body.newOwnerEmail === 'string'
     ? body.newOwnerEmail.trim().toLowerCase()
     : '';
-  if (!email) {
+  // `self: true` targets the caller's own Clerk userId. This is the
+  // reliable path when the operator has multiple sign-in methods
+  // (KingsChat, Neoemail) that produced separate Clerk records for
+  // the same human — email-based lookup would target one record but
+  // the operator might currently be signed in as the other, and the
+  // "am still not the owner after logout / login" complaint follows.
+  // "Sign in as whichever account you actually want to own this,
+  // then run with self:true" is unambiguous.
+  const takeSelf = body.self === true;
+  if (!takeSelf && !email) {
     return NextResponse.json(
-      { error: 'newOwnerEmail_required' },
+      { error: 'newOwnerEmail_or_self_required' },
       { status: 400 },
     );
   }
@@ -72,19 +81,33 @@ export async function POST(req: Request) {
     );
   }
 
-  // Resolve the target user by email via Clerk. Emails on Clerk are
-  // stored per-EmailAddress record — getUserList's emailAddress
-  // param does the joined lookup for us.
-  const cc = await clerkClient();
-  const list = await cc.users.getUserList({ emailAddress: [email], limit: 1 });
-  const newOwner = list.data?.[0];
-  if (!newOwner) {
-    return NextResponse.json(
-      { error: 'target_user_not_found', email },
-      { status: 404 },
-    );
+  // Target userId: caller for self:true, otherwise lookup by email.
+  let newOwnerUserId: string;
+  let resolvedEmail: string | null = null;
+  if (takeSelf) {
+    newOwnerUserId = caller.userId;
+    // Grab an email for the response so the operator can confirm
+    // WHICH of their multiple sign-in accounts got the ownership.
+    try {
+      const cc = await clerkClient();
+      const me = await cc.users.getUser(caller.userId);
+      resolvedEmail = me.emailAddresses?.[0]?.emailAddress?.toLowerCase() ?? null;
+    } catch {
+      // best-effort, doesn't block the transfer
+    }
+  } else {
+    const cc = await clerkClient();
+    const list = await cc.users.getUserList({ emailAddress: [email], limit: 1 });
+    const newOwner = list.data?.[0];
+    if (!newOwner) {
+      return NextResponse.json(
+        { error: 'target_user_not_found', email },
+        { status: 404 },
+      );
+    }
+    newOwnerUserId = newOwner.id;
+    resolvedEmail = email;
   }
-  const newOwnerUserId = newOwner.id;
   const oldOwnerUserId = ev.ownerUserId;
 
   if (oldOwnerUserId === newOwnerUserId) {
@@ -124,6 +147,7 @@ export async function POST(req: Request) {
     event: updated,
     transferredFrom: oldOwnerUserId,
     transferredTo: newOwnerUserId,
-    newOwnerEmail: email,
+    newOwnerEmail: resolvedEmail,
+    tookSelf: takeSelf,
   });
 }
