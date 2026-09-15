@@ -154,25 +154,45 @@ export async function GET(req: NextRequest) {
       user?.primaryEmailAddress?.emailAddress ||
       userId;
 
-    // ---- Plan-based gates: determine the host's plan, then enforce participant cap and emit limits in metadata ----
-    let hostPlan: Plan = "free";
+    // ---- Plan-based gates: determine the HOST's plan and enforce that
+    //      plan's participant cap. If we can't identify a host we do NOT
+    //      fall back to the joiner's plan — the joiner is often on Free
+    //      while the actual room owner is on Starter+, and using the
+    //      joiner's plan was the reason /room/hsmanagers hit "room_full"
+    //      at 30 people even after the host paid to raise the cap.
+    let hostPlan: Plan | null = null;
     try {
       let hostUserId: string | undefined;
+      const { eventStore: __es } = await import("@/lib/eventStore");
+      // Primary: explicit ?event= URL param, the canonical binding.
       if (eventSlug) {
         try {
-          const { eventStore: __es } = await import("@/lib/eventStore");
           const __ev = await __es.bySlug(eventSlug);
           if (__ev?.ownerUserId) hostUserId = __ev.ownerUserId;
         } catch {}
       }
-      if (!hostUserId) hostUserId = userId;
-      hostPlan = await getPlanForUserId(hostUserId);
+      // Fallback: try the room name as a slug. Standing rooms (like
+      // /room/hsmanagers) rarely propagate ?event= through every
+      // shared link, but the room name usually matches the event slug
+      // 1:1 for events that own their room.
+      if (!hostUserId) {
+        try {
+          const __ev = await __es.bySlug(room);
+          if (__ev?.ownerUserId) hostUserId = __ev.ownerUserId;
+        } catch {}
+      }
+      // Only look up a plan if we found a real host. If we haven't
+      // (unowned / orphan room) leave hostPlan null and skip the cap
+      // check entirely below — better to admit everyone into a room
+      // nobody owns than to punish a free joiner with the free-plan
+      // cap for a room somebody else provisioned.
+      if (hostUserId) hostPlan = await getPlanForUserId(hostUserId);
     } catch (planErr) {
       console.error("[livekit/token] plan lookup failed:", planErr);
     }
-    const planLimits = getPlanLimits(hostPlan);
+    const planLimits = hostPlan ? getPlanLimits(hostPlan) : null;
 
-    if (planLimits.maxParticipants > 0) {
+    if (planLimits && planLimits.maxParticipants > 0) {
       try {
         const svc = new RoomServiceClient(wsUrl, apiKey, apiSecret);
         const parts = await svc.listParticipants(room).catch(() => []);
@@ -289,7 +309,14 @@ export async function GET(req: NextRequest) {
       console.error("[livekit/token] lock check error:", lockErr);
     }
 
-    at.metadata = JSON.stringify({ planLimits, hostPlan, role: participantRole });
+    // JWT metadata is read by the client to gate premium UI (recording
+    // button, etc.). When we couldn't identify a host plan, fall back
+    // to the free-plan shape so unowned rooms don't accidentally
+    // expose premium features. The cap check above is deliberately
+    // NOT gated on this — see comment there for why.
+    const metadataPlan: Plan = hostPlan ?? "free";
+    const metadataLimits = planLimits ?? getPlanLimits(metadataPlan);
+    at.metadata = JSON.stringify({ planLimits: metadataLimits, hostPlan: metadataPlan, role: participantRole });
 
     const token = await at.toJwt();
     return NextResponse.json({ token, wsUrl });
