@@ -139,7 +139,12 @@ export default function RoomPage({ params }: { params: { name: string } }) {
             }
             return;
           }
-          throw new Error(body.error || ("HTTP " + res.status));
+          // Prefer the friendly server-side `message` when the API
+          // provided one — the bare `error` code (e.g. "room_full") is
+          // opaque to the operator; the message spells out the plan,
+          // the cap, and the current occupancy so a "why can't people
+          // join" support call is instantly diagnosable.
+          throw new Error(body.message || body.error || ("HTTP " + res.status));
         }
         const data = (await res.json()) as TokenResponse;
         if (cancelled) return;
