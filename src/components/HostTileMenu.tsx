@@ -168,31 +168,86 @@ export function HostTileMenu({
   // conditionally.
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [menuPos, setMenuPos] = useState<{
+    top: number;
+    left: number;
+    maxHeight: number;
+  } | null>(null);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // Anchor the portal-rendered menu to the kebab's viewport rect. Recompute
-  // on scroll/resize so it tracks when the tile grid reflows or the user
-  // scrolls the participant strip.
+  // Anchor the portal-rendered menu to the kebab's viewport rect.
+  //
+  // Two-pass placement:
+  //   Pass 1 uses a rough height estimate to pick above/below without
+  //     needing the menu in the DOM yet. Gets us on-screen in the same
+  //     frame the menu appears.
+  //   Pass 2 (after the menu renders) reads the real measured height
+  //     and corrects if the estimate was off — happens when host / role
+  //     sections show more items than the estimate expected.
+  //
+  // Recomputes on scroll/resize so the menu tracks when the tile grid
+  // reflows or the user scrolls the participant strip.
   useLayoutEffect(() => {
     if (!open) {
       setMenuPos(null);
       return;
     }
+    const GAP = 4;
+    const MARGIN = 8;
+    const ROUGH_MENU_HEIGHT = 400; // enough for every host + role option
     const place = () => {
       const b = buttonRef.current;
       if (!b) return;
       const r = b.getBoundingClientRect();
       const width = 200;
-      // Right-align under the kebab, but clamp so we don't spill off-screen.
-      const left = Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8));
-      setMenuPos({ top: r.bottom + 4, left });
+      const left = Math.max(
+        MARGIN,
+        Math.min(r.right - width, window.innerWidth - width - MARGIN),
+      );
+
+      // Measured height when the menu is already mounted; otherwise the
+      // rough estimate lets us decide flip-above vs below on the first
+      // frame — reader still sees the menu in the right half of the
+      // screen instead of a flicker below then a jump above.
+      const menuH = menuRef.current?.getBoundingClientRect().height ?? ROUGH_MENU_HEIGHT;
+      const spaceBelow = window.innerHeight - r.bottom - MARGIN;
+      const spaceAbove = r.top - MARGIN;
+
+      let top: number;
+      let maxHeight: number;
+      if (menuH + GAP <= spaceBelow) {
+        // Fits below — the usual case for tiles in the upper rows.
+        top = r.bottom + GAP;
+        maxHeight = spaceBelow;
+      } else if (menuH + GAP <= spaceAbove) {
+        // Doesn't fit below but fits above — flip up. This is the
+        // fix for tiles in the last row of the grid whose menu was
+        // getting clipped by the viewport bottom (operator report).
+        top = r.top - GAP - menuH;
+        maxHeight = spaceAbove;
+      } else {
+        // Fits neither above nor below the trigger (very short
+        // viewport). Anchor to whichever side has more room and let
+        // the menu's own overflowY handle the rest.
+        if (spaceBelow >= spaceAbove) {
+          top = r.bottom + GAP;
+          maxHeight = spaceBelow;
+        } else {
+          top = MARGIN;
+          maxHeight = spaceAbove;
+        }
+      }
+      setMenuPos({ top, left, maxHeight: Math.max(120, maxHeight) });
     };
     place();
+    // Second pass on the next paint: menu is mounted, we can measure it
+    // and correct if the rough estimate over- or under-shot.
+    const raf = requestAnimationFrame(place);
     window.addEventListener('scroll', place, true);
     window.addEventListener('resize', place);
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener('scroll', place, true);
       window.removeEventListener('resize', place);
     };
@@ -262,6 +317,13 @@ export function HostTileMenu({
             top: menuPos.top,
             left: menuPos.left,
             width: 200,
+            // Cap height so an unusually short viewport still gets a
+            // scrollable menu instead of a clipped one — belt-and-
+            // suspenders alongside the flip-above logic in the layout
+            // effect. maxHeight comes from the placement pass which
+            // knows how much room the chosen side has.
+            maxHeight: menuPos.maxHeight,
+            overflowY: 'auto',
             zIndex: 10000,
             background: 'rgba(20,20,22,0.96)',
             color: '#fff',
