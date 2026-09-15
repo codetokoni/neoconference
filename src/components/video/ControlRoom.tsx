@@ -564,8 +564,8 @@ export default function ControlRoom({
         <div
           className={
             display
-              ? "grid grid-cols-4 gap-[3px] p-0 sm:grid-cols-6 lg:grid-cols-10"
-              : "grid grid-cols-4 gap-[5px] p-3 sm:grid-cols-6 lg:grid-cols-10"
+              ? "grid grid-cols-2 gap-[3px] p-0 sm:grid-cols-6 lg:grid-cols-10"
+              : "grid grid-cols-2 gap-[5px] p-3 sm:grid-cols-6 lg:grid-cols-10"
           }
         >
           {shown.map((p) => (

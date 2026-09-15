@@ -349,7 +349,7 @@ export default function QueueBoard({
             mode and fill the grid cell. This ONLY works because
             display mode is paginated at 50 — see the display branch
             in page.tsx for why fit-to-viewport is safe here. */}
-        <div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-4 gap-[3px] sm:grid-cols-6 lg:grid-cols-10">
+        <div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-2 gap-[3px] sm:grid-cols-6 lg:grid-cols-10">
           {pageEntries.map((sid, iOnPage) => {
             const globalIdx = startIdx + iOnPage;
             return (
@@ -523,7 +523,7 @@ export default function QueueBoard({
               tile density. The parent container is max-w-[1600px]
               to match, giving ~153px tiles at lg — plenty of room
               for the AIR button and the name at rest. */}
-          <div className="grid grid-cols-4 gap-[5px] sm:grid-cols-6 lg:grid-cols-10">
+          <div className="grid grid-cols-2 gap-[5px] sm:grid-cols-6 lg:grid-cols-10">
             {queue.order.map((sid, i) => (
               <QueueTile
                 key={sid}
