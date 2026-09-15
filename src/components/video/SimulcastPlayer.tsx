@@ -30,34 +30,36 @@ const BANDWIDTH_SAVER = false;
  *
  * Iteration history:
  *   #227  0.15  — first duck ("floor still audible in background")
- *   #229  0.05  — dropped after "translation should be louder";
- *                 misread as "duck the floor further" when the ask
- *                 was really "boost the translation"
- *   this  1.0   — floor is NOT ducked; the source keeps playing at
- *                 full volume and the translation is made louder
- *                 purely via TRANSLATION_BOOST below. Operator: "you
- *                 still reduce the floor audio again" — this respects
- *                 that literally.
+ *   #229  0.05  — a whisper. Rejected: "0.05 — a whisper"
+ *   #231  1.0   — no duck, boost-only. Rejected: "the audio is still
+ *                 louder than the translation"
+ *   this  0.4   — moderate duck. Not a whisper (audible cues, tone,
+ *                 applause come through) but clearly below the
+ *                 translation regardless of whether the Web Audio
+ *                 boost engages.
  *
- * Keep the constant instead of removing the code path: some venues
- * do want the classic interpretation-booth duck, and a per-viewer
- * toggle in the UI would drop straight in.
+ * Why we can't get by on boost alone: <audio>-element Web Audio
+ * boost is fragile — autoplay policies suspend the AudioContext on
+ * some browsers, MediaElementSource can refuse a second attachment
+ * after hot-reload, and when the boost silently degrades the
+ * translation ends up at native 1.0 = floor 1.0. Since interpreter
+ * mics typically run softer than a stage mic, that reads as
+ * "translation is quieter". The floor duck is the reliable half of
+ * the ratio; the boost is the extra headroom when it works.
  */
-const FLOOR_DUCK_VOLUME = 1.0;
+const FLOOR_DUCK_VOLUME = 0.4;
 
 /**
  * Gain applied to the selected translation via Web Audio. A plain
- * <audio> element's `.volume` caps at 1.0; to make the interpreter
- * genuinely louder than the floor speaker we run the element through
- * an AudioContext + GainNode. Raised from 1.6 (#229) to 2.4 so the
- * translation is clearly dominant even with the floor now at full
- * volume — ratio ~2.4x on top of natural mix. Well-recorded booth
- * audio handles this range without distortion; if it starts
- * clipping in the field, drop toward 1.8.
+ * <audio> element's `.volume` caps at 1.0; the boost is the extra
+ * headroom on top for browsers that let AudioContext + GainNode
+ * work. Combined with FLOOR_DUCK_VOLUME the ratio is:
  *
- * If Web Audio setup fails (very old browser, an element already
- * attached to a different context) we silently fall back to
- * `.volume = 1` and skip the boost. Nothing depends on it working.
+ *   boost path working:  2.4 / 0.4 = 6× translation-over-floor
+ *   boost path failed:   1.0 / 0.4 = 2.5× (still clearly dominant)
+ *
+ * Both scenarios put the translation clearly louder than the
+ * floor — the duck alone is enough; the boost is extra.
  */
 const TRANSLATION_BOOST = 2.4;
 
