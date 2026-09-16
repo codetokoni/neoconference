@@ -769,7 +769,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
           placeholder='Send a message'
           rows={2}
-          maxLength={1000}
+          maxLength={8000}
           style={{
             resize: 'none',
             background: 'rgba(15,23,42,0.7)', color: '#e2e8f0',
