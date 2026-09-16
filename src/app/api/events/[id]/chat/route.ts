@@ -7,7 +7,7 @@ import { NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
 import { chatStore } from '@/lib/chatStore';
-import type { ChatMessage } from '@/types/event';
+import type { ChatMessage, ChatAttachment } from '@/types/event';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -51,7 +51,17 @@ export async function POST(
   let body: any = {};
   try { body = await req.json(); } catch {}
   const text = String(body?.text || "").trim();
-  if (!text) return NextResponse.json({ error: "empty" }, { status: 400 });
+  // Attachments — parsed here so an attachment-only message ("no
+  // words, just the file") passes the empty-text gate. chatStore
+  // re-sanitizes on append, so any shape the client sent that
+  // doesn't match ChatAttachment is silently dropped there.
+  let attachments: ChatAttachment[] | undefined;
+  if (Array.isArray(body?.attachments) && body.attachments.length > 0) {
+    attachments = body.attachments as ChatAttachment[];
+  }
+  if (!text && (!attachments || attachments.length === 0)) {
+    return NextResponse.json({ error: "empty" }, { status: 400 });
+  }
   // Optional reply context
   let replyTo: { id: string; name: string; snippet: string } | undefined;
   if (body?.replyTo && typeof body.replyTo === 'object') {
@@ -87,6 +97,7 @@ export async function POST(
     ...(replyTo ? { replyTo } : {}),
     ...(mentions ? { mentions } : {}),
     ...(toUserId ? { toUserId } : {}),
+    ...(attachments ? { attachments } : {}),
   };
 
   try {
