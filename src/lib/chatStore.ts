@@ -11,7 +11,12 @@ import type { ChatMessage } from '@/types/event';
 
 const PREFIX = 'neo:chat:';
 const MAX_MESSAGES = 500; // hard cap per event to keep payloads small
-const MAX_TEXT_LEN = 1000;
+// Raised from 1000 (which clipped pasted scripture / long-form notes
+// mid-sentence — reported symptom "the text pasted all text didnt
+// show"). 8000 fits an entire chapter of a Bible verse, a code
+// snippet, or a full paragraph of notes while staying well under
+// LiveKit's ~15KB reliable-data-channel payload cap.
+const MAX_TEXT_LEN = 8000;
 
 function isKvConfigured(): boolean {
   return Boolean(
