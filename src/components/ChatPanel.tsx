@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from 'react';
 import { useRoomContext, useParticipants, useLocalParticipant } from '@livekit/components-react';
 import { RoomEvent } from 'livekit-client';
-import type { ChatMessage } from '@/types/event';
+import type { ChatMessage, ChatAttachment } from '@/types/event';
 
 const TOPIC = 'neo-chat';
 const TYPING_TOPIC = 'neo-typing';
@@ -99,6 +99,13 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
   const mentionsRef = useRef<Set<string>>(new Set());
   const [dmTo, setDmTo] = useState<{ id: string; name: string } | null>(null);
   const [dmPickerOpen, setDmPickerOpen] = useState(false);
+  // Attachments queued for the NEXT send. Cleared once the message
+  // goes out. Uploaded to R2 before they land here so the URL is
+  // already retrievable by every viewer the moment we broadcast.
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
+  const [uploading, setUploading] = useState(0);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
 
@@ -284,9 +291,70 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
     return () => clearInterval(id);
   }, [open]);
 
+  // Upload one file to /api/chat/upload and, on success, append to
+  // the pending queue. Multiple files pick up in parallel — each
+  // increments/decrements `uploading` so the paperclip shows a
+  // count-based spinner. Errors surface in `uploadErr` and clear on
+  // the next successful upload; the caller (file input's onChange)
+  // never blocks the UI.
+  const uploadFile = useCallback(async (file: File) => {
+    setUploading((n) => n + 1);
+    setUploadErr(null);
+    try {
+      // Pre-measure image dimensions so the receiver reserves the
+      // right layout box and doesn't jump when the <img> loads.
+      let width: number | undefined;
+      let height: number | undefined;
+      if (file.type.startsWith('image/') && file.type !== 'image/svg+xml') {
+        try {
+          const bmp = await createImageBitmap(file);
+          width = bmp.width;
+          height = bmp.height;
+          bmp.close?.();
+        } catch {
+          // ignore — server will still store, just no dims hint
+        }
+      }
+      const form = new FormData();
+      form.append('file', file, file.name);
+      const res = await fetch('/api/chat/upload', {
+        method: 'POST',
+        body: form,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok || !json?.attachment) {
+        const msg = json?.error === 'too_large'
+          ? 'File too large (max 10 MB).'
+          : json?.error === 'unsupported_type'
+            ? 'That file type is not supported.'
+            : json?.error === 'unauthorized'
+              ? 'Please sign in to attach files.'
+              : json?.error === 'storage_not_configured'
+                ? 'Uploads not configured on this server.'
+                : (json?.error || ('Upload failed (' + res.status + ')'));
+        setUploadErr(msg);
+        return;
+      }
+      const attachment: ChatAttachment = {
+        ...json.attachment,
+        ...(width && height ? { width, height } : {}),
+      };
+      setPendingAttachments((arr) => [...arr, attachment]);
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploading((n) => Math.max(0, n - 1));
+    }
+  }, []);
+
   const send = useCallback(async () => {
     const text = draft.trim();
-    if (!text || sending) return;
+    // Allow attachment-only messages (no text): a screenshot with no
+    // words is still a legitimate message. Block only when everything
+    // is empty AND nothing is uploading (letting the user hit send
+    // while an upload is in flight would race the send past the
+    // upload completion).
+    if ((!text && pendingAttachments.length === 0) || sending || uploading > 0) return;
     setSending(true); setErr(null);
     try {
       const lp = room?.localParticipant;
@@ -302,6 +370,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
           toUserId: dmTo.id,
           ...(replyingTo ? { replyTo: { id: replyingTo.id, name: replyingTo.name, snippet: replyingTo.text.slice(0, 140) } } : {}),
           ...(mentionsRef.current.size > 0 ? { mentions: Array.from(mentionsRef.current) } : {}),
+          ...(pendingAttachments.length > 0 ? { attachments: pendingAttachments } : {}),
         } as ChatMessage;
         setMessages((arr) => (arr.some((m) => m.id === dmMsg.id) ? arr : [...arr, dmMsg]));
         try {
@@ -310,6 +379,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
         } catch {}
         setDraft('');
         setReplyingTo(null);
+        setPendingAttachments([]);
         mentionsRef.current = new Set();
         setMentionQuery(null); setMentionAt(-1);
         stickToBottomRef.current = true;
@@ -318,7 +388,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
         const res = await fetch(`/api/events/${eventId}/chat`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ text, ...(replyingTo ? { replyTo: { id: replyingTo.id, name: replyingTo.name, snippet: replyingTo.text.slice(0, 140) } } : {}), ...(mentionsRef.current.size > 0 ? { mentions: Array.from(mentionsRef.current) } : {}) }),
+          body: JSON.stringify({ text, ...(replyingTo ? { replyTo: { id: replyingTo.id, name: replyingTo.name, snippet: replyingTo.text.slice(0, 140) } } : {}), ...(mentionsRef.current.size > 0 ? { mentions: Array.from(mentionsRef.current) } : {}), ...(pendingAttachments.length > 0 ? { attachments: pendingAttachments } : {}) }),
         });
         if (!res.ok) {
           let msg = "Couldn’t send — try again.";
@@ -333,6 +403,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
         setMessages((arr) => (arr.some((m) => m.id === saved.id) ? arr : [...arr, saved]));
         setDraft('');
         setReplyingTo(null);
+        setPendingAttachments([]);
         mentionsRef.current = new Set();
         setMentionQuery(null); setMentionAt(-1);
         stickToBottomRef.current = true;
@@ -347,7 +418,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
     } finally {
       setSending(false);
     }
-  }, [draft, sending, eventId, room, replyingTo, dmTo]);
+  }, [draft, sending, eventId, room, replyingTo, dmTo, pendingAttachments, uploading]);
 
   const jumpToBottom = useCallback(() => {
     const el = listRef.current;
@@ -461,6 +532,13 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
                 </div>
               ) : null}
               <div style={{ color: '#e2e8f0', whiteSpace: 'pre-wrap', wordBreak: 'break-word', ...(m.toUserId ? { background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)', borderRadius: 8, padding: '6px 10px' } : {}) }}>{renderMessageText(m.text, knownNamesByLow, localParticipant?.identity || '', localParticipant?.name || '')}</div>
+              {m.attachments && m.attachments.length > 0 && (
+                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {m.attachments.map((a, i) => (
+                    <AttachmentView key={i} a={a} />
+                  ))}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 2, position: 'relative' }}>
                 <button
                   type='button'
@@ -750,6 +828,67 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
           display: 'flex', flexDirection: 'column', gap: 8,
         }}
       >
+        {/* Pending-attachment strip — shows each staged upload with a
+            thumbnail (images) or filename badge (everything else) so
+            the sender can see what will go out with the next message,
+            and remove one before sending. Hidden entirely when nothing
+            is pending. */}
+        {(pendingAttachments.length > 0 || uploading > 0 || uploadErr) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            {pendingAttachments.map((a, i) => (
+              <div
+                key={i}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  border: '1px solid rgba(34,211,238,0.3)',
+                  borderRadius: 6, padding: '4px 6px',
+                  background: 'rgba(15,23,42,0.6)',
+                  fontSize: 11, color: '#cbd5e1', maxWidth: 220,
+                }}
+                title={a.name + ' (' + Math.round(a.size / 1024) + ' KB)'}
+              >
+                {a.kind === 'image'
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={a.url} alt='' style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4 }} />
+                  : <span aria-hidden='true' style={{ fontSize: 14 }}>📎</span>}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                <button
+                  type='button'
+                  aria-label={'Remove ' + a.name}
+                  onClick={() => setPendingAttachments((arr) => arr.filter((_, j) => j !== i))}
+                  style={{
+                    marginLeft: 2, padding: 0, width: 18, height: 18,
+                    borderRadius: 3, border: 'none',
+                    background: 'rgba(148,163,184,0.15)', color: '#94a3b8',
+                    fontSize: 12, lineHeight: 1, cursor: 'pointer',
+                  }}
+                >×</button>
+              </div>
+            ))}
+            {uploading > 0 && (
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                Uploading {uploading}…
+              </span>
+            )}
+            {uploadErr && (
+              <span style={{ fontSize: 11, color: '#fca5a5' }}>{uploadErr}</span>
+            )}
+          </div>
+        )}
+        {/* Hidden file input driven by the paperclip button below. */}
+        <input
+          ref={fileInputRef}
+          type='file'
+          multiple
+          accept='image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.zip'
+          onChange={(e) => {
+            const files = e.target.files ? Array.from(e.target.files) : [];
+            for (const f of files) void uploadFile(f);
+            // Reset so re-picking the same file still fires onChange.
+            if (fileInputRef.current) fileInputRef.current.value = '';
+          }}
+          style={{ display: 'none' }}
+        />
         <textarea
           value={draft}
           onChange={(e) => {
@@ -779,20 +918,40 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
             outline: 'none',
           }}
         />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: '#475569' }}>
-            {isMobile ? 'Tap send' : 'Enter to send · Shift+Enter for newline'}
-          </span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: 1 }}>
+            {/* Paperclip — opens the hidden file input. Only enabled
+                when we're not mid-send; upload progress lives above
+                the textarea so the button doesn't need to double as
+                a spinner. */}
+            <button
+              type='button'
+              aria-label='Attach file'
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sending}
+              style={{
+                width: isMobile ? 40 : 30, height: isMobile ? 40 : 28,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: 6, border: '1px solid rgba(148,163,184,0.25)',
+                background: 'rgba(15,23,42,0.6)', color: '#cbd5e1',
+                fontSize: isMobile ? 18 : 15, cursor: sending ? 'not-allowed' : 'pointer',
+                opacity: sending ? 0.5 : 1, padding: 0,
+              }}
+            >📎</button>
+            <span style={{ fontSize: 11, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {isMobile ? 'Tap send' : 'Enter to send · Shift+Enter for newline'}
+            </span>
+          </div>
           <button
             type='submit'
-            disabled={sending || !draft.trim()}
+            disabled={sending || uploading > 0 || (!draft.trim() && pendingAttachments.length === 0)}
             style={{
               padding: isMobile ? '10px 18px' : '6px 14px',
               borderRadius: 8, border: '1px solid rgba(34,211,238,0.4)',
               background: 'linear-gradient(135deg,#22d3ee,#0ea5e9)', color: '#001018',
               fontSize: isMobile ? 14 : 12, fontWeight: 700,
-              cursor: sending || !draft.trim() ? 'not-allowed' : 'pointer',
-              opacity: sending || !draft.trim() ? 0.5 : 1,
+              cursor: (sending || uploading > 0 || (!draft.trim() && pendingAttachments.length === 0)) ? 'not-allowed' : 'pointer',
+              opacity: (sending || uploading > 0 || (!draft.trim() && pendingAttachments.length === 0)) ? 0.5 : 1,
               minWidth: isMobile ? 80 : 60, minHeight: isMobile ? 40 : 28,
             }}
           >
@@ -802,5 +961,75 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
         {err ? <p style={{ color: '#fda4af', fontSize: 11, margin: 0 }}>{err}</p> : null}
       </form>
     </aside>
+  );
+}
+
+// Renders one attachment inside a message body.
+//   image → inline thumbnail, click to open the full-size URL in a
+//           new tab. Constrained to a reasonable max so a huge photo
+//           doesn't blow out the chat column. Width/height hints from
+//           the sender preserve the aspect ratio while loading.
+//   file  → download card with filename + size + type icon.
+function AttachmentView({ a }: { a: ChatAttachment }) {
+  const sizeKb = a.size > 0 ? Math.round(a.size / 1024) : 0;
+  const sizeLabel = sizeKb > 1024
+    ? (sizeKb / 1024).toFixed(1) + ' MB'
+    : sizeKb + ' KB';
+  if (a.kind === 'image') {
+    // Cap displayed height so vertical panoramas don't push everything
+    // else off screen. Native aspect preserved by the ratio the
+    // sender pre-measured, if present.
+    const aspect = a.width && a.height ? a.width / a.height : undefined;
+    return (
+      <a
+        href={a.url}
+        target='_blank'
+        rel='noopener noreferrer'
+        style={{
+          display: 'block', maxWidth: 260, maxHeight: 260,
+          borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(148,163,184,0.15)',
+          background: 'rgba(15,23,42,0.6)',
+        }}
+        title={a.name}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={a.url}
+          alt={a.name}
+          loading='lazy'
+          style={{
+            display: 'block', width: '100%', height: 'auto', maxHeight: 260,
+            objectFit: 'contain',
+            aspectRatio: aspect ? String(aspect) : undefined,
+          }}
+        />
+      </a>
+    );
+  }
+  return (
+    <a
+      href={a.url}
+      target='_blank'
+      rel='noopener noreferrer'
+      download={a.name}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        maxWidth: 280, padding: '8px 10px', borderRadius: 8,
+        border: '1px solid rgba(148,163,184,0.2)',
+        background: 'rgba(15,23,42,0.6)',
+        color: '#cbd5e1', textDecoration: 'none',
+      }}
+      title={a.name + ' — ' + sizeLabel}
+    >
+      <span aria-hidden='true' style={{ fontSize: 20 }}>📄</span>
+      <span style={{ display: 'flex', flexDirection: 'column', minWidth: 0, gap: 2 }}>
+        <span style={{ fontSize: 12, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {a.name}
+        </span>
+        <span style={{ fontSize: 10, color: '#94a3b8' }}>
+          {sizeLabel}
+        </span>
+      </span>
+    </a>
   );
 }

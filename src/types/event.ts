@@ -136,6 +136,32 @@ export interface ChatMessage {
   mentions?: string[];
   /** Optional private-DM target. If set, message was visible only to sender + target. */
   toUserId?: string | null;
+  /** Optional file attachments. Uploaded to R2 via /api/chat/upload
+   *  before the ChatMessage is broadcast, so viewers see a URL that
+   *  is already retrievable. Images render inline in the chat panel;
+   *  everything else renders as a file card with a download link. */
+  attachments?: ChatAttachment[];
+}
+
+export interface ChatAttachment {
+  /** Signed R2 URL. Currently issued with a 7-day expiry — enough for
+   *  the meeting itself plus a reasonable window after; chat history
+   *  is ephemeral (LiveKit data channel), so indefinite storage would
+   *  be paying for URLs nobody can reach. */
+  url: string;
+  /** Original filename supplied by the uploader, sanitized. Used in
+   *  the download card + alt text on inline images. */
+  name: string;
+  /** MIME type as reported by the browser upload. */
+  mimeType: string;
+  /** Size in bytes; the upload endpoint enforces the cap. */
+  size: number;
+  /** 'image' when we can render inline (jpg/png/gif/webp/svg), else 'file'. */
+  kind: 'image' | 'file';
+  /** Natural width/height for images. Client fills these before send so
+   *  the receiver can reserve layout space without a re-flow. */
+  width?: number;
+  height?: number;
 }
 
 export interface NeoEvent {
