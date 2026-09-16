@@ -1,4 +1,4 @@
-import { S3Client, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 /**
@@ -120,6 +120,32 @@ export async function renameObject(oldKey: string, newKey: string): Promise<void
     new DeleteObjectCommand({
       Bucket,
       Key: oldKey,
+    })
+  );
+}
+
+/**
+ * Put a small object into R2. Used by chat attachment upload — the
+ * whole file is read into memory server-side, so callers must enforce
+ * a size cap BEFORE this is called (the multipart parser or the
+ * upload route). No streaming path yet; recordings use a separate
+ * multipart-upload pipeline that isn't reused here.
+ */
+export async function putObject(
+  key: string,
+  body: Buffer | Uint8Array,
+  contentType: string,
+  opts?: { cacheControl?: string }
+): Promise<void> {
+  if (!isR2Configured()) throw new Error('R2 not configured');
+  const s3 = r2Client();
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: requiredEnv('S3_BUCKET'),
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+      CacheControl: opts?.cacheControl,
     })
   );
 }
