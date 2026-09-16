@@ -23,6 +23,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { RoomServiceClient } from "livekit-server-sdk";
+import { clerkClient } from "@clerk/nextjs/server";
 import { authorize } from "@/lib/authz";
 import { eventStore } from "@/lib/eventStore";
 import {
@@ -83,7 +84,42 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return bad("insufficient_rank", 403);
   }
 
-  const identity = { userId: userId || undefined, emails: email ? [email] : [] };
+  // When the caller sent a userId (the usual path — HostTileMenu
+  // fires this shape), fan out the identity to include every email
+  // Clerk knows for that user. Storing the assignment under BOTH the
+  // userId AND every email means the target can rejoin under any of:
+  //   - the same Clerk userId (normal case)
+  //   - a DIFFERENT Clerk userId that maps to the same person via
+  //     any of their emails (KingsChat vs Neoemail vs Google sign-in
+  //     each produce a separate Clerk record; without this fan-out,
+  //     a promoted user who signs back in with a different provider
+  //     came back as a plain participant — the very "when they
+  //     leave and connect back they should keep their role" bug the
+  //     operator reported).
+  //
+  // Best-effort: a Clerk lookup failure doesn't block the assignment.
+  // At worst we fall back to the userId-only key we would've used
+  // pre-fix, which is the same behavior as before.
+  const extraEmails: string[] = [];
+  if (userId) {
+    try {
+      const cc = await clerkClient();
+      const target = await cc.users.getUser(userId);
+      const targetEmails = (target.emailAddresses || [])
+        .map((e) => e.emailAddress?.toLowerCase())
+        .filter((e): e is string => !!e && (!email || e !== email));
+      extraEmails.push(...targetEmails);
+    } catch (lookupErr) {
+      console.warn("[events/roles] clerk lookup failed for userId", userId, lookupErr);
+    }
+  }
+  const identity = {
+    userId: userId || undefined,
+    emails: [
+      ...(email ? [email] : []),
+      ...extraEmails,
+    ],
+  };
 
   try {
     if (role === "participant") {
