@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -34,6 +34,38 @@ export default function NewEventPage() {
   // livestream/replay.
   const [enableStream, setEnableStream] = useState(false);
   const [eventType, setEventType] = useState<'meeting' | 'webinar' | 'livestream'>('meeting');
+
+  // Client-side plan gate for the "Provision RTMP livestream" toggle.
+  // Livestream is Enterprise-only (see /lib/plan.ts). The server
+  // refuses the create when a non-Enterprise user ticks the box —
+  // this hint just tells them the gate is there BEFORE they fill in
+  // a whole event and click Submit. `null` = still loading, don't
+  // block the checkbox yet; `true` = allowed; `false` = disabled.
+  const [canLivestream, setCanLivestream] = useState<boolean | null>(null);
+  const [planName, setPlanName] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/user/plan', { cache: 'no-store' });
+        const j = await r.json().catch(() => null);
+        if (cancelled) return;
+        if (r.ok && j?.ok) {
+          setCanLivestream(Boolean(j.limits?.livestream));
+          setPlanName(typeof j.plan === 'string' ? j.plan : null);
+        } else {
+          // Fall through permissive if the endpoint is unavailable — the
+          // server-side gate still refuses the create if the plan does
+          // not qualify, and permissive is the less-annoying default
+          // when a network blip masks the check.
+          setCanLivestream(true);
+        }
+      } catch {
+        if (!cancelled) setCanLivestream(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CreateResult | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -229,15 +261,33 @@ export default function NewEventPage() {
             </div>
           </div>
 
-          <label className="flex items-start sm:items-center gap-3 cursor-pointer select-none">
+          <label
+            className={
+              'flex items-start sm:items-center gap-3 select-none ' +
+              (canLivestream === false ? 'cursor-not-allowed opacity-60' : 'cursor-pointer')
+            }
+          >
             <input
               type="checkbox"
-              checked={enableStream}
+              checked={enableStream && canLivestream !== false}
+              disabled={canLivestream === false}
               onChange={(e) => setEnableStream(e.target.checked)}
-              className="mt-0.5 sm:mt-0 h-5 w-5 rounded border-white/20 bg-black/40 text-cyan-400 focus:ring-cyan-400/40 shrink-0"
+              className="mt-0.5 sm:mt-0 h-5 w-5 rounded border-white/20 bg-black/40 text-cyan-400 focus:ring-cyan-400/40 shrink-0 disabled:cursor-not-allowed"
             />
             <span className="text-xs sm:text-sm text-white/80">
               Provision RTMP livestream + HLS replay (StreamLab Cloud)
+              {canLivestream === false && (
+                <>
+                  {' '}
+                  <a
+                    href="/pricing"
+                    className="ml-1 rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-200 hover:bg-amber-400/20"
+                    title={planName ? 'You are on the ' + planName + ' plan' : undefined}
+                  >
+                    Enterprise only
+                  </a>
+                </>
+              )}
             </span>
           </label>
 

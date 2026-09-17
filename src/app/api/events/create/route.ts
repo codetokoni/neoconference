@@ -12,7 +12,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { eventStore, generateId, generateSlug, generateQrSeed } from '@/lib/eventStore';
 import { streamlab } from '@/lib/streamlab';
 import { hsmoh } from '@/lib/hsmoh';
-import { checkLifetimeCap, incrementMeetingsCreated } from '@/lib/plan';
+import { checkLifetimeCap, incrementMeetingsCreated, getPlanForUserId, getPlanLimits } from '@/lib/plan';
 import { hashMeetingPassword } from '@/lib/eventPassword';
 import type { NeoEvent, RoleAssignment } from '@/types/event';
 
@@ -91,22 +91,59 @@ export async function POST(req: NextRequest) {
     const livekitRoom = slug;
     const now = new Date().toISOString();
 
+  // Plan gate for RTMP livestream provisioning. Livestream is
+  // Enterprise-only (see /lib/plan.ts and #247). The in-room Go Live
+  // button already enforces the same gate via /api/golive; this is
+  // the second entry point that /api/events/create's Provision RTMP
+  // checkbox opens, and it was missed in the original PR — allowing
+  // any-plan users to still get a StreamLab stream by ticking the
+  // box on the /dashboard/new form. Fixed here.
+  //
+  // Refuse LOUDLY (not silently) so the operator learns why the
+  // stream didn't come with their event, matching the friendly error
+  // shape /api/golive already returns.
   let streamlabBinding: NeoEvent['streamlab'] | undefined;
-    if (body.enableStream && streamlab.isConfigured()) {
-          try {
-                  const s = await streamlab.createStream({ name });
-                  streamlabBinding = {
-                            streamId: s.id,
-                            rtmpUrl: s.rtmpUrl,
-                            streamKey: s.streamKey,
-                            hlsUrl: s.hlsUrl,
-                            playbackId: s.playbackId,
-                  };
-          } catch (e) {
-                  // eslint-disable-next-line no-console
-            console.warn('[events/create] streamlab.createStream failed:', e);
-          }
+  if (body.enableStream) {
+    try {
+      const ownerPlan = await getPlanForUserId(userId);
+      const ownerLimits = getPlanLimits(ownerPlan);
+      if (!ownerLimits.livestream) {
+        return NextResponse.json(
+          {
+            error: 'plan_upgrade_required',
+            plan: ownerPlan,
+            message:
+              'Livestreaming is available on the Enterprise plan only. ' +
+              'Upgrade at /dashboard/billing, or create the event without the ' +
+              'Provision RTMP livestream option.',
+          },
+          { status: 402 }
+        );
+      }
+    } catch (planErr) {
+      // A plan lookup blip shouldn't take event creation down for a
+      // real enterprise customer. Log and fall through — StreamLab
+      // will still fail cleanly if the caller ends up unauthorised
+      // downstream.
+      console.error('[events/create] plan lookup failed, allowing through:', planErr);
     }
+
+    if (streamlab.isConfigured()) {
+      try {
+        const s = await streamlab.createStream({ name });
+        streamlabBinding = {
+          streamId: s.id,
+          rtmpUrl: s.rtmpUrl,
+          streamKey: s.streamKey,
+          hlsUrl: s.hlsUrl,
+          playbackId: s.playbackId,
+        };
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[events/create] streamlab.createStream failed:', e);
+      }
+    }
+  }
 
   const longUrl = originFrom(req) + '/e/' + slug;
     let hsmohBinding: NeoEvent['hsmoh'] | undefined;
