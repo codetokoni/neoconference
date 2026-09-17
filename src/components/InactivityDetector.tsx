@@ -70,7 +70,14 @@ export default function InactivityDetector({
     enabled: config?.enabled ?? true,
     warningMs: config?.warningMs ?? DEFAULT_IDLE_THRESHOLD_MS,
     responseMs: config?.responseMs ?? DEFAULT_RESPONSE_WINDOW_MS,
-    autoRemove: config?.autoRemove ?? false,
+    // Default true so the "Are you still here?" prompt has teeth — an
+    // ignored prompt actually removes the participant from the room.
+    // Without this the timer was cosmetic: nothing happened whether
+    // the operator clicked or not, which is exactly what the FRS §11
+    // idle-cleanup requirement was trying to prevent. Per-event
+    // config can still opt out (autoRemove: false) if a host wants
+    // to keep drifters seated for some reason.
+    autoRemove: config?.autoRemove ?? true,
     exemptAdmins: config?.exemptAdmins ?? true,
   }), [config]);
 
@@ -249,7 +256,9 @@ export default function InactivityDetector({
           Are you still in the meeting?
         </h2>
         <p style={{ fontSize: 13, color: "rgba(226,232,240,0.75)", margin: 0, marginBottom: 20 }}>
-          Press the button below to stay connected. Otherwise this notice will disappear on its own.
+          {resolved.autoRemove
+            ? "Press the button below to stay in the meeting. If you don't respond you'll be removed."
+            : "Press the button below to stay connected. Otherwise this notice will disappear on its own."}
         </p>
         <div
           style={{
