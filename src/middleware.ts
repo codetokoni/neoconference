@@ -135,11 +135,15 @@ const RESERVED_SHORT_URL_SLUGS = new Set([
 const SHORT_URL_SLUG_RE = /^\/([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)\/?$/;
 
 // Tiny in-process cache so RSC prefetches on the same navigation reuse
-// one KV lookup. 2 s is long enough to matter, short enough that state
-// changes (Start now, End meeting) surface almost immediately.
+// one KV lookup. Kept deliberately short (200 ms) so state changes
+// (Start now, End meeting) surface on the very next click without
+// stranding the operator on the old landing/room for a couple of
+// seconds. The cache is only there to absorb the multiple middleware
+// hits Next.js makes for a single navigation (prefetch + fetch + RSC
+// subroute prefetches), which fire tens of ms apart.
 type ShortTargetCacheEntry = { target: string; expiresAt: number };
 const shortTargetCache = new Map<string, ShortTargetCacheEntry>();
-const SHORT_TARGET_TTL_MS = 2000;
+const SHORT_TARGET_TTL_MS = 200;
 
 async function resolveShortTarget(slug: string): Promise<string> {
   const roomTarget = '/room/' + slug + '?event=' + slug;

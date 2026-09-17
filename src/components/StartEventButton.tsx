@@ -6,7 +6,6 @@
 // route the host straight into the room with ?event=<slug> so they're
 // recognized as host (skip the extra 'Join live room' step).
 
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 export default function StartEventButton({
@@ -20,7 +19,6 @@ export default function StartEventButton({
    *  room to rewrite into. */
   livekitRoom?: string;
 }) {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,13 +36,15 @@ export default function StartEventButton({
         setLoading(false);
         return;
       }
-      // Push the short URL so the address bar stays on
-      // `neoconference.app/<slug>` instead of flipping to
-      // `/room/<name>?event=<slug>`. Middleware in src/middleware.ts
-      // rewrites the short form to the same target server-side, so
-      // the room page still loads with ?event=<slug> and the host is
-      // recognized via /api/events/role.
-      router.push('/' + encodeURIComponent(slug));
+      // Full-page navigation to the short URL. router.push('/<slug>')
+      // is a no-op in App Router when the browser bar already shows
+      // the same path (we live at `neoconference.app/<slug>` thanks to
+      // the middleware rewrite), which is what stranded the "Starting…"
+      // label on scree with no state change. A real navigation
+      // guarantees the button unmounts and gives middleware a fresh
+      // request in which to re-read the event's now-live state and
+      // rewrite to /room/. Address bar stays on /<slug>.
+      window.location.assign('/' + encodeURIComponent(slug));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Network error');
       setLoading(false);

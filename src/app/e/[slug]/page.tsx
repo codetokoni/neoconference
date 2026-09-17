@@ -87,12 +87,17 @@ export default async function EventResolverPage({
         {v.state === 'waiting' ? (
           <section className="mt-7 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
             <p className="text-sm text-white/75">The host is preparing to start. You’ll be admitted shortly.</p>
-            <Link
+            {/* Plain <a> — a client-side <Link> to the same URL the
+                browser bar is already showing (the short URL is rewritten
+                to /e/<slug> for waiting/scheduled events) is a no-op in
+                App Router. A full navigation lets middleware re-read the
+                event state and pick /room/ when it's time. */}
+            <a
               className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-sky-500 px-6 py-3 text-sm font-semibold text-slate-900 shadow-[0_0_30px_-8px_rgba(34,211,238,0.6)] transition hover:brightness-110"
               href={'/' + ev.slug}
             >
               Join waiting room →
-            </Link>
+            </a>
           </section>
         ) : null}
 
@@ -110,12 +115,16 @@ export default async function EventResolverPage({
             ) : (
               <>
                 <p className="text-sm text-white/75">The room is open. Join when you’re ready.</p>
-                <Link
+                {/* Plain <a> for the same reason as the waiting-room CTA
+                    above — client-side Link to the current pathname is
+                    a no-op, so we let the browser do a real navigation
+                    and middleware re-picks the target. */}
+                <a
                   className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-sky-500 px-6 py-3 text-sm font-semibold text-slate-900 shadow-[0_0_30px_-8px_rgba(34,211,238,0.6)] transition hover:brightness-110"
                   href={'/' + ev.slug}
                 >
                   Join live room →
-                </Link>
+                </a>
               </>
             )}
           </section>
