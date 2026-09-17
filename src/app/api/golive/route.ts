@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { createStream, isStreamLabConfigured } from '@/lib/streamlab';
 import { eventStore } from '@/lib/eventStore';
 import { authorize } from '@/lib/authz';
+import { getPlanForUserId, getPlanLimits } from '@/lib/plan';
 
 export const runtime = 'nodejs';
 
@@ -59,6 +60,36 @@ export async function POST(req: Request) {
   }
   const gate = await authorize(targetEvent, 'stream:golive');
   if (!gate.ok) return gate.response;
+
+  // Plan gate — livestream is Enterprise-only. Checked AFTER the role
+  // authz gate so a non-host on a paid plan gets the more accurate
+  // "not authorized" error rather than a misleading upgrade prompt.
+  // Plan is read from the EVENT OWNER's account (not the caller's),
+  // so a host / cohost on an enterprise event can still trigger
+  // Go Live without themselves being on an enterprise plan.
+  try {
+    const ownerPlan = await getPlanForUserId(targetEvent.ownerUserId);
+    const ownerLimits = getPlanLimits(ownerPlan);
+    if (!ownerLimits.livestream) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'plan_upgrade_required',
+          hostPlan: ownerPlan,
+          message:
+            'Livestreaming is available on the Enterprise plan only. ' +
+            'The event owner is on the ' + ownerPlan + ' plan; upgrade at /dashboard/billing to enable Go Live.',
+        },
+        { status: 402 } // Payment Required — the standards-conformant "you can't do this without upgrading" status
+      );
+    }
+  } catch (planErr) {
+    // A plan-lookup failure shouldn't take Go Live down for legitimate
+    // enterprise customers. Log it and let the request through — the
+    // StreamLab API will still fail cleanly if provisioning breaks
+    // for another reason.
+    console.error('[golive] plan lookup failed, allowing through:', planErr);
+  }
 
   try {
     const stream = await createStream({ name, mode: 'single', latency: 'hls' });
