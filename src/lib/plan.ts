@@ -1,16 +1,16 @@
 // src/lib/plan.ts
 //
-// User-plan helpers. The plan lives in Clerk publicMetadata.plan and is one of:
-//   "free" | "starter" | "pro" | "business" | "enterprise"
+// Server-side plan helpers. The pure plan-limit data lives in
+// src/lib/planLimits.ts (no server-only imports) so client
+// components can safely read it; this file re-exports that surface
+// AND adds the Clerk-backed lookups that only make sense on the
+// server (getCurrentPlan, getPlanForUserId, checkLifetimeCap,
+// incrementMeetingsCreated).
 //
 // Bootstrap: if BOOTSTRAP_BUSINESS_EMAIL matches the signed-in user's primary
 // email, that user is promoted to the "business" plan automatically (mirrors
 // the BOOTSTRAP_ADMIN_EMAIL pattern in roles.ts). This lets the project owner
 // keep using the app at full capability without integrating payments first.
-//
-// Plan limits are enforced server-side wherever possible (token route +
-// events/create + events/instant), with thin client mirrors for UX
-// (timer banner, locked CTAs).
 //
 // Lifetime meeting cap: only the "free" plan has a finite lifetimeMeetingCap.
 // It is tracked in Clerk publicMetadata.meetingsCreated (number, default 0)
@@ -20,147 +20,25 @@
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { isAdmin } from "@/lib/roles";
+import {
+    type Plan,
+    getPlanLimits,
+    readPlanFromMetadata,
+} from "@/lib/planLimits";
 
-export type Plan = "free" | "starter" | "pro" | "business" | "enterprise";
-
-export const PLANS: Plan[] = ["free", "starter", "pro", "business", "enterprise"];
-
-export function isPlan(value: unknown): value is Plan {
-    return typeof value === "string" && (PLANS as string[]).includes(value);
-}
-
-/**
- * Shape of plan-related fields we read/write on Clerk publicMetadata.
- * Other fields (e.g. meetingsCreated) live alongside but are owned by
- * different helpers.
- */
-export type PlanMetadata = {
-    plan?: Plan;
-    planExpiresAt?: number; // unix ms; absent or null means "no expiry / permanent"
-};
-
-/**
- * Returns true if metadata has a planExpiresAt that is in the past.
- * Absent or null planExpiresAt means permanent (never expired).
- */
-export function isPlanExpired(metadata: unknown): boolean {
-    if (!metadata || typeof metadata !== "object") return false;
-    const m = metadata as Record<string, unknown>;
-    const expiresAt = m.planExpiresAt;
-    if (typeof expiresAt !== "number") return false;
-    return Date.now() > expiresAt;
-}
-
-/**
- * Compute a future expiry timestamp (unix ms) for a billing cycle.
- * 30 days for monthly, 365 days for annual.
- */
-export function computePlanExpiry(billingCycle: "monthly" | "annual"): number {
-    const ms = billingCycle === "annual" ? 365 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
-    return Date.now() + ms;
-}
-
-/**
- * Per-plan feature limits. Use these to drive both server-side gates and
- * UI affordances. Numbers are intentional — see /pricing for the source-of-truth.
- */
-export type PlanLimits = {
-    /** Hard cap on a single meeting's length (0 = unlimited). */
-    meetingMinutes: number;
-    /** Max simultaneous participants in one room (0 = unlimited). */
-    maxParticipants: number;
-    /** Lifetime cap on number of meetings this user can create (0 = unlimited). */
-    lifetimeMeetingCap: number;
-    /** Cloud recording allowed at all. */
-    recording: boolean;
-    /** Soft cap: recording hours per billing month (0 = unlimited; ignored if recording=false). */
-    recordingHoursPerMonth: number;
-    /** Breakout rooms allowed. */
-    breakouts: boolean;
-    /** Custom branding (logo + room URL) allowed. */
-    branding: boolean;
-    /** Livestream to RTMP / YouTube / Facebook / Twitch via the
-     *  Go Live button. Enterprise-only by product decision — the
-     *  StreamLab bill scales with concurrent broadcasts and is only
-     *  worth carrying on the top tier. Lower plans still get in-app
-     *  recording (from `recording` above) for after-the-fact
-     *  distribution. */
-    livestream: boolean;
-};
-
-export function getPlanLimits(plan: Plan): PlanLimits {
-    switch (plan) {
-      case "enterprise":
-              return {
-                        meetingMinutes: 0,
-                        maxParticipants: 0,
-                        lifetimeMeetingCap: 0,
-                        recording: true,
-                        recordingHoursPerMonth: 50,
-                        breakouts: true,
-                        branding: true,
-                        livestream: true,
-              };
-      case "business":
-              return {
-                        meetingMinutes: 0,
-                        maxParticipants: 500,
-                        lifetimeMeetingCap: 0,
-                        recording: true,
-                        recordingHoursPerMonth: 50,
-                        breakouts: true,
-                        branding: true,
-                        livestream: false,
-              };
-      case "pro":
-              return {
-                        meetingMinutes: 0,
-                        maxParticipants: 200,
-                        lifetimeMeetingCap: 0,
-                        recording: true,
-                        recordingHoursPerMonth: 10,
-                        breakouts: true,
-                        branding: false,
-                        livestream: false,
-              };
-      case "starter":
-              return {
-                        meetingMinutes: 120,
-                        maxParticipants: 100,
-                        lifetimeMeetingCap: 0,
-                        recording: false,
-                        recordingHoursPerMonth: 0,
-                        breakouts: false,
-                        branding: false,
-                        livestream: false,
-              };
-      case "free":
-      default:
-              return {
-                        meetingMinutes: 60,
-                        maxParticipants: 30,
-                        lifetimeMeetingCap: 5,
-                        recording: false,
-                        recordingHoursPerMonth: 0,
-                        breakouts: false,
-                        branding: false,
-                        livestream: false,
-              };
-    }
-}
-
-export function readPlanFromMetadata(metadata: unknown): Plan {
-    if (metadata && typeof metadata === "object" && "plan" in metadata) {
-          const p = (metadata as Record<string, unknown>).plan;
-          if (isPlan(p)) {
-                  // Expired paid plans behave as free until the daily downgrade cron
-                  // catches up and resets the metadata.
-              if (isPlanExpired(metadata)) return "free";
-                  return p;
-          }
-    }
-    return "free";
-}
+// Re-export the pure surface so `import { ... } from "@/lib/plan"`
+// keeps working everywhere it did before the split.
+export {
+    type Plan,
+    type PlanLimits,
+    type PlanMetadata,
+    PLANS,
+    isPlan,
+    isPlanExpired,
+    computePlanExpiry,
+    getPlanLimits,
+    readPlanFromMetadata,
+} from "@/lib/planLimits";
 
 function readMeetingsCreated(metadata: unknown): number {
     if (metadata && typeof metadata === "object" && "meetingsCreated" in metadata) {
