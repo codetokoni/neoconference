@@ -1,5 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse, type NextRequest } from 'next/server';
+import { kv } from '@vercel/kv';
 import {
   SESSION_COOKIE,
   generateDeviceFingerprint,
@@ -94,23 +95,30 @@ async function resolveDomain(host: string, origin: string): Promise<string | nul
 /* -----------------------------------------------------------------------
    Short-meeting-URL rewrite
 
-   Turns `neoconference.app/<slug>` into a server-side rewrite of
-   `/room/<slug>?event=<slug>`. The browser's address bar stays on the
-   short URL — a REDIRECT (like the /[slug]/page.tsx server component
-   shipped in PR #117) would bounce and the address bar would jump to
-   the long form; REWRITE is invisible to the client.
+   Turns `neoconference.app/<slug>` into a server-side rewrite that hides
+   the underlying `/e/<slug>` (landing card) or `/room/<slug>?event=<slug>`
+   (in-room UI) target. Which one it picks depends on the event's current
+   state — scheduled events show the landing card so hosts and guests
+   see the countdown + "Start now" CTA; live/waiting events go straight
+   into the room. Either way the browser's address bar keeps the short
+   URL, which is the whole point.
+
+   Two KV round-trips per request (`neo:slug:<slug>` -> id, then
+   `neo:event:<id>` -> state). Cached in-memory with a 2 s TTL keyed by
+   slug — fresh enough that a host tapping Start now sees the room on
+   their next navigation, small enough to absorb bursty RSC prefetches
+   without repeatedly hitting Upstash. Cache misses on state-changing
+   endpoints (start / end / etc.) resolve within the same window.
 
    Skip conditions:
      - path has more than one segment (e.g. /dashboard/billing)
      - path segment is a reserved top-level route name
      - path is exactly '/' (root landing page)
 
-   No KV lookup here — matches any single-segment slug that passes the
-   regex, and lets the room page handle unknown slugs (already does via
-   adoptOrphanRoom or 404, depending on auth state). Adding a lookup
-   would mean a KV round-trip on every request; not worth it for a UX
-   shortcut. The [slug]/page.tsx from PR #117 is kept as a fallback for
-   requests that skip middleware.
+   Orphan slugs (no event exists yet) route to /room so the room page's
+   adoptOrphanRoom path can create the event with the first authenticated
+   caller as owner. This matches how the rewrite worked before this
+   state-aware split.
 
    RESERVED_SHORT_URL_SLUGS covers every top-level route that exists
    today. If a new one is added, extend this set — otherwise the new
@@ -124,23 +132,63 @@ const RESERVED_SHORT_URL_SLUGS = new Set([
   '_next', '_vercel',
 ]);
 
-// Matches a single URL segment shaped like a valid meeting slug — 1-64
-// chars, lowercase alphanumerics and dashes, no leading/trailing dash.
-// Mirrors SLUG_REGEX in /api/events/rename so the middleware and the
-// slug validators agree on what's shaped like a slug.
 const SHORT_URL_SLUG_RE = /^\/([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)\/?$/;
 
-function maybeRewriteShortMeetingUrl(req: NextRequest): NextResponse | null {
+// Tiny in-process cache so RSC prefetches on the same navigation reuse
+// one KV lookup. 2 s is long enough to matter, short enough that state
+// changes (Start now, End meeting) surface almost immediately.
+type ShortTargetCacheEntry = { target: string; expiresAt: number };
+const shortTargetCache = new Map<string, ShortTargetCacheEntry>();
+const SHORT_TARGET_TTL_MS = 2000;
+
+async function resolveShortTarget(slug: string): Promise<string> {
+  const roomTarget = '/room/' + slug + '?event=' + slug;
+  const now = Date.now();
+  const hit = shortTargetCache.get(slug);
+  if (hit && hit.expiresAt > now) return hit.target;
+  let target = roomTarget;
+  try {
+    const id = await kv.get<string>('neo:slug:' + slug);
+    if (id) {
+      const ev = await kv.get<{
+        state?: string;
+        slug?: string;
+        livekitRoom?: string;
+      }>('neo:event:' + id);
+      if (ev) {
+        const canonicalSlug = ev.slug || slug;
+        const room = ev.livekitRoom || canonicalSlug;
+        if (ev.state === 'live' || ev.state === 'waiting') {
+          target = '/room/' + room + '?event=' + canonicalSlug;
+        } else {
+          target = '/e/' + canonicalSlug;
+        }
+      }
+    }
+  } catch {
+    // KV outage — leave target on the /room fallback so the room page's
+    // own orphan-adoption / 404 handling takes over instead of surfacing
+    // a raw infra error to the browser.
+  }
+  shortTargetCache.set(slug, { target, expiresAt: now + SHORT_TARGET_TTL_MS });
+  return target;
+}
+
+async function maybeRewriteShortMeetingUrl(req: NextRequest): Promise<NextResponse | null> {
   const match = req.nextUrl.pathname.match(SHORT_URL_SLUG_RE);
   if (!match) return null;
   const slug = match[1];
   if (RESERVED_SHORT_URL_SLUGS.has(slug)) return null;
+  const target = await resolveShortTarget(slug);
+  const [targetPath, targetQuery] = target.split('?');
   const url = req.nextUrl.clone();
-  url.pathname = '/room/' + slug;
-  // Only set ?event= when the caller hasn't already — a rewrite target
-  // that already carries the parameter shouldn't be overwritten.
-  if (!url.searchParams.has('event')) {
-    url.searchParams.set('event', slug);
+  url.pathname = targetPath;
+  if (targetQuery) {
+    for (const [k, v] of new URLSearchParams(targetQuery)) {
+      // Existing query params on the incoming request win — a caller
+      // that explicitly set ?event= or a UTM tag shouldn't be clobbered.
+      if (!url.searchParams.has(k)) url.searchParams.set(k, v);
+    }
   }
   return NextResponse.rewrite(url);
 }
@@ -216,7 +264,7 @@ export default clerkMiddleware(
     // it only sees canonical-domain requests.
     const domainRewrite = await maybeRewriteCustomDomain(nextReq);
     if (domainRewrite) return domainRewrite;
-    const shortRewrite = maybeRewriteShortMeetingUrl(nextReq);
+    const shortRewrite = await maybeRewriteShortMeetingUrl(nextReq);
     if (shortRewrite) return shortRewrite;
     if (!isPublicRoute(req)) {
       await auth.protect();
