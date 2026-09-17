@@ -79,6 +79,13 @@ export type PlanLimits = {
     breakouts: boolean;
     /** Custom branding (logo + room URL) allowed. */
     branding: boolean;
+    /** Livestream to RTMP / YouTube / Facebook / Twitch via the
+     *  Go Live button. Enterprise-only by product decision — the
+     *  StreamLab bill scales with concurrent broadcasts and is only
+     *  worth carrying on the top tier. Lower plans still get in-app
+     *  recording (from `recording` above) for after-the-fact
+     *  distribution. */
+    livestream: boolean;
 };
 
 export function getPlanLimits(plan: Plan): PlanLimits {
@@ -92,6 +99,7 @@ export function getPlanLimits(plan: Plan): PlanLimits {
                         recordingHoursPerMonth: 50,
                         breakouts: true,
                         branding: true,
+                        livestream: true,
               };
       case "business":
               return {
@@ -102,6 +110,7 @@ export function getPlanLimits(plan: Plan): PlanLimits {
                         recordingHoursPerMonth: 50,
                         breakouts: true,
                         branding: true,
+                        livestream: false,
               };
       case "pro":
               return {
@@ -112,6 +121,7 @@ export function getPlanLimits(plan: Plan): PlanLimits {
                         recordingHoursPerMonth: 10,
                         breakouts: true,
                         branding: false,
+                        livestream: false,
               };
       case "starter":
               return {
@@ -122,6 +132,7 @@ export function getPlanLimits(plan: Plan): PlanLimits {
                         recordingHoursPerMonth: 0,
                         breakouts: false,
                         branding: false,
+                        livestream: false,
               };
       case "free":
       default:
@@ -133,6 +144,7 @@ export function getPlanLimits(plan: Plan): PlanLimits {
                         recordingHoursPerMonth: 0,
                         breakouts: false,
                         branding: false,
+                        livestream: false,
               };
     }
 }

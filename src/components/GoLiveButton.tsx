@@ -14,7 +14,7 @@ type Stream = {
   playbackId?: string;
 };
 
-type Resp = { ok: boolean; stream?: Stream; error?: string };
+type Resp = { ok: boolean; stream?: Stream; error?: string; hostPlan?: string; message?: string };
 
 /**
  * GoLiveButton
@@ -60,6 +60,35 @@ export default function GoLiveButton({
 
   const isHost = roomRole === 'host';
   const isBroadcasting = !!stream || !!remoteBroadcast;
+
+  // Livestream is Enterprise-only (see /lib/plan.ts). The plan gate
+  // is enforced server-side too, but reading it from the participant
+  // metadata lets us show the correct button state up-front instead
+  // of only after a failed POST. Token route stamps this JSON:
+  // { role, hostPlan, planLimits: { livestream, recording, ... } }.
+  const [planAllowsLivestream, setPlanAllowsLivestream] = useState<boolean | null>(null);
+  const [hostPlan, setHostPlan] = useState<string | null>(null);
+  useEffect(() => {
+    const raw = localParticipant?.metadata;
+    if (!raw) return;
+    try {
+      const md = JSON.parse(raw) as { hostPlan?: string; planLimits?: { livestream?: boolean } };
+      if (typeof md.hostPlan === 'string') setHostPlan(md.hostPlan);
+      if (typeof md.planLimits?.livestream === 'boolean') {
+        setPlanAllowsLivestream(md.planLimits.livestream);
+      } else {
+        // Older tokens issued before the livestream flag existed lack
+        // this field. Default to allowed so we don't lock existing
+        // enterprise customers out during the deploy window; the
+        // server gate still refuses if the plan actually doesnt
+        // qualify.
+        setPlanAllowsLivestream(true);
+      }
+    } catch {
+      // Malformed metadata — fall back to permissive.
+      setPlanAllowsLivestream(true);
+    }
+  }, [localParticipant?.metadata]);
 
   // Subscribe to golive state messages from other participants.
   useEffect(() => {
@@ -142,7 +171,21 @@ export default function GoLiveButton({
       });
       const j: Resp = await res.json();
       if (!j.ok || !j.stream) {
-        setError(j.error || 'Could not start broadcast.');
+        // plan_upgrade_required gets the friendly server-supplied
+        // message so the operator learns exactly what to do (upgrade
+        // the OWNER's plan, not their own).
+        const friendly = j.error === 'plan_upgrade_required' && j.message
+          ? j.message
+          : j.error === 'plan_upgrade_required'
+            ? 'Livestreaming is available on the Enterprise plan only.'
+            : (j.error || 'Could not start broadcast.');
+        setError(friendly);
+        if (j.error === 'plan_upgrade_required') {
+          // Reflect what the server told us so the button flips to
+          // the locked state even if the metadata cache said allowed.
+          setPlanAllowsLivestream(false);
+          if (j.hostPlan) setHostPlan(j.hostPlan);
+        }
       } else {
         setStream(j.stream);
         broadcastState(true);
@@ -261,12 +304,22 @@ export default function GoLiveButton({
             'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition active:scale-[0.98] ' +
             (stream
               ? 'border-red-500 bg-red-600 text-white hover:bg-red-500'
-              : 'border-red-500 bg-transparent text-red-400 hover:bg-red-500/10')
+              : planAllowsLivestream === false
+                ? 'border-white/20 bg-transparent text-white/50 hover:bg-white/5'
+                : 'border-red-500 bg-transparent text-red-400 hover:bg-red-500/10')
           }
-          title="Provision RTMP livestream for this room"
+          title={
+            planAllowsLivestream === false
+              ? 'Livestream — Enterprise plan only' + (hostPlan ? ` (owner: ${hostPlan})` : '')
+              : 'Provision RTMP livestream for this room'
+          }
         >
           <Radio size={16} aria-hidden className={stream ? 'animate-pulse' : ''} />
-          {stream ? 'LIVE' : 'Go Live'}
+          {stream
+            ? 'LIVE'
+            : planAllowsLivestream === false
+              ? 'Go Live 🔒'
+              : 'Go Live'}
         </button>
       )}
 
