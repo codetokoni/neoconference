@@ -12,11 +12,13 @@ import { useState } from 'react';
 export default function StartEventButton({
   eventId,
   slug,
-  livekitRoom,
 }: {
   eventId: string;
   slug: string;
-  livekitRoom: string;
+  /** Kept in the prop shape for older callers, but no longer read —
+   *  navigation now goes through the short URL so middleware picks the
+   *  room to rewrite into. */
+  livekitRoom?: string;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -36,9 +38,13 @@ export default function StartEventButton({
         setLoading(false);
         return;
       }
-      // Send the host straight into the room. ?event=<slug> tells the room
-      // page to fetch /api/events/role and treat them as host/cohost.
-      router.push('/room/' + encodeURIComponent(livekitRoom) + '?event=' + encodeURIComponent(slug));
+      // Push the short URL so the address bar stays on
+      // `neoconference.app/<slug>` instead of flipping to
+      // `/room/<name>?event=<slug>`. Middleware in src/middleware.ts
+      // rewrites the short form to the same target server-side, so
+      // the room page still loads with ?event=<slug> and the host is
+      // recognized via /api/events/role.
+      router.push('/' + encodeURIComponent(slug));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Network error');
       setLoading(false);
