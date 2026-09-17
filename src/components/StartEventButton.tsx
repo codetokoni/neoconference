@@ -34,19 +34,17 @@ export default function StartEventButton({
         setLoading(false);
         return;
       }
-      // Navigate DIRECTLY to the /room/ URL, not via the short-URL
-      // rewrite. Repeated deploys of the short-URL path have gotten
-      // stuck in Vercel's edge cache in ways that stranded the
-      // "Starting…" spinner forever for the operator. Going straight
-      // to /room/<name>?event=<slug> bypasses middleware entirely and
-      // guarantees a fresh page + button unmount. The address bar
-      // flips to /room/... at this point, which is fine — the operator
-      // has clearly transitioned "into the meeting" and the URL
-      // reflecting that is not confusing.
-      window.location.assign(
-        '/room/' + encodeURIComponent(livekitRoom) +
-          '?event=' + encodeURIComponent(slug)
-      );
+      // Hard-navigate to the short URL. The event's state just flipped
+      // to 'live' server-side, so middleware's next lookup will route
+      // /<slug> to /room/<name>?event=<slug> invisibly — address bar
+      // stays on /<slug>. window.location.assign guarantees a real
+      // page reload (unlike router.push to the same path, which is a
+      // no-op in App Router and was what stranded "Starting…"). The
+      // 200 ms middleware cache is well and truly expired by the time
+      // the operator has read the page and clicked the button, so the
+      // fresh KV read sees state=live and routes to /room/ on the
+      // first try — no intermediate "Join live room" step.
+      window.location.assign('/' + encodeURIComponent(slug));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Network error');
       setLoading(false);
