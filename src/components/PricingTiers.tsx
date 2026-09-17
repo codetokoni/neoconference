@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import TierCheckoutButton from "@/components/TierCheckoutButton";
 import type { BillingCycle } from "@/lib/espees";
-import { getPlanLimits, type Plan } from "@/lib/plan";
+import { getPlanLimits, type Plan } from "@/lib/planLimits";
 
 type TierId = Plan; // "free" | "starter" | "pro" | "business" | "enterprise"
 
