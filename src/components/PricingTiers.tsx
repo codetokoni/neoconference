@@ -4,8 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import TierCheckoutButton from "@/components/TierCheckoutButton";
 import type { BillingCycle } from "@/lib/espees";
+import { getPlanLimits, type Plan } from "@/lib/plan";
 
-type TierId = "free" | "starter" | "pro" | "business" | "enterprise";
+type TierId = Plan; // "free" | "starter" | "pro" | "business" | "enterprise"
 
 type Tier = {
   id: TierId;
@@ -16,8 +17,49 @@ type Tier = {
   cta: string;
   ctaHref: string;
   highlight?: boolean;
-  features: { label: string; included: boolean }[];
+  /** Marketing-copy rows that describe things NOT modelled in
+   *  getPlanLimits — "HD video", "Live captions", "Community support"
+   *  etc. The plan-limit-driven rows (participants, recording,
+   *  breakouts, branding, livestream) are appended by
+   *  {@link planLimitFeatures} at render time so /pricing stays
+   *  in lock-step with the actual server-side enforcement in
+   *  src/lib/plan.ts. */
+  extraFeatures: { label: string; included: boolean }[];
 };
+
+/**
+ * Turn the plan's PlanLimits into the human-readable feature rows
+ * the pricing table shows. Single source of truth: change plan.ts
+ * and this reflects automatically.
+ */
+function planLimitFeatures(id: TierId): { label: string; included: boolean }[] {
+  const l = getPlanLimits(id);
+  const minutesLabel = l.meetingMinutes === 0
+    ? "Unlimited meeting length"
+    : l.meetingMinutes === 60
+      ? "60-minute meeting cap"
+      : Math.round(l.meetingMinutes / 60) + "-hour meeting cap";
+  const participantsLabel = l.maxParticipants === 0
+    ? "Unlimited participants"
+    : "Up to " + l.maxParticipants + " participants";
+  const lifetimeLabel = l.lifetimeMeetingCap === 0
+    ? "Unlimited meetings"
+    : l.lifetimeMeetingCap + " lifetime meetings";
+  const recordingLabel = l.recording
+    ? l.recordingHoursPerMonth === 0
+      ? "Cloud recording"
+      : "Cloud recording (" + l.recordingHoursPerMonth + " hrs/mo)"
+    : "Cloud recording";
+  return [
+    { label: minutesLabel, included: true },
+    { label: participantsLabel, included: true },
+    { label: lifetimeLabel, included: true },
+    { label: recordingLabel, included: l.recording },
+    { label: "Breakout rooms", included: l.breakouts },
+    { label: "Custom branding" + (l.branding ? " (logo + room URL)" : ""), included: l.branding },
+    { label: "Livestream to RTMP / YouTube / Facebook / Twitch", included: l.livestream },
+  ];
+}
 
 const TIERS: Tier[] = [
   {
@@ -27,17 +69,11 @@ const TIERS: Tier[] = [
     price: { monthly: 0, annual: 0 },
     cta: "Get started free",
     ctaHref: "/dashboard",
-    features: [
-      { label: "60-minute meeting cap", included: true },
-      { label: "Up to 30 participants", included: true },
-      { label: "5 lifetime meetings", included: true },
+    extraFeatures: [
       { label: "HD video & crystal-clear audio", included: true },
       { label: "Live captions", included: true },
       { label: "Polls, chat, reactions, raise hand", included: true },
       { label: "Waiting room", included: true },
-      { label: "Cloud recording", included: false },
-      { label: "Breakout rooms", included: false },
-      { label: "Custom branding", included: false },
       { label: "Community support", included: true },
     ],
   },
@@ -48,14 +84,8 @@ const TIERS: Tier[] = [
     price: { monthly: 10, annual: 100 },
     cta: "Upgrade to Starter",
     ctaHref: "",
-    features: [
-      { label: "2-hour meeting cap", included: true },
-      { label: "Up to 100 participants", included: true },
-      { label: "Unlimited meetings", included: true },
+    extraFeatures: [
       { label: "Everything in Free", included: true },
-      { label: "Cloud recording", included: false },
-      { label: "Breakout rooms", included: false },
-      { label: "Custom branding", included: false },
       { label: "Email support", included: true },
     ],
   },
@@ -67,14 +97,9 @@ const TIERS: Tier[] = [
     cta: "Upgrade to Pro",
     ctaHref: "",
     highlight: true,
-    features: [
-      { label: "Unlimited meeting length", included: true },
-      { label: "Up to 200 participants", included: true },
+    extraFeatures: [
       { label: "Everything in Starter", included: true },
-      { label: "Cloud recording (10 hrs/mo)", included: true },
-      { label: "Breakout rooms", included: true },
       { label: "Email support", included: true },
-      { label: "Custom branding", included: false },
     ],
   },
   {
@@ -84,11 +109,8 @@ const TIERS: Tier[] = [
     price: { monthly: 30, annual: 300 },
     cta: "Go Business",
     ctaHref: "",
-    features: [
-      { label: "Up to 500 participants", included: true },
+    extraFeatures: [
       { label: "Everything in Pro", included: true },
-      { label: "Cloud recording (50 hrs/mo)", included: true },
-      { label: "Custom branding (logo + room URL)", included: true },
       { label: "Priority email support", included: true },
     ],
   },
@@ -99,9 +121,7 @@ const TIERS: Tier[] = [
     price: { monthly: null, annual: null },
     cta: "Contact sales",
     ctaHref: "mailto:info@neoconference.app",
-    features: [
-      { label: "Unlimited participants", included: true },
-      { label: "Unlimited meeting length", included: true },
+    extraFeatures: [
       { label: "Everything in Business", included: true },
       { label: "Volume discounts", included: true },
       { label: "Custom limits", included: true },
@@ -257,9 +277,12 @@ export default function PricingTiers() {
                 )}
               </div>
 
-              {/* Features */}
+              {/* Features. Plan-limit rows come from getPlanLimits so
+                  the pricing table can never drift from what the
+                  server actually enforces; marketing-copy rows are
+                  the static extraFeatures per tier. */}
               <ul className="mt-6 space-y-2.5">
-                {tier.features.map((f, i) => (
+                {[...planLimitFeatures(tier.id), ...tier.extraFeatures].map((f, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm">
                     {f.included ? (
                       <svg
