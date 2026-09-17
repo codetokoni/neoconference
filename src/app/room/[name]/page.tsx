@@ -50,6 +50,7 @@ import EndMeetingButton from "@/components/EndMeetingButton";
 import TranscriptNoticeBanner from "@/components/TranscriptNoticeBanner";
 import MeetingTimer from "@/components/MeetingTimer";
 import InactivityDetector from "@/components/InactivityDetector";
+import InactivityToggleButton from "@/components/InactivityToggleButton";
 import SpeakerBadge from "@/components/SpeakerBadge"; import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel"; import ManageParticipantsPanel from "@/components/ParticipantsPanel"; import TileRoleBadges from "@/components/TileRoleBadges"; import WaitingRoomPanel from "@/components/WaitingRoomPanel"; import BreakoutsPanel from "@/components/BreakoutsPanel";
 import PlanGateOverlay from "@/components/PlanGateOverlay";
 import {
@@ -633,6 +634,7 @@ function RoomContainer({
   const [hideSelf, setHideSelf] = useState(false);
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
+  const [eventId, setEventId] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [isMeetingLocked, setIsMeetingLocked] = useState(false);
   const [endPinRequired, setEndPinRequired] = useState(false);
@@ -777,6 +779,7 @@ function RoomContainer({
           if (j && typeof j.role === "string") {
             setRoomRole(j.role);
             setOwnerUserId(typeof j.ownerUserId === "string" ? j.ownerUserId : null);
+            setEventId(typeof j.id === "string" ? j.id : null);
             setIsOwner(j.isOwner === true);
             setIsMeetingLocked(Boolean(j.isLocked));
             setEndPinRequired(Boolean(j.endPinRequired));
@@ -1016,6 +1019,12 @@ function RoomContainer({
           </button>
           <RenameUrlButton roomRole={roomRole} eventSlug={eventSlug} />
           <HiddenVideosBadge roomRole={roomRole} />
+          <InactivityToggleButton
+            roomRole={roomRole}
+            eventId={eventId}
+            config={inactivityConfig}
+            onConfigChanged={setInactivityConfig}
+          />
           <LiveTranslation />
           <DesktopMoreMenu />
 
