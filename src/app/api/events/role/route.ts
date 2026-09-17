@@ -43,7 +43,7 @@ export async function GET(req: Request) {
   }
 
   if (!userId) {
-    return NextResponse.json({ role: "guest", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
+    return NextResponse.json({ id: ev.id, role: "guest", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
   }
 
   // Owner check runs BEFORE the platform-admin branch. Previously they were
@@ -55,14 +55,14 @@ export async function GET(req: Request) {
   const isOwner = ev.ownerUserId === userId
     || (ownerEmail !== "" && userEmails.includes(ownerEmail));
   if (isOwner) {
-    return NextResponse.json({ role: "host", preApproved: true, isOwner: true, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
+    return NextResponse.json({ id: ev.id, role: "host", preApproved: true, isOwner: true, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
   }
 
   // Permanent admins (ADMIN_EMAILS env var) who are NOT the actual event
   // owner are treated as host of any room they join. Keep isOwner=false —
   // they are *acting as* host, not the actual owner of the event record.
   if (userEmails.some((e) => isAdmin(e))) {
-    return NextResponse.json({ role: "host", preApproved: true, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
+    return NextResponse.json({ id: ev.id, role: "host", preApproved: true, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
   }
 
   // Prefer the Redis membership hash. Assignments made through the RBAC
@@ -84,10 +84,11 @@ export async function GET(req: Request) {
   ]);
   const hashRoles = lookups.filter((r): r is NonNullable<typeof r> => r !== null);
   if (hashRoles.length === 0) {
-    return NextResponse.json({ role: "viewer", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
+    return NextResponse.json({ id: ev.id, role: "viewer", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
   }
   const best = hashRoles.reduce((a, b) => (RANK[b] > RANK[a] ? b : a));
   return NextResponse.json({
+    id: ev.id,
     role: toLegacyRole(best),
     preApproved: true,
     isOwner: false,
