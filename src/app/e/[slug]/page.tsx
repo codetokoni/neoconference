@@ -87,13 +87,14 @@ export default async function EventResolverPage({
         {v.state === 'waiting' ? (
           <section className="mt-7 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
             <p className="text-sm text-white/75">The host is preparing to start. You’ll be admitted shortly.</p>
-            {/* Straight to /room/ — bypasses the short-URL middleware
-                dance that has been fighting Vercel's edge cache. Address
-                bar reflects that the visitor entered the room; that's
-                fine. */}
+            {/* Plain <a> to the short URL — a full navigation, unlike
+                <Link>, so the same pathname the browser is already
+                showing still triggers a real request. Middleware then
+                routes /<slug> to /room/ based on the fresh event
+                state, and the address bar stays on /<slug>. */}
             <a
               className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-sky-500 px-6 py-3 text-sm font-semibold text-slate-900 shadow-[0_0_30px_-8px_rgba(34,211,238,0.6)] transition hover:brightness-110"
-              href={'/room/' + ev.livekitRoom + '?event=' + ev.slug}
+              href={'/' + ev.slug}
             >
               Join waiting room →
             </a>
@@ -114,11 +115,12 @@ export default async function EventResolverPage({
             ) : (
               <>
                 <p className="text-sm text-white/75">The room is open. Join when you’re ready.</p>
-                {/* Straight to /room/ — same reason as the waiting-room
-                    CTA above. */}
+                {/* Short URL for the same reason as the waiting-room
+                    CTA above — full navigation, middleware routes to
+                    /room/ based on live state, address bar stays clean. */}
                 <a
                   className="mt-4 inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-sky-500 px-6 py-3 text-sm font-semibold text-slate-900 shadow-[0_0_30px_-8px_rgba(34,211,238,0.6)] transition hover:brightness-110"
-                  href={'/room/' + ev.livekitRoom + '?event=' + ev.slug}
+                  href={'/' + ev.slug}
                 >
                   Join live room →
                 </a>
