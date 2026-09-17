@@ -12,10 +12,16 @@ export default function StartEventButton({
   eventId,
   slug,
   livekitRoom,
+  label = 'Start now',
+  busyLabel = 'Starting…',
 }: {
   eventId: string;
   slug: string;
   livekitRoom: string;
+  /** Override the resting-state label — e.g. "Restart event" when the
+   *  same POST /start is being used to un-end a previously ended event. */
+  label?: string;
+  busyLabel?: string;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,12 +67,12 @@ export default function StartEventButton({
         {loading ? (
           <>
             <span className="h-1.5 w-1.5 rounded-full bg-slate-900/70 animate-pulse" />
-            Starting…
+            {busyLabel}
           </>
         ) : (
           <>
             <span className="h-1.5 w-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_2px_rgba(244,63,94,0.6)]" />
-            Start now
+            {label}
           </>
         )}
       </button>

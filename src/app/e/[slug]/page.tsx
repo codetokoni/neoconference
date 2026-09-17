@@ -133,6 +133,20 @@ export default async function EventResolverPage({
         {v.state === 'ended' ? (
           <section className="mt-7 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
             <p className="text-sm text-white/75">This event has ended. Thanks for joining.</p>
+            {isOwner ? (
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <StartEventButton
+                  eventId={ev.id}
+                  slug={ev.slug}
+                  livekitRoom={ev.livekitRoom}
+                  label="Restart event"
+                  busyLabel="Restarting…"
+                />
+                <p className="text-[11px] text-white/40">
+                  You&apos;re the host. Tap <span className="text-cyan-200/80">Restart event</span> to reopen the room.
+                </p>
+              </div>
+            ) : null}
           </section>
         ) : null}
 

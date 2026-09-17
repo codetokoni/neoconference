@@ -29,7 +29,14 @@ export async function POST(
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   // Allow start from scheduled or waiting; idempotent if already live.
-  if (ev.state === "ended" || ev.state === "replay" || ev.state === "archived") {
+  // 'ended' is intentionally allowed too — it's how a host restarts an
+  // event they wrapped up too early (the FRS §... "re-open" case). The
+  // update below just flips state=live again and does not touch
+  // startedAt if it's already set, so attendance timelines stay
+  // contiguous. 'archived' stays refused because it's a deletion state.
+  // 'replay' also stays refused because it means recordings are being
+  // served; re-opening it would confuse the replay UX.
+  if (ev.state === "replay" || ev.state === "archived") {
     return NextResponse.json({ error: "invalid_state" }, { status: 409 });
   }
 

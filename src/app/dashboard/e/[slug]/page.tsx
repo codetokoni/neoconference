@@ -8,6 +8,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { eventStore } from "@/lib/eventStore";
 import EndEventButton from "./EndEventButton";
+import StartEventButton from "@/components/StartEventButton";
 import DeleteEventButton from "./DeleteEventButton";
 import InviteSpeakers from "./InviteSpeakers";
 import EditMetadata from "./EditMetadata";
@@ -113,6 +114,18 @@ export default async function EventAdminPage({
             </Link>
             {ev.state !== "ended" && ev.state !== "archived" ? (
               <EndEventButton eventId={ev.id} />
+            ) : null}
+            {/* Restart flow — POST /start now accepts state=ended and flips
+                it back to live, so the owner can re-open an event they
+                wrapped up too early without creating a whole new one. */}
+            {ev.state === "ended" ? (
+              <StartEventButton
+                eventId={ev.id}
+                slug={ev.slug}
+                livekitRoom={ev.livekitRoom}
+                label="Restart event"
+                busyLabel="Restarting…"
+              />
             ) : null}
           </div>
         </header>
