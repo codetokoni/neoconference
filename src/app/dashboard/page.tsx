@@ -12,6 +12,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
 import type { NeoEvent } from '@/types/event';
 import UpgradeBanner from "@/components/UpgradeBanner";
+import EventsGrid, { type EventCardData } from './EventsGrid';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,11 +98,7 @@ export default async function DashboardPage() {
           {sorted.length === 0 ? (
             <EmptyState />
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {sorted.map((ev) => (
-                <EventCard key={ev.id} ev={ev} />
-              ))}
-            </div>
+            <EventsGrid events={sorted.map(toCardData)} />
           )}
         </div>
       </div>
@@ -124,78 +121,18 @@ function Stat({ label, value, accent }: { label: string; value: number; accent?:
   );
 }
 
-function EventCard({ ev }: { ev: NeoEvent }) {
-  const recCount = (ev.recordings || []).length;
-  const transcriptCount = (ev.recordings || []).filter((r) => r.kind === 'transcript').length;
-  const updated = ev.updatedAt ? new Date(ev.updatedAt).toLocaleDateString() : '';
-
-  // Deterministic gradient seed from slug for thumbnail variety.
-  const seed = ev.slug.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 4;
-  const gradients = [
-    'from-cyan-500/30 via-sky-500/15 to-indigo-500/20',
-    'from-fuchsia-500/25 via-pink-500/15 to-rose-500/20',
-    'from-emerald-500/25 via-teal-500/15 to-cyan-500/20',
-    'from-amber-500/20 via-orange-500/15 to-rose-500/20',
-  ];
-  const gradient = gradients[seed];
-
-  return (
-    <div className="group relative rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl overflow-hidden hover:border-cyan-300/30 transition">
-      {/* Thumbnail */}
-      <div className={'relative h-28 sm:h-32 bg-gradient-to-br ' + gradient + ' overflow-hidden'}>
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(255,255,255,0.08),transparent_60%)]" />
-        <StateBadge state={ev.state} />
-        {recCount > 0 && (
-          <span className="absolute bottom-2.5 right-2.5 rounded-full bg-black/55 backdrop-blur px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-white/85">
-            {recCount} clip{recCount === 1 ? '' : 's'}
-          </span>
-        )}
-      </div>
-
-      <div className="p-4 sm:p-5">
-        <h3 className="text-base font-semibold text-white truncate" title={ev.name}>{ev.name}</h3>
-        <div className="mt-1 flex items-center gap-2 text-[11px] text-white/45 uppercase tracking-[0.18em]">
-          <span className="truncate">/e/{ev.slug}</span>
-          {updated && (<><span>·</span><span>{updated}</span></>)}
-        </div>
-
-        {transcriptCount > 0 && (
-          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-fuchsia-500/10 border border-fuchsia-300/20 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.2em] text-fuchsia-200">
-            <span className="h-1 w-1 rounded-full bg-fuchsia-300" /> {transcriptCount} transcript{transcriptCount === 1 ? '' : 's'}
-          </div>
-        )}
-
-        <div className="mt-4 flex items-center gap-2 text-xs">
-          <Link href={'/dashboard/e/' + ev.slug} className="flex-1 text-center rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 hover:bg-white/[0.08] transition">
-            Manage
-          </Link>
-          <Link href={'/e/' + ev.slug + '/replay'} className="flex-1 text-center rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 hover:bg-white/[0.08] transition">
-            Replay
-          </Link>
-          <Link href={'/room/' + ev.livekitRoom + '?event=' + ev.slug} className="flex-1 text-center rounded-lg border border-cyan-300/25 bg-cyan-300/[0.08] text-cyan-100 px-3 py-2 hover:bg-cyan-300/[0.14] transition">
-            Open room →
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StateBadge({ state }: { state: NeoEvent['state'] }) {
-  const cfg: Record<NeoEvent['state'], { label: string; cls: string }> = {
-    scheduled: { label: 'Scheduled', cls: 'bg-white/10 text-white/85' },
-    waiting: { label: 'Waiting', cls: 'bg-amber-500/20 text-amber-100 border border-amber-300/25' },
-    live: { label: 'Live', cls: 'bg-rose-500/20 text-rose-100 border border-rose-300/30 animate-pulse' },
-    ended: { label: 'Ended', cls: 'bg-white/10 text-white/65' },
-    replay: { label: 'Replay', cls: 'bg-cyan-500/15 text-cyan-100 border border-cyan-300/25' },
-    archived: { label: 'Archived', cls: 'bg-white/5 text-white/40' },
+function toCardData(ev: NeoEvent): EventCardData {
+  const recordings = ev.recordings || [];
+  return {
+    id: ev.id,
+    slug: ev.slug,
+    name: ev.name,
+    state: ev.state,
+    updatedAt: ev.updatedAt,
+    livekitRoom: ev.livekitRoom,
+    recordingsCount: recordings.length,
+    transcriptCount: recordings.filter((r) => r.kind === 'transcript').length,
   };
-  const c = cfg[state] || cfg.scheduled;
-  return (
-    <span className={'absolute top-2.5 left-2.5 rounded-full backdrop-blur px-2.5 py-0.5 text-[10px] uppercase tracking-[0.2em] ' + c.cls}>
-      {c.label}
-    </span>
-  );
 }
 
 function EmptyState() {
