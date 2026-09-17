@@ -11,13 +11,11 @@ import { useState } from 'react';
 export default function StartEventButton({
   eventId,
   slug,
+  livekitRoom,
 }: {
   eventId: string;
   slug: string;
-  /** Kept in the prop shape for older callers, but no longer read —
-   *  navigation now goes through the short URL so middleware picks the
-   *  room to rewrite into. */
-  livekitRoom?: string;
+  livekitRoom: string;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,15 +34,19 @@ export default function StartEventButton({
         setLoading(false);
         return;
       }
-      // Full-page navigation to the short URL. router.push('/<slug>')
-      // is a no-op in App Router when the browser bar already shows
-      // the same path (we live at `neoconference.app/<slug>` thanks to
-      // the middleware rewrite), which is what stranded the "Starting…"
-      // label on scree with no state change. A real navigation
-      // guarantees the button unmounts and gives middleware a fresh
-      // request in which to re-read the event's now-live state and
-      // rewrite to /room/. Address bar stays on /<slug>.
-      window.location.assign('/' + encodeURIComponent(slug));
+      // Navigate DIRECTLY to the /room/ URL, not via the short-URL
+      // rewrite. Repeated deploys of the short-URL path have gotten
+      // stuck in Vercel's edge cache in ways that stranded the
+      // "Starting…" spinner forever for the operator. Going straight
+      // to /room/<name>?event=<slug> bypasses middleware entirely and
+      // guarantees a fresh page + button unmount. The address bar
+      // flips to /room/... at this point, which is fine — the operator
+      // has clearly transitioned "into the meeting" and the URL
+      // reflecting that is not confusing.
+      window.location.assign(
+        '/room/' + encodeURIComponent(livekitRoom) +
+          '?event=' + encodeURIComponent(slug)
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Network error');
       setLoading(false);

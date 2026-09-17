@@ -345,7 +345,7 @@ export default function NewEventPage() {
 
             <div className="mt-6 sm:mt-8 grid grid-cols-1 sm:flex sm:flex-wrap gap-3">
               <button
-                onClick={() => router.push(`/${result.event!.slug}`)}
+                onClick={() => router.push(`/e/${result.event!.slug}`)}
                 className="w-full sm:w-auto rounded-xl bg-white text-black px-5 py-3 text-sm font-medium hover:bg-white/90 transition"
               >
                 Open event page →
