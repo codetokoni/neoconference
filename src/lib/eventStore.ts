@@ -217,14 +217,61 @@ export const eventStore = {
 
 // ----- helpers -----
 
-export function generateSlug(name: string): string {
+/** RESERVED_SHORT_URL_SLUGS in src/middleware.ts also has these — any
+ *  slug we hand out that collides with a top-level route would be
+ *  shadowed by that route (the middleware rewrite skips reserved
+ *  segments), so a slug like "dashboard" or "pricing" would resolve
+ *  to the dashboard page instead of the event. Kept in sync manually
+ *  because middleware is Edge-runtime and can't import from here. */
+const RESERVED_SLUGS = new Set([
+  'admin', 'api', 'dashboard', 'docs', 'e', 'embed', 'explore', 'fonts',
+  'i', 'pricing', 'room', 'share', 'video',
+  'sign-in', 'sign-up', 'sign-out',
+  '_next', '_vercel',
+]);
+
+/**
+ * Turn a human name into the slug that becomes the event's short
+ * URL. Tries the clean form first — "Weekly Sync" → "weekly-sync" —
+ * so a URL like `neoconference.app/weekly-sync` is the norm; falls
+ * back to a random suffix only when the clean form is already taken
+ * or would collide with a top-level route.
+ *
+ * The `existsFn` predicate lets the caller do the collision check
+ * without pulling eventStore into an import cycle. When omitted, the
+ * function still adds a suffix if the clean form is a reserved slug
+ * but skips the KV round-trip — used by callers that own their own
+ * lookup.
+ */
+export async function generateSlug(
+  name: string,
+  existsFn?: (slug: string) => Promise<boolean>,
+): Promise<string> {
   const base = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 32);
-  const suffix = Math.random().toString(36).slice(2, 6);
-  return (base || 'event') + '-' + suffix;
+    .slice(0, 32) || 'event';
+
+  const isTaken = async (candidate: string): Promise<boolean> => {
+    if (RESERVED_SLUGS.has(candidate)) return true;
+    if (existsFn) return existsFn(candidate);
+    return false;
+  };
+
+  if (!(await isTaken(base))) return base;
+
+  // Collision path — walk a few random suffixes before giving up.
+  // The 4-char alphabet gives ~1.6M combos so realistic collision
+  // rates need dozens of tries max; six attempts is fine.
+  for (let i = 0; i < 6; i++) {
+    const suffix = Math.random().toString(36).slice(2, 6);
+    const candidate = base + '-' + suffix;
+    if (!(await isTaken(candidate))) return candidate;
+  }
+  // Extremely unlikely fall-through: return the timestamped form so
+  // the create can proceed instead of throwing.
+  return base + '-' + Date.now().toString(36).slice(-6);
 }
 
 export function generateId(): string {

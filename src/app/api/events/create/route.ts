@@ -87,7 +87,15 @@ export async function POST(req: NextRequest) {
     }
 
   const id = generateId();
-    const slug = generateSlug(name);
+    // Pass a real collision predicate so generateSlug returns the
+    // clean form when possible ("weekly-sync") and only falls back
+    // to a random suffix when that clean form is taken. Callers of
+    // eventStore.bySlug elsewhere agree slugs are unique across the
+    // KV, so bySlug returning null is a solid "free" signal.
+    const slug = await generateSlug(name, async (candidate) => {
+          const existing = await eventStore.bySlug(candidate);
+          return !!existing;
+    });
     const livekitRoom = slug;
     const now = new Date().toISOString();
 
@@ -145,7 +153,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const longUrl = originFrom(req) + '/e/' + slug;
+  // Hand out the short URL as the canonical event link. Middleware
+  // (src/middleware.ts) rewrites `neoconference.app/<slug>` to the
+  // room / event page at request time, so /<slug> and /e/<slug>
+  // both resolve — but the short form is what the operator sees in
+  // the "Event link" field and it's what actually gets pasted into
+  // WhatsApp / posters / etc. The `/e/<slug>` route stays available
+  // so any bookmark or shared link from before this change still
+  // opens.
+  const longUrl = originFrom(req) + '/' + slug;
     let hsmohBinding: NeoEvent['hsmoh'] | undefined;
     if (body.enableShortlink !== false && hsmoh.isConfigured()) {
           try {
@@ -198,7 +214,7 @@ export async function POST(req: NextRequest) {
         slug: ev.slug,
         livekitRoom: ev.livekitRoom,
         qrUrl: '/api/qr/' + ev.slug,
-        eventUrl: '/e/' + ev.slug,
+        eventUrl: '/' + ev.slug,
         shortUrl: ev.hsmoh?.shortUrl,
         rtmpUrl: ev.streamlab?.rtmpUrl,
         streamKey: ev.streamlab?.streamKey,

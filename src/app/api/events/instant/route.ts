@@ -80,12 +80,19 @@ export async function POST(req: NextRequest) {
     }
 
   const id = generateId();
-    const slug = generateSlug(name);
+    const slug = await generateSlug(name, async (candidate) => {
+          const existing = await eventStore.bySlug(candidate);
+          return !!existing;
+    });
     const livekitRoom = slug;
     const now = new Date().toISOString();
 
-  // Try to mint a real shortlink. Falls back to long URL if HSMOH not configured.
-  const longUrl = originFrom(req) + '/e/' + slug;
+  // Try to mint a real shortlink. Falls back to long URL if HSMOH
+  // not configured. The "long" form here is already the short
+  // canonical shape — /<slug> — because middleware rewrites root
+  // slugs to the room page; /e/<slug> stays available as a fallback
+  // so old bookmarks still work.
+  const longUrl = originFrom(req) + '/' + slug;
     let hsmohBinding: NeoEvent['hsmoh'] | undefined;
     if (hsmoh.isConfigured()) {
           try {
@@ -130,7 +137,7 @@ export async function POST(req: NextRequest) {
             ok: true,
             slug: ev.slug,
             livekitRoom: ev.livekitRoom,
-            eventUrl: '/e/' + ev.slug,
+            eventUrl: '/' + ev.slug,
             // Short URL as the canonical share form (PR #117 wired the
             // `/[slug]` catch-all that 307-redirects to the actual room).
             // Kept the field name `roomUrl` so existing callers don't
