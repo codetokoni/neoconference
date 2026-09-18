@@ -117,9 +117,15 @@ export const PERMISSIONS = {
   "role:invite": RANK.host,
 
   /* --- capture & broadcast --- */
-  "recording:start": RANK.host,
-  "recording:stop": RANK.host,
-  "recording:read": RANK.host,
+  // Cohost (moderator rank) can start/stop/read recordings — the room
+  // toolbar already shows the Record button to cohosts (see
+  // RecordingControls.isHost), and the semantic point of promoting
+  // someone to Cohost is that they can run the meeting. Keeping start
+  // at RANK.host silently 403'd every cohost who tried to record. Only
+  // "delete" stays at owner because it destroys artifacts.
+  "recording:start": RANK.moderator,
+  "recording:stop": RANK.moderator,
+  "recording:read": RANK.moderator,
   "recording:delete": RANK.owner,
   "stream:golive": RANK.host,
   "captions:dispatch": RANK.host,
