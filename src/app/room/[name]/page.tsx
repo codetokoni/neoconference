@@ -1366,8 +1366,12 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       setTimeout(() => setToast(null), 3000);
     } catch (e: any) {
       console.error("start recording failed", e);
+      // Longer visible time on failure — 5 s is too short to read a
+      // real error message like "Missing env: LIVEKIT_API_KEY" or the
+      // LiveKit egress-worker-unreachable text. 12 s gives the operator
+      // a chance to actually see what broke.
       setToast({ message: `Could not start recording: ${e?.message || e}` });
-      setTimeout(() => setToast(null), 5000);
+      setTimeout(() => setToast(null), 12000);
     } finally {
       setBusy(false);
     }
