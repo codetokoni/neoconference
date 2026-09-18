@@ -13,6 +13,7 @@ import { eventStore } from '@/lib/eventStore';
 import type { NeoEvent } from '@/types/event';
 import UpgradeBanner from "@/components/UpgradeBanner";
 import EventsGrid, { type EventCardData } from './EventsGrid';
+import PersonalRoomCard from './PersonalRoomCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,8 +79,15 @@ export default async function DashboardPage() {
           </div>
         </div>
 
+        {/* Personal room — always-live short URL the operator can hand out
+            once and reuse forever. Sits above the stat strip so it's the
+            first actionable thing on the dashboard. */}
+        <div className="mt-8">
+          <PersonalRoomCard />
+        </div>
+
         {/* Stat strip */}
-        <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Stat label="Events" value={totals.events} />
           <Stat label="Live now" value={totals.live} accent="cyan" />
           <Stat label="With replay" value={totals.replay} />

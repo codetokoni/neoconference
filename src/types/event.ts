@@ -198,6 +198,14 @@ export interface NeoEvent {
    *  someone remains able to unlock or promote. */
   isLocked?: boolean;
 
+  /** Marks a "personal room" — one event per owner that is always
+   *  reachable at the same short URL. Middleware ignores state='ended'
+   *  for permanent events and always routes /<slug> to /room/, so the
+   *  operator can hand out a single link (their PMI-style ID) and drop
+   *  into it whenever they need to. Enforced one-per-owner by
+   *  /api/user/personal-room. */
+  isPermanent?: boolean;
+
   /** FRS §11 inactivity detection — per-meeting configuration. Every field
    *  is optional; unset values fall through to the client-side defaults so
    *  older events continue to behave exactly as they did. */
