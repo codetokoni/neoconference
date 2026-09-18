@@ -26,7 +26,12 @@ const ROLE_LABEL: Record<Role, string> = {
 
 type Outcome = {
   handle: string;
-  status: 'assigned+sent' | 'assigned' | 'assigned+not_linked' | 'error';
+  status:
+    | 'assigned+sent'
+    | 'assigned'
+    | 'assigned+never_signed_in'
+    | 'assigned+tokens_missing'
+    | 'error';
   reason?: string;
 };
 
@@ -69,11 +74,13 @@ export default function InviteByKingsChat({
       } else {
         const status: Outcome['status'] = j.sent
           ? 'assigned+sent'
-          : j.sendReason === 'not_linked'
-            ? 'assigned+not_linked'
-            : sendMessage
-              ? 'error'
-              : 'assigned';
+          : j.sendReason === 'recipient_never_signed_in'
+            ? 'assigned+never_signed_in'
+            : j.sendReason === 'tokens_missing'
+              ? 'assigned+tokens_missing'
+              : sendMessage
+                ? 'error'
+                : 'assigned';
         setResults((prev) => [
           {
             handle: raw.replace(/^@/, '').replace(/^kc:/i, ''),
@@ -196,8 +203,12 @@ function StatusPill({
       label: 'Assigned',
       cls: 'bg-cyan-500/15 text-cyan-200 border border-cyan-400/40',
     },
-    'assigned+not_linked': {
-      label: 'Assigned · not linked',
+    'assigned+never_signed_in': {
+      label: 'Assigned · never signed in',
+      cls: 'bg-amber-500/15 text-amber-200 border border-amber-400/40',
+    },
+    'assigned+tokens_missing': {
+      label: 'Assigned · ask them to re-sign-in',
       cls: 'bg-amber-500/15 text-amber-200 border border-amber-400/40',
     },
     error: {

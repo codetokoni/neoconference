@@ -251,15 +251,22 @@ async function handle(req: Request) {
   // /api/kc/send). Stored in KV keyed by Clerk userId; NOT in
   // publicMetadata because those are exposed client-side and access
   // tokens have no business being reachable from the browser.
+  //
+  // Also register the handle -> Clerk userId index so the sender can
+  // resolve a KC handle without scanning every Clerk user. Both
+  // writes are best-effort — a KV blip does not block the sign-in.
   try {
-    const { saveKcTokens } = await import('@/lib/kc-tokens');
+    const { saveKcTokens, indexKcHandle } = await import('@/lib/kc-tokens');
     await saveKcTokens(user!.id, {
       accessToken,
       refreshToken: refreshToken || undefined,
       expiresAt: Date.now() + expiresIn * 1000,
     });
+    if (kcUsername) {
+      await indexKcHandle(kcUsername, user!.id);
+    }
   } catch (persistErr) {
-    console.warn('[kc-callback] saveKcTokens failed', persistErr);
+    console.warn('[kc-callback] saveKcTokens/indexKcHandle failed', persistErr);
   }
 
   let ticket = '';
