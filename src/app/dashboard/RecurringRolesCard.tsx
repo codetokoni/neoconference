@@ -18,6 +18,7 @@ type RoleValue = 'host' | 'cohost' | 'moderator' | 'speaker';
 interface RoleItem {
   identifier: string;
   isEmail: boolean;
+  isKcHandle: boolean;
   role: RoleValue;
   addedAt: number;
   addedBy: string | null;
@@ -29,6 +30,26 @@ const ROLE_LABEL: Record<RoleValue, string> = {
   moderator: 'Moderator',
   speaker: 'Speaker',
 };
+
+/** Human-readable label for a stored identifier. `kc:pastorchris` renders
+ *  as `@pastorchris` — the shape the operator typed in. */
+function displayIdentifier(item: RoleItem): string {
+  if (item.isKcHandle) return '@' + item.identifier.slice(3);
+  return item.identifier;
+}
+
+/** Copy-to-clipboard invite message. Keeps the phrasing generic so the
+ *  operator can paste it into KingsChat, WhatsApp, email, or wherever. */
+function inviteText(item: RoleItem, siteUrl: string): string {
+  const who = displayIdentifier(item);
+  const role = ROLE_LABEL[item.role as RoleValue] || item.role;
+  return (
+    'Hi ' + who + ' — you\'ve been added as a permanent ' + role +
+    ' on NeoConference. Sign in at ' + siteUrl +
+    ' with the same account (KingsChat, Google, or email) and you\'ll' +
+    ' automatically be a ' + role + ' in every meeting I run.'
+  );
+}
 
 export default function RecurringRolesCard() {
   const [items, setItems] = useState<RoleItem[] | null>(null);
@@ -117,7 +138,7 @@ export default function RecurringRolesCard() {
           type="text"
           value={identifier}
           onChange={(e) => setIdentifier(e.target.value)}
-          placeholder="email@example.com or user_XXXXX"
+          placeholder="email@example.com, @kcHandle, or user_XXXXX"
           className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/40 px-3 py-2.5 text-sm text-white/85 focus:border-cyan-400/60 focus:outline-none"
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -162,29 +183,73 @@ export default function RecurringRolesCard() {
         ) : (
           <ul className="divide-y divide-white/5 rounded-xl border border-white/10 overflow-hidden">
             {items.map((it) => (
-              <li
-                key={it.identifier}
-                className="flex items-center gap-2 px-3 py-2.5 text-sm bg-white/[0.02]"
-              >
-                <span className="min-w-0 flex-1 truncate text-white/85 font-mono text-xs">
-                  {it.identifier}
-                </span>
-                <span className="shrink-0 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-cyan-100">
-                  {ROLE_LABEL[it.role as RoleValue] || it.role}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => remove(it.identifier)}
-                  className="shrink-0 text-[11px] text-rose-300/80 hover:text-rose-200 transition px-2"
-                  aria-label={'Remove ' + it.identifier}
-                >
-                  Remove
-                </button>
-              </li>
+              <RoleRow key={it.identifier} item={it} onRemove={() => remove(it.identifier)} />
             ))}
           </ul>
         )}
       </div>
     </div>
+  );
+}
+
+function RoleRow({
+  item,
+  onRemove,
+}: {
+  item: RoleItem;
+  onRemove: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyInvite() {
+    const siteUrl =
+      typeof window !== 'undefined' ? window.location.origin : 'https://www.neoconference.app';
+    const message = inviteText(item, siteUrl);
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // ignore — the user can retry
+    }
+  }
+
+  return (
+    <li className="flex items-center gap-2 px-3 py-2.5 text-sm bg-white/[0.02]">
+      <span
+        className="min-w-0 flex-1 truncate font-mono text-xs"
+        title={item.identifier}
+      >
+        {item.isKcHandle ? (
+          <span className="text-cyan-100">{displayIdentifier(item)}</span>
+        ) : (
+          <span className="text-white/85">{item.identifier}</span>
+        )}
+        {item.isKcHandle ? (
+          <span className="ml-1.5 text-[10px] uppercase tracking-[0.2em] text-cyan-200/60">
+            KingsChat
+          </span>
+        ) : null}
+      </span>
+      <span className="shrink-0 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-cyan-100">
+        {ROLE_LABEL[item.role as RoleValue] || item.role}
+      </span>
+      <button
+        type="button"
+        onClick={copyInvite}
+        className="shrink-0 text-[11px] text-cyan-200/80 hover:text-cyan-100 transition px-2"
+        title="Copy an invite message you can paste into KingsChat / WhatsApp / email"
+      >
+        {copied ? 'Copied' : 'Copy invite'}
+      </button>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="shrink-0 text-[11px] text-rose-300/80 hover:text-rose-200 transition px-2"
+        aria-label={'Remove ' + item.identifier}
+      >
+        Remove
+      </button>
+    </li>
   );
 }

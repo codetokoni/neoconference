@@ -32,10 +32,13 @@ export interface RecurringRoleEntry {
 }
 
 export interface RecurringRoleListItem extends RecurringRoleEntry {
-  /** The identifier the row is keyed on — Clerk userId or a lowercased email. */
+  /** The identifier the row is keyed on — Clerk userId, lowercased email,
+   *  or a `kc:<handle>` KingsChat handle. */
   identifier: string;
   /** Convenience for the UI: true when the identifier looks like an email. */
   isEmail: boolean;
+  /** Convenience for the UI: true when the identifier is a KingsChat handle. */
+  isKcHandle: boolean;
 }
 
 function keyFor(ownerUserId: string): string {
@@ -84,9 +87,25 @@ function parseEntry(raw: unknown): RecurringRoleEntry | null {
   };
 }
 
+/** Recognised identifier shapes:
+ *   `foo@bar.com`     -> lowercased email
+ *   `@handle`         -> `kc:handle` (KingsChat handle)
+ *   `kc:handle`       -> `kc:handle` (KingsChat handle, canonical form)
+ *   `user_abc123`     -> Clerk userId (kept case-sensitive)
+ *
+ * `kc:` handles are stored under that exact key in the meeting-roles
+ * hash — the rejoin lookup in /api/events/role and /api/livekit/token
+ * pulls Clerk's stored `publicMetadata.kingschat.username` and probes
+ * that same key, so a person marked via `@handle` gets their role the
+ * moment they sign in with KingsChat, without needing to know their
+ * Clerk userId in advance. */
 function normalizeIdentifier(raw: string): string {
   const s = raw.trim();
-  return s.includes('@') ? s.toLowerCase() : s;
+  if (!s) return '';
+  if (s.startsWith('@')) return 'kc:' + s.slice(1).toLowerCase();
+  const lower = s.toLowerCase();
+  if (lower.startsWith('kc:')) return 'kc:' + lower.slice(3);
+  return s.includes('@') ? lower : s;
 }
 
 export async function listRecurringRoles(
@@ -115,6 +134,7 @@ export async function listRecurringRoles(
     .map(({ identifier, entry }) => ({
       identifier,
       isEmail: identifier.includes('@'),
+      isKcHandle: identifier.startsWith('kc:'),
       ...entry,
     }))
     .sort((a, b) => b.addedAt - a.addedAt);
@@ -184,6 +204,11 @@ export async function applyRecurringRoles(
     role: 'owner',
   };
   for (const item of list) {
+    // `kc:<handle>` looks like a userId to assignMeetingRole and gets
+    // stored under its exact key — which is what we want, because
+    // /api/events/role probes `kc:<current-user-kingschat-username>`
+    // at rejoin time. Real emails go in the email bucket. Anything
+    // else is a raw Clerk userId.
     const identity = item.isEmail
       ? { emails: [item.identifier] }
       : { userId: item.identifier };
