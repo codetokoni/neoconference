@@ -390,16 +390,20 @@ function Field({
   const [reveal, setReveal] = useState(false);
   const display = secret && !reveal ? '\u2022'.repeat(Math.min(value.length, 28)) : value;
   return (
-    <div>
+    <div className="min-w-0">
       <div className="text-[11px] uppercase tracking-[0.22em] text-white/45 mb-1.5">{label}</div>
       <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2.5">
-        <code className={(mono ? 'font-mono ' : '') + 'flex-1 truncate text-xs sm:text-sm text-white/85'}>{display}</code>
+        {/* min-w-0 on the <code> is what lets `truncate` actually work inside
+            a flex row \u2014 without it the code element's intrinsic size wins
+            and the whole row overflows, which clips the Copy button off
+            the right edge on narrow phones. */}
+        <code className={(mono ? 'font-mono ' : '') + 'min-w-0 flex-1 truncate text-xs sm:text-sm text-white/85'}>{display}</code>
         {secret && (
-          <button onClick={() => setReveal((v) => !v)} className="text-[11px] text-white/50 hover:text-white/80 transition px-2">
+          <button onClick={() => setReveal((v) => !v)} className="shrink-0 text-[11px] text-white/50 hover:text-white/80 transition px-2">
             {reveal ? 'Hide' : 'Show'}
           </button>
         )}
-        <button onClick={onCopy} className="text-[11px] text-cyan-200/80 hover:text-cyan-100 transition px-2">
+        <button onClick={onCopy} className="shrink-0 text-[11px] text-cyan-200/80 hover:text-cyan-100 transition px-2">
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>

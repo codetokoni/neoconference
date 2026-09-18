@@ -158,11 +158,19 @@ async function resolveShortTarget(slug: string): Promise<string> {
         state?: string;
         slug?: string;
         livekitRoom?: string;
+        isPermanent?: boolean;
       }>('neo:event:' + id);
       if (ev) {
         const canonicalSlug = ev.slug || slug;
         const room = ev.livekitRoom || canonicalSlug;
-        if (ev.state === 'live' || ev.state === 'waiting') {
+        // Permanent (personal) rooms bypass the state check — the whole
+        // point of the URL is that it's always joinable, no landing card
+        // dead-end for ended events. Regular events still route to /e/
+        // when scheduled/ended so the countdown / Restart affordance
+        // still appears where it makes sense.
+        if (ev.isPermanent) {
+          target = '/room/' + room + '?event=' + canonicalSlug;
+        } else if (ev.state === 'live' || ev.state === 'waiting') {
           target = '/room/' + room + '?event=' + canonicalSlug;
         } else {
           target = '/e/' + canonicalSlug;
