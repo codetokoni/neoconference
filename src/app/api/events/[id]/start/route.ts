@@ -1,6 +1,12 @@
 // src/app/api/events/[id]/start/route.ts
-// Owner-only: flip a scheduled event to 'live' so the public landing page
+// Flip a scheduled/ended event to 'live' so the public landing page
 // stops showing the countdown and renders the "Join live room" CTA.
+//
+// Authorization: "meeting:start" — RANK.host, matching /end. Owner,
+// host, and cohost can all start (or restart) the room, so a recurring
+// host / trusted moderator promoted to host can open the meeting even
+// when the owner isn't online. Moderator (below host) still can't —
+// gate lives in permissions.ts.
 //
 // POST /api/events/<id>/start
 //   200 { ok: true, event }
@@ -9,7 +15,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
-import { assertOwnerOrAdmin } from "@/lib/roles";
+import { authorize } from "@/lib/authz";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,9 +30,8 @@ export async function POST(
   const { id } = await ctx.params;
   const ev = await eventStore.byId(id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  const check = await assertOwnerOrAdmin(ev, userId);
-  if (!check.ok)
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const gate = await authorize(ev, "meeting:start");
+  if (!gate.ok) return gate.response;
 
   // Allow start from scheduled or waiting; idempotent if already live.
   // 'ended' is intentionally allowed too — it's how a host restarts an

@@ -33,6 +33,7 @@ export default function NewEventPage() {
   // want the stream URLs minted. Users tick this when they actually need
   // livestream/replay.
   const [enableStream, setEnableStream] = useState(false);
+  const [enablePermanent, setEnablePermanent] = useState(false);
   const [eventType, setEventType] = useState<'meeting' | 'webinar' | 'livestream'>('meeting');
 
   // Client-side plan gate for the "Provision RTMP livestream" toggle.
@@ -107,6 +108,7 @@ export default function NewEventPage() {
           scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
           password: password || undefined,
           enableStream,
+          enablePermanent,
           type: eventType,
         }),
       });
@@ -288,6 +290,21 @@ export default function NewEventPage() {
                   </a>
                 </>
               )}
+            </span>
+          </label>
+
+          <label className="flex items-start sm:items-center gap-3 select-none cursor-pointer">
+            <input
+              type="checkbox"
+              checked={enablePermanent}
+              onChange={(e) => setEnablePermanent(e.target.checked)}
+              className="mt-0.5 sm:mt-0 h-5 w-5 rounded border-white/20 bg-black/40 text-cyan-400 focus:ring-cyan-400/40 shrink-0"
+            />
+            <span className="text-xs sm:text-sm text-white/80">
+              Make this a permanent link
+              <span className="ml-1 text-white/45">
+                — always joinable, no scheduling / expiry, ignores end-of-event
+              </span>
             </span>
           </label>
 

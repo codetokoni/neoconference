@@ -30,6 +30,12 @@ interface CreateBody {
     roles?: RoleAssignment[];
     enableStream?: boolean;
     enableShortlink?: boolean;
+    /** Marks the created event as an always-joinable permanent link.
+     *  Middleware routes /<slug> straight to /room/ regardless of
+     *  state=ended, so the owner can hand out the URL once and reuse
+     *  it forever. Same semantics as the auto-created personal room
+     *  but chosen per-event at creation time. */
+    enablePermanent?: boolean;
 }
 
 function originFrom(req: NextRequest): string {
@@ -198,7 +204,14 @@ export async function POST(req: NextRequest) {
         roles: body.roles ?? [],
         waitingRoom: [],
         recordings: [],
-        state: 'scheduled',
+        // Permanent events start 'live' so the middleware's isPermanent
+        // short-circuit and a stateful UI that might still look at
+        // event.state (dashboard badges, etc.) both read a coherent
+        // "always-joinable" story. Regular events keep their 'scheduled'
+        // default until the host presses Start.
+        state: body.enablePermanent ? 'live' : 'scheduled',
+        startedAt: body.enablePermanent ? now : undefined,
+        isPermanent: body.enablePermanent ? true : undefined,
         createdAt: now,
         updatedAt: now,
   };
