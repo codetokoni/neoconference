@@ -200,10 +200,13 @@ function RoleRow({
   onRemove: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendStatus, setSendStatus] = useState<null | 'sent' | 'not_linked' | 'error'>(null);
+
+  const siteUrl =
+    typeof window !== 'undefined' ? window.location.origin : 'https://www.neoconference.app';
 
   async function copyInvite() {
-    const siteUrl =
-      typeof window !== 'undefined' ? window.location.origin : 'https://www.neoconference.app';
     const message = inviteText(item, siteUrl);
     try {
       await navigator.clipboard.writeText(message);
@@ -214,8 +217,34 @@ function RoleRow({
     }
   }
 
+  async function sendViaKc() {
+    if (!item.isKcHandle || sending) return;
+    setSending(true);
+    setSendStatus(null);
+    try {
+      const r = await fetch('/api/kc/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          handle: item.identifier.slice(3), // drop "kc:" prefix
+          message: inviteText(item, siteUrl),
+        }),
+      });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (r.ok && j.ok) setSendStatus('sent');
+      else if (j.error === 'not_linked') setSendStatus('not_linked');
+      else setSendStatus('error');
+      setTimeout(() => setSendStatus(null), 4000);
+    } catch {
+      setSendStatus('error');
+      setTimeout(() => setSendStatus(null), 4000);
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
-    <li className="flex items-center gap-2 px-3 py-2.5 text-sm bg-white/[0.02]">
+    <li className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-sm bg-white/[0.02]">
       <span
         className="min-w-0 flex-1 truncate font-mono text-xs"
         title={item.identifier}
@@ -234,6 +263,29 @@ function RoleRow({
       <span className="shrink-0 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-cyan-100">
         {ROLE_LABEL[item.role as RoleValue] || item.role}
       </span>
+      {item.isKcHandle ? (
+        <button
+          type="button"
+          onClick={sendViaKc}
+          disabled={sending}
+          className="shrink-0 text-[11px] text-cyan-200/80 hover:text-cyan-100 transition px-2 disabled:opacity-50"
+          title={
+            sendStatus === 'not_linked'
+              ? "This person hasn't signed in via KingsChat yet — copy the invite and send it manually."
+              : 'Push an invite message directly to their KingsChat'
+          }
+        >
+          {sending
+            ? 'Sending…'
+            : sendStatus === 'sent'
+              ? 'Sent ✓'
+              : sendStatus === 'not_linked'
+                ? 'Not linked'
+                : sendStatus === 'error'
+                  ? 'Retry'
+                  : 'Send via KC'}
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={copyInvite}

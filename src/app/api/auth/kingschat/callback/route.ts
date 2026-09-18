@@ -76,6 +76,16 @@ async function handle(req: Request) {
 
   const flat = flatten(data);
   const accessToken = pick(flat, ['accesstoken', 'access_token']);
+  // Refresh token is emitted alongside the access token when
+  // send_chat_message scope is requested (that's already how we
+  // configure the OAuth start). It's the only way to keep messaging a
+  // user after their access token expires; we persist it to KV
+  // downstream so the server-side sender can refresh silently.
+  const refreshToken = pick(flat, ['refreshtoken', 'refresh_token']);
+  // KC's token payload usually carries an expires_in (seconds until
+  // expiry). Some versions omit it and expect ~1 hour lifetimes.
+  const expiresInRaw = pick(flat, ['expiresin', 'expires_in']);
+  const expiresIn = Number(expiresInRaw) > 0 ? Number(expiresInRaw) : 3600;
 
   if (!accessToken) {
     const debug = 'no-access-token|ct=' + ct + '|keys=' + Object.keys(flat).slice(0, 20).join(',');
@@ -234,6 +244,22 @@ async function handle(req: Request) {
         publicMetadata: { kingschat: { id: kcId, username: kcUsername } },
       } as any);
     } catch {}
+  }
+
+  // Persist the KC OAuth tokens so we can push messages to this user
+  // later on (Recurring Roles "Send via KingsChat" — see
+  // /api/kc/send). Stored in KV keyed by Clerk userId; NOT in
+  // publicMetadata because those are exposed client-side and access
+  // tokens have no business being reachable from the browser.
+  try {
+    const { saveKcTokens } = await import('@/lib/kc-tokens');
+    await saveKcTokens(user!.id, {
+      accessToken,
+      refreshToken: refreshToken || undefined,
+      expiresAt: Date.now() + expiresIn * 1000,
+    });
+  } catch (persistErr) {
+    console.warn('[kc-callback] saveKcTokens failed', persistErr);
   }
 
   let ticket = '';
