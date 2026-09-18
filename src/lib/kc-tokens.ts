@@ -20,6 +20,7 @@
 import { kv } from '@vercel/kv';
 
 const PREFIX = 'neo:kc:tokens:';
+const HANDLE_INDEX_PREFIX = 'neo:kc:handle-to-clerk:';
 
 export interface KcTokens {
   accessToken: string;
@@ -46,6 +47,41 @@ export async function saveKcTokens(
     await kv.set(PREFIX + clerkUserId, tokens);
   } catch (err) {
     console.error('[kc-tokens] save failed for', clerkUserId, err);
+  }
+}
+
+/** Register a handle -> Clerk userId mapping so the sender can find
+ *  the recipient in O(1) instead of scanning every Clerk user. Called
+ *  from the KC OAuth callback when we learn the handle. */
+export async function indexKcHandle(
+  handle: string,
+  clerkUserId: string,
+): Promise<void> {
+  if (!handle || !clerkUserId || !isKvConfigured()) return;
+  const normalized = handle.trim().toLowerCase();
+  if (!normalized) return;
+  try {
+    await kv.set(HANDLE_INDEX_PREFIX + normalized, clerkUserId);
+  } catch (err) {
+    console.error('[kc-tokens] index failed for', normalized, err);
+  }
+}
+
+/** Reverse lookup: KC handle -> Clerk userId. Returns null when the
+ *  handle has never been linked (which is the same as "we can't push
+ *  to that person yet"). */
+export async function findClerkIdByKcHandle(
+  handle: string,
+): Promise<string | null> {
+  if (!handle || !isKvConfigured()) return null;
+  const normalized = handle.trim().toLowerCase();
+  if (!normalized) return null;
+  try {
+    const v = await kv.get<string>(HANDLE_INDEX_PREFIX + normalized);
+    return v ?? null;
+  } catch (err) {
+    console.error('[kc-tokens] handle lookup failed for', normalized, err);
+    return null;
   }
 }
 

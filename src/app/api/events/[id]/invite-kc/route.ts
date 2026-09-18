@@ -66,6 +66,19 @@ function inviteMessage(
 }
 
 async function resolveClerkUserFromKc(handle: string): Promise<string | null> {
+  // Fast path: KV index written by the KC OAuth callback every time
+  // someone signs in. O(1) for anyone who has signed in via KC since
+  // that indexing landed.
+  try {
+    const { findClerkIdByKcHandle } = await import('@/lib/kc-tokens');
+    const cached = await findClerkIdByKcHandle(handle);
+    if (cached) return cached;
+  } catch (err) {
+    console.warn('[events/invite-kc] handle index lookup failed', err);
+  }
+  // Slow fallback: linear scan of Clerk users. Kept so people who
+  // signed in via KC BEFORE the indexing shipped are still findable
+  // once — the index gets populated on their next sign-in.
   const { clerkClient } = await import('@clerk/nextjs/server');
   try {
     const cc = await clerkClient();
@@ -73,6 +86,13 @@ async function resolveClerkUserFromKc(handle: string): Promise<string | null> {
     for (const u of list.data) {
       const meta = (u.publicMetadata as { kingschat?: { username?: string } })?.kingschat;
       if (meta?.username && meta.username.toLowerCase() === handle) {
+        // Backfill the index so future lookups skip the scan.
+        try {
+          const { indexKcHandle } = await import('@/lib/kc-tokens');
+          await indexKcHandle(handle, u.id);
+        } catch {
+          // non-fatal
+        }
         return u.id;
       }
     }
@@ -151,11 +171,20 @@ export async function POST(
 
     const targetClerkId = await resolveClerkUserFromKc(handle);
     if (!targetClerkId) {
-      sendReason = 'not_linked';
+      // The recipient has never signed in via KingsChat here — we have
+      // no Clerk user for them. Distinct from "we have the user but
+      // their tokens expired or predate indexing", which comes back
+      // from sendKcMessage below as its own reason.
+      sendReason = 'recipient_never_signed_in';
     } else {
       const result = await sendKcMessage(targetClerkId, message);
       if (result.ok) {
         sent = true;
+      } else if (result.reason === 'not_linked' || result.reason === 'no_refresh') {
+        // We know the user but have no usable tokens. Usually means
+        // they signed in via KC before token-persistence shipped —
+        // asking them to sign back in once will fix it forever.
+        sendReason = 'tokens_missing';
       } else {
         sendReason = result.reason;
       }

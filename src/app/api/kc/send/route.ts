@@ -73,20 +73,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'not_in_recurring' }, { status: 403 });
   }
 
-  // Resolve KC handle -> Clerk user via publicMetadata.kingschat.username.
-  // Clerk doesn't index into publicMetadata, so we scan a bounded page
-  // and match — recurring lists are small enough for this to be fine
-  // in practice. A large deployment would want its own KC-handle ->
-  // Clerk-userId index in KV, but that's out of scope for now.
-  const cc = await clerkClient();
+  // Resolve KC handle -> Clerk user. Fast path: KV handle index written
+  // by the KC OAuth callback. Slow fallback: Clerk publicMetadata scan
+  // for people whose KC sign-in predates the indexing shipping.
   let targetClerkId: string | null = null;
   try {
-    const list1 = await cc.users.getUserList({ limit: 500 });
-    for (const u of list1.data) {
-      const meta = (u.publicMetadata as { kingschat?: { username?: string } })?.kingschat;
-      if (meta?.username && meta.username.toLowerCase() === handle) {
-        targetClerkId = u.id;
-        break;
+    const { findClerkIdByKcHandle, indexKcHandle } = await import('@/lib/kc-tokens');
+    targetClerkId = await findClerkIdByKcHandle(handle);
+    if (!targetClerkId) {
+      const cc = await clerkClient();
+      const list1 = await cc.users.getUserList({ limit: 500 });
+      for (const u of list1.data) {
+        const meta = (u.publicMetadata as { kingschat?: { username?: string } })?.kingschat;
+        if (meta?.username && meta.username.toLowerCase() === handle) {
+          targetClerkId = u.id;
+          try { await indexKcHandle(handle, u.id); } catch {}
+          break;
+        }
       }
     }
   } catch (err) {
