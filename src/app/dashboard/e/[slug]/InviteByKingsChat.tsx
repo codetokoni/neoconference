@@ -9,7 +9,7 @@
 // signed in via KingsChat, pushes an invite message straight to their
 // KC via the server-side sender.
 
-import { useState, useTransition } from 'react';
+import { useCallback, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
 // Wire values match MeetingRole ('host' | 'moderator'). Display labels
@@ -35,6 +35,12 @@ type Outcome = {
   reason?: string;
 };
 
+type PersistentEntry = {
+  handle: string;
+  role: 'host' | 'moderator';
+  addedAt: number;
+};
+
 export default function InviteByKingsChat({
   eventId,
   eventSlug,
@@ -50,6 +56,47 @@ export default function InviteByKingsChat({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [results, setResults] = useState<Outcome[]>([]);
+  const [persisted, setPersisted] = useState<PersistentEntry[] | null>(null);
+
+  const refreshPersisted = useCallback(async () => {
+    try {
+      const r = await fetch(
+        '/api/events/' + eventId + '/kc-invites',
+        { cache: 'no-store' },
+      );
+      const j = (await r.json().catch(() => ({}))) as {
+        ok?: boolean;
+        items?: PersistentEntry[];
+      };
+      if (r.ok && j.ok) setPersisted(j.items || []);
+      else setPersisted([]);
+    } catch {
+      setPersisted([]);
+    }
+  }, [eventId]);
+
+  useEffect(() => {
+    refreshPersisted();
+  }, [refreshPersisted]);
+
+  async function revoke(handle: string) {
+    try {
+      const r = await fetch(
+        '/api/events/' + eventId + '/kc-invites',
+        {
+          method: 'DELETE',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ handle }),
+        },
+      );
+      if (r.ok) {
+        await refreshPersisted();
+        startTransition(() => router.refresh());
+      }
+    } catch {
+      // best-effort
+    }
+  }
 
   async function send() {
     const raw = handle.trim();
@@ -90,6 +137,9 @@ export default function InviteByKingsChat({
           ...prev,
         ]);
         setHandle('');
+        // Refresh the persisted list so the new row shows up
+        // immediately alongside the outcome pill.
+        refreshPersisted();
         startTransition(() => router.refresh());
       }
     } catch (e) {
@@ -163,6 +213,46 @@ export default function InviteByKingsChat({
       </label>
 
       {err ? <p className="text-xs text-rose-300">{err}</p> : null}
+
+      {/* Persistent list — everyone with a KC-handle role in this event's
+          hash, fetched from /api/events/[id]/kc-invites. Survives page
+          reloads (unlike the results pills below, which are per-session). */}
+      {persisted !== null ? (
+        <div className="pt-2 border-t border-slate-800 space-y-1.5">
+          <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">
+            KingsChat assignments
+          </div>
+          {persisted.length === 0 ? (
+            <div className="text-xs text-slate-500 italic">
+              No KC handles assigned yet.
+            </div>
+          ) : (
+            <ul className="text-xs space-y-1">
+              {persisted.map((p) => (
+                <li
+                  key={p.handle}
+                  className="flex items-center gap-2"
+                >
+                  <span className="min-w-0 flex-1 truncate font-mono text-cyan-100">
+                    @{p.handle}
+                  </span>
+                  <span className="shrink-0 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-cyan-100">
+                    {p.role === 'moderator' ? 'Cohost' : 'Host'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => revoke(p.handle)}
+                    className="shrink-0 text-[11px] text-rose-300/80 hover:text-rose-200 transition px-2"
+                    aria-label={'Revoke @' + p.handle}
+                  >
+                    Revoke
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
 
       {results.length > 0 ? (
         <ul className="text-xs space-y-1 pt-2 border-t border-slate-800">
