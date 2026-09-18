@@ -75,13 +75,18 @@ function parseEntry(raw: unknown): RecurringRoleEntry | null {
   }
   if (!obj || typeof obj !== 'object') return null;
   const r = (obj as { role?: unknown }).role;
-  if (r !== 'host' && r !== 'cohost' && r !== 'moderator' && r !== 'speaker') {
-    return null;
-  }
+  // Fold legacy display aliases into their canonical MeetingRole values
+  // so rows written before the UI was corrected still render. 'speaker'
+  // was never a real ladder rank — treat it as moderator (the closest
+  // sensible interpretation) rather than dropping the row silently.
+  let role: MeetingRole;
+  if (r === 'host') role = 'host';
+  else if (r === 'moderator' || r === 'cohost' || r === 'speaker') role = 'moderator';
+  else return null;
   const at = (obj as { addedAt?: unknown }).addedAt;
   const by = (obj as { addedBy?: unknown }).addedBy;
   return {
-    role: r as MeetingRole,
+    role,
     addedAt: typeof at === 'number' && Number.isFinite(at) ? at : 0,
     addedBy: typeof by === 'string' && by.length > 0 ? by : null,
   };

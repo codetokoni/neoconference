@@ -13,7 +13,11 @@
 
 import { useEffect, useState } from 'react';
 
-type RoleValue = 'host' | 'cohost' | 'moderator' | 'speaker';
+// Only 'host' and 'moderator' are real grantable MeetingRole values
+// (see permissions.ts). 'cohost' is a display alias that normalizes to
+// 'moderator'; 'speaker' collapses to 'participant' and doesn't make
+// sense as a "permanent" role.
+type RoleValue = 'host' | 'moderator';
 
 interface RoleItem {
   identifier: string;
@@ -26,9 +30,7 @@ interface RoleItem {
 
 const ROLE_LABEL: Record<RoleValue, string> = {
   host: 'Host',
-  cohost: 'Cohost',
-  moderator: 'Moderator',
-  speaker: 'Speaker',
+  moderator: 'Cohost',
 };
 
 /** Human-readable label for a stored identifier. `kc:pastorchris` renders
@@ -54,7 +56,7 @@ function inviteText(item: RoleItem, siteUrl: string): string {
 export default function RecurringRolesCard() {
   const [items, setItems] = useState<RoleItem[] | null>(null);
   const [identifier, setIdentifier] = useState('');
-  const [role, setRole] = useState<RoleValue>('moderator');
+  const [role, setRole] = useState<RoleValue>('moderator'); // default = Cohost
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
