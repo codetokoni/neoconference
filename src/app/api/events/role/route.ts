@@ -76,11 +76,18 @@ export async function GET(req: Request) {
   // getMeetingRole / getMeetingRoleByEmail fall back to the legacy array
   // internally, so this replaces the previous per-role loop rather than
   // running alongside it.
-  const { getMeetingRole, getMeetingRoleByEmail } = await import("@/lib/meeting-roles");
+  const { getMeetingRole, getMeetingRoleByEmail, getMeetingRoleByKcHandle } = await import("@/lib/meeting-roles");
   const { RANK, toLegacyRole } = await import("@/lib/permissions");
+  // Pull the KingsChat handle from Clerk publicMetadata so a person the
+  // owner marked via `@handle` in Recurring Roles gets their role the
+  // moment they sign in with KingsChat — no additional round-trip
+  // needed.
+  const kcMeta = (u?.publicMetadata as { kingschat?: { username?: string } } | undefined)?.kingschat;
+  const kcHandle = typeof kcMeta?.username === "string" ? kcMeta.username : "";
   const lookups = await Promise.all([
     getMeetingRole(ev.id, userId),
     ...userEmails.map((e) => getMeetingRoleByEmail(ev.id, e)),
+    ...(kcHandle ? [getMeetingRoleByKcHandle(ev.id, kcHandle)] : []),
   ]);
   const hashRoles = lookups.filter((r): r is NonNullable<typeof r> => r !== null);
   if (hashRoles.length === 0) {

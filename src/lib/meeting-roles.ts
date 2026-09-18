@@ -214,6 +214,21 @@ export async function getMeetingRoleByEmail(eventId: string, email: string): Pro
   return legacyRoleFor(eventId, [field]);
 }
 
+/** Role by KingsChat handle — for people the owner marked via `@handle`
+ *  before they signed in. The stored key is `kc:<lowercase-handle>` and
+ *  callers pass the bare handle. */
+export async function getMeetingRoleByKcHandle(
+  eventId: string,
+  handle: string,
+): Promise<MeetingRole | null> {
+  if (!eventId || !handle) return null;
+  const field = 'kc:' + handle.trim().toLowerCase();
+  if (field === 'kc:') return null;
+  const entry = await hgetField(eventId, field);
+  if (entry) return entry.role;
+  return legacyRoleFor(eventId, [field]);
+}
+
 /** Highest role held under any of this identity's keys. */
 async function highestRoleFor(eventId: string, id: ResolvedIdentity): Promise<MeetingRole | null> {
   let best: MeetingRole | null = null;

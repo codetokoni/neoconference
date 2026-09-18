@@ -293,11 +293,18 @@ export async function GET(req: NextRequest) {
               // back to the legacy event.roles[] array internally, so
               // pre-migration assignments continue to work without an
               // additional lookup here.
-              const { getMeetingRole: __getMR, getMeetingRoleByEmail: __getMRByEmail } = await import("@/lib/meeting-roles");
+              const { getMeetingRole: __getMR, getMeetingRoleByEmail: __getMRByEmail, getMeetingRoleByKcHandle: __getMRByKc } = await import("@/lib/meeting-roles");
               const { RANK: __RANK, toLegacyRole: __toLegacy } = await import("@/lib/permissions");
+              // Include the caller's KingsChat handle when Clerk has one
+              // stashed in publicMetadata.kingschat.username — this is
+              // how @handle recurring-role assignments actually take
+              // effect at token time.
+              const __kcMeta = (uRole?.publicMetadata as { kingschat?: { username?: string } } | undefined)?.kingschat;
+              const __kcHandle = typeof __kcMeta?.username === "string" ? __kcMeta.username : "";
               const __lookups = await Promise.all([
                 __getMR(__evRole.id, userId),
                 ...emailsRole.map((e) => __getMRByEmail(__evRole!.id, e)),
+                ...(__kcHandle ? [__getMRByKc(__evRole!.id, __kcHandle)] : []),
               ]);
               const __hashRoles = __lookups.filter((r): r is NonNullable<typeof r> => !!r);
               if (__hashRoles.length > 0) {
