@@ -25,7 +25,9 @@ import { isMeetingRole, type MeetingRole } from '@/lib/permissions';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const ALLOWED_ROLES: MeetingRole[] = ['host', 'cohost', 'moderator', 'speaker'];
+// See ALLOWED comment on /api/events/[id]/invite-kc — cohost / speaker
+// are display aliases, not real MeetingRole values.
+const ALLOWED_ROLES: MeetingRole[] = ['host', 'moderator'];
 
 export async function GET() {
   const { userId } = await auth();

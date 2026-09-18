@@ -12,13 +12,16 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
-type Role = 'host' | 'cohost' | 'moderator' | 'speaker';
+// Wire values match MeetingRole ('host' | 'moderator'). Display labels
+// come from LEGACY_ROLE_MAP in permissions.ts, where 'moderator' is
+// what a co-host does today. Anything else ('speaker', 'cohost') gets
+// normalized down to those two or to 'participant' — no point offering
+// them here.
+type Role = 'host' | 'moderator';
 
 const ROLE_LABEL: Record<Role, string> = {
   host: 'Host',
-  cohost: 'Cohost',
-  moderator: 'Moderator',
-  speaker: 'Speaker',
+  moderator: 'Cohost',
 };
 
 type Outcome = {
@@ -37,7 +40,7 @@ export default function InviteByKingsChat({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [handle, setHandle] = useState('');
-  const [role, setRole] = useState<Role>('speaker');
+  const [role, setRole] = useState<Role>('moderator');
   const [sendMessage, setSendMessage] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);

@@ -33,7 +33,12 @@ import { sendKcMessage } from '@/lib/kingschat-send';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const ALLOWED: MeetingRole[] = ['host', 'cohost', 'moderator', 'speaker'];
+// The underlying MeetingRole ladder is owner | host | moderator |
+// participant. Cohost / speaker are display aliases (see
+// LEGACY_ROLE_MAP in permissions.ts) — cohost normalizes to
+// moderator, speaker collapses to participant. Only the two real
+// grantable ranks are accepted here.
+const ALLOWED: MeetingRole[] = ['host', 'moderator'];
 
 function normalizeHandle(raw: string): string {
   const s = raw.trim();
