@@ -15,8 +15,10 @@ import { toPublicView } from '@/types/event';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import TicketsList from './TicketsList';
-import { auth } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import StartEventButton from '@/components/StartEventButton';
+import { getMeetingRole, getMeetingRoleByEmail } from '@/lib/meeting-roles';
+import { RANK } from '@/lib/permissions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,6 +34,26 @@ export default async function EventResolverPage({
   if (!ev) return notFound();
   const { userId } = await auth();
   const isOwner = !!userId && userId === ev.ownerUserId;
+
+  // Whoever holds RANK.host or higher can Start / Restart — mirrors the
+  // meeting:start permission the /api/events/[id]/start endpoint now
+  // gates on, so recurring hosts (people the owner marked as permanent
+  // host) can open the room without the owner being present.
+  let canStart = isOwner;
+  if (!canStart && userId) {
+    const u = await currentUser().catch(() => null);
+    const emails = (u?.emailAddresses || [])
+      .map((e) => e.emailAddress?.toLowerCase())
+      .filter((e): e is string => !!e);
+    const lookups = await Promise.all([
+      getMeetingRole(ev.id, userId),
+      ...emails.map((e) => getMeetingRoleByEmail(ev.id, e)),
+    ]);
+    const best = lookups
+      .filter((r): r is NonNullable<typeof r> => !!r)
+      .reduce<null | keyof typeof RANK>((a, b) => (a === null || RANK[b] > RANK[a] ? b : a), null);
+    if (best && RANK[best] >= RANK.host) canStart = true;
+  }
   const v = toPublicView(ev);
 
   const statePill = stateMeta(v.state);
@@ -73,11 +95,11 @@ export default async function EventResolverPage({
               >
                 Add to calendar
               </a>
-              {isOwner ? <StartEventButton eventId={ev.id} slug={ev.slug} livekitRoom={ev.livekitRoom} /> : null}
+              {canStart ? <StartEventButton eventId={ev.id} slug={ev.slug} livekitRoom={ev.livekitRoom} /> : null}
             </div>
-            {isOwner ? (
+            {canStart ? (
               <p className="mt-3 text-[11px] text-white/40">
-                You’re the host. Tap <span className="text-cyan-200/80">Start now</span> to open the room immediately.
+                You’re a host. Tap <span className="text-cyan-200/80">Start now</span> to open the room immediately.
               </p>
             ) : null}
           </section>
@@ -133,7 +155,7 @@ export default async function EventResolverPage({
         {v.state === 'ended' ? (
           <section className="mt-7 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
             <p className="text-sm text-white/75">This event has ended. Thanks for joining.</p>
-            {isOwner ? (
+            {canStart ? (
               <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <StartEventButton
                   eventId={ev.id}
@@ -143,7 +165,7 @@ export default async function EventResolverPage({
                   busyLabel="Restarting…"
                 />
                 <p className="text-[11px] text-white/40">
-                  You&apos;re the host. Tap <span className="text-cyan-200/80">Restart event</span> to reopen the room.
+                  You&apos;re a host. Tap <span className="text-cyan-200/80">Restart event</span> to reopen the room.
                 </p>
               </div>
             ) : null}
