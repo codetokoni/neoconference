@@ -37,23 +37,70 @@ export async function GET(req: NextRequest) {
     // admitted via the queue get a 403 with { error: 'waiting_room', status }.
     const eventSlug = req.nextUrl.searchParams.get("event");
     if (eventSlug) {
+      // Shared identity lookup — checks the LEGACY ev.roles[] array AND
+      // the modern meeting-roles hash where every promotion since #244
+      // actually lives (HostTileMenu, ParticipantsPanel, /api/events/
+      // [id]/invite-kc, recurring-roles). Without this the two gates
+      // below only see legacy rows and treat every KC-invited cohost
+      // as an ordinary attendee — which is why a promoted @handle got
+      // parked on "Waiting for the host to start the meeting" even
+      // though the invite pill said Assigned.
+      const isHostlikeForEvent = async (
+        ev: NonNullable<Awaited<ReturnType<typeof import("@/lib/eventStore").eventStore.bySlug>>>,
+      ): Promise<{ hostlike: boolean; preApproved: boolean }> => {
+        const u = await currentUser().catch(() => null);
+        const emails = (u?.emailAddresses || []).map(
+          (e: { emailAddress: string }) => e.emailAddress.toLowerCase(),
+        );
+        const kcMeta = (u?.publicMetadata as { kingschat?: { username?: string } } | undefined)?.kingschat;
+        const kcHandle = typeof kcMeta?.username === "string" ? kcMeta.username : "";
+
+        const isOwner = ev.ownerUserId === userId;
+        const isAdminCaller = emails.some((e) => isAdmin(e));
+
+        const legacyRole = (ev.roles || []).find((r) => {
+          const id = r.identifier.toLowerCase();
+          return id === userId.toLowerCase() || emails.includes(id);
+        });
+        const legacyHostlike =
+          legacyRole?.role === "host" || legacyRole?.role === "cohost";
+
+        // Meeting-roles hash lookup (userId + all Clerk emails + KC handle).
+        const { getMeetingRole, getMeetingRoleByEmail, getMeetingRoleByKcHandle } =
+          await import("@/lib/meeting-roles");
+        const { RANK } = await import("@/lib/permissions");
+        const lookups = await Promise.all([
+          getMeetingRole(ev.id, userId),
+          ...emails.map((e) => getMeetingRoleByEmail(ev.id, e)),
+          ...(kcHandle ? [getMeetingRoleByKcHandle(ev.id, kcHandle)] : []),
+        ]);
+        const hashRoles = lookups.filter(
+          (r): r is NonNullable<typeof r> => r !== null,
+        );
+        const bestHashRole =
+          hashRoles.length > 0
+            ? hashRoles.reduce((a, b) => (RANK[b] > RANK[a] ? b : a))
+            : null;
+        // Moderator is what a cohost is under the hood (see
+        // LEGACY_ROLE_MAP in permissions.ts). Both should bypass the
+        // wait-for-host gate — the point of promoting someone to cohost
+        // is that they can run the meeting.
+        const hashHostlike =
+          bestHashRole === "host" || bestHashRole === "moderator";
+
+        return {
+          hostlike:
+            isOwner || isAdminCaller || legacyHostlike || hashHostlike,
+          preApproved: Boolean(legacyRole?.preApproved),
+        };
+      };
+
       try {
         const { eventStore } = await import("@/lib/eventStore");
         const ev = await eventStore.bySlug(eventSlug);
         if (ev && ev.waitingRoomEnabled) {
-          const u = await currentUser().catch(() => null);
-          const emails = (u?.emailAddresses || []).map(
-            (e: { emailAddress: string }) => e.emailAddress.toLowerCase()
-          );
-          const isOwner = ev.ownerUserId === userId;
-          const role = (ev.roles || []).find((r) => {
-            const id = r.identifier.toLowerCase();
-            return id === userId.toLowerCase() || emails.includes(id);
-          });
-          const isAdminCaller = emails.some((e) => isAdmin(e));
-          const isHostlike =
-            isOwner || isAdminCaller || role?.role === "host" || role?.role === "cohost";
-          const isPreApproved = Boolean(role?.preApproved);
+          const { hostlike: isHostlike, preApproved: isPreApproved } =
+            await isHostlikeForEvent(ev);
           if (!isHostlike && !isPreApproved) {
             const entry = (ev.waitingRoom || []).find((e) => e.id === userId);
             if (!entry || entry.status !== "admitted") {
@@ -74,18 +121,7 @@ export async function GET(req: NextRequest) {
         const { eventStore: es2 } = await import("@/lib/eventStore");
         const ev2 = await es2.bySlug(eventSlug);
         if (ev2 && ev2.waitForHost !== false) {
-          const u2 = await currentUser().catch(() => null);
-          const emails2 = (u2?.emailAddresses || []).map(
-            (e: { emailAddress: string }) => e.emailAddress.toLowerCase()
-          );
-          const isOwner2 = ev2.ownerUserId === userId;
-          const role2 = (ev2.roles || []).find((r) => {
-            const id = r.identifier.toLowerCase();
-            return id === userId.toLowerCase() || emails2.includes(id);
-          });
-          const isAdminCaller2 = emails2.some((e) => isAdmin(e));
-          const isHostlike2 =
-            isOwner2 || isAdminCaller2 || role2?.role === "host" || role2?.role === "cohost";
+          const { hostlike: isHostlike2 } = await isHostlikeForEvent(ev2);
           if (!isHostlike2) {
             const apiKey2 = process.env.LIVEKIT_API_KEY;
             const apiSecret2 = process.env.LIVEKIT_API_SECRET;
