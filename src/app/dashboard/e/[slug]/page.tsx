@@ -11,6 +11,7 @@ import EndEventButton from "./EndEventButton";
 import StartEventButton from "@/components/StartEventButton";
 import DeleteEventButton from "./DeleteEventButton";
 import InviteSpeakers from "./InviteSpeakers";
+import InviteByKingsChat from "./InviteByKingsChat";
 import EditMetadata from "./EditMetadata";
 import WaitingRoomPanel from "./WaitingRoomPanel";
 import ChaptersPanel from "./ChaptersPanel";
@@ -256,7 +257,10 @@ export default async function EventAdminPage({
         {/* Roles */}
         <section className="space-y-4">
           <h2 className="text-sm uppercase tracking-widest text-slate-400">Roles</h2>
-          <InviteSpeakers eventId={ev.id} />
+          <div className="grid gap-4 md:grid-cols-2">
+            <InviteSpeakers eventId={ev.id} />
+            <InviteByKingsChat eventId={ev.id} eventSlug={ev.slug} />
+          </div>
           {(ev.roles || []).length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-800 bg-slate-900/20 p-6 text-sm text-slate-500">
               No roles assigned yet. Anyone with the link joins as a viewer.
