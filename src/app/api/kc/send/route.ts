@@ -1,0 +1,112 @@
+// src/app/api/kc/send/route.ts
+//
+// POST /api/kc/send
+// Push a plain-text message to a KingsChat user linked to the caller's
+// Recurring Roles list.
+//
+// Body: { handle: string, message: string }
+//   handle   the KC handle to deliver to (with or without a leading @)
+//   message  plain text, ≤ 800 chars
+//
+// Responses:
+//   200 { ok: true }
+//   400 invalid_json | missing_fields | too_long
+//   401 unauthenticated
+//   403 not_in_recurring   caller hasn't added this handle to their
+//                          Recurring Roles list. Prevents this endpoint
+//                          from being used as an open-relay send-to-
+//                          anyone tool.
+//   404 recipient_not_found   no Clerk user with that KC username has
+//                             ever signed in via our app
+//   409 not_linked   recipient exists but hasn't OAuth'd (or their
+//                    tokens are gone). Client should fall back to
+//                    Copy invite.
+//   502 send_failed  KC send endpoint returned an error
+
+import { NextResponse } from 'next/server';
+import { auth, clerkClient } from '@clerk/nextjs/server';
+import { listRecurringRoles } from '@/lib/recurring-roles';
+import { sendKcMessage } from '@/lib/kingschat-send';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const MAX_LEN = 800;
+
+function normalizeHandle(raw: string): string {
+  const s = raw.trim();
+  if (!s) return '';
+  const stripped = s.startsWith('@') ? s.slice(1) : s.replace(/^kc:/i, '');
+  return stripped.toLowerCase();
+}
+
+export async function POST(req: Request) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+  }
+
+  let body: { handle?: unknown; message?: unknown };
+  try {
+    body = (await req.json()) as typeof body;
+  } catch {
+    return NextResponse.json({ error: 'invalid_json' }, { status: 400 });
+  }
+
+  const handle = normalizeHandle(typeof body.handle === 'string' ? body.handle : '');
+  const message = (typeof body.message === 'string' ? body.message : '').trim();
+  if (!handle || !message) {
+    return NextResponse.json({ error: 'missing_fields' }, { status: 400 });
+  }
+  if (message.length > MAX_LEN) {
+    return NextResponse.json({ error: 'too_long', max: MAX_LEN }, { status: 400 });
+  }
+
+  // Authorization: the handle must be on this caller's Recurring Roles
+  // list. Anyone can send to their own recurring people; nobody can
+  // arbitrarily push to strangers through this route.
+  const list = await listRecurringRoles(userId);
+  const authorized = list.some(
+    (r) => r.isKcHandle && r.identifier === 'kc:' + handle,
+  );
+  if (!authorized) {
+    return NextResponse.json({ error: 'not_in_recurring' }, { status: 403 });
+  }
+
+  // Resolve KC handle -> Clerk user via publicMetadata.kingschat.username.
+  // Clerk doesn't index into publicMetadata, so we scan a bounded page
+  // and match — recurring lists are small enough for this to be fine
+  // in practice. A large deployment would want its own KC-handle ->
+  // Clerk-userId index in KV, but that's out of scope for now.
+  const cc = await clerkClient();
+  let targetClerkId: string | null = null;
+  try {
+    const list1 = await cc.users.getUserList({ limit: 500 });
+    for (const u of list1.data) {
+      const meta = (u.publicMetadata as { kingschat?: { username?: string } })?.kingschat;
+      if (meta?.username && meta.username.toLowerCase() === handle) {
+        targetClerkId = u.id;
+        break;
+      }
+    }
+  } catch (err) {
+    console.error('[kc/send] clerk lookup failed', err);
+  }
+  if (!targetClerkId) {
+    return NextResponse.json({ error: 'recipient_not_found' }, { status: 404 });
+  }
+
+  const result = await sendKcMessage(targetClerkId, message);
+  if (result.ok) return NextResponse.json({ ok: true });
+
+  if (result.reason === 'not_linked' || result.reason === 'no_refresh') {
+    return NextResponse.json(
+      { error: 'not_linked' },
+      { status: 409 },
+    );
+  }
+  return NextResponse.json(
+    { error: 'send_failed', reason: result.reason, detail: result.body },
+    { status: 502 },
+  );
+}
