@@ -14,6 +14,7 @@ import type { NeoEvent } from '@/types/event';
 import UpgradeBanner from "@/components/UpgradeBanner";
 import EventsGrid, { type EventCardData } from './EventsGrid';
 import PersonalRoomCard from './PersonalRoomCard';
+import RecurringRolesCard from './RecurringRolesCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,8 +83,9 @@ export default async function DashboardPage() {
         {/* Personal room — always-live short URL the operator can hand out
             once and reuse forever. Sits above the stat strip so it's the
             first actionable thing on the dashboard. */}
-        <div className="mt-8">
+        <div className="mt-8 space-y-4">
           <PersonalRoomCard />
+          <RecurringRolesCard />
         </div>
 
         {/* Stat strip */}

@@ -129,6 +129,16 @@ export async function POST(req: NextRequest) {
 
   await eventStore.create(ev);
 
+  // Seed the event with the owner's recurring-roles list (see
+  // /api/user/recurring-roles). Same best-effort pattern as
+  // /api/events/create.
+  try {
+    const { applyRecurringRoles } = await import('@/lib/recurring-roles');
+    await applyRecurringRoles(ev.id, userId);
+  } catch (seedErr) {
+    console.warn('[events/instant] recurring-roles seed failed:', seedErr);
+  }
+
   // Increment Free-tier lifetime counter. No-op for paid plans.
   await incrementMeetingsCreated(userId);
 
