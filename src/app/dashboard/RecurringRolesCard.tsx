@@ -46,8 +46,8 @@ function inviteText(item: RoleItem, siteUrl: string): string {
   return (
     'Hi ' + who + ' — you\'ve been added as a permanent ' + role +
     ' on NeoConference. Sign in at ' + siteUrl +
-    ' with the same account (KingsChat, Google, or email) and you\'ll' +
-    ' automatically be a ' + role + ' in every meeting I run.'
+    ' (KingsChat, Neomail, or email) and you\'ll automatically be a ' +
+    role + ' in every meeting I run.'
   );
 }
 
