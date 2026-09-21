@@ -203,7 +203,7 @@ function RoleRow({
 }) {
   const [copied, setCopied] = useState(false);
   const [sending, setSending] = useState(false);
-  const [sendStatus, setSendStatus] = useState<null | 'sent' | 'not_linked' | 'error'>(null);
+  const [sendStatus, setSendStatus] = useState<null | 'sent' | 'not_linked' | 'sender_not_linked' | 'error'>(null);
 
   const siteUrl =
     typeof window !== 'undefined' ? window.location.origin : 'https://www.neoconference.app';
@@ -234,7 +234,11 @@ function RoleRow({
       });
       const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (r.ok && j.ok) setSendStatus('sent');
-      else if (j.error === 'not_linked') setSendStatus('not_linked');
+      // The recipient has never signed in here, so we don't know their
+      // KingsChat id — versus you (the sender) needing to sign in with
+      // KingsChat so the message can come from your account.
+      else if (j.error === 'recipient_not_found') setSendStatus('not_linked');
+      else if (j.error === 'sender_not_linked') setSendStatus('sender_not_linked');
       else setSendStatus('error');
       setTimeout(() => setSendStatus(null), 4000);
     } catch {
@@ -274,7 +278,9 @@ function RoleRow({
           title={
             sendStatus === 'not_linked'
               ? "This person hasn't signed in via KingsChat yet — copy the invite and send it manually."
-              : 'Push an invite message directly to their KingsChat'
+              : sendStatus === 'sender_not_linked'
+                ? 'Messages go out from your own KingsChat account. Sign in with KingsChat once, then send again.'
+                : 'Push an invite message directly to their KingsChat'
           }
         >
           {sending
@@ -283,7 +289,9 @@ function RoleRow({
               ? 'Sent ✓'
               : sendStatus === 'not_linked'
                 ? 'Not linked'
-                : sendStatus === 'error'
+                : sendStatus === 'sender_not_linked'
+                  ? 'Sign in with KC first'
+                  : sendStatus === 'error'
                   ? 'Retry'
                   : 'Send via KC'}
         </button>

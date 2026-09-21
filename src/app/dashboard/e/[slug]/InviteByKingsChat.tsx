@@ -30,7 +30,7 @@ type Outcome = {
     | 'assigned+sent'
     | 'assigned'
     | 'assigned+never_signed_in'
-    | 'assigned+tokens_missing'
+    | 'assigned+sender_not_linked'
     | 'error';
   reason?: string;
 };
@@ -123,8 +123,8 @@ export default function InviteByKingsChat({
           ? 'assigned+sent'
           : j.sendReason === 'recipient_never_signed_in'
             ? 'assigned+never_signed_in'
-            : j.sendReason === 'tokens_missing'
-              ? 'assigned+tokens_missing'
+            : j.sendReason === 'sender_not_linked'
+              ? 'assigned+sender_not_linked'
               : sendMessage
                 ? 'error'
                 : 'assigned';
@@ -297,8 +297,10 @@ function StatusPill({
       label: 'Assigned · never signed in',
       cls: 'bg-amber-500/15 text-amber-200 border border-amber-400/40',
     },
-    'assigned+tokens_missing': {
-      label: 'Assigned · ask them to re-sign-in',
+    // The invite goes out from YOUR KingsChat account, so it's you who
+    // needs to sign in with KingsChat once — not the person invited.
+    'assigned+sender_not_linked': {
+      label: 'Assigned · sign in with KC to send',
       cls: 'bg-amber-500/15 text-amber-200 border border-amber-400/40',
     },
     error: {

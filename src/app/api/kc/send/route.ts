@@ -17,16 +17,17 @@
 //                          from being used as an open-relay send-to-
 //                          anyone tool.
 //   404 recipient_not_found   no Clerk user with that KC username has
-//                             ever signed in via our app
-//   409 not_linked   recipient exists but hasn't OAuth'd (or their
-//                    tokens are gone). Client should fall back to
-//                    Copy invite.
+//                             ever signed in via our app, so we have no
+//                             KingsChat id to address the message to
+//   409 sender_not_linked     the CALLER has no usable KingsChat tokens.
+//                             Messages go out from the sender's account,
+//                             so the sender signs in with KingsChat once.
 //   502 send_failed  KC send endpoint returned an error
 
 import { NextResponse } from 'next/server';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { listRecurringRoles } from '@/lib/recurring-roles';
-import { sendKcMessage } from '@/lib/kingschat-send';
+import { kcIdForClerkUser, sendKcMessage } from '@/lib/kingschat-send';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -99,14 +100,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'recipient_not_found' }, { status: 404 });
   }
 
-  const result = await sendKcMessage(targetClerkId, message);
+  // From the signed-in user's KingsChat account to the recipient's
+  // KingsChat id — see lib/kingschat-send for why it has to be this way.
+  const recipientKcId = await kcIdForClerkUser(targetClerkId);
+  if (!recipientKcId) {
+    return NextResponse.json({ error: 'recipient_not_found' }, { status: 404 });
+  }
+
+  const result = await sendKcMessage(userId, recipientKcId, message);
   if (result.ok) return NextResponse.json({ ok: true });
 
-  if (result.reason === 'not_linked' || result.reason === 'no_refresh') {
-    return NextResponse.json(
-      { error: 'not_linked' },
-      { status: 409 },
-    );
+  if (result.reason === 'sender_not_linked') {
+    // The sender, not the recipient, needs to sign in with KingsChat.
+    return NextResponse.json({ error: 'sender_not_linked' }, { status: 409 });
   }
   return NextResponse.json(
     { error: 'send_failed', reason: result.reason, detail: result.body },

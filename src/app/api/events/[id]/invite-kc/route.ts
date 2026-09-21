@@ -28,7 +28,7 @@ import { eventStore } from '@/lib/eventStore';
 import { authorize } from '@/lib/authz';
 import { assignMeetingRole } from '@/lib/meeting-roles';
 import { isMeetingRole, type MeetingRole } from '@/lib/permissions';
-import { sendKcMessage } from '@/lib/kingschat-send';
+import { kcIdForClerkUser, sendKcMessage } from '@/lib/kingschat-send';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -169,24 +169,26 @@ export async function POST(
     const eventUrl = origin.replace(/\/+$/, '') + '/' + ev.slug;
     const message = inviteMessage(handle, role as MeetingRole, ev.name, eventUrl);
 
+    // KingsChat delivers a message FROM the account whose token signs it
+    // TO a KingsChat user id, so the invite goes out from the host doing
+    // the inviting (userId) to the recipient's KingsChat id. We only know
+    // that id if the recipient has signed in here with KingsChat once.
     const targetClerkId = await resolveClerkUserFromKc(handle);
-    if (!targetClerkId) {
-      // The recipient has never signed in via KingsChat here — we have
-      // no Clerk user for them. Distinct from "we have the user but
-      // their tokens expired or predate indexing", which comes back
-      // from sendKcMessage below as its own reason.
+    const recipientKcId = targetClerkId ? await kcIdForClerkUser(targetClerkId) : null;
+    if (!recipientKcId) {
       sendReason = 'recipient_never_signed_in';
     } else {
-      const result = await sendKcMessage(targetClerkId, message);
+      const result = await sendKcMessage(userId, recipientKcId, message);
       if (result.ok) {
         sent = true;
-      } else if (result.reason === 'not_linked' || result.reason === 'no_refresh') {
-        // We know the user but have no usable tokens. Usually means
-        // they signed in via KC before token-persistence shipped —
-        // asking them to sign back in once will fix it forever.
-        sendReason = 'tokens_missing';
       } else {
+        // sender_not_linked: the host has never signed in with KingsChat,
+        // or their grant has lapsed — they need to do it once, then every
+        // invite can go out from their account.
         sendReason = result.reason;
+        if (result.reason === 'send_failed') {
+          console.error('[events/invite-kc] send failed', result.status, result.body);
+        }
       }
     }
   }
