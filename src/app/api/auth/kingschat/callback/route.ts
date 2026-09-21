@@ -141,15 +141,23 @@ async function handle(req: Request) {
   // errors look like { code: 'form_param_missing', message: '...',
   // meta: { param_name: 'email_address' } }. The URL-safe form makes
   // the operator's debug URL directly interpretable.
+  // longMessage is included because the short one is useless on its own:
+  // a KC sign-in failed for days showing only "is invalid", while the
+  // log held "Email address must be a valid email address." all along.
   const clerkMsg = (e: unknown): string => {
-    const anyE = e as { errors?: Array<{ code?: string; message?: string; meta?: { param_name?: string } }>; message?: string };
+    const anyE = e as { errors?: Array<{ code?: string; message?: string; longMessage?: string; meta?: { param_name?: string } }>; message?: string };
     const err = anyE?.errors?.[0];
     if (err) {
-      const parts = [err.code || 'error', err.message || ''];
+      const parts = [err.code || 'error', err.longMessage || err.message || ''];
       if (err.meta?.param_name) parts.push('[' + err.meta.param_name + ']');
       return parts.filter(Boolean).join(':');
     }
     return anyE?.message || 'unknown';
+  };
+
+  const isInvalidEmail = (e: unknown): boolean => {
+    const err = (e as { errors?: Array<{ code?: string; meta?: { param_name?: string } }> })?.errors?.[0];
+    return err?.code === 'form_param_format_invalid' && err?.meta?.param_name === 'email_address';
   };
 
   if (!user && email) {
@@ -193,12 +201,18 @@ async function handle(req: Request) {
     // synthesis is fallback-only.
     const safeKcId = String(kcId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24);
     const usernameFallback = (kcUsername && kcUsername.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32)) || ('kc' + safeKcId);
-    const synthesizedEmail = 'kc-' + safeKcId + '@kingschat.local';
-    const effectiveEmail = email || synthesizedEmail;
-    try {
-      const created = await cc.users.createUser({
+    // On a real domain we own. The first placeholder used kingschat.local,
+    // and .local is a reserved name rather than an internet domain, so
+    // Clerk refused it outright ("Email address must be a valid email
+    // address") — every KC user without an email was still locked out
+    // after the fix meant for them. The kc. subdomain has no mail
+    // records, so nothing sent here reaches anyone.
+    const synthesizedEmail = 'kc-' + safeKcId + '@kc.neoconference.app';
+
+    const createWith = (address: string, isPlaceholder: boolean) =>
+      cc.users.createUser({
         externalId,
-        emailAddress: [effectiveEmail],
+        emailAddress: [address],
         firstName: firstName || undefined,
         lastName: lastName || undefined,
         username: usernameFallback,
@@ -210,10 +224,25 @@ async function handle(req: Request) {
             // Marks that the primary email is a placeholder AND
             // preserves the fact that KC never gave us a real one,
             // so a moderator can see it in the Clerk dashboard.
-            emailIsPlaceholder: !email,
+            emailIsPlaceholder: isPlaceholder,
           },
         },
       } as any);
+
+    let effectiveEmail = email || synthesizedEmail;
+    try {
+      let created;
+      try {
+        created = await createWith(effectiveEmail, !email);
+      } catch (e) {
+        // KingsChat accounts can carry an address Clerk will not accept.
+        // That is no reason to refuse someone KC has already signed in:
+        // fall back to the placeholder, exactly as if KC had sent none.
+        if (!email || !isInvalidEmail(e)) throw e;
+        console.warn('[kc-callback] KC email rejected by Clerk; using placeholder');
+        effectiveEmail = synthesizedEmail;
+        created = await createWith(effectiveEmail, true);
+      }
       user = { id: created.id };
 
       // Mark the primary email verified. KingsChat already proved
@@ -235,7 +264,9 @@ async function handle(req: Request) {
         console.warn('[kc-callback] mark email verified failed', e);
       }
     } catch (e) {
-      console.error('[kc-callback] createUser failed', e);
+      // Which kind of address was tried, never the address itself.
+      const emailSource = effectiveEmail === synthesizedEmail ? 'placeholder' : 'kingschat';
+      console.error('[kc-callback] createUser failed email=' + emailSource, e);
       return errorRedirect(req, 'create_failed', clerkMsg(e).slice(0, 200));
     }
   } else {
