@@ -15,9 +15,7 @@ type SP = {
 
 export default function Page({ searchParams }: { searchParams: SP }) {
   const kcError = searchParams?.kc_error;
-  const kcDebug = searchParams?.kc_debug;
   const neError = searchParams?.ne_error;
-  const neDebug = searchParams?.ne_debug;
   const redirectUrl = searchParams?.redirect_url;
   const kcHref =
     redirectUrl && redirectUrl !== '/'
@@ -33,22 +31,12 @@ export default function Page({ searchParams }: { searchParams: SP }) {
       {kcError && (
         <div className='bg-red-100 text-red-800 px-4 py-2 rounded text-sm max-w-md text-center'>
           KingsChat sign-in failed: <strong>{kcError}</strong>. Please try again or use another method.
-          {kcDebug && (
-            <div className='mt-2 break-all font-mono text-[11px] text-red-700 text-left'>
-              debug: {kcDebug}
-            </div>
-          )}
         </div>
       )}
 
       {neError && (
         <div className='bg-red-100 text-red-800 px-4 py-2 rounded text-sm max-w-md text-center'>
           Neoemail sign-in failed: <strong>{neError}</strong>. Please try again or use another method.
-          {neDebug && (
-            <div className='mt-2 break-all font-mono text-[11px] text-red-700 text-left'>
-              debug: {neDebug}
-            </div>
-          )}
         </div>
       )}
 
