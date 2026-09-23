@@ -68,9 +68,14 @@ function beep() {
 export default function MeetingTimer({
   slug,
   roomRole,
+  open = false,
+  onClose,
 }: {
   slug: string;
   roomRole?: string;
+  /** Host/cohost opened the timer from the toolbar's More menu. */
+  open?: boolean;
+  onClose?: () => void;
 }) {
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
@@ -83,13 +88,13 @@ export default function MeetingTimer({
 
   const canManage = roomRole === "host" || roomRole === "cohost";
   const canSee = state.visibility === "everyone" || canManage;
-  // Admin card collapses to a compact icon when the timer is idle so it
-  // doesn't hog screen real estate for the vast majority of the meeting.
-  // Expands automatically the moment the timer starts running (or is paused
-  // partway through). Click the icon to open the controls without starting.
-  const [expanded, setExpanded] = useState(false);
   const isActive = state.status === "running" || state.status === "paused";
-  const showFullCard = !canManage || isActive || expanded;
+  // Off until asked for. A meeting that never uses a timer should carry no
+  // timer chrome at all, so nothing shows for anyone — not even the host —
+  // until a host or cohost picks Timer from the toolbar's More menu. Once a
+  // countdown is actually running it stays on screen regardless, because at
+  // that point everyone in the room needs to see it.
+  const showFullCard = isActive || (canManage && open);
 
   // Sound preference — admins default to on, participants default to off.
   useEffect(() => {
@@ -208,47 +213,11 @@ export default function MeetingTimer({
     [slug, broadcast],
   );
 
-  // Nothing to render at all if the timer is idle and we're not an admin.
+  // Hidden unless a countdown is running or a host opened it. The idle
+  // clock icon that used to sit in the corner of every meeting is gone:
+  // hosts reach the timer through the toolbar's More menu instead.
   if (!canSee) return null;
-  if (!canManage && state.status === "idle" && state.durationMs === 0) return null;
-
-  // Compact icon mode: admin, timer idle, admin hasn't opened the panel.
-  if (canManage && !showFullCard) {
-    return (
-      <button
-        type="button"
-        data-room-chrome="true"
-        onClick={() => setExpanded(true)}
-        title="Meeting timer"
-        aria-label="Open meeting timer"
-        style={{
-          // Sits below the "Rename URL" chip that hosts see at top-20/right-4
-          // so the two don't stack on top of each other. Owners without a
-          // rename chip get a small vertical gap under the nav — trivial.
-          position: "fixed",
-          top: 128,
-          right: 16,
-          zIndex: 60,
-          width: 36,
-          height: 36,
-          borderRadius: 999,
-          background: "rgba(11,16,32,0.9)",
-          backdropFilter: "blur(10px)",
-          WebkitBackdropFilter: "blur(10px)",
-          border: "1px solid rgba(34,211,238,0.35)",
-          color: "#cdeafd",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          boxShadow: "0 8px 24px rgba(0,0,0,0.4), 0 0 20px -10px rgba(34,211,238,0.35)",
-          cursor: "pointer",
-          padding: 0,
-        }}
-      >
-        <TimerIcon size={16} aria-hidden />
-      </button>
-    );
-  }
+  if (!showFullCard) return null;
 
   const warn = shouldWarn(remaining, state.durationMs);
   const expired = state.status === "running" && remaining === 0;
@@ -258,8 +227,8 @@ export default function MeetingTimer({
     <div
       data-room-chrome="true"
       style={{
-        // Same slot as the compact icon above — sits below the Rename URL
-        // chip so the two right-rail elements don't stack.
+        // Sits below the "Rename URL" chip hosts see, so the two right-rail
+        // elements don't stack on top of each other.
         position: "fixed",
         top: 128,
         right: 16,
@@ -306,9 +275,9 @@ export default function MeetingTimer({
         {canManage && !isActive && (
           <button
             type="button"
-            onClick={() => setExpanded(false)}
-            aria-label="Collapse timer"
-            title="Collapse"
+            onClick={() => onClose?.()}
+            aria-label="Hide timer"
+            title="Hide timer"
             style={{
               marginLeft: "auto",
               padding: "2px 6px",
