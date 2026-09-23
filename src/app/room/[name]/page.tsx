@@ -69,6 +69,7 @@ import {
   Upload,
   X,
   PencilLine,
+  Timer as TimerIcon,
 } from "lucide-react";
 
 // Shared toolbar button style — flat, transparent, lucide-icon + text label.
@@ -629,7 +630,7 @@ function RoomContainer({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [showChat, setShowChat] = useState(false); const [showWhiteboard, setShowWhiteboard] = useState(false); const [showPolls, setShowPolls] = useState(false); const [showBackgroundPicker, setShowBackgroundPicker] = useState(false); const [showParticipants, setShowParticipants] = useState(false); const [showWaitingRoom, setShowWaitingRoom] = useState(false);
+  const [showChat, setShowChat] = useState(false); const [showWhiteboard, setShowWhiteboard] = useState(false); const [showPolls, setShowPolls] = useState(false); const [showBackgroundPicker, setShowBackgroundPicker] = useState(false); const [showParticipants, setShowParticipants] = useState(false); const [showWaitingRoom, setShowWaitingRoom] = useState(false); const [showTimer, setShowTimer] = useState(false);
   const [showBreakouts, setShowBreakouts] = useState(false);
   const [hideSelf, setHideSelf] = useState(false);
   const [roomRole, setRoomRole] = useState<string>("guest");
@@ -995,6 +996,19 @@ function RoomContainer({
               {showWaitingRoom ? "Close waiting" : (pendingKnockCount > 0 ? `Waiting (${pendingKnockCount})` : "Waiting")}
             </button>
           )}
+          {(roomRole === "host" || roomRole === "cohost") && (
+            <button
+              type="button"
+              data-room-chrome="true"
+              data-in-more="true"
+              onClick={() => setShowTimer((v) => !v)}
+              className={TOOLBAR_BTN_CLASS}
+              title="Meeting timer"
+            >
+              <TimerIcon size={16} aria-hidden />
+              {showTimer ? "Hide timer" : "Timer"}
+            </button>
+          )}
           <button
             type="button"
             data-room-chrome="true"
@@ -1053,7 +1067,12 @@ function RoomContainer({
         <HiddenVideoOverlay />
         <LiveCaptions />
         <TranscriptNoticeBanner />
-        <MeetingTimer slug={eventSlug} roomRole={roomRole} />
+        <MeetingTimer
+          slug={eventSlug}
+          roomRole={roomRole}
+          open={showTimer}
+          onClose={() => setShowTimer(false)}
+        />
         <InactivityDetector roomRole={roomRole} eventSlug={eventSlug} config={inactivityConfig} />
         <CaptionsToggle roomRole={roomRole} roomName={roomName} eventSlug={eventSlug} />
         <ReactionsBar />
