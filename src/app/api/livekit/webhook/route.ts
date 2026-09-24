@@ -21,7 +21,7 @@ import { WebhookReceiver } from 'livekit-server-sdk';
 import { submitTranscribeJob, isTranscribeConfigured } from '@/lib/transcribe';
 import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
-import { recordWebhookEvent } from '@/lib/webhookMetrics';
+import { recordWebhookEvent, recordWebhookRejection } from '@/lib/webhookMetrics';
 import { isInProgress } from '@/lib/meetingLifecycle';
 
 export const runtime = 'nodejs';
@@ -122,12 +122,26 @@ export async function POST(req: Request) {
 
     // ----- room_finished: transition NeoEvent state 'live' -> 'ended' -----
     if (event?.event === 'room_finished') {
+      // Every outcome below that does not end a meeting is written down.
+      // room_finished had fired 224 times with 7 rooms still open and no
+      // record of which 7 or why; the counters only say an event arrived,
+      // because they are bumped before the handler runs.
       const roomName = event.room?.name;
       if (!roomName) {
+        await recordWebhookRejection({
+          event: 'room_finished',
+          room: '',
+          reason: 'no_room',
+        });
         return NextResponse.json({ ok: true, ignored: 'room_finished_no_room' });
       }
       const ev = await eventStore.bySlug(roomName);
       if (!ev) {
+        await recordWebhookRejection({
+          event: 'room_finished',
+          room: roomName,
+          reason: 'event_not_found',
+        });
         return NextResponse.json({ ok: true, ignored: 'event_not_found', roomName });
       }
       // 'waiting' counts as open, not just 'live'. Checking only for
@@ -135,6 +149,13 @@ export async function POST(req: Request) {
       // room when the room closed could never be ended by this webhook at
       // all — it sat open until someone noticed months later.
       if (!isInProgress(ev.state)) {
+        await recordWebhookRejection({
+          event: 'room_finished',
+          room: roomName,
+          reason: 'not_in_progress',
+          state: ev.state,
+          eventId: ev.id,
+        });
         return NextResponse.json({
           ok: true,
           transitioned: false,
