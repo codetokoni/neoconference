@@ -7,6 +7,7 @@ import {
   neoemailIssuer,
   readStateCookie,
 } from '@/lib/neoemailOAuth';
+import { isAppCallback, redirectToApp } from '@/lib/app-callback';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,6 +20,11 @@ export const dynamic = 'force-dynamic';
 // /sign-in. Everything after that point is Clerk's, unchanged.
 
 function errorRedirect(request: Request, code: string, redirectUrl: string, debug?: string) {
+  if (isAppCallback(redirectUrl)) {
+    const appResponse = redirectToApp({ ne_error: code });
+    appResponse.cookies.set(NEOEMAIL_STATE_COOKIE, '', { path: '/', maxAge: 0 });
+    return appResponse;
+  }
   const url = new URL('/sign-in', request.url);
   url.searchParams.set('ne_error', code);
   if (debug) url.searchParams.set('ne_debug', debug.slice(0, 300));
@@ -198,11 +204,18 @@ export async function GET(request: Request) {
   }
   if (!ticket) return errorRedirect(request, 'ticket_failed', redirectUrl);
 
-  const destination = new URL('/sign-in', request.url);
-  destination.searchParams.set('__clerk_ticket', ticket);
-  if (redirectUrl && redirectUrl !== '/') destination.searchParams.set('redirect_url', redirectUrl);
+  // The mobile app redeems the ticket itself; see lib/app-callback.
+  const destination = isAppCallback(redirectUrl)
+    ? null
+    : new URL('/sign-in', request.url);
+  if (destination) {
+    destination.searchParams.set('__clerk_ticket', ticket);
+    if (redirectUrl && redirectUrl !== '/') destination.searchParams.set('redirect_url', redirectUrl);
+  }
 
-  const response = NextResponse.redirect(destination, { status: 303 });
+  const response = destination
+    ? NextResponse.redirect(destination, { status: 303 })
+    : redirectToApp({ __clerk_ticket: ticket });
   // Spent. One state, one sign-in.
   response.cookies.set(NEOEMAIL_STATE_COOKIE, '', { path: '/', maxAge: 0 });
   return response;

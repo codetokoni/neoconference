@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { safeRelay } from '@/lib/app-callback';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,12 +20,10 @@ export async function GET(request: Request) {
   // trip. KC has no state parameter, so we smuggle it as a query on the
   // callback URL — it comes back to us on the callback request URL, and the
   // callback forwards it into /sign-in?redirect_url=...
-  const rawRedirect = (requestUrl.searchParams.get('redirect_url') || '').trim();
-  // Only relay same-origin relative paths — no absolute URLs, no protocol-
-  // relative (//host) URLs. Prevents this becoming an open-redirect vector.
-  const redirectUrl = rawRedirect.startsWith('/') && !rawRedirect.startsWith('//')
-    ? rawRedirect
-    : '';
+  // Only relay same-origin relative paths, or the mobile app's one deep link
+  // — no absolute URLs, no protocol-relative (//host) URLs. Prevents this
+  // becoming an open-redirect vector.
+  const redirectUrl = safeRelay(requestUrl.searchParams.get('redirect_url'));
 
   const callbackBase = process.env.KINGSCHAT_REDIRECT_URI || (origin + '/api/auth/kingschat/callback');
   const redirectUri = redirectUrl

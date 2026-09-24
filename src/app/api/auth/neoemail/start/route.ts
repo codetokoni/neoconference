@@ -6,6 +6,7 @@ import {
   neoemailCallbackUri,
   neoemailIssuer,
 } from '@/lib/neoemailOAuth';
+import { safeRelay } from '@/lib/app-callback';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,12 +27,10 @@ export async function GET(request: Request) {
 
   const requestUrl = new URL(request.url);
 
-  // Same guard as the KingsChat start: relay same-origin relative paths only,
-  // never an absolute or protocol-relative URL, which would make this an
-  // open redirect.
-  const rawRedirect = (requestUrl.searchParams.get('redirect_url') || '').trim();
-  const redirectUrl =
-    rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : '';
+  // Same guard as the KingsChat start: relay same-origin relative paths and
+  // the mobile app's deep link only, never an absolute or protocol-relative
+  // URL, which would make this an open redirect.
+  const redirectUrl = safeRelay(requestUrl.searchParams.get('redirect_url'));
 
   const callbackUri = neoemailCallbackUri(requestUrl.origin);
 
