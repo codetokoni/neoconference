@@ -52,14 +52,15 @@
                  browser, which hands control back here carrying the Clerk
                  sign-in ticket.
 
-                 An App Link rather than a custom scheme: android:autoVerify
-                 makes Android fetch
+                 An App Link, deliberately not a custom scheme:
+                 android:autoVerify makes Android fetch
                  https://www.neoconference.app/.well-known/assetlinks.json and
                  confirm that this domain names the certificate this app is
                  signed with. Until that check passes, the link opens in a
                  browser instead. A custom scheme has no such check — any
-                 installed app may claim `neoconference://` and would receive
-                 the sign-in ticket, which is an account takeover.
+                 installed app could have claimed it and received the sign-in
+                 ticket, which is an account takeover, so this app has never
+                 registered one since release signing landed.
 
                  The server only ever redirects to this one exact URL; see
                  src/lib/app-callback.ts. -->
