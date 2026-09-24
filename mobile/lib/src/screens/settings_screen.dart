@@ -4,6 +4,7 @@ import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/theme_picker.dart';
 import '../design/tokens.dart';
+import '../meetings/room_view.dart';
 import '../mock/sample_data.dart';
 import 'meeting_screen.dart';
 import 'prejoin_screen.dart';
@@ -124,7 +125,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => PreJoinScreen(
-                        meeting: sampleUpcoming.first,
+                        meeting: sampleAsView(sampleUpcoming.first),
                         permissionDenied: true,
                       ),
                     ),
@@ -132,15 +133,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 _Row(
                   title: 'Weak connection',
-                  onTap: () => _openMeeting(context, MeetingLink.weak),
+                  subtitle: 'Designed, but nothing reports it yet',
+                  onTap: () => _openMeeting(context, RoomLinkState.weak),
                 ),
                 _Row(
                   title: 'Reconnecting',
-                  onTap: () => _openMeeting(context, MeetingLink.reconnecting),
+                  onTap: () =>
+                      _openMeeting(context, RoomLinkState.reconnecting),
+                ),
+                _Row(
+                  title: 'Connection lost',
+                  onTap: () => _openMeeting(context, RoomLinkState.lost),
                 ),
                 _Row(
                   title: 'Meeting ended',
-                  onTap: () => _openMeeting(context, MeetingLink.ended),
+                  onTap: () =>
+                      _openMeeting(context, RoomLinkState.live, ended: true),
                 ),
               ],
             ),
@@ -197,13 +205,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
         SampleRole.attendee => 'Attendee',
       };
 
-  void _openMeeting(BuildContext context, MeetingLink link) {
+  void _openMeeting(
+    BuildContext context,
+    RoomLinkState link, {
+    bool ended = false,
+  }) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => MeetingScreen(
           meeting: sampleUpcoming.first,
           myRole: SampleRole.host,
           link: link,
+          ended: ended,
         ),
       ),
     );

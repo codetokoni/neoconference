@@ -10,11 +10,62 @@ import 'src/design/brand.dart';
 import 'src/design/neo_theme.dart';
 import 'src/design/themes.dart';
 import 'src/design/tokens.dart';
-import 'src/home/landing_screen.dart';
+import 'src/events/create_meeting_screen.dart';
+import 'src/meetings/meeting_board.dart';
+import 'src/meetings/meeting_view.dart';
+import 'src/room/room_screen.dart';
+import 'src/screens/app_shell.dart';
+import 'src/screens/history_screen.dart';
+import 'src/screens/home_screen.dart';
+import 'src/screens/prejoin_screen.dart';
+import 'src/settings/meeting_defaults.dart';
+import 'src/settings/settings_screen.dart';
 
 void main() {
   _enableLiveKitLogsInDebug();
-  runApp(const ProviderScope(child: NeoConferenceApp()));
+  runApp(
+    ProviderScope(
+      // The designed screens read their data from providers so that one set
+      // of layouts serves both this app and the showcase. These are the
+      // overrides that point them at the real account.
+      overrides: [
+        meetingBoardProvider.overrideWith((ref) => ref.watch(realMeetingBoard.future)),
+        homeGreetingNameProvider.overrideWith(
+          (ref) => ref.watch(authProvider.select((s) => s.displayName)),
+        ),
+        meetingLauncherProvider.overrideWithValue(_openRoom),
+      ],
+      child: const NeoConferenceApp(),
+    ),
+  );
+}
+
+/// Enter the real room.
+///
+/// An instant meeting has to exist before it can be joined, so "Start"
+/// goes to the create screen, which creates it and joins in one step. The
+/// mic and camera chosen at pre-join are written to the join defaults so
+/// the room applies them on connect — the room reads its settings from
+/// there rather than being handed them, which is what keeps a reconnect
+/// from arriving with a different microphone state than the join did.
+Future<void> _openRoom(
+  BuildContext context,
+  MeetingView meeting, {
+  required bool micOn,
+  required bool cameraOn,
+  required bool instant,
+}) async {
+  await MeetingDefaults.setJoinMuted(!micOn);
+  await MeetingDefaults.setJoinCameraOff(!cameraOn);
+  if (!context.mounted) return;
+
+  Navigator.of(context).pushReplacement(
+    MaterialPageRoute(
+      builder: (_) => instant
+          ? const CreateMeetingScreen()
+          : RoomScreen(slug: meeting.code, title: meeting.title),
+    ),
+  );
 }
 
 /// Turns on the LiveKit SDK's own logging, in debug builds only.
@@ -94,11 +145,60 @@ class _Root extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authProvider);
 
+    // A purchase completes in the browser and returns on the App Link, so
+    // the confirmation is raised here — the sheet that started it closed
+    // when the browser opened, and the screen it was raised from before
+    // this is no longer guaranteed to be the one on top.
+    ref.listen(authProvider.select((s) => s.upgradedTo), (_, upgraded) {
+      if (upgraded == null) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('Upgraded to $upgraded.')));
+      ref.read(authProvider.notifier).acknowledgeUpgrade();
+    });
+
+    // A cancelled payment comes back the same way and is reported for the
+    // same reason: the person left, went through a checkout, and returned.
+    // Reappearing in silence reads like the app lost the attempt.
+    ref.listen(authProvider.select((s) => s.error), (_, error) {
+      if (error == null) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error)));
+      ref.read(authProvider.notifier).clearError();
+    });
+
     if (auth.restoring) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    return auth.signedIn ? const LandingScreen() : const SignInScreen();
+    return auth.signedIn ? AppShell(tabs: _tabs) : const SignInScreen();
   }
+
+  /// Three destinations, not the showcase's four.
+  ///
+  /// Alerts is missing on purpose: nothing serves notifications to the app
+  /// yet, and a tab that can only ever be empty is worse than no tab. It
+  /// comes back when there is something true to put in it.
+  static const _tabs = [
+    NeoTab(
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home_rounded,
+      label: 'Home',
+      screen: HomeScreen(),
+    ),
+    NeoTab(
+      icon: Icons.history_outlined,
+      selectedIcon: Icons.history_rounded,
+      label: 'History',
+      screen: HistoryScreen(),
+    ),
+    NeoTab(
+      icon: Icons.person_outline_rounded,
+      selectedIcon: Icons.person_rounded,
+      label: 'Profile',
+      screen: SettingsScreen(),
+    ),
+  ];
 }

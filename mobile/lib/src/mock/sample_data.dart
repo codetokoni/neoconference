@@ -12,7 +12,7 @@
 // layout problems — long names, wrapped titles, crowded grids — show up
 // during design instead of after launch.
 
-
+import '../meetings/meeting_view.dart';
 
 enum SampleStatus { live, startingSoon, scheduled, ended }
 
@@ -302,3 +302,33 @@ String sampleWhen(DateTime when) {
 String sampleClock(DateTime when) =>
     '${when.hour.toString().padLeft(2, '0')}:'
     '${when.minute.toString().padLeft(2, '0')}';
+
+/// The sample meetings, in the shape the screens actually take.
+///
+/// The screens were converted to [MeetingView] so production and the
+/// showcase share one set of layouts. Adapting happens here rather than in
+/// the screens, which keeps every reference to this file on the mock side
+/// of the line.
+MeetingView sampleAsView(SampleMeeting m) => MeetingView(
+      title: m.title,
+      code: m.code,
+      status: switch (m.status) {
+        SampleStatus.live => MeetingStatus.live,
+        SampleStatus.startingSoon => MeetingStatus.startingSoon,
+        SampleStatus.scheduled => MeetingStatus.scheduled,
+        SampleStatus.ended => MeetingStatus.ended,
+      },
+      canJoin: m.status != SampleStatus.ended,
+      host: m.host,
+      startsAt: m.startsAt,
+      durationMinutes: m.durationMinutes,
+      participants: m.participants,
+      recurring: m.recurring,
+      hasRecording: m.hasRecording,
+      languages: m.languages,
+    );
+
+MeetingBoard get sampleBoard => MeetingBoard(
+      upcoming: sampleUpcoming.map(sampleAsView).toList(growable: false),
+      recent: sampleRecent.map(sampleAsView).toList(growable: false),
+    );

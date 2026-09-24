@@ -6,206 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
 
 import '../design/brand.dart';
+import '../design/components.dart';
 import 'room_controller.dart';
-
-/// Everyone's video, laid out so nobody is a sliver.
-///
-/// One person fills the screen; two stack; more go into a two-column grid
-/// that scrolls. Deliberately not fit-to-viewport — a meeting with thirty
-/// people on a phone would give each of them a stamp nobody can read.
-class ParticipantGrid extends StatelessWidget {
-  const ParticipantGrid({
-    super.key,
-    required this.room,
-    required this.raisedHands,
-  });
-
-  final Room room;
-  final Map<String, String> raisedHands;
-
-  @override
-  Widget build(BuildContext context) {
-    final tiles = <Widget>[];
-
-    final me = room.localParticipant;
-    if (me != null) {
-      tiles.add(_Tile(
-        participant: me,
-        label: 'You',
-        handRaised: raisedHands.containsKey(me.identity),
-      ));
-    }
-    for (final p in room.remoteParticipants.values) {
-      tiles.add(_Tile(
-        participant: p,
-        label: p.name.isNotEmpty ? p.name : p.identity,
-        handRaised: raisedHands.containsKey(p.identity),
-      ));
-    }
-
-    if (tiles.isEmpty) {
-      return Center(
-        child: Text(
-          'Nobody else is here yet.',
-          // Not `p`: this method already uses that name for a participant.
-          style: TextStyle(color: NeoTheme.of(context).textMuted),
-        ),
-      );
-    }
-    if (tiles.length == 1) {
-      return Padding(padding: const EdgeInsets.all(8), child: tiles.first);
-    }
-
-    return GridView.count(
-      padding: const EdgeInsets.all(8),
-      crossAxisCount: tiles.length == 2 ? 1 : 2,
-      childAspectRatio: tiles.length == 2 ? 1.2 : 0.85,
-      mainAxisSpacing: 8,
-      crossAxisSpacing: 8,
-      children: tiles,
-    );
-  }
-}
-
-class _Tile extends StatelessWidget {
-  const _Tile({
-    required this.participant,
-    required this.label,
-    required this.handRaised,
-  });
-
-  final Participant participant;
-  final String label;
-  final bool handRaised;
-
-  @override
-  Widget build(BuildContext context) {
-    // Prefer a screen share over a face: if someone is presenting, the
-    // presentation is what the meeting is looking at.
-    final publications = participant.videoTrackPublications.where(
-      (p) => p.subscribed && !p.muted && p.track != null,
-    );
-    final screen = publications
-        .where((p) => p.source == TrackSource.screenShareVideo)
-        .firstOrNull;
-    final video = screen ?? publications.firstOrNull;
-    final track = video?.track;
-
-    final speaking = participant.isSpeaking;
-    final palette = NeoTheme.of(context);
-
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: palette.surfaceAlt,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: speaking ? palette.primary : palette.border,
-          width: speaking ? 2 : 1,
-        ),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (track is VideoTrack)
-            VideoTrackRenderer(track, fit: VideoViewFit.contain)
-          else
-            _Avatar(label: label),
-          Positioned(
-            left: 6,
-            right: 6,
-            bottom: 6,
-            child: Row(
-              children: [
-                if (handRaised) const _Pill(child: Text('✋')),
-                if (handRaised) const SizedBox(width: 4),
-                Flexible(
-                  child: _Pill(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          participant.isMuted
-                              ? Icons.mic_off
-                              : Icons.mic,
-                          size: 12,
-                          color: participant.isMuted
-                              ? palette.danger
-                              : palette.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            label,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: palette.text,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Pill extends StatelessWidget {
-  const _Pill({required this.child});
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        // A scrim over video, so it is the background at two thirds rather
-        // than a surface colour: it has to stay legible over any frame.
-        color: NeoTheme.of(context).bg.withValues(alpha: 0.67),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: child,
-    );
-  }
-}
-
-class _Avatar extends StatelessWidget {
-  const _Avatar({required this.label});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = NeoTheme.of(context);
-    final initial = label.trim().isEmpty ? '?' : label.trim()[0].toUpperCase();
-    return Center(
-      child: Container(
-        height: 64,
-        width: 64,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(colors: [palette.info, palette.accent]),
-        ),
-        child: Center(
-          child: Text(
-            initial,
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w700,
-              color: palette.onPrimary,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 /// Reactions drifting up the screen, then gone.
 class ReactionOverlay extends StatelessWidget {
@@ -276,177 +78,6 @@ class _FloatingEmojiState extends State<_FloatingEmoji>
           ),
         );
       },
-    );
-  }
-}
-
-class RaisedHandsBadge extends StatelessWidget {
-  const RaisedHandsBadge({super.key, required this.names});
-  final List<String> names;
-
-  @override
-  Widget build(BuildContext context) {
-    return _Pill(
-      child: Text(
-        names.length == 1 ? '✋ ${names.first}' : '✋ ${names.length} hands up',
-        style: TextStyle(fontSize: 12, color: NeoTheme.of(context).text),
-      ),
-    );
-  }
-}
-
-/// The controls along the bottom.
-class RoomToolbar extends StatelessWidget {
-  const RoomToolbar({
-    super.key,
-    required this.state,
-    required this.onMic,
-    required this.onCamera,
-    required this.onFlipCamera,
-    required this.onScreenShare,
-    required this.onHand,
-    required this.onReact,
-    required this.onChat,
-    required this.onMore,
-    required this.onLeave,
-  });
-
-  final RoomState state;
-  final VoidCallback onMic;
-  final VoidCallback onCamera;
-  final VoidCallback onFlipCamera;
-  final VoidCallback onScreenShare;
-  final VoidCallback onHand;
-  final VoidCallback onReact;
-  final VoidCallback onChat;
-  final VoidCallback? onMore;
-  final VoidCallback onLeave;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = NeoTheme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-      decoration: BoxDecoration(
-        color: p.surface,
-        border: Border(top: BorderSide(color: p.border)),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _ToolButton(
-              icon: state.micOn ? Icons.mic : Icons.mic_off,
-              label: state.micOn ? 'Mute' : 'Unmute',
-              active: state.micOn,
-              onPressed: onMic,
-            ),
-            _ToolButton(
-              icon: state.cameraOn ? Icons.videocam : Icons.videocam_off,
-              label: state.cameraOn ? 'Stop video' : 'Start video',
-              active: state.cameraOn,
-              onPressed: onCamera,
-            ),
-            if (state.cameraOn)
-              _ToolButton(
-                icon: Icons.cameraswitch_outlined,
-                label: 'Flip',
-                onPressed: onFlipCamera,
-              ),
-            _ToolButton(
-              icon: Icons.screen_share_outlined,
-              label: 'Share',
-              active: state.screenSharing,
-              onPressed: onScreenShare,
-            ),
-            _ToolButton(
-              icon: Icons.back_hand_outlined,
-              label: 'Hand',
-              active: state.handRaised,
-              onPressed: onHand,
-            ),
-            _ToolButton(
-              icon: Icons.add_reaction_outlined,
-              label: 'React',
-              onPressed: onReact,
-            ),
-            _ToolButton(
-              icon: Icons.chat_bubble_outline,
-              label: 'Chat',
-              badge: state.unreadChat,
-              onPressed: onChat,
-            ),
-            if (onMore != null)
-              _ToolButton(
-                icon: Icons.shield_outlined,
-                label: 'Host',
-                badge: state.waitingRoom.length,
-                onPressed: onMore!,
-              ),
-            _ToolButton(
-              icon: Icons.call_end,
-              label: 'Leave',
-              danger: true,
-              onPressed: onLeave,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ToolButton extends StatelessWidget {
-  const _ToolButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-    this.active = false,
-    this.danger = false,
-    this.badge = 0,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-  final bool active;
-  final bool danger;
-  final int badge;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = NeoTheme.of(context);
-    final color = danger
-        ? p.danger
-        : active
-            ? p.primary
-            : p.textMuted;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onPressed,
-        child: Container(
-          width: 66,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              badge > 0
-                  ? Badge(label: Text('$badge'), child: Icon(icon, color: color))
-                  : Icon(icon, color: color),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: color),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -864,6 +495,128 @@ class _SheetHandle extends StatelessWidget {
           IconButton(
             onPressed: () => Navigator.pop(context),
             icon: Icon(Icons.close, color: p.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Who is in the meeting.
+///
+/// Read from LiveKit rather than from a roster the server sent: the people
+/// on this list are the people whose media this device is actually
+/// connected to, which is the only list that cannot be out of date.
+class ParticipantsSheet extends ConsumerWidget {
+  const ParticipantsSheet({super.key, required this.slug});
+  final String slug;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = NeoTheme.of(context);
+    final provider = roomControllerProvider(slug);
+    final state = ref.watch(provider);
+    final controller = ref.read(provider.notifier);
+    final room = controller.room;
+
+    final me = room.localParticipant;
+    final others = room.remoteParticipants.values.toList();
+
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.7,
+        child: Column(
+          children: [
+            _SheetHandle('In the meeting (${others.length + (me == null ? 0 : 1)})'),
+            Expanded(
+              child: ListView(
+                children: [
+                  if (me != null)
+                    _PersonRow(
+                      name: 'You',
+                      muted: me.isMuted,
+                      speaking: me.isSpeaking,
+                      handRaised: state.raisedHands.containsKey(me.identity),
+                      role: state.role,
+                    ),
+                  for (final person in others)
+                    _PersonRow(
+                      name: person.name.isNotEmpty
+                          ? person.name
+                          : person.identity,
+                      muted: person.isMuted,
+                      speaking: person.isSpeaking,
+                      handRaised:
+                          state.raisedHands.containsKey(person.identity),
+                    ),
+                ],
+              ),
+            ),
+            if (state.canManage)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    controller.muteEveryone();
+                  },
+                  icon: const Icon(Icons.mic_off, size: 18),
+                  label: const Text('Mute everyone'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    foregroundColor: palette.primary,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PersonRow extends StatelessWidget {
+  const _PersonRow({
+    required this.name,
+    required this.muted,
+    required this.speaking,
+    required this.handRaised,
+    this.role,
+  });
+
+  final String name;
+  final bool muted;
+  final bool speaking;
+  final bool handRaised;
+
+  /// Only known for this device: LiveKit does not carry everyone's role.
+  final String? role;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = NeoTheme.of(context);
+    return ListTile(
+      leading: NeoAvatar(name: name, size: 38),
+      title: Text(name, style: TextStyle(color: palette.text)),
+      subtitle: role == null
+          ? null
+          : Text(
+              role![0].toUpperCase() + role!.substring(1),
+              style: TextStyle(color: palette.textMuted),
+            ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (handRaised) const Text('✋'),
+          if (handRaised) const SizedBox(width: 10),
+          Icon(
+            muted ? Icons.mic_off : Icons.mic,
+            size: 18,
+            color: muted
+                ? palette.textFaint
+                : speaking
+                    ? palette.success
+                    : palette.textMuted,
           ),
         ],
       ),

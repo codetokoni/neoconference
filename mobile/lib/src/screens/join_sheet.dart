@@ -1,11 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
-import '../mock/sample_data.dart';
+import '../meetings/meeting_view.dart';
+import '../meetings/when.dart';
+import 'home_screen.dart' show nowProvider;
 import 'prejoin_screen.dart';
+
+/// Meetings worth offering as a shortcut under the field.
+///
+/// Empty by default. There is no invitations API, so production offers
+/// nothing here rather than a list of meetings nobody was invited to; the
+/// showcase overrides it to show what the section looks like when there is
+/// something in it.
+final joinSuggestionsProvider = Provider<List<MeetingView>>((ref) => const []);
 
 /// Join by link, meeting ID, or an invitation already waiting.
 ///
@@ -13,14 +24,14 @@ import 'prejoin_screen.dart';
 /// someone read out, or nothing at all, and making them first classify
 /// what they have is a step that serves the form rather than the person.
 /// Whatever is pasted, the meeting code is extracted from it.
-class JoinSheet extends StatefulWidget {
+class JoinSheet extends ConsumerStatefulWidget {
   const JoinSheet({super.key});
 
   @override
-  State<JoinSheet> createState() => _JoinSheetState();
+  ConsumerState<JoinSheet> createState() => _JoinSheetState();
 }
 
-class _JoinSheetState extends State<JoinSheet> {
+class _JoinSheetState extends ConsumerState<JoinSheet> {
   final _controller = TextEditingController();
   String? _error;
 
@@ -64,15 +75,14 @@ class _JoinSheetState extends State<JoinSheet> {
     Navigator.pop(context);
     Navigator.of(context).push(
       MaterialPageRoute(
+        // Nothing is known about a pasted code beyond the code itself, so
+        // that is all the meeting claims until the room answers.
         builder: (_) => PreJoinScreen(
-          meeting: SampleMeeting(
+          meeting: MeetingView(
             title: code,
             code: code,
-            host: 'Unknown host',
-            startsAt: sampleNow,
-            durationMinutes: 0,
-            participants: const [],
-            status: SampleStatus.live,
+            status: MeetingStatus.live,
+            canJoin: true,
           ),
         ),
       ),
@@ -83,6 +93,7 @@ class _JoinSheetState extends State<JoinSheet> {
   Widget build(BuildContext context) {
     final p = NeoTheme.of(context);
     final text = Theme.of(context).textTheme;
+    final suggestions = ref.watch(joinSuggestionsProvider);
 
     return Padding(
       padding: EdgeInsets.only(
@@ -119,51 +130,58 @@ class _JoinSheetState extends State<JoinSheet> {
           ),
           const SizedBox(height: NeoSpace.lg),
           FilledButton(onPressed: _join, child: const Text('Continue')),
-          const SizedBox(height: NeoSpace.xxl),
-          Text(
-            'INVITATIONS',
-            style: text.labelSmall?.copyWith(color: p.textMuted),
-          ),
-          const SizedBox(height: NeoSpace.md),
-          for (final m in sampleUpcoming.take(2))
-            Padding(
-              padding: const EdgeInsets.only(bottom: NeoSpace.sm),
-              child: NeoCard(
-                padding: const EdgeInsets.all(NeoSpace.md),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => PreJoinScreen(meeting: m),
-                    ),
-                  );
-                },
-                child: Row(
-                  children: [
-                    NeoAvatar(name: m.host, size: 34),
-                    const SizedBox(width: NeoSpace.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            m.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: text.titleSmall,
-                          ),
-                          Text(
-                            '${m.host} · ${sampleWhen(m.startsAt)}',
-                            style: text.bodySmall?.copyWith(color: p.textMuted),
-                          ),
-                        ],
+          if (suggestions.isNotEmpty) ...[
+            const SizedBox(height: NeoSpace.xxl),
+            Text(
+              'INVITATIONS',
+              style: text.labelSmall?.copyWith(color: p.textMuted),
+            ),
+            const SizedBox(height: NeoSpace.md),
+            for (final m in suggestions.take(2))
+              Padding(
+                padding: const EdgeInsets.only(bottom: NeoSpace.sm),
+                child: NeoCard(
+                  padding: const EdgeInsets.all(NeoSpace.md),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => PreJoinScreen(meeting: m),
                       ),
-                    ),
-                    Icon(Icons.chevron_right_rounded, color: p.textFaint),
-                  ],
+                    );
+                  },
+                  child: Row(
+                    children: [
+                      NeoAvatar(name: m.host ?? m.title, size: 34),
+                      const SizedBox(width: NeoSpace.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              m.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: text.titleSmall,
+                            ),
+                            Text(
+                              [
+                                if (m.host != null) m.host!,
+                                if (m.startsAt case final at?)
+                                  neoWhen(at, now: ref.watch(nowProvider)),
+                              ].join(' · '),
+                              style:
+                                  text.bodySmall?.copyWith(color: p.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded, color: p.textFaint),
+                    ],
+                  ),
                 ),
               ),
-            ),
+          ],
         ],
       ),
     );
