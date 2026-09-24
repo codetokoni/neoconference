@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { clerkClient } from '@clerk/nextjs/server';
+import { isAppCallback, redirectToApp, safeRelay } from '@/lib/app-callback';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,12 +12,15 @@ export const dynamic = 'force-dynamic';
 const PROFILE_URL = 'https://connect.kingsch.at/developer/api/profile';
 
 function safeRelayRedirect(req: Request): string {
-  // Only relay same-origin relative paths, matching the guard in /start.
-  const raw = (new URL(req.url).searchParams.get('redirect_url') || '').trim();
-  return raw.startsWith('/') && !raw.startsWith('//') ? raw : '';
+  // Only relay same-origin relative paths or the app's deep link, matching
+  // the guard in /start.
+  return safeRelay(new URL(req.url).searchParams.get('redirect_url'));
 }
 
 function errorRedirect(req: Request, code: string, debug?: string) {
+  if (isAppCallback(safeRelayRedirect(req))) {
+    return redirectToApp({ kc_error: code });
+  }
   const url = new URL('/sign-in', req.url);
   url.searchParams.set('kc_error', code);
   if (debug) url.searchParams.set('kc_debug', debug.slice(0, 500));
@@ -314,9 +318,12 @@ async function handle(req: Request) {
   }
   if (!ticket) return errorRedirect(req, 'ticket_failed');
 
+  const relay = safeRelayRedirect(req);
+  // The mobile app redeems the ticket itself; see lib/app-callback.
+  if (isAppCallback(relay)) return redirectToApp({ __clerk_ticket: ticket });
+
   const dest = new URL('/sign-in', req.url);
   dest.searchParams.set('__clerk_ticket', ticket);
-  const relay = safeRelayRedirect(req);
   if (relay && relay !== '/') dest.searchParams.set('redirect_url', relay);
   return NextResponse.redirect(dest, { status: 303 });
 }
