@@ -7,9 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --grep-invert \"@postdeploy\"",
     "test:e2e:ui": "playwright test --ui",
-    "check:deploy": "node scripts/check-deploy.mjs"
+    "check:deploy": "node scripts/check-deploy.mjs",
+    "test:postdeploy": "playwright test --grep \"@postdeploy\""
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.654.0",

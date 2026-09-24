@@ -13,10 +13,19 @@ import { expect, test } from "@playwright/test";
  * anonymously, the check stops working and we are blind again in exactly
  * the way this was built to prevent. The middleware matcher does not
  * exclude API routes, so protecting it is a one-line mistake away.
+ *
+ * Tagged @postdeploy and excluded from the PR smoke run, because they
+ * assert something about a *deployment*, not about the code in a branch.
+ * The suite runs against production, so on the PR that first adds this
+ * endpoint they would fail for the only reason that cannot be fixed by
+ * changing the branch: it is not live yet. Run them after promoting, with
+ * `npm run test:postdeploy`.
  */
 
 test.describe("deployment version", () => {
-  test("/api/version answers anonymously with a commit", async ({ request }) => {
+  test("@postdeploy /api/version answers anonymously with a commit", async ({
+    request,
+  }) => {
     const response = await request.get("/api/version");
 
     expect(
@@ -40,10 +49,19 @@ test.describe("deployment version", () => {
     expect(body).toHaveProperty("env");
   });
 
-  test("/api/version is never cached", async ({ request }) => {
+  test("@postdeploy /api/version is never cached", async ({ request }) => {
+    const response = await request.get("/api/version");
+
+    // Asserted before the header: Next sends no-store on its 404 page too,
+    // so without this the test passes against an endpoint that is not there
+    // — which is precisely the situation it is supposed to catch.
+    expect(
+      response.status(),
+      "endpoint must exist before its caching can mean anything",
+    ).toBe(200);
+
     // A cached answer would report the previous deployment and defeat the
     // whole point — the check would confirm a stale alias as healthy.
-    const response = await request.get("/api/version");
     const cacheControl = response.headers()["cache-control"] ?? "";
     expect(cacheControl).toContain("no-store");
   });
