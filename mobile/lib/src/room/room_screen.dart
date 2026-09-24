@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -5,6 +7,8 @@ import 'package:livekit_client/livekit_client.dart';
 import '../design/brand.dart';
 import '../design/neo_theme.dart';
 import '../design/tokens.dart';
+import '../meetings/room_view.dart';
+import '../screens/meeting_stage.dart';
 import 'room_controller.dart';
 import 'room_widgets.dart';
 
@@ -208,88 +212,146 @@ class _InMeeting extends StatefulWidget {
 }
 
 class _InMeetingState extends State<_InMeeting> {
+  /// How long this device has been in the meeting.
+  ///
+  /// Counted here rather than taken from the event's start time: the
+  /// header is telling you how long *you* have been in the call, and on
+  /// this account meetings are routinely still marked live months later.
+  final _joinedAt = DateTime.now();
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = widget.state;
     final controller = widget.controller;
     final room = controller.room;
 
-    return Column(
+    return Stack(
       children: [
-        _RoomHeader(
-          title: widget.title,
-          participants: room.remoteParticipants.length + 1,
-          link: state.link,
-          recording: state.isRecording,
-          waiting: state.canManage ? state.waitingRoom.length : 0,
-          onWaitingRoom: () => _openWaitingRoom(context, controller, state),
-          onLeave: () => Navigator.of(context).maybePop(),
-        ),
-        Expanded(
-          child: Stack(
-            children: [
-              ParticipantGrid(room: room, raisedHands: state.raisedHands),
-              ReactionOverlay(reactions: state.reactions),
-              if (state.raisedHands.isNotEmpty)
-                Positioned(
-                  left: 12,
-                  top: 12,
-                  child: RaisedHandsBadge(names: state.raisedHands.values.toList()),
-                ),
-            ],
+        MeetingStage(
+          room: _view(state, room),
+          actions: RoomActions(
+            toggleMic: controller.toggleMic,
+            toggleCamera: controller.toggleCamera,
+            toggleHand: controller.toggleHand,
+            switchCamera: state.cameraOn ? controller.switchCamera : null,
+            toggleScreenShare: controller.toggleScreenShare,
+            react: controller.react,
+            openChat: () => _openChat(context, controller, state),
+            openParticipants: () => _openParticipants(context, controller),
+            openHostControls: state.canManage
+                ? () => _openHostControls(context, controller, state, room)
+                : null,
+            openWaitingRoom: state.canManage
+                ? () => _openWaitingRoom(context, controller, state)
+                : null,
+            leave: () async => Navigator.of(context).maybePop(),
           ),
         ),
-        RoomToolbar(
-          state: state,
-          onMic: controller.toggleMic,
-          onCamera: controller.toggleCamera,
-          onFlipCamera: controller.switchCamera,
-          onScreenShare: controller.toggleScreenShare,
-          onHand: controller.toggleHand,
-          onReact: () => _openReactions(context, controller),
-          onChat: () => _openChat(context, controller, state),
-          onMore: state.canManage
-              ? () => _openHostControls(context, controller, state, room)
-              : null,
-          onLeave: () => Navigator.of(context).maybePop(),
+        // Reactions float over the whole stage, including the chrome, so
+        // they are not clipped by whichever layout is showing.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: ReactionOverlay(reactions: state.reactions),
+          ),
         ),
       ],
     );
   }
 
-  void _openReactions(BuildContext context, RoomController controller) {
-    // Every sheet in the room takes its surface from bottomSheetTheme, so
-    // it inherits the meeting's own palette rather than the app's.
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 12),
-          child: Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 8,
-            children: const {
-              'heart': '❤️',
-              'thumbs': '👍',
-              'clap': '👏',
-              'laugh': '😂',
-              'wow': '😮',
-              'fire': '🔥',
-            }.entries.map((e) {
-              return IconButton(
-                iconSize: 40,
-                onPressed: () {
-                  controller.react(e.key);
-                  Navigator.pop(context);
-                },
-                icon: Text(e.value, style: const TextStyle(fontSize: 34)),
-              );
-            }).toList(),
-          ),
-        ),
-      ),
+  /// LiveKit's objects, in the shape the screen reads.
+  ///
+  /// Built fresh on every frame rather than cached: LiveKit mutates its
+  /// participants in place, so a remembered list goes stale without ever
+  /// looking like it has.
+  RoomView _view(RoomState state, Room room) {
+    final people = <PersonView>[];
+
+    final me = room.localParticipant;
+    if (me != null) {
+      people.add(_person(me, state, label: 'You', isMe: true));
+    }
+    for (final other in room.remoteParticipants.values) {
+      people.add(_person(other, state));
+    }
+
+    return RoomView(
+      title: widget.title,
+      people: people,
+      link: switch (state.link) {
+        RoomLink.live => RoomLinkState.live,
+        RoomLink.reconnecting => RoomLinkState.reconnecting,
+        RoomLink.lost => RoomLinkState.lost,
+      },
+      elapsed: DateTime.now().difference(_joinedAt),
+      micOn: state.micOn,
+      cameraOn: state.cameraOn,
+      screenSharing: state.screenSharing,
+      handRaised: state.handRaised,
+      recording: state.isRecording,
+      canManage: state.canManage,
+      unreadChat: state.unreadChat,
+      waitingCount: state.canManage ? state.waitingRoom.length : 0,
     );
   }
+
+  PersonView _person(
+    Participant participant,
+    RoomState state, {
+    String? label,
+    bool isMe = false,
+  }) {
+    // A screen share is what the meeting is looking at, so it wins over a
+    // face — and the tile says so, rather than silently showing a slide
+    // where a person was a moment ago.
+    final published = participant.videoTrackPublications.where(
+      (p) => p.subscribed && !p.muted && p.track != null,
+    );
+    final screen = published
+        .where((p) => p.source == TrackSource.screenShareVideo)
+        .firstOrNull;
+    final publication = screen ?? published.firstOrNull;
+    final track = publication?.track;
+
+    final name = label ??
+        (participant.name.isNotEmpty ? participant.name : participant.identity);
+
+    return PersonView(
+      id: participant.identity,
+      name: name,
+      video: track is VideoTrack
+          ? VideoTrackRenderer(track, fit: VideoViewFit.contain)
+          : null,
+      muted: participant.isMuted,
+      speaking: participant.isSpeaking,
+      handRaised: state.raisedHands.containsKey(participant.identity),
+      sharing: screen != null,
+      isMe: isMe,
+    );
+  }
+
+  void _openParticipants(BuildContext context, RoomController controller) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ParticipantsSheet(slug: widget.slug),
+    );
+  }
+
 
   void _openChat(BuildContext context, RoomController controller, RoomState state) {
     controller.markChatRead();
@@ -326,106 +388,3 @@ class _InMeetingState extends State<_InMeeting> {
   }
 }
 
-class _RoomHeader extends StatelessWidget {
-  const _RoomHeader({
-    required this.title,
-    required this.participants,
-    required this.link,
-    required this.recording,
-    required this.waiting,
-    required this.onWaitingRoom,
-    required this.onLeave,
-  });
-
-  final String title;
-  final int participants;
-  final RoomLink link;
-  final bool recording;
-  final int waiting;
-  final VoidCallback onWaitingRoom;
-  final VoidCallback onLeave;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = NeoTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: p.text,
-                  ),
-                ),
-                Row(
-                  children: [
-                    // While the link is down the participant count is a
-                    // leftover from when it was up, so it is not shown —
-                    // saying nothing beats saying something false.
-                    Text(
-                      switch (link) {
-                        RoomLink.live => '$participants in the meeting',
-                        RoomLink.reconnecting => 'Reconnecting…',
-                        RoomLink.lost => 'Connection lost',
-                      },
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: link == RoomLink.live
-                            ? p.textMuted
-                            : p.danger,
-                      ),
-                    ),
-                    if (recording && link == RoomLink.live) ...[
-                      const SizedBox(width: 8),
-                      const _RecordingDot(),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-          if (waiting > 0)
-            Badge(
-              label: Text('$waiting'),
-              child: IconButton(
-                tooltip: 'Waiting room',
-                onPressed: onWaitingRoom,
-                icon: const Icon(Icons.door_front_door_outlined),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RecordingDot extends StatelessWidget {
-  const _RecordingDot();
-
-  @override
-  Widget build(BuildContext context) {
-    final p = NeoTheme.of(context);
-    return Row(
-      children: [
-        Container(
-          height: 8,
-          width: 8,
-          decoration: BoxDecoration(color: p.danger, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          'Recording',
-          style: TextStyle(fontSize: 12, color: p.danger),
-        ),
-      ],
-    );
-  }
-}

@@ -203,7 +203,10 @@ class _PreJoinScreenState extends ConsumerState<PreJoinScreen> {
       if (m.host != null) m.host!,
       if (m.knownParticipants case final n?) '$n invited',
     ];
-    return parts.isEmpty ? m.code : parts.join(' · ');
+    if (parts.isNotEmpty) return parts.join(' · ');
+    // A real meeting is usually named after its code, and printing the
+    // code under a title that already is the code says nothing twice.
+    return m.code == m.title ? null : m.code;
   }
 
   MeetingView get _instantMeeting => const MeetingView(
