@@ -90,8 +90,8 @@ class EventsScreen extends ConsumerWidget {
                   icon: Icons.event_available,
                   title: 'No meetings yet',
                   detail:
-                      'Meetings you create on neoconference.app show up here. '
-                      'You can still join any meeting with its link.',
+                      'Start one with New meeting, or join any meeting with '
+                      'its link.',
                 )
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),

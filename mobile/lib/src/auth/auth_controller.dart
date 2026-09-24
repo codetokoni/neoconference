@@ -90,7 +90,23 @@ class AuthController extends StateNotifier<AuthState> {
       }
       // Ask Clerk whether the stored session is still real. A session the
       // person ended elsewhere must not leave the app looking signed in.
-      final token = await _clerk.sessionToken(sessionId);
+      //
+      // "Clerk says this session is dead" and "I could not reach Clerk" are
+      // answered differently on purpose. Treating them the same signed
+      // people out — and deleted the stored session, so it could not come
+      // back — every time the phone had a bad moment, which on a patchy
+      // connection is often. Only an explicit refusal forgets anything.
+      String? token;
+      try {
+        token = await _clerk.sessionToken(sessionId);
+      } catch (_) {
+        state = state.copyWith(
+          sessionId: sessionId,
+          displayName: prefs.getString('neo.clerk.name'),
+          restoring: false,
+        );
+        return;
+      }
       if (token == null) {
         await _forget();
         state = state.copyWith(restoring: false);
