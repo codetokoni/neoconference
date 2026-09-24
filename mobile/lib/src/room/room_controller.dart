@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
 import '../events/event.dart';
+import '../settings/meeting_defaults.dart';
 
 /// Data-channel topics, matching the web client exactly.
 ///
@@ -416,11 +417,39 @@ class RoomController extends StateNotifier<RoomState> {
     await room.connect(wsUrl, token);
     state = state.copyWith(phase: JoinPhase.connected, clearMessage: true);
 
-    // Join muted with the camera off. Arriving already broadcasting is a
-    // rude surprise on a phone, which is likely to be somewhere personal.
+    // Join muted with the camera off unless Settings says otherwise.
+    // Arriving already broadcasting is a rude surprise on a phone, which is
+    // likely to be somewhere personal, so that stays the default — but a
+    // switch that only claims to change this would be worse than not
+    // offering it, so the preference is honoured here.
+    await _applyJoinDefaults();
+
     await _loadChatHistory();
     _startChatPolling();
     if (state.canManage) unawaited(refreshWaitingRoom());
+  }
+
+  /// Turns on whatever the person asked to join with.
+  ///
+  /// Failures are swallowed on purpose: a camera another app is holding, or
+  /// a microphone permission that has just been revoked, should not turn a
+  /// successful join into a failed one. The meeting is already connected by
+  /// this point, and the controls are right there to try again.
+  Future<void> _applyJoinDefaults() async {
+    final me = room.localParticipant;
+    if (me == null) return;
+    try {
+      if (!await MeetingDefaults.joinMuted()) {
+        await me.setMicrophoneEnabled(true);
+      }
+      if (!await MeetingDefaults.joinCameraOff()) {
+        await me.setCameraEnabled(true);
+      }
+    } catch (_) {
+      // Joined muted, which is the safe end to fail towards.
+    }
+    if (_disposed) return;
+    _syncLocalMedia();
   }
 
   void _wireEvents() {
