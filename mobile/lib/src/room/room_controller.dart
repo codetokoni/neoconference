@@ -316,6 +316,10 @@ class RoomController extends StateNotifier<RoomState> {
           message: 'Disconnected from the meeting.',
         );
       })
+      // Mute events arrive for everyone, not just this device. Syncing our
+      // own buttons is enough to redraw someone else's microphone icon too:
+      // every state write is a new object, and StateNotifier notifies on
+      // identity, so the participant list rebuilds from the same write.
       ..on<TrackMutedEvent>((_) => _syncLocalMedia())
       ..on<TrackUnmutedEvent>((_) => _syncLocalMedia())
       ..on<ParticipantConnectedEvent>((_) => _bump())
