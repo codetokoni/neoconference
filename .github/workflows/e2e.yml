@@ -48,7 +48,13 @@ jobs:
               || 'https://www.neoconference.app'
             }}
           CI: "1"
-        run: npx playwright test
+        # @postdeploy specs assert things about a deployment, not about the
+        # code in this branch — whether the live alias serves what was
+        # merged. This suite runs against production, so on the PR that
+        # first adds such an endpoint they fail for the one reason changing
+        # the branch cannot fix: it is not live yet. They run after
+        # promoting, via `npm run test:postdeploy`.
+        run: npx playwright test --grep-invert "@postdeploy"
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

@@ -19,6 +19,10 @@ const isPublicRoute = createRouteMatcher([
   // Where a sign-in started in the app comes back to. Reached before the
   // person has a web session, by definition.
   '/app/auth',
+  // Says which commit is serving. A deploy check that needs credentials is
+  // a check nobody runs, and protecting this would make a stale alias look
+  // like an auth failure instead of what it is.
+  '/api/version',
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/room/(.*)',
