@@ -1,34 +1,42 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'design/brand.dart';
 import 'design/neo_theme.dart';
+import 'design/themes.dart';
 import 'design/tokens.dart';
 import 'screens/app_shell.dart';
 import 'screens/welcome_screen.dart';
 
 /// The app, its themes, and the one decision the root makes.
-///
-/// themeMode follows the system rather than offering a switch here: people
-/// set light or dark once, for every app, and a per-app override is a
-/// setting most will never find. Settings exposes it for the minority who
-/// want it.
-class NeoConferenceApp extends StatelessWidget {
+class NeoConferenceApp extends ConsumerWidget {
   const NeoConferenceApp({super.key, this.signedIn = true});
 
   final bool signedIn;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final choice = ref.watch(neoThemeProvider);
+    final chosen = neoThemeOption(choice).palette;
+
+    // "Match system" keeps Flutter's own light/dark switching. Any explicit
+    // choice pins both slots to that palette, so the app does not flip out
+    // from under someone who picked Amethyst because the sun went down.
+    final light = chosen ?? NeoPalette.light;
+    final dark = chosen ?? NeoPalette.dark;
+
     return MaterialApp(
       title: 'NeoConference',
       debugShowCheckedModeBanner: false,
-      theme: neoThemeData(NeoPalette.light),
-      darkTheme: neoThemeData(NeoPalette.dark),
-      themeMode: ThemeMode.system,
+      theme: neoThemeData(light),
+      darkTheme: neoThemeData(dark),
+      themeMode:
+          chosen == null ? ThemeMode.system : (chosen.isDark ? ThemeMode.dark : ThemeMode.light),
       builder: (context, child) {
-        final palette = Theme.of(context).brightness == Brightness.dark
-            ? NeoPalette.dark
-            : NeoPalette.light;
+        final palette = chosen ??
+            (Theme.of(context).brightness == Brightness.dark
+                ? NeoPalette.dark
+                : NeoPalette.light);
         return NeoTheme(
           palette: palette,
           child: MediaQuery(

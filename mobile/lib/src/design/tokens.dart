@@ -98,6 +98,97 @@ class NeoPalette {
     brightness: Brightness.light,
   );
 
+  /// Deep blue. The brand's own `--neo-blue` moved into the lead, for
+  /// people who find the cyan too electric at length.
+  static const ocean = NeoPalette(
+    bg: Color(0xFF02060F),
+    surface: Color(0xFF061120),
+    surfaceAlt: Color(0xFF0A1B33),
+    surfaceHigh: Color(0xFF10264A),
+    border: Color(0x2238BDF8),
+    borderStrong: Color(0x5538BDF8),
+    text: Color(0xFFE8F4FF),
+    textMuted: Color(0xB3C7E2F7),
+    textFaint: Color(0x73C7E2F7),
+    primary: Color(0xFF38BDF8), // --neo-blue
+    onPrimary: Color(0xFF041426),
+    accent: Color(0xFF22D3EE),
+    info: Color(0xFF60A5FA),
+    danger: Color(0xFFF87171),
+    success: Color(0xFF34D399),
+    warning: Color(0xFFFBBF24),
+    scrim: Color(0xCC02060F),
+    brightness: Brightness.dark,
+  );
+
+  /// Violet. Built from `--neo-purple`, which the site already uses as the
+  /// last stop of the wordmark gradient.
+  static const amethyst = NeoPalette(
+    bg: Color(0xFF07050F),
+    surface: Color(0xFF100C1F),
+    surfaceAlt: Color(0xFF171233),
+    surfaceHigh: Color(0xFF221B47),
+    border: Color(0x26A5B4FC),
+    borderStrong: Color(0x59A5B4FC),
+    text: Color(0xFFF0EDFF),
+    textMuted: Color(0xB3D4CFF5),
+    textFaint: Color(0x73D4CFF5),
+    primary: Color(0xFFA5B4FC),
+    onPrimary: Color(0xFF13102B),
+    accent: Color(0xFF22D3EE),
+    info: Color(0xFF818CF8),
+    danger: Color(0xFFFB7185),
+    success: Color(0xFF34D399),
+    warning: Color(0xFFFBBF24),
+    scrim: Color(0xCC07050F),
+    brightness: Brightness.dark,
+  );
+
+  /// Near-monochrome, for low-light rooms and long days. Colour is spent
+  /// only where it carries meaning — the primary action, and the states.
+  static const carbon = NeoPalette(
+    bg: Color(0xFF060708),
+    surface: Color(0xFF0D0F11),
+    surfaceAlt: Color(0xFF15181B),
+    surfaceHigh: Color(0xFF1F2327),
+    border: Color(0x1FFFFFFF),
+    borderStrong: Color(0x3DFFFFFF),
+    text: Color(0xFFF2F4F5),
+    textMuted: Color(0xB3C8CED3),
+    textFaint: Color(0x73C8CED3),
+    primary: Color(0xFF67E8F9), // --neo-cyan-soft, the one splash of brand
+    onPrimary: Color(0xFF07171A),
+    accent: Color(0xFFA5B4FC),
+    info: Color(0xFF7DD3FC),
+    danger: Color(0xFFF87171),
+    success: Color(0xFF4ADE80),
+    warning: Color(0xFFFBBF24),
+    scrim: Color(0xCC060708),
+    brightness: Brightness.dark,
+  );
+
+  /// Warm light, easier than pure white under bright office lighting.
+  static const sandstone = NeoPalette(
+    bg: Color(0xFFFBF7F2),
+    surface: Color(0xFFFFFFFF),
+    surfaceAlt: Color(0xFFF4EDE4),
+    surfaceHigh: Color(0xFFEADFD1),
+    border: Color(0x1A2A1F14),
+    borderStrong: Color(0x332A1F14),
+    text: Color(0xFF1C160F),
+    textMuted: Color(0xFF5A4E41),
+    textFaint: Color(0xFF8C7F70),
+    primary: Color(0xFF0F766E), // teal-700: 5.9:1 on white
+    onPrimary: Color(0xFFFFFFFF),
+    accent: Color(0xFF7C3AED),
+    info: Color(0xFF0369A1),
+    danger: Color(0xFFB91C1C),
+    success: Color(0xFF15803D),
+    warning: Color(0xFF9A3412),
+    scrim: Color(0x991C160F),
+    brightness: Brightness.light,
+  );
+
   /// The wordmark gradient, from `.neo-gradient-text` in globals.css.
   static const wordmarkGradient = LinearGradient(
     begin: Alignment.topLeft,
