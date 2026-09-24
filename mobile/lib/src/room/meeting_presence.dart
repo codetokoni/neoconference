@@ -1,0 +1,101 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+
+/// Keeping the meeting alive when the app is not on screen.
+///
+/// Two things no Flutter widget can do for itself:
+///
+///  - **Background audio.** Android stops scheduling a backgrounded process
+///    within seconds, and kills one capturing a microphone without a
+///    foreground service of a matching type. The app has declared the
+///    permissions for one since it shipped and never started it, so audio
+///    stopped whenever the phone was pocketed.
+///  - **Picture in Picture.** An Activity-level call, and the Activity has
+///    to report the mode change back so the UI can shrink to something
+///    legible at a few centimetres wide.
+///
+/// **Android only.** iOS needs its own work — an AVAudioSession configured
+/// for voice chat, the `voip` background mode, and AVPictureInPicture
+/// around the video layer — and none of it exists here. [supported] is
+/// false everywhere but Android, and every method is a no-op there rather
+/// than pretending.
+class MeetingPresence {
+  MeetingPresence._();
+
+  static final instance = MeetingPresence._();
+
+  static const _channel = MethodChannel('app.neoconference/meeting');
+
+  /// Whether the platform side of this exists at all.
+  static bool get supported => !kIsWeb && Platform.isAndroid;
+
+  /// True while the meeting is floating in a Picture in Picture window.
+  final ValueNotifier<bool> inPip = ValueNotifier<bool>(false);
+
+  bool _wired = false;
+  bool _pipAvailable = false;
+
+  /// Whether this device can float the meeting.
+  ///
+  /// Android TV and some manufacturers' builds report the feature absent,
+  /// and a "Float" control that does nothing is worse than none.
+  bool get pipAvailable => _pipAvailable;
+
+  void _wire() {
+    if (_wired) return;
+    _wired = true;
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'pipChanged') {
+        inPip.value = call.arguments == true;
+      }
+      return null;
+    });
+  }
+
+  /// Start the foreground service. Call this once the room is connected.
+  ///
+  /// Failures are swallowed deliberately: a meeting that is otherwise
+  /// working must not be torn down because a notification could not be
+  /// posted. The cost of failing is that audio stops when backgrounded,
+  /// which is exactly where this started.
+  Future<void> begin({required String title}) async {
+    if (!supported) return;
+    _wire();
+    try {
+      await _channel.invokeMethod<bool>('startMeeting', {'title': title});
+      _pipAvailable = await _channel.invokeMethod<bool>('pipSupported') ?? false;
+    } catch (e) {
+      debugPrint('[presence] could not start the meeting service: $e');
+    }
+  }
+
+  /// Stop the service. Call this on leave, and on dispose.
+  ///
+  /// Idempotent, because both of those can happen for the same meeting.
+  Future<void> end() async {
+    if (!supported) return;
+    try {
+      await _channel.invokeMethod<bool>('stopMeeting');
+    } catch (e) {
+      debugPrint('[presence] could not stop the meeting service: $e');
+    }
+    inPip.value = false;
+  }
+
+  /// Float the meeting now.
+  ///
+  /// Returns false when the platform refused — PiP is disabled per-app in
+  /// Android settings, and the caller should say so rather than appear to
+  /// have done nothing.
+  Future<bool> enterPip() async {
+    if (!supported) return false;
+    try {
+      return await _channel.invokeMethod<bool>('enterPip') ?? false;
+    } catch (e) {
+      debugPrint('[presence] could not enter PiP: $e');
+      return false;
+    }
+  }
+}

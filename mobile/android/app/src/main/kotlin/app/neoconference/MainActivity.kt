@@ -1,5 +1,130 @@
 package app.neoconference
 
+import android.app.PictureInPictureParams
+import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.os.Build
+import android.util.Rational
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : FlutterActivity()
+/**
+ * The Android side of "the meeting keeps going when the app does not".
+ *
+ * Two things Flutter cannot do on its own:
+ *
+ *  - Start a foreground service, which is the only thing that keeps audio
+ *    flowing once the app is backgrounded or the screen is locked.
+ *  - Enter Picture in Picture, which is an Activity-level call and needs
+ *    the Activity to report back when the mode changes so the UI can shrink
+ *    to something that reads at 150dp wide.
+ */
+class MainActivity : FlutterActivity() {
+
+    private var channel: MethodChannel? = null
+
+    /**
+     * Whether a meeting is on screen right now.
+     *
+     * Set by Flutter. PiP is only entered while this is true — pressing
+     * Home from the meetings list should close the app, not float a window
+     * of a list.
+     */
+    private var inMeeting = false
+
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+
+        val methods = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "app.neoconference/meeting"
+        )
+        channel = methods
+
+        methods.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "startMeeting" -> {
+                    inMeeting = true
+                    val title = call.argument<String>("title") ?: "Meeting"
+                    MeetingService.start(this, title)
+                    updateAutoPip()
+                    result.success(true)
+                }
+
+                "stopMeeting" -> {
+                    inMeeting = false
+                    MeetingService.stop(this)
+                    updateAutoPip()
+                    result.success(true)
+                }
+
+                "enterPip" -> result.success(enterPip())
+
+                "pipSupported" -> result.success(pipSupported())
+
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun pipSupported(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+    private fun pipParams(): PictureInPictureParams? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
+        val builder = PictureInPictureParams.Builder()
+            // 16:9 because that is the shape of the video inside it.
+            // Android clamps anything more extreme than roughly 2.39:1.
+            .setAspectRatio(Rational(16, 9))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Seamless on Android 12 and up: the window shrinks as the
+            // gesture happens rather than after it, so there is no frame
+            // where the meeting has visibly disappeared.
+            builder.setAutoEnterEnabled(inMeeting)
+            builder.setSeamlessResizeEnabled(true)
+        }
+        return builder.build()
+    }
+
+    private fun updateAutoPip() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        if (!pipSupported()) return
+        runCatching { pipParams()?.let { setPictureInPictureParams(it) } }
+    }
+
+    private fun enterPip(): Boolean {
+        if (!pipSupported()) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        return runCatching {
+            pipParams()?.let { enterPictureInPictureMode(it) } ?: false
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Pressing Home or swiping up during a meeting floats it instead of
+     * hiding it.
+     *
+     * Only needed below Android 12; above it setAutoEnterEnabled has
+     * already handled the gesture by the time this runs.
+     */
+    @Deprecated("Required below API 31, where auto-enter does not exist")
+    override fun onUserLeaveHint() {
+        if (inMeeting && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            enterPip()
+        }
+        @Suppress("DEPRECATION")
+        super.onUserLeaveHint()
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        // Flutter keeps rendering the whole meeting screen into a window a
+        // few centimetres wide unless it is told to draw something else.
+        channel?.invokeMethod("pipChanged", isInPictureInPictureMode)
+    }
+}

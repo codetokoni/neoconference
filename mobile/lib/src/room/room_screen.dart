@@ -9,6 +9,7 @@ import '../design/neo_theme.dart';
 import '../design/tokens.dart';
 import '../meetings/room_view.dart';
 import '../screens/meeting_stage.dart';
+import 'meeting_presence.dart';
 import 'room_controller.dart';
 import 'room_widgets.dart';
 
@@ -240,10 +241,30 @@ class _InMeetingState extends State<_InMeeting> {
     final controller = widget.controller;
     final room = controller.room;
 
+    return ValueListenableBuilder<bool>(
+      valueListenable: MeetingPresence.instance.inPip,
+      builder: (context, inPip, _) {
+        final view = _view(state, room);
+        // In a window a few centimetres wide the control bar is unusable
+        // and the filmstrip is a row of smudges. Show the one thing worth
+        // seeing: whoever is talking.
+        if (inPip) return PipView(room: view);
+        return _stage(context, state, controller, room, view);
+      },
+    );
+  }
+
+  Widget _stage(
+    BuildContext context,
+    RoomState state,
+    RoomController controller,
+    Room room,
+    RoomView view,
+  ) {
     return Stack(
       children: [
         MeetingStage(
-          room: _view(state, room),
+          room: view,
           actions: RoomActions(
             toggleMic: controller.toggleMic,
             toggleCamera: controller.toggleCamera,
@@ -251,6 +272,9 @@ class _InMeetingState extends State<_InMeeting> {
             switchCamera: state.cameraOn ? controller.switchCamera : null,
             toggleScreenShare: controller.toggleScreenShare,
             react: controller.react,
+            enterPip: MeetingPresence.instance.pipAvailable
+                ? MeetingPresence.instance.enterPip
+                : null,
             openChat: () => _openChat(context, controller, state),
             openParticipants: () => _openParticipants(context, controller),
             openHostControls: state.canManage

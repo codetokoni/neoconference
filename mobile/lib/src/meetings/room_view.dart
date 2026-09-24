@@ -127,6 +127,7 @@ class RoomActions {
     this.switchCamera,
     this.toggleScreenShare,
     this.react,
+    this.enterPip,
     this.openChat,
     this.openParticipants,
     this.openHostControls,
@@ -143,6 +144,12 @@ class RoomActions {
   final Future<void> Function()? switchCamera;
   final Future<void> Function()? toggleScreenShare;
   final void Function(String key)? react;
+
+  /// Float the meeting into a Picture in Picture window. Null where the
+  /// platform has no such thing, so the control is absent rather than
+  /// present and inert.
+  final Future<bool> Function()? enterPip;
+
   final VoidCallback? openChat;
   final VoidCallback? openParticipants;
   final VoidCallback? openHostControls;

@@ -160,6 +160,29 @@ class _MeetingStageState extends State<MeetingStage> {
                   actions.switchCamera!();
                 },
               ),
+            if (actions.enterPip != null)
+              ListTile(
+                leading: const Icon(Icons.picture_in_picture_alt_rounded),
+                title: const Text('Float the meeting'),
+                subtitle: const Text('Keep it in a corner while you work'),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  final floated = await actions.enterPip!();
+                  // Picture in Picture can be switched off per app in
+                  // Android settings, and a tap that silently does nothing
+                  // reads as a broken button rather than a refused one.
+                  if (!floated && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Picture in Picture is turned off for this app in '
+                          'Android settings.',
+                        ),
+                      ),
+                    );
+                  }
+                },
+              ),
             if (actions.openHostControls != null) ...[
               const Divider(),
               ListTile(
