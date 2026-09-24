@@ -4,7 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
 import '../core/config.dart';
-import '../core/theme.dart';
+import '../design/brand.dart';
 import '../events/event.dart';
 
 /// Paying for a plan, from the phone.
@@ -98,6 +98,7 @@ class _UpgradeSheetState extends ConsumerState<UpgradeSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     final amount = _espees[_plan]?[_cycle];
 
     return SafeArea(
@@ -107,18 +108,18 @@ class _UpgradeSheetState extends ConsumerState<UpgradeSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
+            Text(
               'Upgrade your plan',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
-                color: NeoColors.text,
+                color: p.text,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               widget.reason,
-              style: const TextStyle(color: NeoColors.textDim, fontSize: 13),
+              style: TextStyle(color: p.textMuted, fontSize: 13),
             ),
             const SizedBox(height: 20),
             SegmentedButton<String>(
@@ -144,25 +145,25 @@ class _UpgradeSheetState extends ConsumerState<UpgradeSheet> {
               Text(
                 '$amount ESP ${_cycle == 'monthly' ? 'per month' : 'per year'}',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: NeoColors.cyanSoft,
+                style: TextStyle(
+                  color: p.primary,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             if (_plan == 'starter') ...[
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Starter does not include live translation.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: NeoColors.danger, fontSize: 12),
+                style: TextStyle(color: p.danger, fontSize: 12),
               ),
             ],
             if (_error != null) ...[
               const SizedBox(height: 12),
               Text(
                 _error!,
-                style: const TextStyle(color: NeoColors.danger, fontSize: 13),
+                style: TextStyle(color: p.danger, fontSize: 13),
               ),
             ],
             const SizedBox(height: 20),
@@ -177,11 +178,11 @@ class _UpgradeSheetState extends ConsumerState<UpgradeSheet> {
                   : const Text('Continue to payment'),
             ),
             const SizedBox(height: 10),
-            const Text(
+            Text(
               'Payment happens on eSPees. You will come back here when it '
               'is done.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: NeoColors.textDim, fontSize: 11),
+              style: TextStyle(color: p.textMuted, fontSize: 11),
             ),
           ],
         ),

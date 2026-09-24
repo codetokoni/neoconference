@@ -6,16 +6,18 @@ import 'package:url_launcher/url_launcher.dart';
 import '../auth/auth_controller.dart';
 import '../billing/plan.dart';
 import '../billing/upgrade.dart';
-import '../core/theme.dart';
+import '../design/brand.dart';
+import '../design/theme_picker.dart';
 import 'meeting_defaults.dart';
 
 /// Settings for the production app.
 ///
 /// Every row here does something. The two meeting switches are read by the
-/// room when it connects, the plan is the live one from the server, and
-/// signing out really ends the Clerk session. A settings screen full of
-/// controls that change nothing is worse than no settings screen, because
-/// it teaches people their preferences are ignored.
+/// room when it connects, the theme really repaints the app, the plan is
+/// the live one from the server, and signing out really ends the Clerk
+/// session. A settings screen full of controls that change nothing is
+/// worse than no settings screen, because it teaches people their
+/// preferences are ignored.
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -56,6 +58,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     final name = ref.watch(authProvider.select((s) => s.displayName));
     final plan = ref.watch(planProvider);
 
@@ -78,13 +81,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               subtitle: '$e',
               danger: true,
             ),
-            data: (p) => _Tile(
-              title: p.plan[0].toUpperCase() + p.plan.substring(1),
-              subtitle: '${p.participantsLabel} · ${p.minutesLabel}',
-              trailing: p.plan == 'enterprise'
+            data: (info) => _Tile(
+              title: info.plan[0].toUpperCase() + info.plan.substring(1),
+              subtitle: '${info.participantsLabel} · ${info.minutesLabel}',
+              trailing: info.plan == 'enterprise'
                   ? null
                   : TextButton(
-                      onPressed: () => _openUpgrade(context, p),
+                      onPressed: () => _openUpgrade(context, info),
                       child: const Text('Upgrade'),
                     ),
             ),
@@ -123,6 +126,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ],
           const SizedBox(height: 28),
 
+          const _Label('Appearance'),
+          const NeoThemePicker(),
+          const SizedBox(height: 8),
+          Text(
+            'A meeting stays dark whichever theme you pick, unless the theme '
+            'is already dark. Video reads better against black.',
+            style: TextStyle(color: p.textFaint, fontSize: 11),
+          ),
+          const SizedBox(height: 28),
+
           const _Label('About'),
           _Tile(
             title: 'NeoConference',
@@ -131,10 +144,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _Tile(
             title: 'Open neoconference.app',
             subtitle: 'Pricing, help and your account on the web',
-            trailing: const Icon(
+            trailing: Icon(
               Icons.open_in_new_rounded,
               size: 18,
-              color: NeoColors.textDim,
+              color: p.textMuted,
             ),
             onTap: () => launchUrl(
               Uri.parse('https://www.neoconference.app/'),
@@ -145,14 +158,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
           OutlinedButton.icon(
             onPressed: _confirmSignOut,
-            icon: const Icon(Icons.logout_rounded, color: NeoColors.danger),
-            label: const Text(
-              'Sign out',
-              style: TextStyle(color: NeoColors.danger),
-            ),
+            icon: Icon(Icons.logout_rounded, color: p.danger),
+            label: Text('Sign out', style: TextStyle(color: p.danger)),
             style: OutlinedButton.styleFrom(
               minimumSize: const Size.fromHeight(48),
-              side: const BorderSide(color: Color(0x80F87171)),
+              side: BorderSide(color: p.danger.withValues(alpha: 0.5)),
             ),
           ),
         ],
@@ -164,7 +174,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final out = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: NeoColors.bg2,
         title: const Text('Sign out?'),
         content: const Text(
           'You will need to sign in with KingsChat again to join meetings.',
@@ -176,7 +185,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: NeoColors.danger,
+              backgroundColor: NeoTheme.of(context).danger,
               minimumSize: const Size(88, 44),
             ),
             onPressed: () => Navigator.pop(context, true),
@@ -193,13 +202,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   void _openUpgrade(BuildContext context, PlanInfo plan) {
+    // Colour and shape come from bottomSheetTheme, so the sheet follows the
+    // chosen theme along with the screen behind it.
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: NeoColors.bg1,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) => UpgradeSheet(
         reason: plan.isFree
             ? 'You are on the Free plan.'
@@ -217,6 +224,7 @@ class _Account extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     final label =
         (name != null && name!.trim().isNotEmpty) ? name!.trim() : 'Signed in';
     return Row(
@@ -224,10 +232,10 @@ class _Account extends StatelessWidget {
         Container(
           height: 52,
           width: 52,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: LinearGradient(
-              colors: [NeoColors.cyanSoft, NeoColors.blue],
+              colors: [p.primary, p.info],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -235,10 +243,10 @@ class _Account extends StatelessWidget {
           alignment: Alignment.center,
           child: Text(
             label.substring(0, 1).toUpperCase(),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF03181C),
+              color: p.onPrimary,
             ),
           ),
         ),
@@ -246,10 +254,10 @@ class _Account extends StatelessWidget {
         Expanded(
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
-              color: NeoColors.text,
+              color: p.text,
             ),
           ),
         ),
@@ -269,8 +277,8 @@ class _Label extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Text(
         text.toUpperCase(),
-        style: const TextStyle(
-          color: NeoColors.cyanSoft,
+        style: TextStyle(
+          color: NeoTheme.of(context).primary,
           fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.8,
@@ -297,10 +305,11 @@ class _Tile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: NeoColors.bg2,
+        color: p.surfaceAlt,
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTap: onTap,
@@ -311,7 +320,7 @@ class _Tile extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: danger ? const Color(0x55F87171) : const Color(0x3322D3EE),
+                color: danger ? p.danger.withValues(alpha: 0.33) : p.border,
               ),
             ),
             child: Row(
@@ -326,7 +335,7 @@ class _Tile extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: danger ? NeoColors.danger : NeoColors.text,
+                          color: danger ? p.danger : p.text,
                         ),
                       ),
                       if (subtitle != null)
@@ -334,9 +343,9 @@ class _Tile extends StatelessWidget {
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(
                             subtitle!,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: NeoColors.textDim,
+                              color: p.textMuted,
                             ),
                           ),
                         ),

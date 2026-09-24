@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_controller.dart';
-import '../core/theme.dart';
+import '../design/brand.dart';
 import '../room/room_screen.dart';
 import 'create_meeting_screen.dart';
 import 'event.dart';
@@ -12,6 +12,7 @@ class EventsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final p = NeoTheme.of(context);
     final events = ref.watch(eventsProvider);
     final name = ref.watch(authProvider.select((s) => s.displayName));
 
@@ -27,7 +28,7 @@ class EventsScreen extends ConsumerWidget {
             if (name != null)
               Text(
                 'Signed in as $name',
-                style: const TextStyle(fontSize: 12, color: NeoColors.textDim),
+                style: TextStyle(fontSize: 12, color: p.textMuted),
               ),
           ],
         ),
@@ -45,8 +46,8 @@ class EventsScreen extends ConsumerWidget {
         children: [
           FloatingActionButton.extended(
             heroTag: 'join',
-            backgroundColor: NeoColors.bg2,
-            foregroundColor: NeoColors.cyanSoft,
+            backgroundColor: p.surfaceAlt,
+            foregroundColor: p.primary,
             onPressed: () => _joinByCode(context),
             icon: const Icon(Icons.login),
             label: const Text('Join with a link'),
@@ -54,8 +55,8 @@ class EventsScreen extends ConsumerWidget {
           const SizedBox(height: 10),
           FloatingActionButton.extended(
             heroTag: 'create',
-            backgroundColor: NeoColors.cyan,
-            foregroundColor: const Color(0xFF03181C),
+            backgroundColor: p.primary,
+            foregroundColor: p.onPrimary,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const CreateMeetingScreen()),
             ),
@@ -100,8 +101,9 @@ class EventsScreen extends ConsumerWidget {
     final controller = TextEditingController();
     final slug = await showDialog<String>(
       context: context,
+      // Colour and shape come from dialogTheme, so the dialog follows the
+      // chosen theme rather than staying on the original dark surface.
       builder: (context) => AlertDialog(
-        backgroundColor: NeoColors.bg2,
         title: const Text('Join a meeting'),
         content: TextField(
           controller: controller,
@@ -147,6 +149,7 @@ class _EventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -168,10 +171,10 @@ class _EventCard extends StatelessWidget {
                   children: [
                     Text(
                       event.name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: NeoColors.text,
+                        color: p.text,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -183,8 +186,8 @@ class _EventCard extends StatelessWidget {
                           child: Text(
                             _subtitle(event),
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: NeoColors.textDim,
+                            style: TextStyle(
+                              color: p.textMuted,
                               fontSize: 12,
                             ),
                           ),
@@ -195,7 +198,7 @@ class _EventCard extends StatelessWidget {
                 ),
               ),
               if (event.canJoin)
-                const Icon(Icons.chevron_right, color: NeoColors.cyanSoft),
+                Icon(Icons.chevron_right, color: p.primary),
             ],
           ),
         ),
@@ -220,13 +223,17 @@ class _StateChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
+    // Live is the palette's primary because it is the one state worth
+    // acting on; the rest borrow the supporting colours so a light theme
+    // does not end up with pale chips on a pale card.
     final (label, color) = switch (event.state) {
-      'live' => ('Live', NeoColors.cyan),
-      'waiting' => ('Waiting', NeoColors.blue),
-      'ended' => ('Ended', NeoColors.textDim),
-      'replay' => ('Replay', NeoColors.purple),
-      'archived' => ('Archived', NeoColors.textDim),
-      _ => ('Scheduled', NeoColors.purple),
+      'live' => ('Live', p.primary),
+      'waiting' => ('Waiting', p.info),
+      'ended' => ('Ended', p.textMuted),
+      'replay' => ('Replay', p.accent),
+      'archived' => ('Archived', p.textMuted),
+      _ => ('Scheduled', p.accent),
     };
 
     return Container(
@@ -259,26 +266,27 @@ class _Message extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     // A ListView so pull-to-refresh still works on an empty or failed list.
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 80),
       children: [
-        Icon(icon, size: 48, color: NeoColors.textDim),
+        Icon(icon, size: 48, color: p.textMuted),
         const SizedBox(height: 16),
         Text(
           title,
           textAlign: TextAlign.center,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
-            color: NeoColors.text,
+            color: p.text,
           ),
         ),
         const SizedBox(height: 8),
         Text(
           detail,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: NeoColors.textDim),
+          style: TextStyle(color: p.textMuted),
         ),
         if (action != null) ...[const SizedBox(height: 24), action!],
       ],

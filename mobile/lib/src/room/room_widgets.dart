@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
 
-import '../core/theme.dart';
+import '../design/brand.dart';
 import 'room_controller.dart';
 
 /// Everyone's video, laid out so nobody is a sliver.
@@ -44,10 +44,11 @@ class ParticipantGrid extends StatelessWidget {
     }
 
     if (tiles.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
           'Nobody else is here yet.',
-          style: TextStyle(color: NeoColors.textDim),
+          // Not `p`: this method already uses that name for a participant.
+          style: TextStyle(color: NeoTheme.of(context).textMuted),
         ),
       );
     }
@@ -91,14 +92,15 @@ class _Tile extends StatelessWidget {
     final track = video?.track;
 
     final speaking = participant.isSpeaking;
+    final palette = NeoTheme.of(context);
 
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: NeoColors.bg2,
+        color: palette.surfaceAlt,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: speaking ? NeoColors.cyan : const Color(0x2267E8F9),
+          color: speaking ? palette.primary : palette.border,
           width: speaking ? 2 : 1,
         ),
       ),
@@ -128,17 +130,17 @@ class _Tile extends StatelessWidget {
                               : Icons.mic,
                           size: 12,
                           color: participant.isMuted
-                              ? NeoColors.danger
-                              : NeoColors.cyanSoft,
+                              ? palette.danger
+                              : palette.primary,
                         ),
                         const SizedBox(width: 4),
                         Flexible(
                           child: Text(
                             label,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
-                              color: NeoColors.text,
+                              color: palette.text,
                             ),
                           ),
                         ),
@@ -164,7 +166,9 @@ class _Pill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xAA03050A),
+        // A scrim over video, so it is the background at two thirds rather
+        // than a surface colour: it has to stay legible over any frame.
+        color: NeoTheme.of(context).bg.withValues(alpha: 0.67),
         borderRadius: BorderRadius.circular(8),
       ),
       child: child,
@@ -178,22 +182,23 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = NeoTheme.of(context);
     final initial = label.trim().isEmpty ? '?' : label.trim()[0].toUpperCase();
     return Center(
       child: Container(
         height: 64,
         width: 64,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(colors: [NeoColors.blue, NeoColors.purple]),
+          gradient: LinearGradient(colors: [palette.info, palette.accent]),
         ),
         child: Center(
           child: Text(
             initial,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 26,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF03181C),
+              color: palette.onPrimary,
             ),
           ),
         ),
@@ -284,7 +289,7 @@ class RaisedHandsBadge extends StatelessWidget {
     return _Pill(
       child: Text(
         names.length == 1 ? '✋ ${names.first}' : '✋ ${names.length} hands up',
-        style: const TextStyle(fontSize: 12, color: NeoColors.text),
+        style: TextStyle(fontSize: 12, color: NeoTheme.of(context).text),
       ),
     );
   }
@@ -319,11 +324,12 @@ class RoomToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-      decoration: const BoxDecoration(
-        color: NeoColors.bg1,
-        border: Border(top: BorderSide(color: Color(0x2267E8F9))),
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: Border(top: BorderSide(color: p.border)),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -409,11 +415,12 @@ class _ToolButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     final color = danger
-        ? NeoColors.danger
+        ? p.danger
         : active
-            ? NeoColors.cyan
-            : NeoColors.textDim;
+            ? p.primary
+            : p.textMuted;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -475,6 +482,7 @@ class _ChatSheetState extends ConsumerState<ChatSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     final state = ref.watch(roomControllerProvider(widget.slug));
     final chat = state.chat;
 
@@ -500,13 +508,13 @@ class _ChatSheetState extends ConsumerState<ChatSheet> {
                 margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0x22F87171),
+                  color: p.danger.withValues(alpha: 0.13),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0x55F87171)),
+                  border: Border.all(color: p.danger.withValues(alpha: 0.33)),
                 ),
                 child: Text(
                   state.chatError!,
-                  style: const TextStyle(color: NeoColors.text, fontSize: 12),
+                  style: TextStyle(color: p.text, fontSize: 12),
                 ),
               ),
             Expanded(
@@ -517,9 +525,9 @@ class _ChatSheetState extends ConsumerState<ChatSheet> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text(
+                            Text(
                               'No messages yet.',
-                              style: TextStyle(color: NeoColors.textDim),
+                              style: TextStyle(color: p.textMuted),
                             ),
                             // The packet counters are a debugging instrument
                             // for the unresolved reliable-data-channel
@@ -534,8 +542,8 @@ class _ChatSheetState extends ConsumerState<ChatSheet> {
                                 '${state.lastDataTopic == null ? '' : '\nLast topic: ${state.lastDataTopic}'}'
                                 '${state.lastDataError == null ? '' : '\n${state.lastDataError}'}',
                                 textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: NeoColors.textDim,
+                                style: TextStyle(
+                                  color: p.textMuted,
                                   fontSize: 11,
                                 ),
                               ),
@@ -570,8 +578,8 @@ class _ChatSheetState extends ConsumerState<ChatSheet> {
                     onPressed: _send,
                     icon: const Icon(Icons.send),
                     style: IconButton.styleFrom(
-                      backgroundColor: NeoColors.cyan,
-                      foregroundColor: const Color(0xFF03181C),
+                      backgroundColor: p.primary,
+                      foregroundColor: p.onPrimary,
                     ),
                   ),
                 ],
@@ -590,6 +598,7 @@ class _ChatBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(
@@ -599,29 +608,29 @@ class _ChatBubble extends StatelessWidget {
             children: [
               Text(
                 line.name,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: NeoColors.cyanSoft,
+                  color: p.primary,
                 ),
               ),
               if (line.isDirect) ...[
                 const SizedBox(width: 6),
-                const Text(
+                Text(
                   'direct',
-                  style: TextStyle(fontSize: 10, color: NeoColors.purple),
+                  style: TextStyle(fontSize: 10, color: p.accent),
                 ),
               ],
               const SizedBox(width: 6),
               Text(
                 '${line.at.hour.toString().padLeft(2, '0')}:'
                 '${line.at.minute.toString().padLeft(2, '0')}',
-                style: const TextStyle(fontSize: 10, color: NeoColors.textDim),
+                style: TextStyle(fontSize: 10, color: p.textMuted),
               ),
             ],
           ),
           const SizedBox(height: 2),
-          Text(line.text, style: const TextStyle(color: NeoColors.text)),
+          Text(line.text, style: TextStyle(color: p.text)),
         ],
       ),
     );
@@ -635,6 +644,8 @@ class WaitingRoomSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // `palette`, not `p`: the sheets in this file use `p` for a participant.
+    final palette = NeoTheme.of(context);
     final provider = roomControllerProvider(slug);
     final entries = ref.watch(provider.select((s) => s.waitingRoom));
     final controller = ref.read(provider.notifier);
@@ -645,11 +656,11 @@ class WaitingRoomSheet extends ConsumerWidget {
         children: [
           const _SheetHandle('Waiting room'),
           if (entries.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(32),
+            Padding(
+              padding: const EdgeInsets.all(32),
               child: Text(
                 'Nobody is waiting.',
-                style: TextStyle(color: NeoColors.textDim),
+                style: TextStyle(color: palette.textMuted),
               ),
             )
           else
@@ -657,12 +668,12 @@ class WaitingRoomSheet extends ConsumerWidget {
               (e) => ListTile(
                 title: Text(
                   e['name'] as String? ?? 'Someone',
-                  style: const TextStyle(color: NeoColors.text),
+                  style: TextStyle(color: palette.text),
                 ),
                 subtitle: e['email'] != null
                     ? Text(
                         e['email'] as String,
-                        style: const TextStyle(color: NeoColors.textDim),
+                        style: TextStyle(color: palette.textMuted),
                       )
                     : null,
                 trailing: Row(
@@ -671,8 +682,8 @@ class WaitingRoomSheet extends ConsumerWidget {
                     TextButton(
                       onPressed: () => controller.decideWaitingRoom(
                           e['id'] as String, false),
-                      child: const Text('Deny',
-                          style: TextStyle(color: NeoColors.danger)),
+                      child: Text('Deny',
+                          style: TextStyle(color: palette.danger)),
                     ),
                     FilledButton(
                       style: FilledButton.styleFrom(
@@ -703,6 +714,8 @@ class HostControlsSheet extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // `palette`, not `p`: the list below uses `p` for a participant.
+    final palette = NeoTheme.of(context);
     final provider = roomControllerProvider(slug);
     final state = ref.watch(provider);
     final controller = ref.read(provider.notifier);
@@ -736,7 +749,7 @@ class HostControlsSheet extends ConsumerWidget {
                             ? Icons.stop_circle_outlined
                             : Icons.fiber_manual_record,
                         size: 18,
-                        color: state.isRecording ? NeoColors.danger : null,
+                        color: state.isRecording ? palette.danger : null,
                       ),
                       label: Text(state.isRecording ? 'Stop' : 'Record'),
                     ),
@@ -747,10 +760,10 @@ class HostControlsSheet extends ConsumerWidget {
             const Divider(height: 24),
             Expanded(
               child: people.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text(
                         'Nobody else is in the meeting.',
-                        style: TextStyle(color: NeoColors.textDim),
+                        style: TextStyle(color: palette.textMuted),
                       ),
                     )
                   : ListView.builder(
@@ -760,10 +773,10 @@ class HostControlsSheet extends ConsumerWidget {
                         final name = p.name.isNotEmpty ? p.name : p.identity;
                         return ListTile(
                           title: Text(name,
-                              style: const TextStyle(color: NeoColors.text)),
+                              style: TextStyle(color: palette.text)),
                           subtitle: Text(
                             p.isMuted ? 'Muted' : 'Unmuted',
-                            style: const TextStyle(color: NeoColors.textDim),
+                            style: TextStyle(color: palette.textMuted),
                           ),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -781,8 +794,8 @@ class HostControlsSheet extends ConsumerWidget {
                               ),
                               IconButton(
                                 tooltip: 'Remove from meeting',
-                                icon: const Icon(Icons.person_remove,
-                                    color: NeoColors.danger),
+                                icon: Icon(Icons.person_remove,
+                                    color: palette.danger),
                                 onPressed: () =>
                                     _confirmRemove(context, controller, p, name),
                               ),
@@ -807,7 +820,6 @@ class HostControlsSheet extends ConsumerWidget {
     final yes = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: NeoColors.bg2,
         title: Text('Remove $name?'),
         content: const Text('They will be disconnected from the meeting.'),
         actions: [
@@ -816,7 +828,9 @@ class HostControlsSheet extends ConsumerWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: NeoColors.danger),
+            style: FilledButton.styleFrom(
+              backgroundColor: NeoTheme.of(context).danger,
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Remove'),
           ),
@@ -833,22 +847,23 @@ class _SheetHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: NeoColors.text,
+              color: p.text,
             ),
           ),
           const Spacer(),
           IconButton(
             onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.close, color: NeoColors.textDim),
+            icon: Icon(Icons.close, color: p.textMuted),
           ),
         ],
       ),
