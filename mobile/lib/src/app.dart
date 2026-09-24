@@ -5,8 +5,45 @@ import 'design/brand.dart';
 import 'design/neo_theme.dart';
 import 'design/themes.dart';
 import 'design/tokens.dart';
+import 'mock/sample_data.dart';
 import 'screens/app_shell.dart';
+import 'screens/history_screen.dart';
+import 'screens/home_screen.dart';
+import 'screens/notifications_screen.dart';
+import 'screens/settings_screen.dart';
 import 'screens/welcome_screen.dart';
+
+/// The showcase's four destinations.
+///
+/// Alerts is here and not in production because the design needs showing
+/// and the backend does not exist. See lib/main.dart for the real set.
+List<NeoTab> showcaseTabs(WidgetRef ref) => [
+      const NeoTab(
+        icon: Icons.home_outlined,
+        selectedIcon: Icons.home_rounded,
+        label: 'Home',
+        screen: HomeScreen(),
+      ),
+      const NeoTab(
+        icon: Icons.history_outlined,
+        selectedIcon: Icons.history_rounded,
+        label: 'History',
+        screen: HistoryScreen(),
+      ),
+      NeoTab(
+        icon: Icons.notifications_none_rounded,
+        selectedIcon: Icons.notifications_rounded,
+        label: 'Alerts',
+        screen: const NotificationsScreen(),
+        badge: sampleNotifications.where((n) => n.unread).length,
+      ),
+      const NeoTab(
+        icon: Icons.person_outline_rounded,
+        selectedIcon: Icons.person_rounded,
+        label: 'Profile',
+        screen: SettingsScreen(),
+      ),
+    ];
 
 /// The app, its themes, and the one decision the root makes.
 class NeoConferenceApp extends ConsumerWidget {
@@ -52,7 +89,7 @@ class NeoConferenceApp extends ConsumerWidget {
           ),
         );
       },
-      home: signedIn ? const AppShell() : const WelcomeScreen(),
+      home: signedIn ? AppShell(tabs: showcaseTabs(ref)) : const WelcomeScreen(),
     );
   }
 }

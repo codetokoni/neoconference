@@ -124,7 +124,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => PreJoinScreen(
-                        meeting: sampleUpcoming.first,
+                        meeting: sampleAsView(sampleUpcoming.first),
                         permissionDenied: true,
                       ),
                     ),

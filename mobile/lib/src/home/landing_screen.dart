@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../auth/auth_controller.dart';
 import '../billing/plan.dart';
 import '../billing/upgrade.dart';
 import '../design/brand.dart';
-import '../events/events_screen.dart';
-import '../settings/settings_screen.dart';
 
 /// Where the app opens: what it does, what it costs, and the way in.
 ///
@@ -20,80 +17,25 @@ class LandingScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final p = NeoTheme.of(context);
     final plan = ref.watch(planProvider);
-    final name = ref.watch(authProvider.select((s) => s.displayName));
 
-    // A purchase completes in the browser and returns on the App Link, so
-    // the confirmation is raised here — the sheet that started it closed
-    // when the browser opened.
-    ref.listen(authProvider.select((s) => s.upgradedTo), (_, upgraded) {
-      if (upgraded == null) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Upgraded to $upgraded.')));
-      ref.read(authProvider.notifier).acknowledgeUpgrade();
-    });
-
-    // A cancelled payment comes back the same way and is reported here for
-    // the same reason: the person left, went through a checkout, and
-    // returned. Reappearing in silence reads like the app lost the attempt.
-    ref.listen(authProvider.select((s) => s.error), (_, error) {
-      if (error == null) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(error)));
-      ref.read(authProvider.notifier).clearError();
-    });
+    // The upgrade and cancellation notices are raised at the root, which is
+    // always mounted. Raising them here too would show them twice when
+    // this screen happens to be the one on top when the browser returns.
 
     return Scaffold(
+      appBar: AppBar(title: const Text('Plans and pricing')),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async => ref.refresh(planProvider.future),
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      name == null ? 'NeoConference' : 'Hello, $name',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: p.text,
-                      ),
-                    ),
-                  ),
-                  // Settings rather than a bare sign-out button: one tap
-                  // next to the greeting used to end the session outright,
-                  // with nothing asking whether that was meant.
-                  IconButton(
-                    tooltip: 'Settings',
-                    icon: Icon(
-                      Icons.settings_outlined,
-                      color: p.textMuted,
-                    ),
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
               Text(
                 'Host and join meetings, with live translation, recording '
                 'and host controls.',
                 style: TextStyle(color: p.textMuted, fontSize: 13),
               ),
               const SizedBox(height: 24),
-
-              FilledButton.icon(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const EventsScreen()),
-                ),
-                icon: const Icon(Icons.videocam_rounded),
-                label: const Text('Enter meetings'),
-              ),
-              const SizedBox(height: 28),
 
               const _SectionLabel('Your plan'),
               plan.when(

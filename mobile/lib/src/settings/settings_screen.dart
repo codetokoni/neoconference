@@ -8,6 +8,7 @@ import '../billing/plan.dart';
 import '../billing/upgrade.dart';
 import '../design/brand.dart';
 import '../design/theme_picker.dart';
+import '../home/landing_screen.dart';
 import 'meeting_defaults.dart';
 
 /// Settings for the production app.
@@ -90,6 +91,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       onPressed: () => _openUpgrade(context, info),
                       child: const Text('Upgrade'),
                     ),
+            ),
+          ),
+          _Tile(
+            title: 'Plans and pricing',
+            subtitle: 'What each plan includes, in Espees',
+            trailing: Icon(Icons.chevron_right_rounded, color: p.textFaint),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const LandingScreen()),
             ),
           ),
           const SizedBox(height: 28),

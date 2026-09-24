@@ -1,27 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
-import '../mock/sample_data.dart';
-import 'meeting_screen.dart';
+import '../meetings/meeting_view.dart';
+import '../settings/meeting_defaults.dart';
+
+/// How a meeting is actually entered.
+///
+/// Production pushes the real room; the showcase pushes its sample one.
+/// The screen below is the same either way, so the pre-join people see
+/// while reviewing the design is the pre-join they get.
+typedef MeetingLauncher = void Function(
+  BuildContext context,
+  MeetingView meeting, {
+  required bool micOn,
+  required bool cameraOn,
+  required bool instant,
+});
+
+final meetingLauncherProvider = Provider<MeetingLauncher>((ref) {
+  throw UnimplementedError(
+    'meetingLauncherProvider must be overridden by the entrypoint',
+  );
+});
 
 /// The room before the room.
 ///
 /// Everything here exists so that nobody discovers a muted microphone or a
-/// covered lens in front of eleven colleagues. Mic and camera start off —
-/// arriving already broadcasting is a rude surprise on a device that is
-/// usually somewhere personal — and the state chosen here is what the
-/// meeting is entered with.
-class PreJoinScreen extends StatefulWidget {
+/// covered lens in front of eleven colleagues. Mic and camera follow the
+/// join defaults from Settings, which start off — arriving already
+/// broadcasting is a rude surprise on a device that is usually somewhere
+/// personal — and the state chosen here is what the meeting is entered
+/// with.
+class PreJoinScreen extends ConsumerStatefulWidget {
   const PreJoinScreen({
     super.key,
-    required this.meeting,
+    this.meeting,
     this.instant = false,
     this.permissionDenied = false,
   });
 
-  final SampleMeeting meeting;
+  /// Null for an instant meeting, which has no title until it exists.
+  final MeetingView? meeting;
   final bool instant;
 
   /// Shown when the OS has refused the camera or microphone. Surfaced as a
@@ -30,13 +52,31 @@ class PreJoinScreen extends StatefulWidget {
   final bool permissionDenied;
 
   @override
-  State<PreJoinScreen> createState() => _PreJoinScreenState();
+  ConsumerState<PreJoinScreen> createState() => _PreJoinScreenState();
 }
 
-class _PreJoinScreenState extends State<PreJoinScreen> {
+class _PreJoinScreenState extends ConsumerState<PreJoinScreen> {
   bool _mic = false;
   bool _camera = false;
   _AudioRoute _route = _AudioRoute.speaker;
+
+  @override
+  void initState() {
+    super.initState();
+    _applyDefaults();
+  }
+
+  /// Starts from what Settings says, so someone who turned "join muted"
+  /// off does not have to turn the microphone on at every door.
+  Future<void> _applyDefaults() async {
+    final muted = await MeetingDefaults.joinMuted();
+    final cameraOff = await MeetingDefaults.joinCameraOff();
+    if (!mounted) return;
+    setState(() {
+      _mic = !muted;
+      _camera = !cameraOff;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -115,32 +155,26 @@ class _PreJoinScreenState extends State<PreJoinScreen> {
                   ),
                   const SizedBox(height: NeoSpace.xl),
                   Text(
-                    widget.meeting.title,
+                    widget.meeting?.title ?? 'Instant meeting',
                     textAlign: TextAlign.center,
                     style: text.titleMedium,
                   ),
-                  const SizedBox(height: NeoSpace.xs),
-                  Text(
-                    widget.instant
-                        ? 'You are the host'
-                        : '${widget.meeting.host} · '
-                            '${widget.meeting.participants.length} invited',
-                    textAlign: TextAlign.center,
-                    style: text.bodySmall?.copyWith(color: p.textMuted),
-                  ),
+                  if (_subtitle case final line?) ...[
+                    const SizedBox(height: NeoSpace.xs),
+                    Text(
+                      line,
+                      textAlign: TextAlign.center,
+                      style: text.bodySmall?.copyWith(color: p.textMuted),
+                    ),
+                  ],
                   const SizedBox(height: NeoSpace.xl),
                   FilledButton(
-                    onPressed: () => Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(
-                        builder: (_) => MeetingScreen(
-                          meeting: widget.meeting,
-                          startMuted: !_mic,
-                          startCameraOff: !_camera,
-                          myRole: widget.instant
-                              ? SampleRole.owner
-                              : SampleRole.attendee,
-                        ),
-                      ),
+                    onPressed: () => ref.read(meetingLauncherProvider)(
+                      context,
+                      widget.meeting ?? _instantMeeting,
+                      micOn: _mic,
+                      cameraOn: _camera,
+                      instant: widget.instant,
                     ),
                     child: Text(
                       widget.instant ? 'Start meeting' : 'Join now',
@@ -155,6 +189,29 @@ class _PreJoinScreenState extends State<PreJoinScreen> {
       ),
     );
   }
+
+  /// What is known about the meeting, and nothing more.
+  ///
+  /// The host and the invited count come from sample data in the showcase
+  /// and are absent from /api/events/mine, so a real meeting shows its
+  /// code rather than "null · 0 invited".
+  String? get _subtitle {
+    if (widget.instant) return 'You are the host';
+    final m = widget.meeting;
+    if (m == null) return null;
+    final parts = <String>[
+      if (m.host != null) m.host!,
+      if (m.knownParticipants case final n?) '$n invited',
+    ];
+    return parts.isEmpty ? m.code : parts.join(' · ');
+  }
+
+  MeetingView get _instantMeeting => const MeetingView(
+        title: 'Instant meeting',
+        code: '',
+        status: MeetingStatus.live,
+        canJoin: true,
+      );
 
   void _pickRoute() {
     neoSheet(
@@ -253,7 +310,7 @@ class _Preview extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const NeoAvatar(name: 'Adaeze Okonkwo', size: 84),
+                  const NeoAvatar(name: 'You', size: 84),
                   const SizedBox(height: NeoSpace.lg),
                   Text(
                     'Camera is off',

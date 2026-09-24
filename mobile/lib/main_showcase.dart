@@ -18,6 +18,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'src/app.dart';
+import 'src/meetings/meeting_board.dart';
+import 'src/mock/sample_data.dart';
+import 'src/screens/history_screen.dart';
+import 'src/screens/home_screen.dart';
+import 'src/screens/join_sheet.dart';
+import 'src/screens/meeting_screen.dart';
+import 'src/screens/prejoin_screen.dart';
 
 /// Where the showcase keeps what it remembers.
 ///
@@ -36,5 +43,43 @@ void main() {
   // Must happen before anything calls getInstance, which the theme
   // controller does on its first build.
   SharedPreferences.setPrefix(showcasePrefix);
-  runApp(const ProviderScope(child: NeoConferenceApp()));
+  runApp(
+    ProviderScope(
+      // The screens are shared with production and read their data from
+      // providers. These are the overrides that make them show sample
+      // meetings instead of an account's, and they exist only in this
+      // file — nothing under lib/src/screens imports the mock.
+      overrides: [
+        meetingBoardProvider.overrideWith((ref) async => sampleBoard),
+        nowProvider.overrideWithValue(sampleNow),
+        homeGreetingNameProvider.overrideWithValue('Adaeze'),
+        recordingsAvailableProvider.overrideWithValue(true),
+        joinSuggestionsProvider.overrideWithValue(
+          sampleUpcoming.take(2).map(sampleAsView).toList(growable: false),
+        ),
+        meetingLauncherProvider.overrideWithValue(_showSampleMeeting),
+      ],
+      child: const NeoConferenceApp(),
+    ),
+  );
+}
+
+/// The showcase enters its own sample meeting rather than a real room.
+void _showSampleMeeting(
+  BuildContext context,
+  meeting, {
+  required bool micOn,
+  required bool cameraOn,
+  required bool instant,
+}) {
+  Navigator.of(context).pushReplacement(
+    MaterialPageRoute(
+      builder: (_) => MeetingScreen(
+        meeting: sampleUpcoming.first,
+        startMuted: !micOn,
+        startCameraOff: !cameraOn,
+        myRole: instant ? SampleRole.owner : SampleRole.attendee,
+      ),
+    ),
+  );
 }
