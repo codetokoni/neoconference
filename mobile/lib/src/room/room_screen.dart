@@ -45,35 +45,44 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       controller.clearMessage();
     });
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
-        final leave = !state.inRoom || await _confirmLeave(context);
-        if (leave && context.mounted) {
-          await controller.leave();
-          if (context.mounted) Navigator.of(context).pop();
-        }
-      },
-      child: Theme(
-        data: neoThemeData(p),
-        child: NeoTheme(
-          palette: p,
-          child: Scaffold(
-            backgroundColor: p.bg,
-            body: SafeArea(
-              child: state.inRoom
-                  ? _InMeeting(
-                      slug: widget.slug,
-                      title: widget.title,
-                      state: state,
-                      controller: controller,
-                    )
-                  : _Gate(
-                      title: widget.title,
-                      state: state,
-                      onRetry: controller.join,
-                    ),
+    return Theme(
+      data: neoThemeData(p),
+      child: NeoTheme(
+        palette: p,
+        // The Builder is what makes the leave confirmation dark.
+        //
+        // A route captures the themes between the context it is given and
+        // the Navigator. This State's own context sits above the two
+        // wrappers, so passing it would hand showDialog the app's palette
+        // and put a white dialog over the video — which is exactly what it
+        // did on the phone before this Builder existed.
+        child: Builder(
+          builder: (context) => PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, _) async {
+              if (didPop) return;
+              final leave = !state.inRoom || await _confirmLeave(context);
+              if (leave && context.mounted) {
+                await controller.leave();
+                if (context.mounted) Navigator.of(context).pop();
+              }
+            },
+            child: Scaffold(
+              backgroundColor: p.bg,
+              body: SafeArea(
+                child: state.inRoom
+                    ? _InMeeting(
+                        slug: widget.slug,
+                        title: widget.title,
+                        state: state,
+                        controller: controller,
+                      )
+                    : _Gate(
+                        title: widget.title,
+                        state: state,
+                        onRetry: controller.join,
+                      ),
+              ),
             ),
           ),
         ),

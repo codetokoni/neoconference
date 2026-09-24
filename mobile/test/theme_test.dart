@@ -122,6 +122,70 @@ void main() {
     expect(seenInSheet, isNot(NeoPalette.light));
   });
 
+  testWidgets('a context above the override does not carry it', (tester) async {
+    // Found on a real phone, not here: the meeting wrapped itself in a dark
+    // palette but asked for its leave confirmation with the State's own
+    // context, which sits above that wrapper. The dialog came back white
+    // over the video.
+    //
+    // This pins the mechanism rather than the bug — a route captures the
+    // themes between the context it is handed and the Navigator, so a
+    // context above the override never sees it. RoomScreen fixes it with a
+    // Builder; this is the assertion that says why one is needed.
+    late NeoPalette fromAbove;
+    late NeoPalette fromBelow;
+    final nav = GlobalKey<NavigatorState>();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: nav,
+        theme: neoThemeData(NeoPalette.light),
+        home: Builder(
+          builder: (aboveContext) => NeoTheme(
+            palette: NeoPalette.dark,
+            child: Builder(
+              builder: (belowContext) => Column(
+                children: [
+                  ElevatedButton(
+                    onPressed: () => showDialog<void>(
+                      context: aboveContext,
+                      builder: (context) {
+                        fromAbove = NeoTheme.of(context);
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                    child: const Text('above'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () => showDialog<void>(
+                      context: belowContext,
+                      builder: (context) {
+                        fromBelow = NeoTheme.of(context);
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                    child: const Text('below'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('above'));
+    await tester.pumpAndSettle();
+    nav.currentState!.pop();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('below'));
+    await tester.pumpAndSettle();
+
+    expect(fromAbove, NeoPalette.light, reason: 'above the override');
+    expect(fromBelow, NeoPalette.dark, reason: 'below the override');
+  });
+
   test('every theme option a person can pick resolves to a palette', () {
     for (final option in neoThemeOptions) {
       // "Match system" is the one without a palette of its own.
