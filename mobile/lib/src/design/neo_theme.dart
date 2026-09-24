@@ -125,7 +125,10 @@ ThemeData neoThemeData(NeoPalette p) {
 
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: p.isDark ? const Color(0xFF67E8F9) : p.primary,
+        // The palette's own primary, not a fixed cyan: with several dark
+        // themes a hard-coded brand colour leaves Amethyst and Ocean with
+        // cyan links they never asked for.
+        foregroundColor: p.primary,
         minimumSize: const Size(NeoSpace.minTouch, 52),
         padding: const EdgeInsets.symmetric(horizontal: NeoSpace.xxl),
         side: BorderSide(color: p.borderStrong),
@@ -138,7 +141,10 @@ ThemeData neoThemeData(NeoPalette p) {
 
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
-        foregroundColor: p.isDark ? const Color(0xFF67E8F9) : p.primary,
+        // The palette's own primary, not a fixed cyan: with several dark
+        // themes a hard-coded brand colour leaves Amethyst and Ocean with
+        // cyan links they never asked for.
+        foregroundColor: p.primary,
         minimumSize: const Size(NeoSpace.minTouch, NeoSpace.minTouch),
         textStyle: text.labelMedium,
       ),
