@@ -474,9 +474,8 @@ class _ChatSheetState extends ConsumerState<ChatSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final chat = ref.watch(
-      roomControllerProvider(widget.slug).select((s) => s.chat),
-    );
+    final state = ref.watch(roomControllerProvider(widget.slug));
+    final chat = state.chat;
 
     // Keep the newest message in view as they arrive.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -494,12 +493,47 @@ class _ChatSheetState extends ConsumerState<ChatSheet> {
         child: Column(
           children: [
             const _SheetHandle('Chat'),
+            if (state.chatError != null)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0x22F87171),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0x55F87171)),
+                ),
+                child: Text(
+                  state.chatError!,
+                  style: const TextStyle(color: NeoColors.text, fontSize: 12),
+                ),
+              ),
             Expanded(
               child: chat.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No messages yet.',
-                        style: TextStyle(color: NeoColors.textDim),
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'No messages yet.',
+                              style: TextStyle(color: NeoColors.textDim),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '${state.dataPacketsSeen} data packets received, '
+                              '${state.chatPacketsSeen} of them chat.'
+                              '${state.lastDataTopic == null ? '' : '\nLast topic: ${state.lastDataTopic}'}'
+                              '${state.lastDataError == null ? '' : '\n${state.lastDataError}'}',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: NeoColors.textDim,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     )
                   : ListView.builder(

@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
 import '../events/event.dart';
@@ -91,6 +93,11 @@ class RoomState {
     this.waitingRoom = const [],
     this.recordingEgressId,
     this.unreadChat = 0,
+    this.chatError,
+    this.chatPacketsSeen = 0,
+    this.dataPacketsSeen = 0,
+    this.lastDataTopic,
+    this.lastDataError,
   });
 
   final JoinPhase phase;
@@ -111,6 +118,22 @@ class RoomState {
   final String? recordingEgressId;
   final int unreadChat;
 
+  /// Why the chat is empty, when it is empty for a reason.
+  final String? chatError;
+
+  /// How many `neo-chat` packets have arrived over the data channel.
+  ///
+  /// Shown in the chat sheet because "nobody has typed" and "messages are
+  /// arriving but not being displayed" look identical otherwise, and they
+  /// need opposite fixes.
+  final int chatPacketsSeen;
+
+  /// Every data packet that reached the app, whatever its topic and whether
+  /// or not it could be decoded, plus what the last one looked like.
+  final int dataPacketsSeen;
+  final String? lastDataTopic;
+  final String? lastDataError;
+
   bool get canManage => role == 'host' || role == 'cohost';
   bool get isRecording => recordingEgressId != null;
   bool get inRoom => phase == JoinPhase.connected;
@@ -129,8 +152,14 @@ class RoomState {
     List<Map<String, dynamic>>? waitingRoom,
     String? recordingEgressId,
     int? unreadChat,
+    String? chatError,
+    int? chatPacketsSeen,
+    int? dataPacketsSeen,
+    String? lastDataTopic,
+    String? lastDataError,
     bool clearMessage = false,
     bool clearRecording = false,
+    bool clearChatError = false,
   }) =>
       RoomState(
         phase: phase ?? this.phase,
@@ -147,6 +176,11 @@ class RoomState {
         recordingEgressId:
             clearRecording ? null : (recordingEgressId ?? this.recordingEgressId),
         unreadChat: unreadChat ?? this.unreadChat,
+        chatError: clearChatError ? null : (chatError ?? this.chatError),
+        chatPacketsSeen: chatPacketsSeen ?? this.chatPacketsSeen,
+        dataPacketsSeen: dataPacketsSeen ?? this.dataPacketsSeen,
+        lastDataTopic: lastDataTopic ?? this.lastDataTopic,
+        lastDataError: lastDataError ?? this.lastDataError,
       );
 }
 
@@ -172,6 +206,7 @@ class RoomController extends StateNotifier<RoomState> {
   EventsListener<RoomEvent>? _listener;
   Timer? _knockTimer;
   Timer? _hostTimer;
+  Timer? _chatTimer;
   bool _disposed = false;
 
   Future<void> join() async {
@@ -191,21 +226,82 @@ class RoomController extends StateNotifier<RoomState> {
     }
   }
 
+  /// Distinguishes this phone from the same person's other devices.
+  ///
+  /// The token route sets the LiveKit identity to the Clerk user id, plus
+  /// `#nonce` when one is given. LiveKit disconnects the older participant
+  /// when a duplicate identity joins, so without a nonce a person signed in
+  /// on both their phone and a browser kicks themselves out of the meeting —
+  /// each client alone in the room, publishing to nobody, with no error. The
+  /// web client sends a per-tab nonce for exactly this reason.
+  ///
+  /// Kept in storage rather than generated per join, so that rejoining
+  /// replaces this phone's own stale participant instead of piling up
+  /// ghosts beside it.
+  String? _nonce;
+
+  Future<String?> _ensureNonce() async {
+    if (_nonce != null) return _nonce;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      var value = prefs.getString(_nonceKey);
+      if (value == null || value.isEmpty) {
+        // The token route accepts [A-Za-z0-9_-]{1,32}.
+        const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+        final rng = Random.secure();
+        value = List.generate(16, (_) => alphabet[rng.nextInt(alphabet.length)])
+            .join();
+        await prefs.setString(_nonceKey, value);
+      }
+      _nonce = value;
+    } catch (_) {
+      // Storage refused. A nonce that lasts only this run is still far
+      // better than none, which would collide with the person's browser.
+      const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+      final rng = Random.secure();
+      _nonce =
+          List.generate(16, (_) => alphabet[rng.nextInt(alphabet.length)]).join();
+    }
+    return _nonce;
+  }
+
+  static const _nonceKey = 'neo.livekit.nonce';
+
+  /// The LiveKit room to join, which is not always the slug.
+  ///
+  /// An event carries its own `livekitRoom`, and middleware sends a browser
+  /// to `/room/<livekitRoom>?event=<slug>`. Joining by the slug instead puts
+  /// this app in a different room: it connects, publishes happily, and hears
+  /// nobody — no error anywhere, because an empty room is a valid room.
+  String? _livekitRoom;
+
   Future<void> _resolveRole() async {
     try {
       final body = await api.get('/api/events/role', {'slug': slug});
-      final role = (body is Map ? body['role'] : null) as String?;
+      if (body is! Map) return;
+      final role = body['role'] as String?;
       if (role != null) state = state.copyWith(role: role);
+      final room = body['livekitRoom'] as String?;
+      if (room != null && room.isNotEmpty) _livekitRoom = room;
     } on ApiException {
-      // Role is a convenience for showing host controls. The server checks
-      // it again on every action, so failing to read it is not fatal.
+      // Role is a convenience for showing host controls; the server checks
+      // it again on every action. The room name is not a convenience, so if
+      // this failed the join below falls back to the slug and says as much
+      // rather than silently landing somewhere else.
     }
   }
 
   /// Asks for a LiveKit token. Returns null when a gate answered instead,
   /// having already moved the state to the right waiting screen.
   Future<Map<String, dynamic>?> _token() async {
-    final body = await api.get('/api/livekit/token', {'room': slug, 'event': slug});
+    // `event` stays the slug — that is what the gating and role lookups key
+    // on — while `room` is the LiveKit room the browser also joins.
+    final nonce = await _ensureNonce();
+    final body = await api.get('/api/livekit/token', {
+      'room': _livekitRoom ?? slug,
+      'event': slug,
+      'nonce': ?nonce,
+    });
     if (body is! Map || body['token'] is! String || body['wsUrl'] is! String) {
       throw const ApiException(
         status: 500,
@@ -303,6 +399,7 @@ class RoomController extends StateNotifier<RoomState> {
     // Join muted with the camera off. Arriving already broadcasting is a
     // rude surprise on a phone, which is likely to be somewhere personal.
     await _loadChatHistory();
+    _startChatPolling();
     if (state.canManage) unawaited(refreshWaitingRoom());
   }
 
@@ -352,20 +449,45 @@ class RoomController extends StateNotifier<RoomState> {
   }
 
   void _onData(DataReceivedEvent event) {
+    // Counted here, before anything can go wrong, because every later step
+    // is a place a packet can vanish: a decode that throws, a topic that
+    // does not match, a shape that is not what was expected. A counter
+    // further down cannot tell "nothing arrived" from "something arrived
+    // and I dropped it", and those need opposite fixes.
+    final topic =
+        (event.topic?.isNotEmpty ?? false) ? event.topic! : '(no topic)';
+    // Also to logcat, so this can be read off a cable instead of asking
+    // someone in a meeting to squint at a number on their screen.
+    debugPrint('[neo-data] topic=$topic bytes=${event.data.length} '
+        'from=${event.participant?.identity}');
+    state = state.copyWith(
+      dataPacketsSeen: state.dataPacketsSeen + 1,
+      lastDataTopic: topic,
+    );
+
     Map<String, dynamic> payload;
     try {
       payload = jsonDecode(utf8.decode(event.data)) as Map<String, dynamic>;
-    } catch (_) {
-      return; // Not ours, or malformed. Never crash a meeting over a packet.
+    } catch (e) {
+      state = state.copyWith(lastDataError: 'decode failed: $e');
+      return; // Never crash a meeting over one bad packet.
     }
 
     switch (event.topic) {
       case Topics.chat:
         final line = ChatLine.fromJson(payload);
-        if (state.chat.any((c) => c.id == line.id)) return;
+        // Counted before the duplicate check, so the count answers "did the
+        // packet arrive at all", which is the question being asked when the
+        // chat looks empty.
+        final seen = state.chatPacketsSeen + 1;
+        if (state.chat.any((c) => c.id == line.id)) {
+          state = state.copyWith(chatPacketsSeen: seen);
+          return;
+        }
         state = state.copyWith(
           chat: [...state.chat, line],
           unreadChat: state.unreadChat + 1,
+          chatPacketsSeen: seen,
         );
       case Topics.reactions:
         final emoji = _emojiFor(payload['k'] as String?);
@@ -460,7 +582,7 @@ class RoomController extends StateNotifier<RoomState> {
       'name': me.name.isNotEmpty ? me.name : 'Someone',
       'on': raising,
       'ts': DateTime.now().millisecondsSinceEpoch,
-    }, reliable: true);
+    }, reliable: false);
     final hands = Map<String, String>.from(state.raisedHands);
     if (raising) {
       hands[me.identity] = me.name.isNotEmpty ? me.name : 'Someone';
@@ -490,42 +612,121 @@ class RoomController extends StateNotifier<RoomState> {
     try {
       final body = await api.post('/api/events/$slug/chat', {'text': trimmed});
       final saved = (body is Map ? body['message'] : null) as Map<String, dynamic>?;
-      if (saved == null) return;
-      await _publish(Topics.chat, saved, reliable: true);
-      state = state.copyWith(chat: [...state.chat, ChatLine.fromJson(saved)]);
+      if (saved == null) {
+        state = state.copyWith(
+          chatError: 'The server accepted the message but returned nothing.',
+        );
+        return;
+      }
+      await _publish(Topics.chat, saved, reliable: false);
+      state = state.copyWith(
+        chat: [...state.chat, ChatLine.fromJson(saved)],
+        clearChatError: true,
+      );
     } on ApiException catch (e) {
-      state = state.copyWith(message: 'Message not sent: ${e.message}');
+      // Reported inside the chat sheet, not as a snackbar: the sheet covers
+      // the screen the snackbar would appear on, so nobody would see it.
+      state = state.copyWith(
+        chatError: 'Not sent (HTTP ${e.status}): ${e.message}',
+      );
+    } catch (e) {
+      state = state.copyWith(chatError: 'Not sent: $e');
     }
   }
 
-  Future<void> _loadChatHistory() async {
+  /// Picks up messages the data channel could not deliver.
+  ///
+  /// A browser publishes chat on the reliable channel, which this app
+  /// cannot receive (see _publish). Every message is persisted server-side
+  /// though, so polling that history is what actually makes chat work in
+  /// this direction. Merged by id, so a message that did arrive over the
+  /// data channel is not shown twice.
+  void _startChatPolling() {
+    _chatTimer ??= Timer.periodic(
+      const Duration(seconds: 4),
+      (_) => unawaited(_loadChatHistory(merge: true)),
+    );
+  }
+
+  Future<void> _loadChatHistory({bool merge = false}) async {
     try {
       final body = await api.get('/api/events/$slug/chat');
       final list = (body is Map ? body['messages'] : null) as List? ?? const [];
+      final fetched = list
+          .whereType<Map<String, dynamic>>()
+          .map(ChatLine.fromJson)
+          .toList();
+
+      if (!merge) {
+        state = state.copyWith(
+          chat: fetched,
+          unreadChat: 0,
+          clearChatError: true,
+        );
+        return;
+      }
+
+      final known = {for (final line in state.chat) line.id};
+      final added = fetched.where((line) => !known.contains(line.id)).toList();
+      if (added.isEmpty) return;
+      final combined = [...state.chat, ...added]
+        ..sort((a, b) => a.at.compareTo(b.at));
       state = state.copyWith(
-        chat: list
-            .whereType<Map<String, dynamic>>()
-            .map(ChatLine.fromJson)
-            .toList(),
-        unreadChat: 0,
+        chat: combined,
+        unreadChat: state.unreadChat + added.length,
+        clearChatError: true,
       );
-    } on ApiException {
-      // An empty history is better than refusing to show the room.
+    } on ApiException catch (e) {
+      // Say so. A silently swallowed failure here looks exactly like a
+      // meeting where nobody has spoken yet, which is the one thing that
+      // makes this impossible to diagnose from the outside.
+      state = state.copyWith(
+        chatError: 'Could not load earlier messages '
+            '(HTTP ${e.status}${e.code.isEmpty ? '' : ', ${e.code}'}).',
+      );
+    } catch (e) {
+      state = state.copyWith(chatError: 'Could not load earlier messages: $e');
     }
   }
 
+  /// Everything this app publishes goes out on the lossy channel.
+  ///
+  /// Not a preference — a workaround. In this LiveKit Flutter SDK (2.13.0)
+  /// the reliable data channel does not work against LiveKit Cloud: a
+  /// browser's reliable packets never reach this app's handler, while its
+  /// lossy ones arrive fine, and the same split appears in the other
+  /// direction. Two browsers talking to each other over the reliable
+  /// channel work perfectly, so the fault is on this side. I could not
+  /// isolate it any further from a release build, where Dart logging is
+  /// stripped.
+  ///
+  /// Lossy delivery can drop a packet. For chat that is covered: every
+  /// message is also persisted over HTTP and this app polls that history,
+  /// so a dropped packet costs latency, not the message. For a raised hand
+  /// it is not covered, and raising a hand again re-sends it.
   Future<void> _publish(
     String topic,
     Map<String, dynamic> payload, {
     required bool reliable,
   }) async {
     final me = room.localParticipant;
-    if (me == null) return;
-    await me.publishData(
-      utf8.encode(jsonEncode(payload)),
-      reliable: reliable,
-      topic: topic,
-    );
+    if (me == null) {
+      debugPrint('[neo-data] publish $topic skipped: no local participant');
+      return;
+    }
+    try {
+      await me.publishData(
+        utf8.encode(jsonEncode(payload)),
+        reliable: reliable,
+        topic: topic,
+      );
+      debugPrint('[neo-data] published topic=$topic reliable=$reliable');
+    } catch (e) {
+      // A publish that fails quietly is why chat could look like a receive
+      // problem when it was a send problem.
+      debugPrint('[neo-data] publish topic=$topic FAILED: $e');
+      rethrow;
+    }
   }
 
   void markChatRead() => state = state.copyWith(unreadChat: 0);
@@ -622,6 +823,7 @@ class RoomController extends StateNotifier<RoomState> {
     _disposed = true;
     _knockTimer?.cancel();
     _hostTimer?.cancel();
+    _chatTimer?.cancel();
     _listener?.dispose();
     unawaited(room.disconnect().then((_) => room.dispose()));
     super.dispose();

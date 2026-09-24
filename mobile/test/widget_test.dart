@@ -93,6 +93,44 @@ void main() {
     });
   });
 
+  group('chat merge', () {
+    // The app receives the same message twice by design: once over the data
+    // channel when that works, and again from the polled history that exists
+    // because it often does not. Showing it twice would be the obvious way
+    // for that workaround to go wrong.
+    ChatLine line(String id, int minute) => ChatLine.fromJson({
+          'id': id,
+          'name': 'Ada',
+          'text': id,
+          'ts': '2026-09-24T09:${minute.toString().padLeft(2, '0')}:00.000Z',
+        });
+
+    List<ChatLine> merge(List<ChatLine> have, List<ChatLine> fetched) {
+      final known = {for (final l in have) l.id};
+      final added = fetched.where((l) => !known.contains(l.id)).toList();
+      if (added.isEmpty) return have;
+      return [...have, ...added]..sort((a, b) => a.at.compareTo(b.at));
+    }
+
+    test('a message already seen live is not added again', () {
+      final have = [line('a', 1), line('b', 2)];
+      final merged = merge(have, [line('a', 1), line('b', 2)]);
+      expect(merged.map((l) => l.id), ['a', 'b']);
+    });
+
+    test('a message only the history has is added', () {
+      final merged = merge([line('a', 1)], [line('a', 1), line('b', 2)]);
+      expect(merged.map((l) => l.id), ['a', 'b']);
+    });
+
+    test('a late arrival lands in time order, not at the end', () {
+      // The data channel can deliver a newer message before the poll returns
+      // an older one, so appending blindly would show them out of order.
+      final merged = merge([line('c', 3)], [line('a', 1), line('c', 3)]);
+      expect(merged.map((l) => l.id), ['a', 'c']);
+    });
+  });
+
   group('RoomState', () {
     test('only a host or co-host sees host controls', () {
       for (final role in ['host', 'cohost']) {
