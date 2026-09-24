@@ -23,6 +23,16 @@ export type PendingPayment = {
   status: PendingPaymentStatus;
   paymentRef: string;
   createdAt: number;
+  /**
+   * Where to send the buyer once the payment resolves.
+   *
+   * The mobile app starts a purchase by opening the hosted eSPees page in
+   * the phone's browser, so the default redirect to /dashboard would strand
+   * them on a web page instead of returning them to the app. Set to the
+   * app's App Link when the purchase started there; absent means the web,
+   * which is the existing behaviour.
+   */
+  returnTo?: string;
 };
 
 function key(nonce: string): string {
@@ -49,6 +59,7 @@ export async function createPendingPayment(input: {
   plan: EspeesPlan;
   billingCycle: BillingCycle;
   paymentRef?: string;
+  returnTo?: string;
 }): Promise<void> {
   const record: PendingPayment = {
     nonce: input.nonce,
@@ -58,6 +69,7 @@ export async function createPendingPayment(input: {
     status: "pending",
     paymentRef: input.paymentRef || "",
     createdAt: Date.now(),
+    returnTo: input.returnTo,
   };
   await kv.set(key(input.nonce), record, { ex: TTL_SECONDS });
 }

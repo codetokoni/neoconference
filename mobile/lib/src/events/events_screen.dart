@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/auth_controller.dart';
 import '../core/theme.dart';
 import '../room/room_screen.dart';
+import 'create_meeting_screen.dart';
 import 'event.dart';
 
 class EventsScreen extends ConsumerWidget {
@@ -13,6 +14,17 @@ class EventsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final events = ref.watch(eventsProvider);
     final name = ref.watch(authProvider.select((s) => s.displayName));
+
+    // A plan purchase finishes in the browser and comes back on the App
+    // Link, so the confirmation has to be raised here rather than by the
+    // sheet that started it — that sheet closed when the browser opened.
+    ref.listen(authProvider.select((s) => s.upgradedTo), (_, plan) {
+      if (plan == null) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text('Upgraded to $plan.')));
+      ref.read(authProvider.notifier).acknowledgeUpgrade();
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -35,12 +47,30 @@ class EventsScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: NeoColors.cyan,
-        foregroundColor: const Color(0xFF03181C),
-        onPressed: () => _joinByCode(context),
-        icon: const Icon(Icons.login),
-        label: const Text('Join with a link'),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'join',
+            backgroundColor: NeoColors.bg2,
+            foregroundColor: NeoColors.cyanSoft,
+            onPressed: () => _joinByCode(context),
+            icon: const Icon(Icons.login),
+            label: const Text('Join with a link'),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton.extended(
+            heroTag: 'create',
+            backgroundColor: NeoColors.cyan,
+            foregroundColor: const Color(0xFF03181C),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const CreateMeetingScreen()),
+            ),
+            icon: const Icon(Icons.add),
+            label: const Text('New meeting'),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: () async => ref.refresh(eventsProvider.future),

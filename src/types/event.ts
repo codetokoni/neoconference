@@ -184,6 +184,23 @@ export interface NeoEvent {
   ownerEmail?: string;
 
   visibility: EventVisibility;
+
+  /**
+   * Language codes this meeting offers live translation into, e.g.
+   * ['es', 'fr', 'yo'].
+   *
+   * Chosen by the host when the meeting is created, and only offered to
+   * attendees in the room — before this existed, the in-room picker listed
+   * every language the browser could speak, whether or not the host wanted
+   * the meeting translated at all. Empty or absent means no translation.
+   *
+   * Setting it requires a plan whose limits allow translation; see
+   * PlanLimits.translation. The check lives on the server, in the create
+   * route, because a client that hides the picker has not enforced
+   * anything.
+   */
+  languages?: string[];
+
   /** When set, attendees must enter this password before joining. */
   password?: string;
   /** FRS §6 optional PIN for End Meeting for Everyone. Stored as a scrypt
