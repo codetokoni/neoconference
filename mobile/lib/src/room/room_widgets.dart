@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -520,18 +521,25 @@ class _ChatSheetState extends ConsumerState<ChatSheet> {
                               'No messages yet.',
                               style: TextStyle(color: NeoColors.textDim),
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              '${state.dataPacketsSeen} data packets received, '
-                              '${state.chatPacketsSeen} of them chat.'
-                              '${state.lastDataTopic == null ? '' : '\nLast topic: ${state.lastDataTopic}'}'
-                              '${state.lastDataError == null ? '' : '\n${state.lastDataError}'}',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: NeoColors.textDim,
-                                fontSize: 11,
+                            // The packet counters are a debugging instrument
+                            // for the unresolved reliable-data-channel
+                            // problem (see RoomController._publish), not
+                            // something to put in front of someone waiting
+                            // for a colleague to say hello.
+                            if (kDebugMode) ...[
+                              const SizedBox(height: 6),
+                              Text(
+                                '${state.dataPacketsSeen} data packets, '
+                                '${state.chatPacketsSeen} chat.'
+                                '${state.lastDataTopic == null ? '' : '\nLast topic: ${state.lastDataTopic}'}'
+                                '${state.lastDataError == null ? '' : '\n${state.lastDataError}'}',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: NeoColors.textDim,
+                                  fontSize: 11,
+                                ),
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       ),
