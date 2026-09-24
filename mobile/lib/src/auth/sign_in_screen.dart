@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/theme.dart';
+import '../design/brand.dart';
 import 'auth_controller.dart';
 
 class SignInScreen extends ConsumerStatefulWidget {
@@ -123,11 +123,14 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                               .signInWithProvider('neoemail'),
                     ),
                     const SizedBox(height: 28),
-                    const Text(
+                    Text(
                       'New here? Create your account on neoconference.app, '
                       'then sign in.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: NeoColors.textDim, fontSize: 13),
+                      style: TextStyle(
+                        color: NeoTheme.of(context).textMuted,
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 ),
@@ -145,36 +148,19 @@ class _Wordmark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     return Column(
       children: [
-        Container(
-          height: 72,
-          width: 72,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: const LinearGradient(
-              colors: [NeoColors.cyan, NeoColors.purple],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          child: const Icon(Icons.videocam_rounded,
-              size: 38, color: Color(0xFF03181C)),
-        ),
+        // The site's own mark, rather than the video-camera stand-in that
+        // used to sit here. The glow belongs on a dark surface and reads as
+        // a smudge on a light one, so it follows the palette.
+        NeoLogoMark(size: 72, glow: p.isDark),
         const SizedBox(height: 20),
-        const Text(
-          'NeoConference',
-          style: TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w700,
-            color: NeoColors.text,
-            letterSpacing: -0.5,
-          ),
-        ),
+        const NeoWordmark(fontSize: 26),
         const SizedBox(height: 6),
-        const Text(
+        Text(
           'Join and run your meetings',
-          style: TextStyle(color: NeoColors.textDim),
+          style: TextStyle(color: p.textMuted),
         ),
       ],
     );
@@ -186,14 +172,17 @@ class _Or extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    return Row(
       children: [
-        Expanded(child: Divider()),
+        const Expanded(child: Divider()),
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12),
-          child: Text('or', style: TextStyle(color: NeoColors.textDim)),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            'or',
+            style: TextStyle(color: NeoTheme.of(context).textMuted),
+          ),
         ),
-        Expanded(child: Divider()),
+        const Expanded(child: Divider()),
       ],
     );
   }
@@ -212,14 +201,15 @@ class _ProviderButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     return OutlinedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon, size: 20),
       label: Text(label),
       style: OutlinedButton.styleFrom(
-        foregroundColor: NeoColors.cyanSoft,
+        foregroundColor: p.primary,
         minimumSize: const Size.fromHeight(50),
-        side: const BorderSide(color: Color(0x5567E8F9)),
+        side: BorderSide(color: p.borderStrong),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
@@ -232,22 +222,23 @@ class _ErrorNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0x22F87171),
+        color: p.danger.withValues(alpha: 0.13),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0x55F87171)),
+        border: Border.all(color: p.danger.withValues(alpha: 0.33)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.error_outline, color: NeoColors.danger, size: 20),
+          Icon(Icons.error_outline, color: p.danger, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
-              style: const TextStyle(color: NeoColors.text, fontSize: 13),
+              style: TextStyle(color: p.text, fontSize: 13),
             ),
           ),
         ],

@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../billing/upgrade.dart';
 import '../core/api_client.dart';
-import '../core/theme.dart';
+import '../design/brand.dart';
 import '../room/room_screen.dart';
 import 'event.dart';
 import 'languages.dart';
@@ -93,13 +93,11 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
       // problem — so offer the way out rather than just reporting a wall.
       if (e.status == 402 && e.code == 'plan_upgrade_required') {
         if (!mounted) return;
+        // Colour and shape come from bottomSheetTheme, so that a chosen
+        // theme reaches the sheet as well as the screen behind it.
         showModalBottomSheet<void>(
           context: context,
           isScrollControlled: true,
-          backgroundColor: NeoColors.bg1,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
           builder: (_) => UpgradeSheet(
             reason: e.message,
             currentPlan: e.body['plan'] as String?,
@@ -118,6 +116,7 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('New meeting')),
       body: Form(
@@ -151,33 +150,31 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
               contentPadding: EdgeInsets.zero,
               value: _waitingRoom,
               onChanged: (v) => setState(() => _waitingRoom = v),
-              title: const Text('Waiting room',
-                  style: TextStyle(color: NeoColors.text)),
-              subtitle: const Text(
+              title: Text('Waiting room', style: TextStyle(color: p.text)),
+              subtitle: Text(
                 'Every join has to be admitted by a host.',
-                style: TextStyle(color: NeoColors.textDim, fontSize: 12),
+                style: TextStyle(color: p.textMuted, fontSize: 12),
               ),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               value: _waitForHost,
               onChanged: (v) => setState(() => _waitForHost = v),
-              title: const Text('Wait for a host',
-                  style: TextStyle(color: NeoColors.text)),
-              subtitle: const Text(
+              title: Text('Wait for a host', style: TextStyle(color: p.text)),
+              subtitle: Text(
                 'Nobody enters before a host arrives.',
-                style: TextStyle(color: NeoColors.textDim, fontSize: 12),
+                style: TextStyle(color: p.textMuted, fontSize: 12),
               ),
             ),
             const SizedBox(height: 20),
             const _SectionLabel('Live translation'),
-            const Padding(
-              padding: EdgeInsets.only(bottom: 10),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
               child: Text(
                 'Pick the languages this meeting will be translated into. '
                 'Attendees choose from these in the room. Available on Pro '
                 'and above.',
-                style: TextStyle(color: NeoColors.textDim, fontSize: 12),
+                style: TextStyle(color: p.textMuted, fontSize: 12),
               ),
             ),
             Wrap(
@@ -195,14 +192,11 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
                         _languages.remove(lang.code);
                       }
                     }),
-                    backgroundColor: NeoColors.bg2,
-                    selectedColor: const Color(0x3322D3EE),
-                    checkmarkColor: NeoColors.cyan,
-                    labelStyle: const TextStyle(
-                      color: NeoColors.text,
-                      fontSize: 12,
-                    ),
-                    side: const BorderSide(color: Color(0x3367E8F9)),
+                    backgroundColor: p.surfaceAlt,
+                    selectedColor: p.primary.withValues(alpha: 0.2),
+                    checkmarkColor: p.primary,
+                    labelStyle: TextStyle(color: p.text, fontSize: 12),
+                    side: BorderSide(color: p.border),
                   ),
               ],
             ),
@@ -211,13 +205,13 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0x22F87171),
+                  color: p.danger.withValues(alpha: 0.13),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0x55F87171)),
+                  border: Border.all(color: p.danger.withValues(alpha: 0.33)),
                 ),
                 child: Text(
                   _error!,
-                  style: const TextStyle(color: NeoColors.text, fontSize: 13),
+                  style: TextStyle(color: p.text, fontSize: 13),
                 ),
               ),
             ],
@@ -249,8 +243,8 @@ class _SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         text.toUpperCase(),
-        style: const TextStyle(
-          color: NeoColors.cyanSoft,
+        style: TextStyle(
+          color: NeoTheme.of(context).primary,
           fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.8,

@@ -140,10 +140,21 @@ class NeoLogo extends StatelessWidget {
 /// border weights, three text weights — and stuffing them into its slots
 /// would mean reading `onSurfaceVariant` and hoping. This keeps the names
 /// the design uses.
-class NeoTheme extends InheritedWidget {
+class NeoTheme extends InheritedTheme {
   const NeoTheme({super.key, required this.palette, required super.child});
 
   final NeoPalette palette;
+
+  /// Carried into routes, the way Theme is.
+  ///
+  /// A dialog or bottom sheet is built under the Navigator, not under the
+  /// widget that opened it, so a plain InheritedWidget does not reach it.
+  /// That matters where a subtree overrides the palette — the meeting keeps
+  /// itself dark under a light theme, and its sheets have to agree with it
+  /// rather than coming back white over the video.
+  @override
+  Widget wrap(BuildContext context, Widget child) =>
+      NeoTheme(palette: palette, child: child);
 
   static NeoPalette of(BuildContext context) {
     final found = context.dependOnInheritedWidgetOfExactType<NeoTheme>();

@@ -6,7 +6,10 @@ import 'package:logging/logging.dart';
 
 import 'src/auth/auth_controller.dart';
 import 'src/auth/sign_in_screen.dart';
-import 'src/core/theme.dart';
+import 'src/design/brand.dart';
+import 'src/design/neo_theme.dart';
+import 'src/design/themes.dart';
+import 'src/design/tokens.dart';
 import 'src/home/landing_screen.dart';
 
 void main() {
@@ -36,15 +39,48 @@ void _enableLiveKitLogsInDebug() {
   });
 }
 
-class NeoConferenceApp extends StatelessWidget {
+class NeoConferenceApp extends ConsumerWidget {
   const NeoConferenceApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final choice = ref.watch(neoThemeProvider);
+    final chosen = neoThemeOption(choice).palette;
+
+    // "Match system" keeps Flutter's own light/dark switching. Any explicit
+    // choice pins both slots to that palette, so the app does not flip out
+    // from under someone who picked Amethyst because the sun went down.
+    final light = chosen ?? NeoPalette.light;
+    final dark = chosen ?? NeoPalette.dark;
+
     return MaterialApp(
       title: 'NeoConference',
       debugShowCheckedModeBanner: false,
-      theme: neoTheme(),
+      theme: neoThemeData(light),
+      darkTheme: neoThemeData(dark),
+      themeMode: chosen == null
+          ? ThemeMode.system
+          : (chosen.isDark ? ThemeMode.dark : ThemeMode.light),
+      builder: (context, child) {
+        final palette = chosen ??
+            (Theme.of(context).brightness == Brightness.dark
+                ? NeoPalette.dark
+                : NeoPalette.light);
+        return NeoTheme(
+          palette: palette,
+          child: MediaQuery(
+            // Text scaling is honoured, but a 3x system setting turns a
+            // meeting control bar into a stack of words. Clamping keeps the
+            // app usable at the large end without ignoring the preference.
+            data: MediaQuery.of(context).copyWith(
+              textScaler: MediaQuery.of(context)
+                  .textScaler
+                  .clamp(minScaleFactor: 0.85, maxScaleFactor: 1.6),
+            ),
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
+      },
       home: const _Root(),
     );
   }

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
 
-import '../core/theme.dart';
+import '../design/brand.dart';
+import '../design/neo_theme.dart';
+import '../design/tokens.dart';
 import 'room_controller.dart';
 import 'room_widgets.dart';
 
@@ -24,6 +26,13 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // A meeting is always dark, whatever the app's theme. A white screen in
+    // a dark room is unkind and video reads better against black — but a
+    // dark theme someone chose on purpose is honoured, so Ocean, Amethyst
+    // and Carbon follow you into the room and only the light ones do not.
+    final chosen = NeoTheme.of(context);
+    final p = chosen.isDark ? chosen : NeoPalette.dark;
+
     final provider = roomControllerProvider(widget.slug);
     final state = ref.watch(provider);
     final controller = ref.read(provider.notifier);
@@ -36,31 +45,46 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       controller.clearMessage();
     });
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
-        final leave = !state.inRoom || await _confirmLeave(context);
-        if (leave && context.mounted) {
-          await controller.leave();
-          if (context.mounted) Navigator.of(context).pop();
-        }
-      },
-      child: Scaffold(
-        backgroundColor: NeoColors.bg0,
-        body: SafeArea(
-          child: state.inRoom
-              ? _InMeeting(
-                  slug: widget.slug,
-                  title: widget.title,
-                  state: state,
-                  controller: controller,
-                )
-              : _Gate(
-                  title: widget.title,
-                  state: state,
-                  onRetry: controller.join,
-                ),
+    return Theme(
+      data: neoThemeData(p),
+      child: NeoTheme(
+        palette: p,
+        // The Builder is what makes the leave confirmation dark.
+        //
+        // A route captures the themes between the context it is given and
+        // the Navigator. This State's own context sits above the two
+        // wrappers, so passing it would hand showDialog the app's palette
+        // and put a white dialog over the video — which is exactly what it
+        // did on the phone before this Builder existed.
+        child: Builder(
+          builder: (context) => PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, _) async {
+              if (didPop) return;
+              final leave = !state.inRoom || await _confirmLeave(context);
+              if (leave && context.mounted) {
+                await controller.leave();
+                if (context.mounted) Navigator.of(context).pop();
+              }
+            },
+            child: Scaffold(
+              backgroundColor: p.bg,
+              body: SafeArea(
+                child: state.inRoom
+                    ? _InMeeting(
+                        slug: widget.slug,
+                        title: widget.title,
+                        state: state,
+                        controller: controller,
+                      )
+                    : _Gate(
+                        title: widget.title,
+                        state: state,
+                        onRetry: controller.join,
+                      ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -70,7 +94,6 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: NeoColors.bg2,
         title: const Text('Leave the meeting?'),
         actions: [
           TextButton(
@@ -78,7 +101,9 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
             child: const Text('Stay'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: NeoColors.danger),
+            style: FilledButton.styleFrom(
+              backgroundColor: NeoTheme.of(context).danger,
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Leave'),
           ),
@@ -99,6 +124,7 @@ class _Gate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     final waiting = state.phase == JoinPhase.connecting ||
         state.phase == JoinPhase.knocking ||
         state.phase == JoinPhase.waitingForHost;
@@ -132,15 +158,15 @@ class _Gate extends StatelessWidget {
                     child: CircularProgressIndicator(strokeWidth: 3),
                   )
                 else
-                  Icon(icon, size: 48, color: NeoColors.textDim),
+                  Icon(icon, size: 48, color: p.textMuted),
                 const SizedBox(height: 24),
                 Text(
                   headline,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w600,
-                    color: NeoColors.text,
+                    color: p.text,
                   ),
                 ),
                 if (state.message != null) ...[
@@ -148,7 +174,7 @@ class _Gate extends StatelessWidget {
                   Text(
                     state.message!,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: NeoColors.textDim),
+                    style: TextStyle(color: p.textMuted),
                   ),
                 ],
                 if (!waiting) ...[
@@ -232,9 +258,10 @@ class _InMeetingState extends State<_InMeeting> {
   }
 
   void _openReactions(BuildContext context, RoomController controller) {
+    // Every sheet in the room takes its surface from bottomSheetTheme, so
+    // it inherits the meeting's own palette rather than the app's.
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: NeoColors.bg2,
       builder: (context) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 12),
@@ -269,10 +296,6 @@ class _InMeetingState extends State<_InMeeting> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: NeoColors.bg1,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) => ChatSheet(slug: widget.slug),
     );
   }
@@ -285,7 +308,6 @@ class _InMeetingState extends State<_InMeeting> {
     controller.refreshWaitingRoom();
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: NeoColors.bg1,
       builder: (_) => WaitingRoomSheet(slug: widget.slug),
     );
   }
@@ -298,11 +320,7 @@ class _InMeetingState extends State<_InMeeting> {
   ) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: NeoColors.bg1,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) => HostControlsSheet(slug: widget.slug),
     );
   }
@@ -329,6 +347,7 @@ class _RoomHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: Row(
@@ -340,10 +359,10 @@ class _RoomHeader extends StatelessWidget {
                 Text(
                   title,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: NeoColors.text,
+                    color: p.text,
                   ),
                 ),
                 Row(
@@ -360,8 +379,8 @@ class _RoomHeader extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         color: link == RoomLink.live
-                            ? NeoColors.textDim
-                            : NeoColors.danger,
+                            ? p.textMuted
+                            : p.danger,
                       ),
                     ),
                     if (recording && link == RoomLink.live) ...[
@@ -393,20 +412,18 @@ class _RecordingDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     return Row(
       children: [
         Container(
           height: 8,
           width: 8,
-          decoration: const BoxDecoration(
-            color: NeoColors.danger,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: p.danger, shape: BoxShape.circle),
         ),
         const SizedBox(width: 4),
-        const Text(
+        Text(
           'Recording',
-          style: TextStyle(fontSize: 12, color: NeoColors.danger),
+          style: TextStyle(fontSize: 12, color: p.danger),
         ),
       ],
     );

@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/auth_controller.dart';
 import '../billing/plan.dart';
 import '../billing/upgrade.dart';
-import '../core/theme.dart';
+import '../design/brand.dart';
 import '../events/events_screen.dart';
 import '../settings/settings_screen.dart';
 
@@ -18,6 +18,7 @@ class LandingScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final p = NeoTheme.of(context);
     final plan = ref.watch(planProvider);
     final name = ref.watch(authProvider.select((s) => s.displayName));
 
@@ -55,10 +56,10 @@ class LandingScreen extends ConsumerWidget {
                   Expanded(
                     child: Text(
                       name == null ? 'NeoConference' : 'Hello, $name',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
-                        color: NeoColors.text,
+                        color: p.text,
                       ),
                     ),
                   ),
@@ -67,9 +68,9 @@ class LandingScreen extends ConsumerWidget {
                   // with nothing asking whether that was meant.
                   IconButton(
                     tooltip: 'Settings',
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.settings_outlined,
-                      color: NeoColors.textDim,
+                      color: p.textMuted,
                     ),
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => const SettingsScreen()),
@@ -78,10 +79,10 @@ class LandingScreen extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 'Host and join meetings, with live translation, recording '
                 'and host controls.',
-                style: TextStyle(color: NeoColors.textDim, fontSize: 13),
+                style: TextStyle(color: p.textMuted, fontSize: 13),
               ),
               const SizedBox(height: 24),
 
@@ -149,10 +150,10 @@ class LandingScreen extends ConsumerWidget {
                 'email info@neoconference.app.',
               ),
               const SizedBox(height: 20),
-              const Text(
+              Text(
                 'Prices are in Espees. Payment opens on eSPees in your '
                 'browser and returns here when it is done.',
-                style: TextStyle(color: NeoColors.textDim, fontSize: 11),
+                style: TextStyle(color: p.textMuted, fontSize: 11),
               ),
             ],
           ),
@@ -162,13 +163,11 @@ class LandingScreen extends ConsumerWidget {
   }
 
   void _openUpgrade(BuildContext context, PlanInfo plan) {
+    // Colour and shape come from bottomSheetTheme, so that a chosen theme
+    // reaches the sheet as well as the screen behind it.
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: NeoColors.bg1,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) => UpgradeSheet(
         reason: plan.isFree
             ? 'You are on the Free plan.'
@@ -197,10 +196,10 @@ class _CurrentPlanCard extends StatelessWidget {
               children: [
                 Text(
                   plan.plan[0].toUpperCase() + plan.plan.substring(1),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
-                    color: NeoColors.cyan,
+                    color: NeoTheme.of(context).primary,
                   ),
                 ),
                 const Spacer(),
@@ -233,6 +232,7 @@ class _Limit extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
@@ -240,7 +240,7 @@ class _Limit extends StatelessWidget {
           Icon(
             included ? Icons.check_circle_outline : Icons.remove_circle_outline,
             size: 16,
-            color: included ? NeoColors.cyanSoft : NeoColors.textDim,
+            color: included ? p.primary : p.textMuted,
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -248,7 +248,7 @@ class _Limit extends StatelessWidget {
               label,
               style: TextStyle(
                 fontSize: 13,
-                color: included ? NeoColors.text : NeoColors.textDim,
+                color: included ? p.text : p.textMuted,
               ),
             ),
           ),
@@ -275,14 +275,15 @@ class _PriceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: NeoColors.bg2,
+        color: p.surfaceAlt,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: highlight ? NeoColors.cyan : const Color(0x3322D3EE),
+          color: highlight ? p.primary : p.border,
           width: highlight ? 1.5 : 1,
         ),
       ),
@@ -293,17 +294,17 @@ class _PriceCard extends StatelessWidget {
             children: [
               Text(
                 name,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: NeoColors.text,
+                  color: p.text,
                 ),
               ),
               const Spacer(),
               Text(
                 '$monthly ESP / month',
-                style: const TextStyle(
-                  color: NeoColors.cyanSoft,
+                style: TextStyle(
+                  color: p.primary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -313,7 +314,7 @@ class _PriceCard extends StatelessWidget {
             alignment: Alignment.centerRight,
             child: Text(
               'or $annual ESP a year',
-              style: const TextStyle(color: NeoColors.textDim, fontSize: 11),
+              style: TextStyle(color: p.textMuted, fontSize: 11),
             ),
           ),
           const SizedBox(height: 10),
@@ -322,7 +323,7 @@ class _PriceCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Text(
                 '· $line',
-                style: const TextStyle(color: NeoColors.textDim, fontSize: 12),
+                style: TextStyle(color: p.textMuted, fontSize: 12),
               ),
             ),
         ],
@@ -341,8 +342,8 @@ class _SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Text(
         text.toUpperCase(),
-        style: const TextStyle(
-          color: NeoColors.cyanSoft,
+        style: TextStyle(
+          color: NeoTheme.of(context).primary,
           fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.8,
@@ -364,7 +365,9 @@ class _Note extends StatelessWidget {
       child: Text(
         text,
         style: TextStyle(
-          color: danger ? NeoColors.danger : NeoColors.textDim,
+          color: danger
+              ? NeoTheme.of(context).danger
+              : NeoTheme.of(context).textMuted,
           fontSize: 12,
         ),
       ),
