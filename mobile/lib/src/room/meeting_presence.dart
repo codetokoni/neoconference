@@ -84,6 +84,27 @@ class MeetingPresence {
     inPip.value = false;
   }
 
+  /// Ask for the permission that routes call audio to Bluetooth.
+  ///
+  /// Declared in the manifest since the app shipped and never requested,
+  /// so it was never granted: with earbuds connected and the headset
+  /// route chosen, Android put the call on the earpiece. Media still
+  /// played through the earbuds over A2DP, which is why this looked like
+  /// it worked.
+  ///
+  /// Returns whether it is already held. The dialog answers
+  /// asynchronously and is not waited on — a meeting must not block on a
+  /// permission prompt.
+  Future<bool> ensureBluetooth() async {
+    if (!supported) return false;
+    try {
+      return await _channel.invokeMethod<bool>('ensureBluetooth') ?? false;
+    } catch (e) {
+      debugPrint('[presence] could not request Bluetooth: $e');
+      return false;
+    }
+  }
+
   /// Float the meeting now.
   ///
   /// Returns false when the platform refused — PiP is disabled per-app in

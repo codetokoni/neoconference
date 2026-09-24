@@ -1,10 +1,13 @@
 package app.neoconference
 
+import android.Manifest
 import android.app.PictureInPictureParams
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.util.Rational
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -32,6 +35,10 @@ class MainActivity : FlutterActivity() {
      * of a list.
      */
     private var inMeeting = false
+
+    private companion object {
+        const val BLUETOOTH_REQUEST = 8801
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -63,9 +70,42 @@ class MainActivity : FlutterActivity() {
 
                 "pipSupported" -> result.success(pipSupported())
 
+                "ensureBluetooth" -> result.success(ensureBluetooth())
+
                 else -> result.notImplemented()
             }
         }
+    }
+
+    /**
+     * Ask for BLUETOOTH_CONNECT, which is what actually routes call audio
+     * to a headset.
+     *
+     * The manifest has declared it since the app shipped and nothing ever
+     * requested it, so the grant was never given: with earbuds connected
+     * and "Headset" chosen, Android reported
+     * "Active communication device: type:earpiece" and the audio came out
+     * of the phone. A2DP still played media through the earbuds, which is
+     * why this looked like it worked until someone checked.
+     *
+     * Returns whether the permission is already held. The dialog's answer
+     * arrives asynchronously and is not waited for — routing takes effect
+     * on the next switch, and blocking a meeting on a permission dialog
+     * would be worse than routing to the earpiece once.
+     */
+    private fun ensureBluetooth(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.BLUETOOTH_CONNECT
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) return true
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
+            BLUETOOTH_REQUEST
+        )
+        return false
     }
 
     private fun pipSupported(): Boolean =
