@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.neoconference",
+      "sha256_cert_fingerprints": [
+        "27:D8:97:99:A4:94:5B:66:54:20:33:C6:69:C8:61:86:A7:CF:E4:05:60:79:52:0F:8C:34:4C:09:8F:1C:DD:D9"
+      ]
+    }
+  }
+]

@@ -19,7 +19,7 @@ function safeRelayRedirect(req: Request): string {
 
 function errorRedirect(req: Request, code: string, debug?: string) {
   if (isAppCallback(safeRelayRedirect(req))) {
-    return redirectToApp({ kc_error: code });
+    return redirectToApp({ kc_error: code }, safeRelayRedirect(req));
   }
   const url = new URL('/sign-in', req.url);
   url.searchParams.set('kc_error', code);
@@ -320,7 +320,7 @@ async function handle(req: Request) {
 
   const relay = safeRelayRedirect(req);
   // The mobile app redeems the ticket itself; see lib/app-callback.
-  if (isAppCallback(relay)) return redirectToApp({ __clerk_ticket: ticket });
+  if (isAppCallback(relay)) return redirectToApp({ __clerk_ticket: ticket }, relay);
 
   const dest = new URL('/sign-in', req.url);
   dest.searchParams.set('__clerk_ticket', ticket);
