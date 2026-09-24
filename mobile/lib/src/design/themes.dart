@@ -90,12 +90,17 @@ class NeoThemeController extends StateNotifier<NeoThemeChoice> {
     _restore();
   }
 
-  static const _key = 'neo.theme';
+  /// Public so the tests can bind to the real key rather than a copy of it.
+  ///
+  /// The showcase and production entrypoints ship under one applicationId
+  /// and so share a preference store; the showcase namespaces itself with
+  /// [showcasePrefix] rather than spelling this key differently.
+  static const storageKey = 'neo.theme';
 
   Future<void> _restore() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final stored = prefs.getString(_key);
+      final stored = prefs.getString(storageKey);
       if (stored == null) return;
       final found = NeoThemeChoice.values
           .where((c) => c.name == stored)
@@ -110,7 +115,7 @@ class NeoThemeController extends StateNotifier<NeoThemeChoice> {
     state = choice;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_key, choice.name);
+      await prefs.setString(storageKey, choice.name);
     } catch (_) {
       // Chosen for this run even if the phone refuses to remember it.
     }

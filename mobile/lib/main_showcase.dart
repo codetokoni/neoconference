@@ -15,7 +15,26 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'src/app.dart';
 
-void main() => runApp(const ProviderScope(child: NeoConferenceApp()));
+/// Where the showcase keeps what it remembers.
+///
+/// Both entrypoints ship under the same applicationId, so installing one
+/// replaces the other and they inherit each other's stored preferences.
+/// That is not hypothetical: reviewing themes in the showcase left
+/// `neo.theme` behind, and the next production build opened on Amethyst
+/// without anyone having chosen it there.
+///
+/// Namespacing the showcase rather than production means nobody's real app
+/// needs its settings migrated — production keeps reading the keys it
+/// always wrote, and the showcase simply stops sharing them.
+const showcasePrefix = 'flutter.showcase.';
+
+void main() {
+  // Must happen before anything calls getInstance, which the theme
+  // controller does on its first build.
+  SharedPreferences.setPrefix(showcasePrefix);
+  runApp(const ProviderScope(child: NeoConferenceApp()));
+}
