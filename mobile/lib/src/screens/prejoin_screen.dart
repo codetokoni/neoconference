@@ -5,6 +5,8 @@ import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
 import '../meetings/meeting_view.dart';
+import '../room/audio_routes.dart';
+import '../room/audio_sheets.dart';
 import '../settings/meeting_defaults.dart';
 
 /// How a meeting is actually entered.
@@ -58,7 +60,6 @@ class PreJoinScreen extends ConsumerStatefulWidget {
 class _PreJoinScreenState extends ConsumerState<PreJoinScreen> {
   bool _mic = false;
   bool _camera = false;
-  _AudioRoute _route = _AudioRoute.speaker;
 
   @override
   void initState() {
@@ -142,8 +143,14 @@ class _PreJoinScreenState extends ConsumerState<PreJoinScreen> {
                         onPressed: () => setState(() => _camera = !_camera),
                       ),
                       NeoControlButton(
-                        icon: _route.icon,
-                        label: _route.label,
+                        icon: audioRouteIcon(
+                          AudioRoutes.instance.selectedOutput == null
+                              ? AudioRouteKind.speaker
+                              : AudioRoutes.routeKind(
+                                  AudioRoutes.instance.selectedOutput!,
+                                ),
+                        ),
+                        label: _routeLabel,
                         onPressed: _pickRoute,
                       ),
                       NeoControlButton(
@@ -216,60 +223,23 @@ class _PreJoinScreenState extends ConsumerState<PreJoinScreen> {
         canJoin: true,
       );
 
-  void _pickRoute() {
-    neoSheet(
-      context,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final route in _AudioRoute.values)
-              ListTile(
-                leading: Icon(route.icon),
-                title: Text(route.label),
-                subtitle: route == _AudioRoute.bluetooth
-                    ? const Text('Aria Buds Pro')
-                    : null,
-                trailing: _route == route
-                    ? Icon(
-                        Icons.check_rounded,
-                        color: NeoTheme.of(context).primary,
-                      )
-                    : null,
-                onTap: () {
-                  setState(() => _route = route);
-                  Navigator.pop(sheetContext);
-                },
-              ),
-            const SizedBox(height: NeoSpace.md),
-          ],
-        ),
-      ),
-    );
+  /// The real current route, not one of three invented options.
+  String get _routeLabel {
+    final device = AudioRoutes.instance.selectedOutput;
+    if (device == null) return 'Audio';
+    final name = AudioRoutes.label(device);
+    // "Galaxy Buds2 Pro" does not fit under a 44pt button.
+    return name.length > 12 ? '${name.substring(0, 11)}…' : name;
+  }
+
+  Future<void> _pickRoute() async {
+    await neoSheet(context, builder: (_) => const AudioOutputSheet());
+    if (mounted) setState(() {});
   }
 
   void _deviceChecks() {
-    neoSheet(
-      context,
-      builder: (_) => const _DeviceChecksSheet(),
-    );
+    neoSheet(context, builder: (_) => const DeviceChecksSheet());
   }
-}
-
-enum _AudioRoute { speaker, earpiece, bluetooth }
-
-extension on _AudioRoute {
-  String get label => switch (this) {
-        _AudioRoute.speaker => 'Speaker',
-        _AudioRoute.earpiece => 'Earpiece',
-        _AudioRoute.bluetooth => 'Bluetooth',
-      };
-
-  IconData get icon => switch (this) {
-        _AudioRoute.speaker => Icons.volume_up_rounded,
-        _AudioRoute.earpiece => Icons.hearing_rounded,
-        _AudioRoute.bluetooth => Icons.bluetooth_audio_rounded,
-      };
 }
 
 class _Preview extends StatelessWidget {
@@ -331,83 +301,6 @@ class _Preview extends StatelessWidget {
             child: NeoPill('Preview', color: p.info),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _DeviceChecksSheet extends StatelessWidget {
-  const _DeviceChecksSheet();
-
-  @override
-  Widget build(BuildContext context) {
-    final p = NeoTheme.of(context);
-    final checks = [
-      ('Microphone', 'Aria Buds Pro', true),
-      ('Camera', 'Front camera', true),
-      ('Speaker', 'Aria Buds Pro', true),
-      ('Network', 'Wi-Fi · strong', true),
-    ];
-
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          NeoSpace.xl,
-          0,
-          NeoSpace.xl,
-          NeoSpace.xl,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Device checks',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: NeoSpace.lg),
-            for (final (name, detail, ok) in checks)
-              Padding(
-                padding: const EdgeInsets.only(bottom: NeoSpace.md),
-                child: Row(
-                  children: [
-                    Icon(
-                      ok ? Icons.check_circle_rounded : Icons.error_rounded,
-                      color: ok ? p.success : p.danger,
-                      size: 20,
-                    ),
-                    const SizedBox(width: NeoSpace.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            name,
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          Text(
-                            detail,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: p.textMuted),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: NeoSpace.sm),
-            NeoBanner(
-              icon: Icons.info_outline_rounded,
-              tone: NeoBannerTone.info,
-              message:
-                  'These readings are sample values. Real device enumeration '
-                  'needs the native integration listed in the README.',
-            ),
-          ],
-        ),
       ),
     );
   }

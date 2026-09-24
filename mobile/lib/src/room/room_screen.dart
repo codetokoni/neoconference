@@ -6,9 +6,12 @@ import 'package:livekit_client/livekit_client.dart';
 
 import '../design/brand.dart';
 import '../design/neo_theme.dart';
+import '../design/components.dart';
 import '../design/tokens.dart';
 import '../meetings/room_view.dart';
 import '../screens/meeting_stage.dart';
+import 'audio_routes.dart';
+import 'audio_sheets.dart';
 import 'meeting_presence.dart';
 import 'room_controller.dart';
 import 'room_widgets.dart';
@@ -275,6 +278,16 @@ class _InMeetingState extends State<_InMeeting> {
             enterPip: MeetingPresence.instance.pipAvailable
                 ? MeetingPresence.instance.enterPip
                 : null,
+            openAudioOutput: AudioRoutes.instance.canRoute
+                ? () => neoSheet(
+                      context,
+                      builder: (_) => const AudioOutputSheet(),
+                    )
+                : null,
+            audioOutputLabel: switch (AudioRoutes.instance.selectedOutput) {
+              final device? => AudioRoutes.label(device),
+              null => null,
+            },
             openChat: () => _openChat(context, controller, state),
             openParticipants: () => _openParticipants(context, controller),
             openHostControls: state.canManage

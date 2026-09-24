@@ -160,6 +160,18 @@ class _MeetingStageState extends State<MeetingStage> {
                   actions.switchCamera!();
                 },
               ),
+            if (actions.openAudioOutput != null)
+              ListTile(
+                leading: const Icon(Icons.volume_up_rounded),
+                title: const Text('Audio output'),
+                subtitle: actions.audioOutputLabel == null
+                    ? null
+                    : Text(actions.audioOutputLabel!),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  actions.openAudioOutput!();
+                },
+              ),
             if (actions.enterPip != null)
               ListTile(
                 leading: const Icon(Icons.picture_in_picture_alt_rounded),

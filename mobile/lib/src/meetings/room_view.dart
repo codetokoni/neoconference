@@ -128,6 +128,8 @@ class RoomActions {
     this.toggleScreenShare,
     this.react,
     this.enterPip,
+    this.openAudioOutput,
+    this.audioOutputLabel,
     this.openChat,
     this.openParticipants,
     this.openHostControls,
@@ -149,6 +151,13 @@ class RoomActions {
   /// platform has no such thing, so the control is absent rather than
   /// present and inert.
   final Future<bool> Function()? enterPip;
+
+  /// Open the audio output picker. Null where the platform does not let an
+  /// app move the audio.
+  final VoidCallback? openAudioOutput;
+
+  /// What the sound is currently coming out of, for the row's subtitle.
+  final String? audioOutputLabel;
 
   final VoidCallback? openChat;
   final VoidCallback? openParticipants;

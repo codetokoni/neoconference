@@ -429,6 +429,11 @@ class RoomController extends StateNotifier<RoomState> {
     // are named after their slug anyway.
     unawaited(MeetingPresence.instance.begin(title: slug));
 
+    // Asked here because this is where it is needed and where the reason
+    // is obvious: without BLUETOOTH_CONNECT, Android routes the call to
+    // the earpiece even with earbuds connected.
+    unawaited(MeetingPresence.instance.ensureBluetooth());
+
     // Join muted with the camera off unless Settings says otherwise.
     // Arriving already broadcasting is a rude surprise on a phone, which is
     // likely to be somewhere personal, so that stays the default — but a
