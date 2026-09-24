@@ -22,22 +22,42 @@ final realMeetingBoard = FutureProvider<MeetingBoard>((ref) async {
   return boardFromEvents(events, now: DateTime.now());
 });
 
+/// How long a room may sit "live" before the dashboard stops treating it
+/// as something that is happening.
+///
+/// Meetings on this account are still marked live months after they
+/// finished, because nothing closes them when the last person leaves. The
+/// app cannot fix that, but it can stop repeating it: past this window a
+/// live room is shown as an open room rather than as today's meeting.
+/// Twelve hours is longer than any meeting anyone schedules and short
+/// enough to catch the ones that were simply never closed.
+const staleAfter = Duration(hours: 12);
+
 /// Sorts the account's meetings into what the dashboard shows.
 ///
-/// Live first among the upcoming, then by start time: someone opening the
-/// app during a meeting wants that meeting, not the one at four o'clock.
-/// Anything without a time sorts last rather than being dropped — a
-/// meeting with no `scheduledAt` is still a meeting.
+/// Upcoming means upcoming: a meeting whose time has passed goes to
+/// recent or, if the server still has it open, to the open rooms. Anything
+/// without a time sorts last rather than being dropped — a meeting with no
+/// `scheduledAt` is still a meeting.
 MeetingBoard boardFromEvents(List<NeoEvent> events, {required DateTime now}) {
   MeetingView? personal;
   final upcoming = <MeetingView>[];
+  final openRooms = <MeetingView>[];
   final recent = <MeetingView>[];
 
   for (final e in events) {
     final view = meetingFromEvent(e, now: now);
+    final started = view.startsAt;
+    final past = started != null && started.isBefore(now);
+
     if (e.isPermanent && personal == null) {
       personal = view;
     } else if (view.isPast) {
+      recent.add(view);
+    } else if (view.isLive && past && now.difference(started).compareTo(staleAfter) > 0) {
+      openRooms.add(view);
+    } else if (past && !view.isLive) {
+      // Scheduled, and the time went by. It did not become upcoming again.
       recent.add(view);
     } else {
       upcoming.add(view);
@@ -55,6 +75,13 @@ MeetingBoard boardFromEvents(List<NeoEvent> events, {required DateTime now}) {
   }
 
   upcoming.sort(byWhen);
+  // Most recently opened first — the one somebody is most likely to want.
+  openRooms.sort((a, b) {
+    final at = a.startsAt;
+    final bt = b.startsAt;
+    if (at == null || bt == null) return 0;
+    return bt.compareTo(at);
+  });
   // Most recently finished first, which is the one someone is looking for.
   recent.sort((a, b) {
     final at = a.startsAt;
@@ -68,6 +95,7 @@ MeetingBoard boardFromEvents(List<NeoEvent> events, {required DateTime now}) {
   return MeetingBoard(
     upcoming: upcoming,
     recent: recent,
+    openRooms: openRooms,
     personalRoom: personal,
   );
 }

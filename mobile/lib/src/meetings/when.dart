@@ -12,6 +12,9 @@ String neoWhen(DateTime when, {required DateTime now}) {
   if (minutes.abs() < 1) return 'Now';
   if (minutes > 0 && minutes < 60) return 'in $minutes min';
   if (minutes > 0 && diff.inHours < 24) return 'in ${diff.inHours} h';
+  // Under an hour ago has to be counted in minutes: rounding it to hours
+  // printed "0 h ago" against every meeting from earlier in the evening.
+  if (minutes < 0 && minutes > -60) return '${-minutes} min ago';
   if (minutes < 0 && diff.inHours > -24) return '${-diff.inHours} h ago';
   if (diff.inDays == 1) return 'Tomorrow';
   if (diff.inDays == -1) return 'Yesterday';

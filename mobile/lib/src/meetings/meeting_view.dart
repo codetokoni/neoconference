@@ -65,36 +65,54 @@ class MeetingView {
 
 enum MeetingStatus { live, startingSoon, scheduled, ended }
 
-/// The three lists the dashboard shows.
+/// The lists the dashboard shows.
 @immutable
 class MeetingBoard {
   const MeetingBoard({
     required this.upcoming,
     required this.recent,
+    this.openRooms = const [],
     this.personalRoom,
   });
 
   const MeetingBoard.empty()
       : upcoming = const [],
         recent = const [],
+        openRooms = const [],
         personalRoom = null;
 
+  /// Meetings that have not happened yet.
   final List<MeetingView> upcoming;
+
   final List<MeetingView> recent;
+
+  /// Rooms the server still reports as live, but which started long enough
+  /// ago that calling them "upcoming" would be a lie.
+  ///
+  /// They are real and still joinable, so they are shown — under a heading
+  /// that says what they are rather than under Upcoming, where a meeting
+  /// from four months ago has no business being.
+  final List<MeetingView> openRooms;
 
   /// A permanent room is always joinable and is not really "upcoming", so
   /// it gets its own place rather than sitting at the top of a list of
   /// things with start times.
   final MeetingView? personalRoom;
 
-  /// What the dashboard leads with: whatever is live, else the soonest.
+  /// What the dashboard leads with.
+  ///
+  /// A genuinely upcoming meeting first, then a room that went live
+  /// recently. A stale room is deliberately not promoted: a card reading
+  /// "Live now" above "128 days ago" is a contradiction, and leading the
+  /// screen with it buries whatever is actually next.
   MeetingView? get next {
-    for (final m in upcoming) {
-      if (m.isLive) return m;
-    }
-    return upcoming.isNotEmpty ? upcoming.first : null;
+    if (upcoming.isNotEmpty) return upcoming.first;
+    return null;
   }
 
   bool get isEmpty =>
-      upcoming.isEmpty && recent.isEmpty && personalRoom == null;
+      upcoming.isEmpty &&
+      recent.isEmpty &&
+      openRooms.isEmpty &&
+      personalRoom == null;
 }

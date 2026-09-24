@@ -128,6 +128,20 @@ class HomeScreen extends ConsumerWidget {
           ),
         ),
 
+      if (board.openRooms.isNotEmpty)
+        NeoSection(
+          title: 'Still open',
+          child: Column(
+            children: [
+              for (final m in board.openRooms.take(5))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: NeoSpace.md),
+                  child: _MeetingRow(meeting: m, now: now),
+                ),
+            ],
+          ),
+        ),
+
       if (board.recent.isNotEmpty)
         NeoSection(
           title: 'Recent',
@@ -444,14 +458,19 @@ class _MeetingRow extends StatelessWidget {
     final starts = meeting.startsAt;
     final invited = meeting.knownParticipants;
 
-    final detail = <String>[
-      if (starts != null) neoWhen(starts, now: now),
-      if (past && meeting.durationMinutes != null)
-        '${meeting.durationMinutes} min'
-      else if (!past && invited != null)
-        '$invited invited',
-      if (starts == null) meeting.code,
-    ].join(' · ');
+    // A permanent room has a last-used time, not a start time. Printing
+    // "6 days ago" under a room that is open right now reads as though it
+    // closed six days ago.
+    final detail = meeting.recurring
+        ? 'Always open · ${meeting.code}'
+        : <String>[
+            if (starts != null) neoWhen(starts, now: now),
+            if (past && meeting.durationMinutes != null)
+              '${meeting.durationMinutes} min'
+            else if (!past && invited != null)
+              '$invited invited',
+            if (starts == null) meeting.code,
+          ].join(' · ');
 
     return NeoCard(
       onTap: meeting.canJoin
@@ -471,7 +490,7 @@ class _MeetingRow extends StatelessWidget {
               color: p.surfaceHigh,
               borderRadius: BorderRadius.circular(NeoRadius.md),
             ),
-            child: starts != null
+            child: starts != null && !meeting.recurring
                 ? Text(
                     neoClock(starts),
                     style: text.labelMedium?.copyWith(
