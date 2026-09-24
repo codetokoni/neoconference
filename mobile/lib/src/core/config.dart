@@ -23,8 +23,16 @@ class Config {
     defaultValue: 'https://clerk.neoconference.app',
   );
 
-  /// The scheme the sign-in browser hands control back on. Registered in
-  /// AndroidManifest.xml; see AuthController.signInWithProvider.
-  static const deepLinkScheme = 'neoconference';
-  static const deepLinkCallback = '$deepLinkScheme://auth';
+  /// Where the sign-in browser hands control back.
+  ///
+  /// An Android App Link, not a custom scheme: Android gives this URL to the
+  /// app only after checking assetlinks.json on the domain and confirming
+  /// this app is signed by the certificate named there. Any app can register
+  /// a custom scheme, and the thing being handed back is a Clerk sign-in
+  /// ticket, so a hijack would be an account takeover.
+  ///
+  /// Deliberately the canonical host rather than [site]: the App Link is
+  /// verified against one domain, so pointing a preview build at a Vercel
+  /// preview URL would silently stop the callback reaching the app.
+  static const deepLinkCallback = 'https://www.neoconference.app/app/auth';
 }

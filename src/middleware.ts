@@ -10,6 +10,15 @@ import {
 
 const isPublicRoute = createRouteMatcher([
   '/',
+  // Android fetches /.well-known/assetlinks.json anonymously to verify that
+  // this domain vouches for the app. The matcher below does not exclude
+  // .json, so without this the verifier is auth-protected, gets a 404, and
+  // App Links silently fall back to opening in a browser — with no error
+  // anywhere to explain why.
+  '/.well-known/(.*)',
+  // Where a sign-in started in the app comes back to. Reached before the
+  // person has a web session, by definition.
+  '/app/auth',
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/room/(.*)',
