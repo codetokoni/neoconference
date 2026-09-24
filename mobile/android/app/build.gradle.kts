@@ -57,6 +57,15 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Signed with the release key when one is available, so a debug
+            // build installs over a release build instead of forcing an
+            // uninstall — which would sign the tester out and destroy the
+            // very session being investigated.
+            if (hasReleaseKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
         release {
             if (hasReleaseKeystore) {
                 signingConfig = signingConfigs.getByName("release")
