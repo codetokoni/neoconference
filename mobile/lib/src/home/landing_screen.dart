@@ -6,6 +6,7 @@ import '../billing/plan.dart';
 import '../billing/upgrade.dart';
 import '../core/theme.dart';
 import '../events/events_screen.dart';
+import '../settings/settings_screen.dart';
 
 /// Where the app opens: what it does, what it costs, and the way in.
 ///
@@ -61,10 +62,18 @@ class LandingScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  // Settings rather than a bare sign-out button: one tap
+                  // next to the greeting used to end the session outright,
+                  // with nothing asking whether that was meant.
                   IconButton(
-                    tooltip: 'Sign out',
-                    icon: const Icon(Icons.logout, color: NeoColors.textDim),
-                    onPressed: () => ref.read(authProvider.notifier).signOut(),
+                    tooltip: 'Settings',
+                    icon: const Icon(
+                      Icons.settings_outlined,
+                      color: NeoColors.textDim,
+                    ),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                    ),
                   ),
                 ],
               ),
