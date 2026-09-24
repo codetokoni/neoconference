@@ -17,7 +17,7 @@ import { defineConfig, devices } from "@playwright/test";
  * running.
  */
 export default defineConfig({
-  testDir: "./tests/e2e",
+  testDir: "./tests",
   // 60s hard cap so a hung network probe doesn't wedge CI.
   timeout: 60_000,
   // Retry once on CI because Vercel preview deploys can be cold
@@ -35,6 +35,14 @@ export default defineConfig({
     navigationTimeout: 20_000,
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // Pure logic, no browser and no network. Playwright is already here
+    // and runs TypeScript, so these cost nothing to add and gate every PR
+    // alongside the smoke tests.
+    { name: "unit", testDir: "./tests/unit" },
+    {
+      name: "chromium",
+      testDir: "./tests/e2e",
+      use: { ...devices["Desktop Chrome"] },
+    },
   ],
 });

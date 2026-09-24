@@ -7,7 +7,8 @@
 // Subscribed events:
 //   - egress_ended    -> auto-submit transcription job
 //   - room_started    -> set NeoEvent.startedAt if unset (idempotent)
-//   - room_finished   -> transition NeoEvent.state 'live' -> 'ended' with
+//   - room_finished   -> transition an in-progress NeoEvent ('live' or
+//                        'waiting') to 'ended' with
 //                        endedAt from webhook timestamp (idempotent)
 //
 // Signature verification is handled by livekit-server-sdk's WebhookReceiver,
@@ -21,6 +22,7 @@ import { submitTranscribeJob, isTranscribeConfigured } from '@/lib/transcribe';
 import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
 import { recordWebhookEvent } from '@/lib/webhookMetrics';
+import { isInProgress } from '@/lib/meetingLifecycle';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -128,8 +130,18 @@ export async function POST(req: Request) {
       if (!ev) {
         return NextResponse.json({ ok: true, ignored: 'event_not_found', roomName });
       }
-      if (ev.state !== 'live') {
-        return NextResponse.json({ ok: true, transitioned: false, reason: 'not_live', eventId: ev.id });
+      // 'waiting' counts as open, not just 'live'. Checking only for
+      // 'live' meant a meeting whose attendees were still in the waiting
+      // room when the room closed could never be ended by this webhook at
+      // all — it sat open until someone noticed months later.
+      if (!isInProgress(ev.state)) {
+        return NextResponse.json({
+          ok: true,
+          transitioned: false,
+          reason: 'not_in_progress',
+          state: ev.state,
+          eventId: ev.id,
+        });
       }
       const endedAt = isoFromWebhookCreatedAt(event.createdAt);
       await eventStore.update(ev.id, (prev) => ({

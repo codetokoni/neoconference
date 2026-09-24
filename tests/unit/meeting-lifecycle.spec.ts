@@ -1,0 +1,303 @@
+import { test, expect } from "@playwright/test";
+import {
+  decideSweep,
+  inProgressSince,
+  inferredEndedAt,
+  isInProgress,
+  sweepStaleMeetings,
+  DEFAULT_GRACE_MS,
+} from "../../src/lib/meetingLifecycle";
+import type { NeoEvent, EventState } from "../../src/types/event";
+
+/**
+ * Ending meetings that already ended.
+ *
+ * Written from the production account, where meetings were still marked
+ * live 128 days after they finished and the mobile dashboard was offering
+ * them as today's meetings.
+ */
+
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+const now = Date.parse("2026-09-24T19:00:00.000Z");
+
+function ev(over: Partial<NeoEvent> & { slug: string; state: EventState }): NeoEvent {
+  return {
+    id: over.id ?? over.slug,
+    name: over.slug,
+    ownerUserId: "user_1",
+    visibility: "unlisted",
+    waitingRoomEnabled: false,
+    livekitRoom: over.slug,
+    roles: [],
+    waitingRoom: [],
+    createdAt: new Date(now - 30 * DAY).toISOString(),
+    updatedAt: new Date(now - 2 * HOUR).toISOString(),
+    ...over,
+  } as NeoEvent;
+}
+
+test.describe("which meetings are over", () => {
+  test("a room LiveKit no longer has, open for months, is over", () => {
+    const stale = ev({
+      slug: "orbit-o03c",
+      state: "live",
+      startedAt: new Date(now - 128 * DAY).toISOString(),
+    });
+
+    const decision = decideSweep({
+      events: [stale],
+      activeRooms: new Set<string>(),
+      now,
+    });
+
+    expect(decision.end.map((e) => e.slug)).toEqual(["orbit-o03c"]);
+  });
+
+  test("a 'waiting' meeting is in progress too", () => {
+    // The second half of the bug: room_finished only transitioned from
+    // 'live', so a meeting whose attendees were still in the waiting room
+    // when the room closed could never be ended by the webhook at all.
+    expect(isInProgress("waiting")).toBe(true);
+    expect(isInProgress("live")).toBe(true);
+    expect(isInProgress("ended")).toBe(false);
+    expect(isInProgress("scheduled")).toBe(false);
+
+    const waiting = ev({
+      slug: "hsmanagers",
+      state: "waiting",
+      startedAt: new Date(now - 7 * DAY).toISOString(),
+    });
+
+    const decision = decideSweep({
+      events: [waiting],
+      activeRooms: new Set(),
+      now,
+    });
+
+    expect(decision.end.map((e) => e.slug)).toEqual(["hsmanagers"]);
+  });
+
+  test("a meeting LiveKit still has is left alone", () => {
+    const running = ev({
+      slug: "standup",
+      state: "live",
+      startedAt: new Date(now - 30 * DAY).toISOString(),
+    });
+
+    const decision = decideSweep({
+      events: [running],
+      activeRooms: new Set(["standup"]),
+      now,
+    });
+
+    expect(decision.end).toEqual([]);
+    expect(decision.stillActive.map((e) => e.slug)).toEqual(["standup"]);
+  });
+
+  test("room names match regardless of case", () => {
+    const running = ev({ slug: "Sendforth", state: "live", livekitRoom: "Sendforth" });
+    const decision = decideSweep({
+      events: [running],
+      activeRooms: new Set(["sendforth"]),
+      now,
+    });
+    expect(decision.stillActive.map((e) => e.slug)).toEqual(["Sendforth"]);
+  });
+
+  test("a meeting opened minutes ago is not ended before its room exists", () => {
+    // /api/events/[id]/start marks a meeting live, and LiveKit does not
+    // create the room until the first participant connects. Without the
+    // grace period the sweep would end a meeting seconds after someone
+    // opened it.
+    const justStarted = ev({
+      slug: "about-to-begin",
+      state: "live",
+      startedAt: new Date(now - 30 * 1000).toISOString(),
+    });
+
+    const decision = decideSweep({
+      events: [justStarted],
+      activeRooms: new Set(),
+      now,
+    });
+
+    expect(decision.end).toEqual([]);
+    expect(decision.tooRecent.map((e) => e.slug)).toEqual(["about-to-begin"]);
+  });
+
+  test("the grace period is an hour, not a day", () => {
+    const twoHours = ev({
+      slug: "two-hours",
+      state: "live",
+      startedAt: new Date(now - 2 * HOUR).toISOString(),
+    });
+
+    expect(DEFAULT_GRACE_MS).toBe(HOUR);
+    const decision = decideSweep({
+      events: [twoHours],
+      activeRooms: new Set(),
+      now,
+    });
+    expect(decision.end.map((e) => e.slug)).toEqual(["two-hours"]);
+  });
+
+  test("a meeting with no usable timestamp is never ended on a guess", () => {
+    const undated = ev({ slug: "undated", state: "live" });
+    (undated as { updatedAt?: string }).updatedAt = "";
+
+    const decision = decideSweep({
+      events: [undated],
+      activeRooms: new Set(),
+      now,
+    });
+
+    expect(decision.end).toEqual([]);
+    expect(decision.tooRecent.map((e) => e.slug)).toEqual(["undated"]);
+  });
+
+  test("startedAt is preferred, updatedAt is the fallback", () => {
+    const edited = ev({
+      slug: "edited",
+      state: "live",
+      startedAt: new Date(now - 40 * DAY).toISOString(),
+      // Renaming it yesterday does not mean the meeting is still going.
+      updatedAt: new Date(now - 1 * HOUR).toISOString(),
+    });
+
+    expect(inProgressSince(edited)).toBe(Date.parse(edited.startedAt!));
+    const decision = decideSweep({
+      events: [edited],
+      activeRooms: new Set(),
+      now,
+    });
+    expect(decision.end.map((e) => e.slug)).toEqual(["edited"]);
+  });
+
+  test("already-ended meetings are not reconsidered", () => {
+    const done = ev({ slug: "done", state: "ended" });
+    const archived = ev({ slug: "archived", state: "archived" });
+    const scheduled = ev({ slug: "later", state: "scheduled" });
+
+    const decision = decideSweep({
+      events: [done, archived, scheduled],
+      activeRooms: new Set(),
+      now,
+    });
+
+    expect(decision.end).toEqual([]);
+    expect(decision.stillActive).toEqual([]);
+    expect(decision.tooRecent).toEqual([]);
+  });
+});
+
+test.describe("the end time we record", () => {
+  test("is the last moment we knew something, not now", () => {
+    // We do not know when the room actually closed — that is exactly what
+    // the missing webhook would have carried. Claiming a meeting from May
+    // ended today would be worse than admitting to the last known moment.
+    const stale = ev({
+      slug: "stale",
+      state: "live",
+      updatedAt: new Date(now - 128 * DAY).toISOString(),
+    });
+    expect(inferredEndedAt(stale)).toBe(stale.updatedAt);
+  });
+
+  test("an existing endedAt is never overwritten", () => {
+    const already = ev({
+      slug: "already",
+      state: "live",
+      endedAt: new Date(now - 5 * DAY).toISOString(),
+    });
+    expect(inferredEndedAt(already)).toBe(already.endedAt);
+  });
+});
+
+test.describe("the sweep as a whole", () => {
+  test("ends the finished ones and reports what it did", async () => {
+    const ended: string[] = [];
+    const summary = await sweepStaleMeetings({
+      listAll: async () => [
+        ev({ slug: "gone", state: "live", startedAt: new Date(now - 30 * DAY).toISOString() }),
+        ev({ slug: "running", state: "live", startedAt: new Date(now - 30 * DAY).toISOString() }),
+        ev({ slug: "done", state: "ended" }),
+      ],
+      listActiveRooms: async () => ["running"],
+      endMeeting: async (e) => {
+        ended.push(e.slug);
+      },
+      now,
+    });
+
+    expect(ended).toEqual(["gone"]);
+    expect(summary).toMatchObject({
+      ok: true,
+      scanned: 2,
+      ended: 1,
+      stillActive: 1,
+      tooRecent: 0,
+      failed: 0,
+      endedSlugs: ["gone"],
+    });
+  });
+
+  test("a LiveKit failure ends nothing at all", async () => {
+    // The dangerous failure: treating "could not ask" as "no rooms are
+    // active" would end every meeting on the account at once.
+    const ended: string[] = [];
+    const summary = await sweepStaleMeetings({
+      listAll: async () => [
+        ev({ slug: "live-1", state: "live", startedAt: new Date(now - 30 * DAY).toISOString() }),
+        ev({ slug: "live-2", state: "live", startedAt: new Date(now - 30 * DAY).toISOString() }),
+      ],
+      listActiveRooms: async () => {
+        throw new Error("livekit unreachable");
+      },
+      endMeeting: async (e) => {
+        ended.push(e.slug);
+      },
+      now,
+    });
+
+    expect(ended).toEqual([]);
+    expect(summary.ok).toBe(false);
+    expect(summary.ended).toBe(0);
+    expect(summary.error).toContain("livekit");
+  });
+
+  test("LiveKit is not asked when nothing is in progress", async () => {
+    let asked = false;
+    const summary = await sweepStaleMeetings({
+      listAll: async () => [ev({ slug: "done", state: "ended" })],
+      listActiveRooms: async () => {
+        asked = true;
+        return [];
+      },
+      endMeeting: async () => {},
+      now,
+    });
+
+    expect(asked).toBe(false);
+    expect(summary).toMatchObject({ ok: true, scanned: 0, ended: 0 });
+  });
+
+  test("one failed write does not stop the others", async () => {
+    const ended: string[] = [];
+    const summary = await sweepStaleMeetings({
+      listAll: async () => [
+        ev({ slug: "first", state: "live", startedAt: new Date(now - 30 * DAY).toISOString() }),
+        ev({ slug: "second", state: "live", startedAt: new Date(now - 30 * DAY).toISOString() }),
+      ],
+      listActiveRooms: async () => [],
+      endMeeting: async (e) => {
+        if (e.slug === "first") throw new Error("kv write failed");
+        ended.push(e.slug);
+      },
+      now,
+    });
+
+    expect(ended).toEqual(["second"]);
+    expect(summary).toMatchObject({ ok: true, ended: 1, failed: 1 });
+  });
+});
