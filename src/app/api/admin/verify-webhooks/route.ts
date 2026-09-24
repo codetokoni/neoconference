@@ -14,7 +14,11 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdmin } from "@/lib/roles";
-import { readWebhookMetrics, type WebhookMetric } from "@/lib/webhookMetrics";
+import {
+  readWebhookMetrics,
+  readWebhookRejections,
+  type WebhookMetric,
+} from "@/lib/webhookMetrics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,7 +44,10 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
   }
 
-  const metrics = await readWebhookMetrics();
+  const [metrics, rejections] = await Promise.all([
+    readWebhookMetrics(),
+    readWebhookRejections(),
+  ]);
   const byEvent = new Map(metrics.map((m) => [m.event, m]));
 
   const missing = REQUIRED.filter((event) => {
@@ -56,12 +63,22 @@ export async function GET() {
     return m.lastAtMs === null || now - m.lastAtMs > staleThresholdMs;
   });
 
+  // A counter says an event arrived, not what happened to it — the bump
+  // happens before the handler runs, so a rejected room_finished looks
+  // exactly like one that ended a meeting. These are the ones that
+  // arrived and changed nothing, with the room and the reason.
+  //
+  // Deliberately not folded into `healthy`: a room_finished for a room
+  // that was already ended is a normal, idempotent no-op, and turning
+  // every one of those into an unhealthy verdict would make the flag
+  // useless. They are reported so a real pattern can be seen.
   return NextResponse.json({
     ok: true,
     healthy: missing.length === 0 && stale.length === 0,
     missing,
     stale,
     metrics,
+    rejections,
     generatedAt: now,
   });
 }
