@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
 import '../events/event.dart';
+import 'meeting_presence.dart';
 import '../settings/meeting_defaults.dart';
 
 /// Data-channel topics, matching the web client exactly.
@@ -417,6 +418,17 @@ class RoomController extends StateNotifier<RoomState> {
     await room.connect(wsUrl, token);
     state = state.copyWith(phase: JoinPhase.connected, clearMessage: true);
 
+    // The foreground service starts here rather than at join, because
+    // Android 14 only allows a microphone-type service to be started while
+    // the app is in the foreground, and only once there is actually a
+    // meeting to keep alive. Without it the process is descheduled within
+    // seconds of the phone being pocketed and the audio stops.
+    //
+    // The slug rather than the meeting's name: the controller is keyed by
+    // slug and never receives the name, and on this account most meetings
+    // are named after their slug anyway.
+    unawaited(MeetingPresence.instance.begin(title: slug));
+
     // Join muted with the camera off unless Settings says otherwise.
     // Arriving already broadcasting is a rude surprise on a phone, which is
     // likely to be somewhere personal, so that stays the default — but a
@@ -601,8 +613,16 @@ class RoomController extends StateNotifier<RoomState> {
   Future<void> toggleMic() async {
     final me = room.localParticipant;
     if (me == null) return;
-    await me.setMicrophoneEnabled(!me.isMicrophoneEnabled());
+    final wantOn = !me.isMicrophoneEnabled();
+    await me.setMicrophoneEnabled(wantOn);
     _syncLocalMedia();
+
+    // Turning the microphone on is the moment RECORD_AUDIO is granted, and
+    // the foreground service can only claim the microphone type once it
+    // has been. Restarting it here upgrades the type; without this the
+    // service stays playback-only and Android may stop the capture the
+    // moment the app is backgrounded.
+    if (wantOn) unawaited(MeetingPresence.instance.begin(title: slug));
   }
 
   Future<void> toggleCamera() async {
@@ -887,6 +907,10 @@ class RoomController extends StateNotifier<RoomState> {
   void clearMessage() => state = state.copyWith(clearMessage: true);
 
   Future<void> leave() async {
+    // Stop the foreground service before disconnecting, so the "you are in
+    // a meeting" notification never outlives the meeting. Ending it twice
+    // is harmless; leaving it running is a lie in the status bar.
+    await MeetingPresence.instance.end();
     await room.disconnect();
   }
 
@@ -894,6 +918,7 @@ class RoomController extends StateNotifier<RoomState> {
   void dispose() {
     _disposed = true;
     debugPrint('[neo-room] controller DISPOSED for $slug');
+    unawaited(MeetingPresence.instance.end());
     _knockTimer?.cancel();
     _hostTimer?.cancel();
     _chatTimer?.cancel();

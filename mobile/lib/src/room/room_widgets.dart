@@ -7,6 +7,7 @@ import 'package:livekit_client/livekit_client.dart';
 
 import '../design/brand.dart';
 import '../design/components.dart';
+import '../meetings/room_view.dart';
 import 'room_controller.dart';
 
 /// Reactions drifting up the screen, then gone.
@@ -617,6 +618,82 @@ class _PersonRow extends StatelessWidget {
                 : speaking
                     ? palette.success
                     : palette.textMuted,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The meeting, in a window a few centimetres wide.
+///
+/// Android renders whatever the activity draws into the PiP window, so
+/// without this the full meeting screen is scaled down: a control bar
+/// nobody can hit and a filmstrip of smudges. This shows the one thing
+/// worth seeing at that size — whoever is talking — and the mic state,
+/// because "am I still muted" is the question people float a call to keep
+/// an eye on.
+class PipView extends StatelessWidget {
+  const PipView({super.key, required this.room});
+
+  final RoomView room;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = NeoTheme.of(context);
+    final focus = room.focus;
+    final video = focus?.video;
+
+    return ColoredBox(
+      color: palette.bg,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (video != null)
+            video
+          else
+            Center(
+              child: NeoAvatar(name: focus?.name ?? room.title, size: 48),
+            ),
+          if (room.link != RoomLinkState.live)
+            Positioned.fill(
+              child: ColoredBox(
+                color: palette.bg.withValues(alpha: 0.72),
+                child: Center(
+                  child: Text(
+                    room.link == RoomLinkState.reconnecting
+                        ? 'Reconnecting…'
+                        : 'Connection lost',
+                    style: TextStyle(color: palette.text, fontSize: 12),
+                  ),
+                ),
+              ),
+            ),
+          Positioned(
+            left: 6,
+            bottom: 6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    room.micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
+                    size: 11,
+                    color: room.micOn ? palette.success : palette.danger,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    focus?.isMe ?? true ? 'You' : focus!.name,
+                    style: TextStyle(color: palette.text, fontSize: 10),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
