@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "check:deploy": "node scripts/check-deploy.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.654.0",
