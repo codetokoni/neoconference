@@ -26,6 +26,30 @@ void main() {
     });
   });
 
+  group('plan gate', () {
+    test('a 402 upgrade refusal is distinguishable from a bad request', () {
+      // The create screen offers the upgrade sheet on exactly this shape.
+      // A plain 400 must not open it, and this must not be mistaken for a
+      // dead session — 402 is the server saying "your plan", not "who are
+      // you".
+      const refused = ApiException(
+        status: 402,
+        message: 'Live translation is available on the Pro plan and above.',
+        body: {
+          'error': 'plan_upgrade_required',
+          'feature': 'translation',
+          'plan': 'free',
+        },
+      );
+      expect(refused.code, 'plan_upgrade_required');
+      expect(refused.body['plan'], 'free');
+      expect(refused.isUnauthenticated, isFalse);
+
+      const badRequest = ApiException(status: 400, message: 'name_required');
+      expect(badRequest.code, isNot('plan_upgrade_required'));
+    });
+  });
+
   group('NeoEvent', () {
     test('reads the fields /api/events/mine actually sends', () {
       final event = NeoEvent.fromJson(const {

@@ -45,6 +45,16 @@ export type PlanLimits = {
     breakouts: boolean;
     branding: boolean;
     livestream: boolean;
+    /**
+     * Whether this plan may offer live translation, and so whether its
+     * meetings may be created with languages.
+     *
+     * A boolean rather than a count on purpose: every numeric limit in this
+     * file uses 0 to mean "unlimited" (see enterprise), which would make
+     * "no languages at all" unexpressible. Translation is a feature you
+     * have or don't, like recording and breakouts.
+     */
+    translation: boolean;
 };
 
 export function getPlanLimits(plan: Plan): PlanLimits {
@@ -59,6 +69,7 @@ export function getPlanLimits(plan: Plan): PlanLimits {
                         breakouts: true,
                         branding: true,
                         livestream: true,
+                        translation: true,
               };
       case "business":
               return {
@@ -70,6 +81,7 @@ export function getPlanLimits(plan: Plan): PlanLimits {
                         breakouts: true,
                         branding: true,
                         livestream: false,
+                        translation: true,
               };
       case "pro":
               return {
@@ -81,6 +93,7 @@ export function getPlanLimits(plan: Plan): PlanLimits {
                         breakouts: true,
                         branding: false,
                         livestream: false,
+                        translation: true,
               };
       case "starter":
               return {
@@ -92,6 +105,7 @@ export function getPlanLimits(plan: Plan): PlanLimits {
                         breakouts: false,
                         branding: false,
                         livestream: false,
+                        translation: false,
               };
       case "free":
       default:
@@ -104,6 +118,7 @@ export function getPlanLimits(plan: Plan): PlanLimits {
                         breakouts: false,
                         branding: false,
                         livestream: false,
+                        translation: false,
               };
     }
 }

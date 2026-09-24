@@ -16,6 +16,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { headers } from "next/headers";
 import { initiatePayment, ESPEES_AMOUNTS, type EspeesPlan, type BillingCycle } from "@/lib/espees";
 import { createPendingPayment, attachPaymentRef, generateNonce } from "@/lib/billingStore";
+import { APP_LINK, isAppCallback } from "@/lib/app-callback";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,7 +74,14 @@ export async function POST(req: Request): Promise<Response> {
 
   // Persist the pending record BEFORE calling eSPees so a network race
   // cannot leave us with a paid record we can't map back to a user.
-  await createPendingPayment({ nonce, userId, plan, billingCycle: cycle });
+  // Only the app's one App Link is accepted as a return destination, using
+  // the same whole-string comparison as the sign-in callbacks. A free-form
+  // returnTo here would be an open redirect that fires after a payment.
+  const returnTo = isAppCallback((body as { returnTo?: unknown }).returnTo as string | undefined)
+    ? APP_LINK
+    : undefined;
+
+  await createPendingPayment({ nonce, userId, plan, billingCycle: cycle, returnTo });
 
   const successUrl = origin + "/api/billing/espees/return?nonce=" + encodeURIComponent(nonce);
     const failUrl = origin + "/api/billing/espees/fail?nonce=" + encodeURIComponent(nonce);

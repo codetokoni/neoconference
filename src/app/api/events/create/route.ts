@@ -23,6 +23,9 @@ interface CreateBody {
     name: string;
     description?: string;
     visibility?: 'public' | 'unlisted' | 'private';
+    /** Language codes to offer live translation into. Plan-gated; validated
+     *  and de-duplicated in the handler rather than trusted from here. */
+    languages?: string[];
     password?: string;
     waitingRoomEnabled?: boolean;
     waitForHost?: boolean;
@@ -116,6 +119,37 @@ export async function POST(req: NextRequest) {
   // Refuse LOUDLY (not silently) so the operator learns why the
   // stream didn't come with their event, matching the friendly error
   // shape /api/golive already returns.
+  // Plan gate for live translation, the same shape as the livestream gate
+  // below. Refused loudly and by name so the caller can offer an upgrade
+  // rather than silently dropping the languages and handing back a meeting
+  // that quietly does less than was asked for.
+  const languages = Array.isArray(body.languages)
+    ? (body.languages as unknown[])
+        .filter((l): l is string => typeof l === 'string')
+        .map((l) => l.trim().toLowerCase())
+        .filter((l) => /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(l))
+        .slice(0, 20)
+    : [];
+  const uniqueLanguages = Array.from(new Set(languages));
+  if (uniqueLanguages.length > 0) {
+    const ownerPlan = await getPlanForUserId(userId);
+    const ownerLimits = getPlanLimits(ownerPlan);
+    if (!ownerLimits.translation) {
+      return NextResponse.json(
+        {
+          error: 'plan_upgrade_required',
+          feature: 'translation',
+          plan: ownerPlan,
+          message:
+            'Live translation is available on the Pro plan and above. ' +
+            'Upgrade at /dashboard/billing, or create the meeting without ' +
+            'languages.',
+        },
+        { status: 402 }
+      );
+    }
+  }
+
   let streamlabBinding: NeoEvent['streamlab'] | undefined;
   if (body.enableStream) {
     try {
@@ -193,6 +227,7 @@ export async function POST(req: NextRequest) {
         ownerUserId: userId,
         ownerEmail,
         visibility: body.visibility ?? 'unlisted',
+        languages: uniqueLanguages.length > 0 ? uniqueLanguages : undefined,
         password: hashMeetingPassword((body.password || "").slice(0, 80)),
         waitingRoomEnabled: Boolean(body.waitingRoomEnabled),
         waitForHost: body.waitForHost === false ? false : true,

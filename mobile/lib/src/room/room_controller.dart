@@ -202,7 +202,14 @@ class RoomState {
 /// grants a permission locally — a viewer's microphone button is absent
 /// because LiveKit refuses the publish, not because the app hid it.
 class RoomController extends StateNotifier<RoomState> {
-  RoomController({required this.api, required this.slug}) : super(const RoomState());
+  RoomController({required this.api, required this.slug})
+      : super(const RoomState()) {
+    // Lifecycle tracing (debug only). A meeting that keeps restarting looks
+    // identical from outside whether this app is throwing the connection
+    // away and rebuilding it, or the SDK is reconnecting underneath a
+    // controller that never moved. Those have opposite owners.
+    debugPrint('[neo-room] controller created for $slug');
+  }
 
   final ApiClient api;
   final String slug;
@@ -222,6 +229,7 @@ class RoomController extends StateNotifier<RoomState> {
   bool _disposed = false;
 
   Future<void> join() async {
+    debugPrint('[neo-room] join() called for $slug');
     state = state.copyWith(phase: JoinPhase.connecting, clearMessage: true);
     try {
       await _resolveRole();
@@ -856,6 +864,7 @@ class RoomController extends StateNotifier<RoomState> {
   @override
   void dispose() {
     _disposed = true;
+    debugPrint('[neo-room] controller DISPOSED for $slug');
     _knockTimer?.cancel();
     _hostTimer?.cancel();
     _chatTimer?.cancel();

@@ -17,6 +17,7 @@ class AuthState {
     this.busy = false,
     this.error,
     this.restoring = true,
+    this.upgradedTo,
   });
 
   final String? sessionId;
@@ -29,6 +30,10 @@ class AuthState {
   /// in.
   final bool restoring;
 
+  /// The plan a payment just granted, when one came back on the deep link.
+  /// Cleared once shown; the app does not track plans itself.
+  final String? upgradedTo;
+
   bool get signedIn => sessionId != null;
 
   AuthState copyWith({
@@ -37,8 +42,10 @@ class AuthState {
     bool? busy,
     String? error,
     bool? restoring,
+    String? upgradedTo,
     bool clearError = false,
     bool clearSession = false,
+    bool clearUpgraded = false,
   }) =>
       AuthState(
         sessionId: clearSession ? null : (sessionId ?? this.sessionId),
@@ -46,6 +53,7 @@ class AuthState {
         busy: busy ?? this.busy,
         error: clearError ? null : (error ?? this.error),
         restoring: restoring ?? this.restoring,
+        upgradedTo: clearUpgraded ? null : (upgradedTo ?? this.upgradedTo),
       );
 }
 
@@ -82,7 +90,23 @@ class AuthController extends StateNotifier<AuthState> {
       }
       // Ask Clerk whether the stored session is still real. A session the
       // person ended elsewhere must not leave the app looking signed in.
-      final token = await _clerk.sessionToken(sessionId);
+      //
+      // "Clerk says this session is dead" and "I could not reach Clerk" are
+      // answered differently on purpose. Treating them the same signed
+      // people out — and deleted the stored session, so it could not come
+      // back — every time the phone had a bad moment, which on a patchy
+      // connection is often. Only an explicit refusal forgets anything.
+      String? token;
+      try {
+        token = await _clerk.sessionToken(sessionId);
+      } catch (_) {
+        state = state.copyWith(
+          sessionId: sessionId,
+          displayName: prefs.getString('neo.clerk.name'),
+          restoring: false,
+        );
+        return;
+      }
       if (token == null) {
         await _forget();
         state = state.copyWith(restoring: false);
@@ -107,6 +131,20 @@ class AuthController extends StateNotifier<AuthState> {
         unawaited(_completeWithTicket(ticket));
         return;
       }
+      // A finished plan purchase comes back on the same link. Nothing to
+      // redeem — the server has already promoted the account — but the
+      // plan the app is holding is now stale, so anything gated on it has
+      // to be asked for again rather than trusted.
+      final upgraded = uri.queryParameters['upgraded'];
+      if (upgraded != null && upgraded.isNotEmpty) {
+        state = state.copyWith(
+          busy: false,
+          clearError: true,
+          upgradedTo: upgraded,
+        );
+        return;
+      }
+
       // The website reports a failed KingsChat or NeoEmail sign-in by
       // redirecting with an error parameter rather than a ticket.
       final failed = uri.queryParameters['kc_error'] ?? uri.queryParameters['ne_error'];
@@ -196,6 +234,10 @@ class AuthController extends StateNotifier<AuthState> {
       clearError: true,
     );
   }
+
+  /// Drops the just-upgraded marker once it has been shown, so the
+  /// confirmation does not reappear on the next rebuild.
+  void acknowledgeUpgrade() => state = state.copyWith(clearUpgraded: true);
 
   Future<void> signOut() async {
     final sessionId = state.sessionId;

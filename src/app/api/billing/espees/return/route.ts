@@ -20,10 +20,29 @@
 
 import { NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
-import { readPendingPayment, updatePaymentStatus } from "@/lib/billingStore";
+import { readPendingPayment, updatePaymentStatus, type PendingPayment } from "@/lib/billingStore";
+import { isAppCallback, redirectToApp } from "@/lib/app-callback";
 import { computePlanExpiry } from "@/lib/plan";
 import { ESPEES_AMOUNTS } from "@/lib/espees";
 import { recordPayment } from "@/lib/paymentsStore";
+
+/**
+ * Where to send the buyer once the upgrade has landed.
+ *
+ * A purchase started in the mobile app opened this page in the phone's
+ * browser, so the ordinary redirect to /dashboard would leave them looking
+ * at a web page with no way back. `returnTo` is set only by the checkout
+ * route, and only ever to the app's one App Link, so this cannot become an
+ * open redirect that fires after a payment.
+ */
+function upgradedRedirect(origin: string, record: PendingPayment) {
+  if (isAppCallback(record.returnTo)) {
+    return redirectToApp({ upgraded: record.plan });
+  }
+  return NextResponse.redirect(origin + "/dashboard?upgraded=" + record.plan, {
+    status: 303,
+  });
+}
 import { appendAuditEntry } from "@/lib/auditLog";
 
 export const runtime = "nodejs";
@@ -49,7 +68,7 @@ export async function GET(req: Request): Promise<Response> {
 
   if (record.status === "paid") {
     // Idempotent: a refresh on the success page should not error.
-    return NextResponse.redirect(origin + "/dashboard?upgraded=" + record.plan, { status: 303 });
+    return upgradedRedirect(origin, record);
   }
 
   if (record.status !== "pending") {
@@ -126,5 +145,5 @@ export async function GET(req: Request): Promise<Response> {
 
   await updatePaymentStatus(nonce, "paid");
 
-  return NextResponse.redirect(origin + "/dashboard?upgraded=" + record.plan, { status: 303 });
+  return upgradedRedirect(origin, record);
 }

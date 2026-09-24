@@ -78,6 +78,27 @@ ThemeData neoTheme() {
         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
     ),
+    // SegmentedButton does not take its selected colour from the scheme's
+    // primary — left alone it renders Material's default purple, which
+    // looks like a different app next to everything else here.
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.resolveWith((states) =>
+            states.contains(WidgetState.selected)
+                ? NeoColors.cyan
+                : NeoColors.bg2),
+        foregroundColor: WidgetStateProperty.resolveWith((states) =>
+            states.contains(WidgetState.selected)
+                ? const Color(0xFF03181C)
+                : NeoColors.textDim),
+        side: const WidgetStatePropertyAll(
+          BorderSide(color: Color(0x3367E8F9)),
+        ),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+    ),
     snackBarTheme: const SnackBarThemeData(
       backgroundColor: NeoColors.bg2,
       contentTextStyle: TextStyle(color: NeoColors.text),
