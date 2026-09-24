@@ -20,6 +20,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
+import { maybeSweepMeetings } from '@/lib/meetingSweep';
 import type { NeoEvent } from '@/types/event';
 
 export const runtime = 'nodejs';
@@ -64,6 +65,19 @@ export async function GET() {
   if (!userId) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   }
+
+  // End meetings that already ended, before listing them.
+  //
+  // The room_finished webhook is what normally does this, and when it is
+  // missed the event stays 'live' with nothing to ever revisit it —
+  // meetings on this account were still marked live 128 days after they
+  // finished. Reconciling here means the list is self-healing: the screen
+  // that shows the problem is the one that fixes it.
+  //
+  // Throttled to once every few minutes across the whole deployment, and
+  // it never throws, so a LiveKit outage costs a slightly stale list
+  // rather than an error page.
+  await maybeSweepMeetings();
 
   const all = await eventStore.listByOwner(userId);
 
