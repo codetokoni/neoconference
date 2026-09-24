@@ -145,6 +145,21 @@ class AuthController extends StateNotifier<AuthState> {
         return;
       }
 
+      // A cancelled or failed payment returns here too. Saying so matters:
+      // the person left the app, went through a checkout, and came back —
+      // silently reappearing on the same screen reads like the app lost
+      // their attempt rather than the payment simply not happening.
+      final payment = uri.queryParameters['payment'];
+      if (payment != null && payment.isNotEmpty) {
+        state = state.copyWith(
+          busy: false,
+          error: payment == 'cancelled'
+              ? 'Payment was not completed. Your plan is unchanged.'
+              : 'The payment did not go through. Your plan is unchanged.',
+        );
+        return;
+      }
+
       // The website reports a failed KingsChat or NeoEmail sign-in by
       // redirecting with an error parameter rather than a ticket.
       final failed = uri.queryParameters['kc_error'] ?? uri.queryParameters['ne_error'];
@@ -238,6 +253,9 @@ class AuthController extends StateNotifier<AuthState> {
   /// Drops the just-upgraded marker once it has been shown, so the
   /// confirmation does not reappear on the next rebuild.
   void acknowledgeUpgrade() => state = state.copyWith(clearUpgraded: true);
+
+  /// Drops a message once shown, so it does not reappear on every rebuild.
+  void clearError() => state = state.copyWith(clearError: true);
 
   Future<void> signOut() async {
     final sessionId = state.sessionId;

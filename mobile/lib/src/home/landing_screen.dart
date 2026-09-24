@@ -31,6 +31,17 @@ class LandingScreen extends ConsumerWidget {
       ref.read(authProvider.notifier).acknowledgeUpgrade();
     });
 
+    // A cancelled payment comes back the same way and is reported here for
+    // the same reason: the person left, went through a checkout, and
+    // returned. Reappearing in silence reads like the app lost the attempt.
+    ref.listen(authProvider.select((s) => s.error), (_, error) {
+      if (error == null) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error)));
+      ref.read(authProvider.notifier).clearError();
+    });
+
     return Scaffold(
       body: SafeArea(
         child: RefreshIndicator(
