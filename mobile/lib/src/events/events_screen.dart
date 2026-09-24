@@ -15,16 +15,8 @@ class EventsScreen extends ConsumerWidget {
     final events = ref.watch(eventsProvider);
     final name = ref.watch(authProvider.select((s) => s.displayName));
 
-    // A plan purchase finishes in the browser and comes back on the App
-    // Link, so the confirmation has to be raised here rather than by the
-    // sheet that started it — that sheet closed when the browser opened.
-    ref.listen(authProvider.select((s) => s.upgradedTo), (_, plan) {
-      if (plan == null) return;
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Upgraded to $plan.')));
-      ref.read(authProvider.notifier).acknowledgeUpgrade();
-    });
+    // The upgrade confirmation is raised on the landing screen, which owns
+    // it — two listeners would race to show and clear the same message.
 
     return Scaffold(
       appBar: AppBar(

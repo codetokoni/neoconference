@@ -68,6 +68,41 @@ export const eventStore = {
     return e;
   },
 
+  /**
+   * Creates an event only if its slug is unclaimed, otherwise returns
+   * whoever got there first.
+   *
+   * `create` writes the slug index with a plain set, which silently
+   * overwrites an existing claim. That is fine when the caller generated a
+   * fresh unique slug, and wrong when several requests are racing to adopt
+   * the *same* slug: each mints its own id, each joins the owner set, and
+   * the index ends up pointing at whichever wrote last. The losers are
+   * orphaned — unreachable by slug, but still listed — which is how one
+   * room came to appear three times in a dashboard.
+   *
+   * The claim is the first write and is conditional, so exactly one racer
+   * can win. A loser reads the winner's event and uses that.
+   */
+  async createIfSlugFree(e: NeoEvent): Promise<NeoEvent | null> {
+    if (!isKvConfigured()) {
+      const existingId = memSlug.get(e.slug);
+      if (existingId) return memEvents.get(existingId) ?? null;
+      return this.create(e);
+    }
+    const claimed = await kv.set(SLUG + e.slug, e.id, { nx: true });
+    if (!claimed) {
+      const winner = (await kv.get<string>(SLUG + e.slug)) || '';
+      return winner ? await this.byId(winner) : null;
+    }
+    // The slug is ours. Everything after this is the event itself; the
+    // record is written before the indexes so nothing can list an id that
+    // does not resolve.
+    await kv.set(PREFIX + e.id, e);
+    await kv.sadd(OWNER + e.ownerUserId, e.id);
+    await kv.sadd(ALL, e.id);
+    return e;
+  },
+
   async byId(id: string): Promise<NeoEvent | null> {
     if (!isKvConfigured()) {
       return memEvents.get(id) ?? null;
@@ -310,12 +345,13 @@ export async function adoptOrphanRoom(slug: string, userId: string, email?: stri
     updatedAt: now,
   };
   try {
-    await eventStore.create(ev);
-    return ev;
+    // Conditional on the slug being unclaimed. The previous version called
+    // create() and relied on it throwing when the slug already existed — it
+    // never does, so every racer minted its own record and the extras were
+    // orphaned into the owner's list. A loser here gets the winner's event.
+    return await eventStore.createIfSlugFree(ev);
   } catch (e) {
-    // Race: another request may have just created it. Re-read and use whatever
-    // exists rather than failing.
-    console.warn('[eventStore] adoptOrphanRoom create failed, re-reading', e);
+    console.warn('[eventStore] adoptOrphanRoom failed, re-reading', e);
     return await eventStore.bySlug(slug);
   }
 }

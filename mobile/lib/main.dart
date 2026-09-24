@@ -7,7 +7,7 @@ import 'package:logging/logging.dart';
 import 'src/auth/auth_controller.dart';
 import 'src/auth/sign_in_screen.dart';
 import 'src/core/theme.dart';
-import 'src/events/events_screen.dart';
+import 'src/home/landing_screen.dart';
 
 void main() {
   _enableLiveKitLogsInDebug();
@@ -63,6 +63,6 @@ class _Root extends ConsumerWidget {
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    return auth.signedIn ? const EventsScreen() : const SignInScreen();
+    return auth.signedIn ? const LandingScreen() : const SignInScreen();
   }
 }
