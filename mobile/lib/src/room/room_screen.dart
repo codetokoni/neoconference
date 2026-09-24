@@ -193,6 +193,7 @@ class _InMeetingState extends State<_InMeeting> {
         _RoomHeader(
           title: widget.title,
           participants: room.remoteParticipants.length + 1,
+          link: state.link,
           recording: state.isRecording,
           waiting: state.canManage ? state.waitingRoom.length : 0,
           onWaitingRoom: () => _openWaitingRoom(context, controller, state),
@@ -311,6 +312,7 @@ class _RoomHeader extends StatelessWidget {
   const _RoomHeader({
     required this.title,
     required this.participants,
+    required this.link,
     required this.recording,
     required this.waiting,
     required this.onWaitingRoom,
@@ -319,6 +321,7 @@ class _RoomHeader extends StatelessWidget {
 
   final String title;
   final int participants;
+  final RoomLink link;
   final bool recording;
   final int waiting;
   final VoidCallback onWaitingRoom;
@@ -345,12 +348,23 @@ class _RoomHeader extends StatelessWidget {
                 ),
                 Row(
                   children: [
+                    // While the link is down the participant count is a
+                    // leftover from when it was up, so it is not shown —
+                    // saying nothing beats saying something false.
                     Text(
-                      '$participants in the meeting',
-                      style: const TextStyle(
-                          fontSize: 12, color: NeoColors.textDim),
+                      switch (link) {
+                        RoomLink.live => '$participants in the meeting',
+                        RoomLink.reconnecting => 'Reconnecting…',
+                        RoomLink.lost => 'Connection lost',
+                      },
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: link == RoomLink.live
+                            ? NeoColors.textDim
+                            : NeoColors.danger,
+                      ),
                     ),
-                    if (recording) ...[
+                    if (recording && link == RoomLink.live) ...[
                       const SizedBox(width: 8),
                       const _RecordingDot(),
                     ],

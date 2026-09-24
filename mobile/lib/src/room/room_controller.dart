@@ -25,6 +25,12 @@ class Topics {
   static const hand = 'neo-hand';
 }
 
+/// Whether the app still has a working link to the meeting.
+///
+/// Separate from [JoinPhase], which is about getting in. This is about
+/// staying in: a call can be fully joined and silently dead.
+enum RoomLink { live, reconnecting, lost }
+
 /// Why the app is not in the room yet.
 enum JoinPhase {
   connecting,
@@ -98,6 +104,7 @@ class RoomState {
     this.dataPacketsSeen = 0,
     this.lastDataTopic,
     this.lastDataError,
+    this.link = RoomLink.live,
   });
 
   final JoinPhase phase;
@@ -134,6 +141,9 @@ class RoomState {
   final String? lastDataTopic;
   final String? lastDataError;
 
+  /// Whether the meeting is still actually reachable.
+  final RoomLink link;
+
   bool get canManage => role == 'host' || role == 'cohost';
   bool get isRecording => recordingEgressId != null;
   bool get inRoom => phase == JoinPhase.connected;
@@ -157,6 +167,7 @@ class RoomState {
     int? dataPacketsSeen,
     String? lastDataTopic,
     String? lastDataError,
+    RoomLink? link,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
@@ -181,6 +192,7 @@ class RoomState {
         dataPacketsSeen: dataPacketsSeen ?? this.dataPacketsSeen,
         lastDataTopic: lastDataTopic ?? this.lastDataTopic,
         lastDataError: lastDataError ?? this.lastDataError,
+        link: link ?? this.link,
       );
 }
 
@@ -406,10 +418,33 @@ class RoomController extends StateNotifier<RoomState> {
   void _wireEvents() {
     _listener!
       ..on<DataReceivedEvent>(_onData)
+      // A meeting that has quietly died must not keep claiming it is live.
+      //
+      // Found on a real phone: the signal socket dropped and retried every
+      // five seconds for minutes while the header still read "2 in the
+      // meeting" and the tiles still showed everyone. Someone who pockets
+      // their phone falls out of the call and the screen tells them they
+      // are still in it, which is worse than showing nothing.
+      ..on<RoomReconnectingEvent>((_) {
+        if (_disposed) return;
+        state = state.copyWith(link: RoomLink.reconnecting);
+      })
+      ..on<RoomResumingEvent>((_) {
+        if (_disposed) return;
+        state = state.copyWith(link: RoomLink.reconnecting);
+      })
+      ..on<RoomReconnectedEvent>((_) {
+        if (_disposed) return;
+        state = state.copyWith(link: RoomLink.live);
+        // Anything published while the link was down never arrived, so the
+        // history is the only way back to a correct chat.
+        unawaited(_loadChatHistory(merge: true));
+      })
       ..on<RoomDisconnectedEvent>((e) {
         if (_disposed) return;
         state = state.copyWith(
           phase: JoinPhase.failed,
+          link: RoomLink.lost,
           message: 'Disconnected from the meeting.',
         );
       })

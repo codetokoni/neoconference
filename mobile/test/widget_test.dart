@@ -149,6 +149,18 @@ void main() {
       expect(state.copyWith(clearMessage: true).message, isNull);
     });
 
+    test('a dead link is never reported as a live meeting', () {
+      // Found on a real phone: the signal socket dropped and retried for
+      // minutes while the header still read "2 in the meeting". A stale
+      // participant count is worse than no count, because someone acts on
+      // it — they keep talking into a call that ended.
+      const live = RoomState(phase: JoinPhase.connected);
+      expect(live.link, RoomLink.live);
+      expect(live.copyWith(link: RoomLink.reconnecting).link,
+          RoomLink.reconnecting);
+      expect(live.copyWith(link: RoomLink.lost).link, RoomLink.lost);
+    });
+
     test('stopping a recording clears the egress id', () {
       const recording = RoomState(recordingEgressId: 'EG_123');
       expect(recording.isRecording, isTrue);
