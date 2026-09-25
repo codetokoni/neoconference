@@ -270,6 +270,9 @@ class _InMeetingState extends State<_InMeeting> {
       children: [
         MeetingStage(
           room: view,
+          captions: (state.translatedCaption ?? state.caption) == null
+              ? null
+              : CaptionStrip(state: state),
           actions: RoomActions(
             toggleMic: controller.toggleMic,
             toggleCamera: controller.toggleCamera,
@@ -329,14 +332,6 @@ class _InMeetingState extends State<_InMeeting> {
             child: ReactionOverlay(reactions: state.reactions),
           ),
         ),
-        // Captions sit above the control bar rather than over the video,
-        // where they would cover the face of whoever is speaking.
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 140,
-          child: IgnorePointer(child: CaptionStrip(state: state)),
-        ),
       ],
     );
   }
@@ -354,6 +349,11 @@ class _InMeetingState extends State<_InMeeting> {
       people.add(_person(me, state, label: 'You', isMe: true));
     }
     for (final other in room.remoteParticipants.values) {
+      // The captions worker joins the room as a participant and was
+      // getting a tile and a place in the header count, so a meeting of
+      // two read as three with a green "A" sitting in the filmstrip. The
+      // web client does not show it either.
+      if (other.kind == ParticipantKind.AGENT) continue;
       people.add(_person(other, state));
     }
 

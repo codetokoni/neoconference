@@ -20,10 +20,18 @@ class MeetingStage extends StatefulWidget {
     super.key,
     required this.room,
     required this.actions,
+    this.captions,
   });
 
   final RoomView room;
   final RoomActions actions;
+
+  /// The caption strip, when there is one.
+  ///
+  /// Taken as a slot rather than drawn over the top, because an overlay
+  /// landed on the filmstrip: the text crossed the tiles and their names.
+  /// Given to the layout, it gets its own space and the tiles move up.
+  final Widget? captions;
 
   @override
   State<MeetingStage> createState() => _MeetingStageState();
@@ -51,7 +59,8 @@ class _MeetingStageState extends State<MeetingStage> {
             curve: NeoMotion.curve,
             padding: EdgeInsets.only(
               top: _chromeVisible ? 64 : 0,
-              bottom: _chromeVisible ? 132 : 0,
+              bottom: (_chromeVisible ? 132 : 0) +
+                  (widget.captions != null ? 56 : 0),
             ),
             child: room.people.isEmpty
                 ? const _Alone()
@@ -84,13 +93,21 @@ class _MeetingStageState extends State<MeetingStage> {
           bottom: _chromeVisible ? 0 : -160,
           left: 0,
           right: 0,
-          child: _Controls(
-            room: room,
-            onMic: widget.actions.toggleMic,
-            onCamera: widget.actions.toggleCamera,
-            onChat: widget.actions.openChat,
-            onMore: _openMore,
-            onLeave: widget.actions.leave,
+          // Captions ride with the control bar so they slide away with it
+          // when the chrome is hidden for a clean view.
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.captions != null) widget.captions!,
+              _Controls(
+                room: room,
+                onMic: widget.actions.toggleMic,
+                onCamera: widget.actions.toggleCamera,
+                onChat: widget.actions.openChat,
+                onMore: _openMore,
+                onLeave: widget.actions.leave,
+              ),
+            ],
           ),
         ),
         if (room.link == RoomLinkState.reconnecting)
