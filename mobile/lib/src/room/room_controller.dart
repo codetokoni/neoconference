@@ -485,6 +485,11 @@ class RoomController extends StateNotifier<RoomState> {
   }
 
   Future<void> _connect(String token, String wsUrl) async {
+    // A retry after a dropped meeting comes back through here on the same
+    // controller. Without disposing the old listener every room event was
+    // handled twice from then on — seen as each connection-quality report
+    // logged twice at the same millisecond.
+    await _listener?.dispose();
     _listener = room.createListener();
     _wireEvents();
     await room.connect(wsUrl, token);
@@ -508,7 +513,11 @@ class RoomController extends StateNotifier<RoomState> {
 
     // And for the same reason, READ_PHONE_STATE: without it a phone call
     // takes the microphone and the meeting never finds out.
-    MeetingPresence.instance.onPhoneCall.addListener(_onPhoneCall);
+    // Removed first for the same retry: ValueNotifier keeps duplicates, and
+    // a call would then be handled twice.
+    MeetingPresence.instance.onPhoneCall
+      ..removeListener(_onPhoneCall)
+      ..addListener(_onPhoneCall);
     unawaited(MeetingPresence.instance.ensurePhoneState());
 
     // Join muted with the camera off unless Settings says otherwise.
