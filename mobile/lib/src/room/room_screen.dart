@@ -139,15 +139,21 @@ class _Gate extends StatelessWidget {
         state.phase == JoinPhase.knocking ||
         state.phase == JoinPhase.waitingForHost;
 
-    final (icon, headline) = switch (state.phase) {
-      JoinPhase.connecting => (Icons.wifi_tethering, 'Joining $title'),
-      JoinPhase.knocking => (Icons.door_front_door_outlined, 'In the waiting room'),
-      JoinPhase.waitingForHost => (Icons.hourglass_empty, 'Waiting for the host'),
-      JoinPhase.denied => (Icons.block, 'Not admitted'),
-      JoinPhase.locked => (Icons.lock_outline, 'Meeting locked'),
-      JoinPhase.full => (Icons.groups, 'Meeting full'),
-      _ => (Icons.error_outline, 'Could not join'),
-    };
+    // A meeting that ended under this person is not a join that failed.
+    final drop = state.phase == JoinPhase.failed ? state.drop : null;
+    final message = drop?.message ?? state.message;
+
+    final (icon, headline) = drop != null
+        ? (Icons.link_off_rounded, drop.headline)
+        : switch (state.phase) {
+          JoinPhase.connecting => (Icons.wifi_tethering, 'Joining $title'),
+          JoinPhase.knocking => (Icons.door_front_door_outlined, 'In the waiting room'),
+          JoinPhase.waitingForHost => (Icons.hourglass_empty, 'Waiting for the host'),
+          JoinPhase.denied => (Icons.block, 'Not admitted'),
+          JoinPhase.locked => (Icons.lock_outline, 'Meeting locked'),
+          JoinPhase.full => (Icons.groups, 'Meeting full'),
+          _ => (Icons.error_outline, 'Could not join'),
+        };
 
     return Stack(
       children: [
@@ -179,17 +185,31 @@ class _Gate extends StatelessWidget {
                     color: p.text,
                   ),
                 ),
-                if (state.message != null) ...[
+                if (message != null) ...[
                   const SizedBox(height: 10),
                   Text(
-                    state.message!,
+                    message,
                     textAlign: TextAlign.center,
                     style: TextStyle(color: p.textMuted),
                   ),
                 ],
                 if (!waiting) ...[
                   const SizedBox(height: 28),
-                  FilledButton(onPressed: onRetry, child: const Text('Try again')),
+                  if (drop == null)
+                    FilledButton(
+                      onPressed: onRetry,
+                      child: const Text('Try again'),
+                    )
+                  else if (drop.canRejoin)
+                    FilledButton(
+                      onPressed: onRetry,
+                      child: const Text('Rejoin'),
+                    )
+                  else
+                    FilledButton(
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      child: const Text('Back'),
+                    ),
                 ],
               ],
             ),
