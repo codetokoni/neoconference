@@ -58,6 +58,7 @@ class RoomView {
     this.unreadChat = 0,
     this.waitingCount = 0,
     this.onPhoneCall = false,
+    this.callEndedMuted = false,
   });
 
   final String title;
@@ -85,6 +86,9 @@ class RoomView {
   /// lasts, because a snackbar is gone before anyone looks back at the
   /// meeting.
   final bool onPhoneCall;
+
+  /// A call that muted this device has ended; the microphone is still off.
+  final bool callEndedMuted;
 
   /// Whoever is sharing, else whoever is speaking, else the first person
   /// who is not this device.
@@ -137,6 +141,7 @@ class RoomActions {
     this.openTranslation,
     this.translationLabel,
     this.openDetails,
+    this.dismissCallEnded,
     this.openChat,
     this.openParticipants,
     this.openHostControls,
@@ -172,6 +177,9 @@ class RoomActions {
 
   /// Open the meeting's details.
   final VoidCallback? openDetails;
+
+  /// Put away the call-ended reminder.
+  final VoidCallback? dismissCallEnded;
 
   final VoidCallback? openChat;
   final VoidCallback? openParticipants;

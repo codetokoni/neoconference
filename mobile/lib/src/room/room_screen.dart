@@ -304,6 +304,7 @@ class _InMeetingState extends State<_InMeeting> {
               : CaptionStrip(state: state),
           actions: RoomActions(
             toggleMic: controller.toggleMic,
+            dismissCallEnded: controller.dismissCallEnded,
             toggleCamera: controller.toggleCamera,
             toggleHand: controller.toggleHand,
             switchCamera: state.cameraOn ? controller.switchCamera : null,
@@ -406,6 +407,7 @@ class _InMeetingState extends State<_InMeeting> {
       unreadChat: state.unreadChat,
       waitingCount: state.canManage ? state.waitingRoom.length : 0,
       onPhoneCall: state.onPhoneCall,
+      callEndedMuted: state.callEndedMuted,
     );
   }
 
