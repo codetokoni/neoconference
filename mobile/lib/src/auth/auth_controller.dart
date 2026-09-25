@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/config.dart';
 import 'clerk_client.dart';
+import 'token_cache.dart';
 
 @immutable
 class AuthState {
@@ -73,6 +74,7 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   final ClerkClient _clerk;
+  late final _tokens = TokenCache(fetch: _clerk.sessionToken);
   final _links = AppLinks();
   StreamSubscription<Uri>? _linkSub;
 
@@ -112,6 +114,9 @@ class AuthController extends StateNotifier<AuthState> {
         state = state.copyWith(restoring: false);
         return;
       }
+      // The check just fetched a good token; the home screen's first
+      // requests, a moment later, can use it instead of fetching their own.
+      _tokens.remember(sessionId, token);
       state = state.copyWith(
         sessionId: sessionId,
         displayName: prefs.getString('neo.clerk.name'),
@@ -222,6 +227,7 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<void> _remember(String sessionId) async {
+    _tokens.clear();
     String? name;
     try {
       final me = await _clerk.me();
@@ -265,6 +271,7 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<void> _forget() async {
+    _tokens.clear();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_sessionKey);
@@ -274,11 +281,12 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  /// A fresh session JWT for the API client, or null when signed out.
+  /// A session JWT for the API client, or null when signed out. Reused
+  /// until shortly before it expires; see [TokenCache].
   Future<String?> currentToken() async {
     final sessionId = state.sessionId;
     if (sessionId == null) return null;
-    return _clerk.sessionToken(sessionId);
+    return _tokens.get(sessionId);
   }
 
   @override
