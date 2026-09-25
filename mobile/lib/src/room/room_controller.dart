@@ -338,6 +338,13 @@ class RoomController extends StateNotifier<RoomState> {
   /// live again, so nothing goes live by itself.
   bool _joinMuted = false;
 
+  /// This device got into the meeting since the person last asked to
+  /// join. A disconnect only counts as a drop if it did: on a real phone
+  /// a first join that never connected ("joinFailure") was shown as
+  /// "Rejoining… the connection to the meeting was lost" — to someone
+  /// who had never been in it.
+  bool _wasIn = false;
+
   late final _weakLink = WeakLinkPolicy(onChange: (weak) {
     if (_disposed) return;
     debugPrint('[neo-room] connection ${weak ? 'weak' : 'recovered'}');
@@ -346,6 +353,9 @@ class RoomController extends StateNotifier<RoomState> {
 
   Future<void> join() async {
     debugPrint('[neo-room] join() called for $slug');
+    // An automatic rejoin is the same meeting carrying on; anything else
+    // is a fresh ask, and has to get in before it can be dropped.
+    if (!_autoRejoin.active) _wasIn = false;
     state = state.copyWith(
       phase: JoinPhase.connecting,
       clearMessage: true,
@@ -563,6 +573,7 @@ class RoomController extends StateNotifier<RoomState> {
     _listener = room.createListener();
     _wireEvents();
     await room.connect(wsUrl, token);
+    _wasIn = true;
     // link: a rejoin after a drop comes through here with the link still
     // marked lost, and the header would go on saying "Connection lost"
     // over a working meeting.
@@ -675,7 +686,15 @@ class RoomController extends StateNotifier<RoomState> {
         _reconnectWatchdog.settled();
         debugPrint('[neo-room] disconnected: ${e.reason}');
         final drop = describeDrop(e.reason);
-        if (drop != null) return _onDropped(drop);
+        if (drop != null && (_wasIn || _autoRejoin.active)) {
+          return _onDropped(drop);
+        }
+        if (drop != null) {
+          // Never got in. join() reports the failure on its own screen,
+          // "Could not join" with Try again, which is the true story.
+          state = state.copyWith(phase: JoinPhase.failed, link: RoomLink.lost);
+          return;
+        }
         // Left on purpose. No message: the meeting screen has already
         // closed by now, so one would pop up over the home screen telling
         // the person something they just did — seen on a real phone as
