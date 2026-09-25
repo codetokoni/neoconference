@@ -676,11 +676,11 @@ class RoomController extends StateNotifier<RoomState> {
         debugPrint('[neo-room] disconnected: ${e.reason}');
         final drop = describeDrop(e.reason);
         if (drop != null) return _onDropped(drop);
-        state = state.copyWith(
-          phase: JoinPhase.failed,
-          link: RoomLink.lost,
-          message: 'Disconnected from the meeting.',
-        );
+        // Left on purpose. No message: the meeting screen has already
+        // closed by now, so one would pop up over the home screen telling
+        // the person something they just did — seen on a real phone as
+        // "Disconnected from the meeting." after pressing Leave.
+        state = state.copyWith(phase: JoinPhase.failed, link: RoomLink.lost);
       })
       // Mute events arrive for everyone, not just this device. Syncing our
       // own buttons is enough to redraw someone else's microphone icon too:
