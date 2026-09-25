@@ -7,6 +7,7 @@ class PhoneCallOutcome {
     required this.muteMic,
     required this.mutedByCall,
     this.notice,
+    this.callEndedMuted,
   });
 
   /// Turn the microphone off now.
@@ -18,6 +19,14 @@ class PhoneCallOutcome {
 
   /// What to tell them, or null for nothing.
   final String? notice;
+
+  /// Whether the "call ended, your microphone is still off" banner should
+  /// show. Null leaves it as it is.
+  ///
+  /// A banner, not the pop-up this used to be: a pop-up is gone in a few
+  /// seconds, and on a real phone Truecaller's after-call screen covered
+  /// the meeting for exactly those seconds.
+  final bool? callEndedMuted;
 }
 
 /// Decide how a meeting reacts to a phone call.
@@ -44,6 +53,7 @@ PhoneCallOutcome decidePhoneCall({
         mutedByCall: true,
         notice: 'You\'re on a phone call. Your microphone is off in the '
             'meeting.',
+        callEndedMuted: false,
       );
     }
     // Already muted — by them, or by an earlier event for this same call.
@@ -53,6 +63,7 @@ PhoneCallOutcome decidePhoneCall({
       muteMic: false,
       mutedByCall: mutedByCall,
       notice: 'You\'re on a phone call.',
+      callEndedMuted: false,
     );
   }
 
@@ -60,7 +71,7 @@ PhoneCallOutcome decidePhoneCall({
     return const PhoneCallOutcome(
       muteMic: false,
       mutedByCall: false,
-      notice: 'Phone call ended. Unmute when you\'re ready.',
+      callEndedMuted: true,
     );
   }
 

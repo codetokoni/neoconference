@@ -404,6 +404,7 @@ class NeoBanner extends StatelessWidget {
     required this.tone,
     this.action,
     this.actionLabel,
+    this.onClose,
   });
 
   final IconData icon;
@@ -411,6 +412,10 @@ class NeoBanner extends StatelessWidget {
   final NeoBannerTone tone;
   final VoidCallback? action;
   final String? actionLabel;
+
+  /// Shows a close button when set, for a banner the person may put away
+  /// without doing what it suggests.
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -453,6 +458,13 @@ class NeoBanner extends StatelessWidget {
               child: Text(actionLabel!),
             ),
           ],
+          if (onClose != null)
+            IconButton(
+              tooltip: 'Dismiss',
+              onPressed: onClose,
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.close_rounded, size: 18, color: p.textMuted),
+            ),
         ],
       ),
     );

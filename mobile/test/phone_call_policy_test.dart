@@ -46,7 +46,10 @@ void main() {
       // and a hot microphone at that moment broadcasts it.
       expect(o.muteMic, isFalse);
       expect(o.mutedByCall, isFalse);
-      expect(o.notice, contains('Unmute when you\'re ready'));
+      // A banner that stays, not a pop-up: on a real phone Truecaller's
+      // after-call screen covered the pop-up for the seconds it lasted.
+      expect(o.callEndedMuted, isTrue);
+      expect(o.notice, isNull);
     });
 
     test('says nothing when the call never touched the microphone', () {
@@ -54,23 +57,29 @@ void main() {
 
       expect(o.muteMic, isFalse);
       expect(o.notice, isNull);
+      expect(o.callEndedMuted, isNot(isTrue));
     });
   });
 
-  test('a full call from an open microphone ends muted, with one prompt', () {
+  test('a new call puts the call-ended banner away', () {
+    final o = decidePhoneCall(inCall: true, micOn: false, mutedByCall: false);
+    expect(o.callEndedMuted, isFalse);
+  });
+
+  test('a full call from an open microphone ends muted, with the banner', () {
     var micOn = true;
     var muted = false;
-    final notices = <String>[];
+    var banner = false;
 
     for (final inCall in [true, true, false]) {
       final o = decidePhoneCall(inCall: inCall, micOn: micOn, mutedByCall: muted);
       if (o.muteMic) micOn = false;
       muted = o.mutedByCall;
-      if (o.notice != null) notices.add(o.notice!);
+      banner = o.callEndedMuted ?? banner;
     }
 
     expect(micOn, isFalse, reason: 'must still be muted after hanging up');
     expect(muted, isFalse);
-    expect(notices.last, contains('Unmute when you\'re ready'));
+    expect(banner, isTrue);
   });
 }

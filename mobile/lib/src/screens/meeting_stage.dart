@@ -121,6 +121,20 @@ class _MeetingStageState extends State<MeetingStage> {
               message: 'On a phone call. Your microphone is off in the '
                   'meeting.',
             ),
+          )
+        else if (room.callEndedMuted)
+          Positioned(
+            top: 72,
+            left: NeoSpace.lg,
+            right: NeoSpace.lg,
+            child: NeoBanner(
+              icon: Icons.mic_off_rounded,
+              tone: NeoBannerTone.info,
+              message: 'Phone call ended. Your microphone is still off.',
+              actionLabel: 'Unmute',
+              action: widget.actions.toggleMic,
+              onClose: widget.actions.dismissCallEnded,
+            ),
           ),
         if (room.link == RoomLinkState.reconnecting)
           const Positioned.fill(child: _ReconnectingOverlay()),

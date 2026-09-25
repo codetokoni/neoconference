@@ -122,6 +122,7 @@ class RoomState {
     this.weakLink = false,
     this.drop,
     this.rejoining = false,
+    this.callEndedMuted = false,
   });
 
   final JoinPhase phase;
@@ -202,6 +203,10 @@ class RoomState {
   /// itself. The screen says so instead of offering a button.
   final bool rejoining;
 
+  /// A phone call that muted this device has ended and the microphone is
+  /// still off. Shown until the person unmutes or puts it away.
+  final bool callEndedMuted;
+
   bool get canManage => role == 'host' || role == 'cohost';
   bool get isRecording => recordingEgressId != null;
   bool get inRoom => phase == JoinPhase.connected;
@@ -236,6 +241,7 @@ class RoomState {
     bool? weakLink,
     MeetingDrop? drop,
     bool? rejoining,
+    bool? callEndedMuted,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
@@ -279,6 +285,7 @@ class RoomState {
         weakLink: weakLink ?? this.weakLink,
         drop: clearDrop ? null : (drop ?? this.drop),
         rejoining: rejoining ?? this.rejoining,
+        callEndedMuted: callEndedMuted ?? this.callEndedMuted,
       );
 }
 
@@ -810,12 +817,18 @@ class RoomController extends StateNotifier<RoomState> {
   void _syncLocalMedia() {
     final me = room.localParticipant;
     if (me == null) return;
+    final micOn = me.isMicrophoneEnabled();
     state = state.copyWith(
-      micOn: me.isMicrophoneEnabled(),
+      micOn: micOn,
       cameraOn: me.isCameraEnabled(),
       screenSharing: me.isScreenShareEnabled(),
+      // Unmuted, however it happened: the reminder has done its job.
+      callEndedMuted: micOn ? false : null,
     );
   }
+
+  /// Put away the call-ended reminder without unmuting.
+  void dismissCallEnded() => state = state.copyWith(callEndedMuted: false);
 
   /// A phone call started or ended on this device.
   ///
@@ -851,6 +864,7 @@ class RoomController extends StateNotifier<RoomState> {
       onPhoneCall: inCall,
       mutedByPhoneCall: outcome.mutedByCall,
       message: outcome.notice,
+      callEndedMuted: outcome.callEndedMuted,
     );
   }
 
