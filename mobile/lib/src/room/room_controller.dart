@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
 import '../events/event.dart';
+import 'meeting_drop.dart';
 import 'meeting_presence.dart';
 import 'phone_call_policy.dart';
 import 'weak_link.dart';
@@ -117,6 +118,7 @@ class RoomState {
     this.onPhoneCall = false,
     this.mutedByPhoneCall = false,
     this.weakLink = false,
+    this.drop,
   });
 
   final JoinPhase phase;
@@ -189,6 +191,10 @@ class RoomState {
   /// is still true.
   final bool weakLink;
 
+  /// Set when a meeting this device was in ended under it — as opposed
+  /// to a join that never got in, which keeps using [message].
+  final MeetingDrop? drop;
+
   bool get canManage => role == 'host' || role == 'cohost';
   bool get isRecording => recordingEgressId != null;
   bool get inRoom => phase == JoinPhase.connected;
@@ -221,12 +227,14 @@ class RoomState {
     bool? onPhoneCall,
     bool? mutedByPhoneCall,
     bool? weakLink,
+    MeetingDrop? drop,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
     bool clearTranslation = false,
     bool clearTranslatedCaption = false,
     bool clearTranslationError = false,
+    bool clearDrop = false,
   }) =>
       RoomState(
         phase: phase ?? this.phase,
@@ -261,6 +269,7 @@ class RoomState {
         onPhoneCall: onPhoneCall ?? this.onPhoneCall,
         mutedByPhoneCall: mutedByPhoneCall ?? this.mutedByPhoneCall,
         weakLink: weakLink ?? this.weakLink,
+        drop: clearDrop ? null : (drop ?? this.drop),
       );
 }
 
@@ -304,7 +313,11 @@ class RoomController extends StateNotifier<RoomState> {
 
   Future<void> join() async {
     debugPrint('[neo-room] join() called for $slug');
-    state = state.copyWith(phase: JoinPhase.connecting, clearMessage: true);
+    state = state.copyWith(
+      phase: JoinPhase.connecting,
+      clearMessage: true,
+      clearDrop: true,
+    );
     try {
       await _resolveRole();
       final creds = await _token();
@@ -493,7 +506,14 @@ class RoomController extends StateNotifier<RoomState> {
     _listener = room.createListener();
     _wireEvents();
     await room.connect(wsUrl, token);
-    state = state.copyWith(phase: JoinPhase.connected, clearMessage: true);
+    // link: a rejoin after a drop comes through here with the link still
+    // marked lost, and the header would go on saying "Connection lost"
+    // over a working meeting.
+    state = state.copyWith(
+      phase: JoinPhase.connected,
+      link: RoomLink.live,
+      clearMessage: true,
+    );
 
     // The foreground service starts here rather than at join, because
     // Android 14 only allows a microphone-type service to be started while
@@ -582,9 +602,16 @@ class RoomController extends StateNotifier<RoomState> {
       })
       ..on<RoomDisconnectedEvent>((e) {
         if (_disposed) return;
+        debugPrint('[neo-room] disconnected: ${e.reason}');
+        final drop = describeDrop(e.reason);
+        // A dropped meeting is not a meeting. Left running, the service
+        // kept the "you are in a meeting" notification up over the
+        // disconnected screen.
+        if (drop != null) unawaited(MeetingPresence.instance.end());
         state = state.copyWith(
           phase: JoinPhase.failed,
           link: RoomLink.lost,
+          drop: drop,
           message: 'Disconnected from the meeting.',
         );
       })
