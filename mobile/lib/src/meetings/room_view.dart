@@ -59,6 +59,7 @@ class RoomView {
     this.canManage = false,
     this.unreadChat = 0,
     this.waitingCount = 0,
+    this.onPhoneCall = false,
   });
 
   final String title;
@@ -81,6 +82,11 @@ class RoomView {
 
   final int unreadChat;
   final int waitingCount;
+
+  /// A phone call has this device's microphone. Shown for as long as it
+  /// lasts, because a snackbar is gone before anyone looks back at the
+  /// meeting.
+  final bool onPhoneCall;
 
   /// Whoever is sharing, else whoever is speaking, else the first person
   /// who is not this device.

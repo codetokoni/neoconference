@@ -6,6 +6,12 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <!-- Lets a meeting notice a phone call and mute itself, so the call and
+         its ringtone are not broadcast into the meeting. Android 12+
+         requires it for call-state callbacks; without it the app simply
+         does not watch — it never falls back to guessing from the audio
+         mode, which was measured to go stale after a call ends. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
 
     <!-- Keeps the call alive when the phone is put down or another app is
          opened. Android kills a backgrounded process that publishes media

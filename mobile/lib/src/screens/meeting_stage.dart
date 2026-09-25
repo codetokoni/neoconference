@@ -110,6 +110,18 @@ class _MeetingStageState extends State<MeetingStage> {
             ],
           ),
         ),
+        if (room.onPhoneCall)
+          Positioned(
+            top: 72,
+            left: NeoSpace.lg,
+            right: NeoSpace.lg,
+            child: NeoBanner(
+              icon: Icons.phone_in_talk_rounded,
+              tone: NeoBannerTone.warning,
+              message: 'On a phone call. Your microphone is off in the '
+                  'meeting.',
+            ),
+          ),
         if (room.link == RoomLinkState.reconnecting)
           const Positioned.fill(child: _ReconnectingOverlay()),
       ],

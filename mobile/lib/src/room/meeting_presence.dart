@@ -34,6 +34,13 @@ class MeetingPresence {
   /// True while the meeting is floating in a Picture in Picture window.
   final ValueNotifier<bool> inPip = ValueNotifier<bool>(false);
 
+  /// True while a phone call is ringing or in progress.
+  ///
+  /// Only ever set when READ_PHONE_STATE has been granted. Without it this
+  /// stays false for the whole meeting — the Android side does not guess
+  /// from the audio mode, which was measured to stay stale after a call.
+  final ValueNotifier<bool> onPhoneCall = ValueNotifier<bool>(false);
+
   bool _wired = false;
   bool _pipAvailable = false;
 
@@ -47,8 +54,11 @@ class MeetingPresence {
     if (_wired) return;
     _wired = true;
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'pipChanged') {
-        inPip.value = call.arguments == true;
+      switch (call.method) {
+        case 'pipChanged':
+          inPip.value = call.arguments == true;
+        case 'phoneCall':
+          onPhoneCall.value = call.arguments == true;
       }
       return null;
     });
@@ -82,6 +92,8 @@ class MeetingPresence {
       debugPrint('[presence] could not stop the meeting service: $e');
     }
     inPip.value = false;
+    // A call still ringing when the meeting ends belongs to no meeting.
+    onPhoneCall.value = false;
   }
 
   /// Ask for the permission that routes call audio to Bluetooth.
@@ -101,6 +113,20 @@ class MeetingPresence {
       return await _channel.invokeMethod<bool>('ensureBluetooth') ?? false;
     } catch (e) {
       debugPrint('[presence] could not request Bluetooth: $e');
+      return false;
+    }
+  }
+
+  /// Ask for the permission that lets the meeting notice a phone call.
+  ///
+  /// Returns whether it is already held. Not waited on: the Android side
+  /// starts watching by itself if the grant arrives mid-meeting.
+  Future<bool> ensurePhoneState() async {
+    if (!supported) return false;
+    try {
+      return await _channel.invokeMethod<bool>('ensurePhoneState') ?? false;
+    } catch (e) {
+      debugPrint('[presence] could not request phone state: $e');
       return false;
     }
   }
