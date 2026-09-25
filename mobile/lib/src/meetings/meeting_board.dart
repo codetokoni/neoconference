@@ -29,6 +29,13 @@ final reloadMeetingBoardProvider = Provider<void Function()>(
   (ref) => () => ref.invalidate(meetingBoardProvider),
 );
 
+/// The dashboard as it was at the last successful load, or null.
+///
+/// Shown while the fresh board loads, and in place of an error page when it
+/// cannot. Null by default — the showcase has nothing saved — and supplied
+/// by the entrypoint like everything else here.
+final savedMeetingBoardProvider = FutureProvider<MeetingBoard?>((ref) async => null);
+
 /// The real one: the signed-in account's meetings, from /api/events/mine.
 final realMeetingBoard = FutureProvider<MeetingBoard>((ref) async {
   final events = await ref.watch(eventsProvider.future);
@@ -46,6 +53,10 @@ List<Override> realMeetingBoardOverrides() => [
       // they rebuild from the fresh fetch on their own.
       reloadMeetingBoardProvider
           .overrideWith((ref) => () => ref.invalidate(eventsProvider)),
+      savedMeetingBoardProvider.overrideWith((ref) async {
+        final saved = await ref.watch(savedEventsProvider.future);
+        return saved == null ? null : boardFromEvents(saved, now: DateTime.now());
+      }),
     ];
 
 /// How long a room may sit "live" before the dashboard stops treating it

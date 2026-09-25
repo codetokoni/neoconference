@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/config.dart';
+import '../events/events_cache.dart';
 import 'clerk_client.dart';
 import 'token_cache.dart';
 
@@ -90,42 +91,47 @@ class AuthController extends StateNotifier<AuthState> {
         state = state.copyWith(restoring: false);
         return;
       }
-      // Ask Clerk whether the stored session is still real. A session the
-      // person ended elsewhere must not leave the app looking signed in.
-      //
-      // "Clerk says this session is dead" and "I could not reach Clerk" are
-      // answered differently on purpose. Treating them the same signed
-      // people out — and deleted the stored session, so it could not come
-      // back — every time the phone had a bad moment, which on a patchy
-      // connection is often. Only an explicit refusal forgets anything.
-      String? token;
-      try {
-        token = await _clerk.sessionToken(sessionId);
-      } catch (_) {
-        state = state.copyWith(
-          sessionId: sessionId,
-          displayName: prefs.getString('neo.clerk.name'),
-          restoring: false,
-        );
-        return;
-      }
-      if (token == null) {
-        await _forget();
-        state = state.copyWith(restoring: false);
-        return;
-      }
-      // The check just fetched a good token; the home screen's first
-      // requests, a moment later, can use it instead of fetching their own.
-      _tokens.remember(sessionId, token);
+      // Open straight into the app on the stored session, and ask Clerk
+      // whether it is still real behind it. Waiting for Clerk first held
+      // everything on a spinner for about three seconds on the phone's
+      // Wi-Fi, for an answer that is almost always yes.
       state = state.copyWith(
         sessionId: sessionId,
         displayName: prefs.getString('neo.clerk.name'),
         restoring: false,
       );
+      unawaited(_verify(sessionId));
     } catch (_) {
       // Storage that will not answer must not strand the app on a splash
       // screen; treat it as signed out.
       state = state.copyWith(restoring: false);
+    }
+  }
+
+  /// Checks a restored session with Clerk, after the app is already open.
+  ///
+  /// Through the token cache, so the home screen's first requests share
+  /// this fetch rather than making their own.
+  ///
+  /// "Clerk says this session is dead" and "I could not reach Clerk" are
+  /// answered differently on purpose. Treating them the same signed people
+  /// out — and deleted the stored session, so it could not come back —
+  /// every time the phone had a bad moment, which on a patchy connection is
+  /// often. Only an explicit refusal forgets anything.
+  Future<void> _verify(String sessionId) async {
+    String? token;
+    try {
+      token = await _tokens.get(sessionId);
+    } catch (e) {
+      debugPrint('[auth] could not check the session with Clerk: $e');
+      return;
+    }
+    // Signed out, or into another account, while this was in flight.
+    if (state.sessionId != sessionId) return;
+    if (token == null) {
+      debugPrint('[auth] Clerk no longer accepts the stored session');
+      await _forget();
+      state = state.copyWith(clearSession: true);
     }
   }
 
@@ -272,6 +278,9 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> _forget() async {
     _tokens.clear();
+    // The saved meetings list belongs to this session; the next person
+    // signing in on this phone must not see it.
+    await EventsCache.clear();
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_sessionKey);

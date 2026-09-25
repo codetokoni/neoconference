@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_controller.dart';
 import '../core/api_client.dart';
+import 'events_cache.dart';
 
 /// One of the signed-in user's meetings, as /api/events/mine returns it.
 @immutable
@@ -61,16 +64,32 @@ final apiProvider = Provider<ApiClient>((ref) {
   return client;
 });
 
+/// The signed-in session, or null. Its own provider so the meeting lists
+/// can be tested without standing up the whole sign-in controller.
+final sessionIdProvider = Provider<String?>(
+  (ref) => ref.watch(authProvider.select((s) => s.sessionId)),
+);
+
 /// The user's meetings. Watches auth so signing in or out refetches rather
 /// than leaving the previous person's list on screen.
 final eventsProvider = FutureProvider<List<NeoEvent>>((ref) async {
-  final signedIn = ref.watch(authProvider.select((s) => s.sessionId));
+  final signedIn = ref.watch(sessionIdProvider);
   if (signedIn == null) return const [];
 
   final body = await ref.watch(apiProvider).get('/api/events/mine');
   final list = (body is Map ? body['events'] : null) as List? ?? const [];
+  // For the next start to show at once. See EventsCache.
+  unawaited(EventsCache.save(signedIn, list));
   return list
       .whereType<Map<String, dynamic>>()
       .map(NeoEvent.fromJson)
       .toList(growable: false);
+});
+
+/// The meetings saved from the last successful load, for this session.
+final savedEventsProvider = FutureProvider<List<NeoEvent>?>((ref) async {
+  final signedIn = ref.watch(sessionIdProvider);
+  if (signedIn == null) return null;
+  final saved = await EventsCache.read(signedIn);
+  return saved?.map(NeoEvent.fromJson).toList(growable: false);
 });
