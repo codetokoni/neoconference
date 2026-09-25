@@ -8,10 +8,12 @@ import '../design/brand.dart';
 import '../design/neo_theme.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
+import '../events/languages.dart';
 import '../meetings/room_view.dart';
 import '../screens/meeting_stage.dart';
 import 'audio_routes.dart';
 import 'audio_sheets.dart';
+import 'meeting_sheets.dart';
 import 'meeting_presence.dart';
 import 'room_controller.dart';
 import 'room_widgets.dart';
@@ -288,6 +290,27 @@ class _InMeetingState extends State<_InMeeting> {
               final device? => AudioRoutes.label(device),
               null => null,
             },
+            openTranslation: () => neoSheet(
+              context,
+              fullHeight: true,
+              builder: (_) => TranslationSheet(slug: widget.slug),
+            ),
+            translationLabel: switch (state.translateTo) {
+              final code? => meetingLanguages
+                  .firstWhere(
+                    (l) => l.code == code,
+                    orElse: () => MeetingLanguage(code, code, code),
+                  )
+                  .label,
+              null => 'Off',
+            },
+            openDetails: () => neoSheet(
+              context,
+              builder: (_) => MeetingDetailsSheet(
+                slug: widget.slug,
+                title: widget.title,
+              ),
+            ),
             openChat: () => _openChat(context, controller, state),
             openParticipants: () => _openParticipants(context, controller),
             openHostControls: state.canManage
@@ -305,6 +328,14 @@ class _InMeetingState extends State<_InMeeting> {
           child: IgnorePointer(
             child: ReactionOverlay(reactions: state.reactions),
           ),
+        ),
+        // Captions sit above the control bar rather than over the video,
+        // where they would cover the face of whoever is speaking.
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 140,
+          child: IgnorePointer(child: CaptionStrip(state: state)),
         ),
       ],
     );

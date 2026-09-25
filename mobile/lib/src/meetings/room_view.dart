@@ -130,6 +130,9 @@ class RoomActions {
     this.enterPip,
     this.openAudioOutput,
     this.audioOutputLabel,
+    this.openTranslation,
+    this.translationLabel,
+    this.openDetails,
     this.openChat,
     this.openParticipants,
     this.openHostControls,
@@ -158,6 +161,13 @@ class RoomActions {
 
   /// What the sound is currently coming out of, for the row's subtitle.
   final String? audioOutputLabel;
+
+  /// Open the live-translation picker, and what it currently reads.
+  final VoidCallback? openTranslation;
+  final String? translationLabel;
+
+  /// Open the meeting's details.
+  final VoidCallback? openDetails;
 
   final VoidCallback? openChat;
   final VoidCallback? openParticipants;

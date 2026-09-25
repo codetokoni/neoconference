@@ -107,6 +107,11 @@ class RoomState {
     this.lastDataTopic,
     this.lastDataError,
     this.link = RoomLink.live,
+    this.translateTo,
+    this.caption,
+    this.translatedCaption,
+    this.transcriptionsSeen = 0,
+    this.translationError,
   });
 
   final JoinPhase phase;
@@ -146,6 +151,27 @@ class RoomState {
   /// Whether the meeting is still actually reachable.
   final RoomLink link;
 
+  /// The language captions are being translated into, or null for off.
+  final String? translateTo;
+
+  /// The most recent final caption, as spoken.
+  final String? caption;
+
+  /// That caption in [translateTo]. Null while it is being fetched.
+  final String? translatedCaption;
+
+  /// How many transcription segments have arrived from LiveKit.
+  ///
+  /// Kept because "nobody is speaking" and "captions are not reaching this
+  /// device" look identical on screen and need opposite fixes — the same
+  /// reason the chat packet counters exist. Inbound data on this SDK is
+  /// the subject of livekit/client-sdk-flutter#1221, and transcriptions
+  /// travel the same path.
+  final int transcriptionsSeen;
+
+  /// Why a translation did not appear, when it did not.
+  final String? translationError;
+
   bool get canManage => role == 'host' || role == 'cohost';
   bool get isRecording => recordingEgressId != null;
   bool get inRoom => phase == JoinPhase.connected;
@@ -170,9 +196,17 @@ class RoomState {
     String? lastDataTopic,
     String? lastDataError,
     RoomLink? link,
+    String? translateTo,
+    String? caption,
+    String? translatedCaption,
+    int? transcriptionsSeen,
+    String? translationError,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
+    bool clearTranslation = false,
+    bool clearTranslatedCaption = false,
+    bool clearTranslationError = false,
   }) =>
       RoomState(
         phase: phase ?? this.phase,
@@ -195,6 +229,15 @@ class RoomState {
         lastDataTopic: lastDataTopic ?? this.lastDataTopic,
         lastDataError: lastDataError ?? this.lastDataError,
         link: link ?? this.link,
+        translateTo: clearTranslation ? null : (translateTo ?? this.translateTo),
+        caption: caption ?? this.caption,
+        translatedCaption: clearTranslatedCaption
+            ? null
+            : (translatedCaption ?? this.translatedCaption),
+        transcriptionsSeen: transcriptionsSeen ?? this.transcriptionsSeen,
+        translationError: clearTranslationError
+            ? null
+            : (translationError ?? this.translationError),
       );
 }
 
@@ -506,6 +549,7 @@ class RoomController extends StateNotifier<RoomState> {
       // own buttons is enough to redraw someone else's microphone icon too:
       // every state write is a new object, and StateNotifier notifies on
       // identity, so the participant list rebuilds from the same write.
+      ..on<TranscriptionEvent>(_onTranscription)
       ..on<TrackMutedEvent>((_) => _syncLocalMedia())
       ..on<TrackUnmutedEvent>((_) => _syncLocalMedia())
       ..on<ParticipantConnectedEvent>((_) => _bump())
@@ -535,6 +579,76 @@ class RoomController extends StateNotifier<RoomState> {
       cameraOn: me.isCameraEnabled(),
       screenSharing: me.isScreenShareEnabled(),
     );
+  }
+
+  /// Captions from the meeting's transcription pipeline.
+  ///
+  /// Counted before anything can go wrong with them, for the same reason
+  /// the data packets are: "nobody is speaking" and "captions are not
+  /// reaching this device" look identical on screen, and a count is the
+  /// only thing that tells them apart.
+  void _onTranscription(TranscriptionEvent event) {
+    if (_disposed) return;
+
+    state = state.copyWith(
+      transcriptionsSeen: state.transcriptionsSeen + event.segments.length,
+    );
+
+    // Only finals. An interim caption is rewritten every few hundred
+    // milliseconds, and translating each revision would spend a request
+    // per keystroke to show text that is about to change.
+    final finals = event.segments.where((s) => s.isFinal && s.text.trim().isNotEmpty);
+    if (finals.isEmpty) return;
+    final text = finals.last.text.trim();
+
+    state = state.copyWith(caption: text, clearTranslatedCaption: true);
+
+    final target = state.translateTo;
+    if (target == null) return;
+    unawaited(_translate(text, target));
+  }
+
+  Future<void> _translate(String text, String target) async {
+    try {
+      final body = await api.post('/api/translate', {
+        'text': text,
+        'targetLang': target,
+      });
+      if (_disposed || state.translateTo != target) return;
+      final translated = (body is Map ? body['translated'] : null) as String?;
+      if (translated == null || translated.isEmpty) return;
+      state = state.copyWith(
+        translatedCaption: translated,
+        clearTranslationError: true,
+      );
+    } on ApiException catch (e) {
+      if (_disposed) return;
+      // 503 means the server has no DeepL key; that is a deployment fact
+      // rather than a transient failure, and repeating the attempt on
+      // every caption would just burn requests.
+      state = state.copyWith(
+        translationError: e.code == 'translation_not_configured'
+            ? 'Translation is not switched on for this deployment.'
+            : e.message,
+      );
+    } catch (e) {
+      if (_disposed) return;
+      state = state.copyWith(translationError: '$e');
+    }
+  }
+
+  /// Choose a language to translate captions into, or null to stop.
+  void setTranslation(String? language) {
+    state = state.copyWith(
+      translateTo: language,
+      clearTranslation: language == null,
+      clearTranslatedCaption: true,
+      clearTranslationError: true,
+    );
+    final caption = state.caption;
+    if (language != null && caption != null) {
+      unawaited(_translate(caption, language));
+    }
   }
 
   void _onData(DataReceivedEvent event) {

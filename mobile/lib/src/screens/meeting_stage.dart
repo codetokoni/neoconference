@@ -172,6 +172,25 @@ class _MeetingStageState extends State<MeetingStage> {
                   actions.openAudioOutput!();
                 },
               ),
+            if (actions.openTranslation != null)
+              ListTile(
+                leading: const Icon(Icons.translate_rounded),
+                title: const Text('Live translation'),
+                subtitle: Text(actions.translationLabel ?? 'Off'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  actions.openTranslation!();
+                },
+              ),
+            if (actions.openDetails != null)
+              ListTile(
+                leading: const Icon(Icons.info_outline_rounded),
+                title: const Text('Meeting details'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  actions.openDetails!();
+                },
+              ),
             if (actions.enterPip != null)
               ListTile(
                 leading: const Icon(Icons.picture_in_picture_alt_rounded),
