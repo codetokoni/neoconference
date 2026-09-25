@@ -457,11 +457,12 @@ class _InMeetingState extends State<_InMeeting> {
 
   void _openChat(BuildContext context, RoomController controller, RoomState state) {
     controller.markChatRead();
+    controller.chatOpen(true);
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (_) => ChatSheet(slug: widget.slug),
-    );
+    ).whenComplete(() => controller.chatOpen(false));
   }
 
   void _openWaitingRoom(
