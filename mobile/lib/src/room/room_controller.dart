@@ -12,6 +12,7 @@ import '../events/event.dart';
 import 'meeting_drop.dart';
 import 'meeting_presence.dart';
 import 'phone_call_policy.dart';
+import 'reconnect_watchdog.dart';
 import 'weak_link.dart';
 import '../settings/meeting_defaults.dart';
 
@@ -291,19 +292,28 @@ class RoomController extends StateNotifier<RoomState> {
   final ApiClient api;
   final String slug;
 
-  final room = Room(
-    roomOptions: const RoomOptions(
-      adaptiveStream: true,
-      // A phone on mobile data should send fewer layers, not choke.
-      dynacast: true,
-    ),
-  );
+  static Room _newRoom() => Room(
+        roomOptions: const RoomOptions(
+          adaptiveStream: true,
+          // A phone on mobile data should send fewer layers, not choke.
+          dynacast: true,
+        ),
+      );
+
+  Room _room = _newRoom();
+  bool _roomUsed = false;
+
+  /// The current meeting connection. Replaced on every connect after the
+  /// first, so read it fresh rather than holding on to it.
+  Room get room => _room;
 
   EventsListener<RoomEvent>? _listener;
   Timer? _knockTimer;
   Timer? _hostTimer;
   Timer? _chatTimer;
   bool _disposed = false;
+
+  late final _reconnectWatchdog = ReconnectWatchdog(onGiveUp: _giveUpReconnecting);
 
   late final _weakLink = WeakLinkPolicy(onChange: (weak) {
     if (_disposed) return;
@@ -503,6 +513,15 @@ class RoomController extends StateNotifier<RoomState> {
     // handled twice from then on — seen as each connection-quality report
     // logged twice at the same millisecond.
     await _listener?.dispose();
+    // And a fresh Room. Rejoining on the one that had been given up on
+    // mid-reconnect never got in: LiveKit threw TimeoutExceptions from
+    // its participant updates and the screen sat on "Joining" for minutes.
+    if (_roomUsed) {
+      final old = _room;
+      _room = _newRoom();
+      unawaited(old.disconnect().then((_) => old.dispose()));
+    }
+    _roomUsed = true;
     _listener = room.createListener();
     _wireEvents();
     await room.connect(wsUrl, token);
@@ -587,14 +606,17 @@ class RoomController extends StateNotifier<RoomState> {
       // are still in it, which is worse than showing nothing.
       ..on<RoomReconnectingEvent>((_) {
         if (_disposed) return;
+        _reconnectWatchdog.reconnecting();
         state = state.copyWith(link: RoomLink.reconnecting);
       })
       ..on<RoomResumingEvent>((_) {
         if (_disposed) return;
+        _reconnectWatchdog.reconnecting();
         state = state.copyWith(link: RoomLink.reconnecting);
       })
       ..on<RoomReconnectedEvent>((_) {
         if (_disposed) return;
+        _reconnectWatchdog.settled();
         state = state.copyWith(link: RoomLink.live);
         // Anything published while the link was down never arrived, so the
         // history is the only way back to a correct chat.
@@ -602,6 +624,7 @@ class RoomController extends StateNotifier<RoomState> {
       })
       ..on<RoomDisconnectedEvent>((e) {
         if (_disposed) return;
+        _reconnectWatchdog.settled();
         debugPrint('[neo-room] disconnected: ${e.reason}');
         final drop = describeDrop(e.reason);
         // A dropped meeting is not a meeting. Left running, the service
@@ -643,6 +666,25 @@ class RoomController extends StateNotifier<RoomState> {
       ..on<TrackPublishedEvent>((_) => _bump())
       ..on<TrackUnpublishedEvent>((_) => _bump())
       ..on<ActiveSpeakersChangedEvent>((_) => _bump());
+  }
+
+  /// The reconnect has taken too long to be coming back. Treated as a
+  /// drop: the person gets Rejoin rather than a spinner that never ends.
+  ///
+  /// The disconnect that follows reports itself as client-initiated, which
+  /// describes nothing, so the drop is set here first and the handler
+  /// keeps it.
+  void _giveUpReconnecting() {
+    if (_disposed || state.link != RoomLink.reconnecting) return;
+    debugPrint('[neo-room] gave up reconnecting after '
+        '${_reconnectWatchdog.timeout.inSeconds}s');
+    unawaited(MeetingPresence.instance.end());
+    state = state.copyWith(
+      phase: JoinPhase.failed,
+      link: RoomLink.lost,
+      drop: describeDrop(DisconnectReason.reconnectAttemptsExceeded),
+    );
+    unawaited(room.disconnect());
   }
 
   /// LiveKit holds participant state on its own objects, so the UI needs a
@@ -1160,6 +1202,7 @@ class RoomController extends StateNotifier<RoomState> {
     _hostTimer?.cancel();
     _chatTimer?.cancel();
     _weakLink.dispose();
+    _reconnectWatchdog.dispose();
     _listener?.dispose();
     unawaited(room.disconnect().then((_) => room.dispose()));
     super.dispose();
