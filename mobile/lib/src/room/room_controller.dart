@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleListener, AppLifecycleState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../events/event.dart';
 import 'auto_rejoin.dart';
+import 'chat_poller.dart';
 import 'meeting_drop.dart';
 import 'meeting_presence.dart';
 import 'phone_call_policy.dart';
@@ -326,7 +328,14 @@ class RoomController extends StateNotifier<RoomState> {
   EventsListener<RoomEvent>? _listener;
   Timer? _knockTimer;
   Timer? _hostTimer;
-  Timer? _chatTimer;
+  late final _chatPoller =
+      ChatPoller(poll: () => _loadChatHistory(merge: true));
+
+  /// Whether the meeting is in front of the person: the app in the
+  /// foreground, or floating in Picture in Picture. Drives how often chat
+  /// is polled.
+  AppLifecycleListener? _lifecycle;
+  AppLifecycleState? _appState;
   bool _disposed = false;
 
   late final _reconnectWatchdog = ReconnectWatchdog(onGiveUp: _giveUpReconnecting);
@@ -1140,10 +1149,28 @@ class RoomController extends StateNotifier<RoomState> {
   /// this direction. Merged by id, so a message that did arrive over the
   /// data channel is not shown twice.
   void _startChatPolling() {
-    _chatTimer ??= Timer.periodic(
-      const Duration(seconds: 4),
-      (_) => unawaited(_loadChatHistory(merge: true)),
-    );
+    _lifecycle ??= AppLifecycleListener(onStateChange: (s) {
+      _appState = s;
+      _updateChatVisibility();
+    });
+    MeetingPresence.instance.inPip
+      ..removeListener(_updateChatVisibility)
+      ..addListener(_updateChatVisibility);
+    _chatPoller.start();
+  }
+
+  void _updateChatVisibility() {
+    if (_disposed) return;
+    final visible = _appState == null ||
+        _appState == AppLifecycleState.resumed ||
+        MeetingPresence.instance.inPip.value;
+    _chatPoller.visible(visible);
+  }
+
+  /// The chat sheet opened or closed: poll quickly only while it is open.
+  void chatOpen(bool open) {
+    if (_disposed) return;
+    _chatPoller.chatOpen(open);
   }
 
   Future<void> _loadChatHistory({bool merge = false}) async {
@@ -1329,7 +1356,9 @@ class RoomController extends StateNotifier<RoomState> {
     unawaited(MeetingPresence.instance.end());
     _knockTimer?.cancel();
     _hostTimer?.cancel();
-    _chatTimer?.cancel();
+    _chatPoller.stop();
+    _lifecycle?.dispose();
+    MeetingPresence.instance.inPip.removeListener(_updateChatVisibility);
     _weakLink.dispose();
     _reconnectWatchdog.dispose();
     _autoRejoin.stop();
