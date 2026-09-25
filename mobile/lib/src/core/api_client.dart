@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'config.dart';
@@ -34,21 +35,43 @@ class ApiClient {
     final uri = Uri.parse('${Config.site}$path').replace(
       queryParameters: query?.isEmpty ?? true ? null : query,
     );
-    final res = await _http.get(uri, headers: await _headers());
+    final clock = Stopwatch()..start();
+    final headers = await _headers();
+    final tokenMs = clock.elapsedMilliseconds;
+    final res = await _http.get(uri, headers: headers);
+    _time('GET $path', tokenMs, clock.elapsedMilliseconds, res.statusCode);
     return _decode(res, 'GET $path');
   }
 
   Future<dynamic> post(String path, [Object? body]) async {
+    final clock = Stopwatch()..start();
+    final headers = await _headers();
+    final tokenMs = clock.elapsedMilliseconds;
     final res = await _http.post(
       Uri.parse('${Config.site}$path'),
       headers: {
-        ...await _headers(),
+        ...headers,
         if (body != null) 'content-type': 'application/json',
       },
       body: body == null ? null : jsonEncode(body),
     );
+    _time('POST $path', tokenMs, clock.elapsedMilliseconds, res.statusCode);
     return _decode(res, 'POST $path');
   }
+
+  /// Logs a slow request, split into getting the session token and the
+  /// request itself — they fail for different reasons and live on
+  /// different servers (Clerk and neoconference.app).
+  void _time(String what, int tokenMs, int totalMs, int status) {
+    if (totalMs < slowMs) return;
+    debugPrint('[api] $what: ${totalMs}ms '
+        '(token ${tokenMs}ms, request ${totalMs - tokenMs}ms) -> $status');
+  }
+
+  /// Requests faster than this are not logged. A build made with
+  /// --dart-define=NEO_LOG_ALL_REQUESTS=true logs every one, for measuring.
+  static int slowMs =
+      const bool.fromEnvironment('NEO_LOG_ALL_REQUESTS') ? 0 : 1000;
 
   dynamic _decode(http.Response res, String what) {
     dynamic body;
