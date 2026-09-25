@@ -13,10 +13,17 @@ import 'dart:convert';
 /// A token is kept until [margin] before its own `exp`, and only for the
 /// session it was issued to. Callers that ask while a fetch is under way
 /// share that fetch rather than starting their own.
+///
+/// Inside [refreshAhead] of expiry a token is still handed out, and a new
+/// one is fetched behind it. Without that, anything polling at roughly the
+/// token's lifetime always found it just expired: in a meeting on the
+/// phone, the chat's check every ~48 s waited 0.7–2 s for Clerk on every
+/// single check.
 class TokenCache {
   TokenCache({
     required this.fetch,
-    this.margin = const Duration(seconds: 15),
+    this.margin = const Duration(seconds: 8),
+    this.refreshAhead = const Duration(seconds: 30),
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
@@ -24,8 +31,13 @@ class TokenCache {
   final Future<String?> Function(String sessionId) fetch;
 
   /// How long before expiry a token stops being handed out. Long enough to
-  /// cover a slow request reaching the server after the token left here.
+  /// cover a slow request reaching the server after the token left here —
+  /// the slowest measured on the phone took 4.7 s.
   final Duration margin;
+
+  /// How long before expiry a new token starts being fetched in the
+  /// background, while the current one is still handed out.
+  final Duration refreshAhead;
 
   final DateTime Function() _now;
 
@@ -43,9 +55,20 @@ class TokenCache {
         expires != null &&
         _session == sessionId &&
         _now().isBefore(expires.subtract(margin))) {
+      if (!_now().isBefore(expires.subtract(refreshAhead)) &&
+          _inFlight == null) {
+        // Still good, but not for long: get the next one behind it. A
+        // failure here is not this caller's problem — the next call past
+        // the margin fetches again and reports it.
+        _start(sessionId).catchError((Object _) => null);
+      }
       return Future.value(jwt);
     }
     if (_inFlight != null && _inFlightSession == sessionId) return _inFlight!;
+    return _start(sessionId);
+  }
+
+  Future<String?> _start(String sessionId) {
     _inFlightSession = sessionId;
     return _inFlight = _fetch(sessionId, _generation);
   }
