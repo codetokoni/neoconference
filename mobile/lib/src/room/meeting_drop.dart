@@ -13,6 +13,7 @@ class MeetingDrop {
     required this.headline,
     required this.message,
     required this.canRejoin,
+    this.retryAutomatically = false,
   });
 
   final String headline;
@@ -21,6 +22,12 @@ class MeetingDrop {
   /// Whether a Rejoin button makes sense. A host who ended the meeting or
   /// removed this person is not undone by pressing it.
   final bool canRejoin;
+
+  /// Whether the app should get back in by itself. Only for the network:
+  /// a meeting that was ended or a person who was removed cannot, and
+  /// retrying after "joined on another device" would fight that device
+  /// for the seat.
+  final bool retryAutomatically;
 }
 
 /// Null when the person left on purpose — there is nothing to explain.
@@ -52,5 +59,6 @@ MeetingDrop? describeDrop(DisconnectReason? reason) => switch (reason) {
           headline: 'You were disconnected',
           message: 'The connection to the meeting was lost.',
           canRejoin: true,
+          retryAutomatically: true,
         ),
     };

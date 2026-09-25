@@ -40,6 +40,12 @@ class MainActivity : FlutterActivity() {
         channel?.invokeMethod("phoneCall", inCall)
     }
 
+    // Callbacks arrive on a ConnectivityManager thread; the channel wants
+    // the main one.
+    private val network = NetworkWatcher(this) {
+        runOnUiThread { channel?.invokeMethod("networkAvailable", null) }
+    }
+
     private companion object {
         const val BLUETOOTH_REQUEST = 8801
         const val PHONE_REQUEST = 8802
@@ -53,6 +59,7 @@ class MainActivity : FlutterActivity() {
             "app.neoconference/meeting"
         )
         channel = methods
+        network.start()
 
         methods.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -152,6 +159,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         phoneCalls.stop()
+        network.stop()
         super.onDestroy()
     }
 

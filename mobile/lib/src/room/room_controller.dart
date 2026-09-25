@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
 import '../events/event.dart';
+import 'auto_rejoin.dart';
 import 'meeting_drop.dart';
 import 'meeting_presence.dart';
 import 'phone_call_policy.dart';
@@ -120,6 +121,7 @@ class RoomState {
     this.mutedByPhoneCall = false,
     this.weakLink = false,
     this.drop,
+    this.rejoining = false,
   });
 
   final JoinPhase phase;
@@ -196,6 +198,10 @@ class RoomState {
   /// to a join that never got in, which keeps using [message].
   final MeetingDrop? drop;
 
+  /// The app is getting back into a meeting the network dropped, by
+  /// itself. The screen says so instead of offering a button.
+  final bool rejoining;
+
   bool get canManage => role == 'host' || role == 'cohost';
   bool get isRecording => recordingEgressId != null;
   bool get inRoom => phase == JoinPhase.connected;
@@ -229,6 +235,7 @@ class RoomState {
     bool? mutedByPhoneCall,
     bool? weakLink,
     MeetingDrop? drop,
+    bool? rejoining,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
@@ -271,6 +278,7 @@ class RoomState {
         mutedByPhoneCall: mutedByPhoneCall ?? this.mutedByPhoneCall,
         weakLink: weakLink ?? this.weakLink,
         drop: clearDrop ? null : (drop ?? this.drop),
+        rejoining: rejoining ?? this.rejoining,
       );
 }
 
@@ -287,6 +295,7 @@ class RoomController extends StateNotifier<RoomState> {
     // away and rebuilding it, or the SDK is reconnecting underneath a
     // controller that never moved. Those have opposite owners.
     debugPrint('[neo-room] controller created for $slug');
+    MeetingPresence.instance.networkReturns.addListener(_onNetworkBack);
   }
 
   final ApiClient api;
@@ -315,6 +324,20 @@ class RoomController extends StateNotifier<RoomState> {
 
   late final _reconnectWatchdog = ReconnectWatchdog(onGiveUp: _giveUpReconnecting);
 
+  late final _autoRejoin = AutoRejoin(
+    attempt: _rejoinAttempt,
+    onExpired: _rejoinExpired,
+  );
+
+  /// What the last drop was, so the screen can go back to it if getting
+  /// back in automatically runs out of time — join() clears it per try.
+  MeetingDrop? _lastDrop;
+
+  /// The next connect keeps the microphone and camera off, whatever the
+  /// join defaults say. Set for an automatic rejoin: nobody chose to go
+  /// live again, so nothing goes live by itself.
+  bool _joinMuted = false;
+
   late final _weakLink = WeakLinkPolicy(onChange: (weak) {
     if (_disposed) return;
     debugPrint('[neo-room] connection ${weak ? 'weak' : 'recovered'}');
@@ -336,11 +359,26 @@ class RoomController extends StateNotifier<RoomState> {
     } on ApiException catch (e) {
       _handleJoinRefusal(e);
     } catch (e) {
-      state = state.copyWith(
-        phase: JoinPhase.failed,
-        message: 'Could not join: $e',
-      );
+      // While rejoining by itself a failed try is expected, and one pop-up
+      // per try every few seconds would be noise. The log keeps it.
+      if (_autoRejoin.active) {
+        debugPrint('[neo-room] rejoin try failed: $e');
+        state = state.copyWith(phase: JoinPhase.failed);
+      } else {
+        state = state.copyWith(
+          phase: JoinPhase.failed,
+          message: 'Could not join: $e',
+        );
+      }
     }
+  }
+
+  /// Rejoin or Try again, from the screen. The person asked, so the join
+  /// defaults apply as usual.
+  Future<void> retry() {
+    _autoRejoin.stop();
+    state = state.copyWith(rejoining: false);
+    return join();
   }
 
   /// Distinguishes this phone from the same person's other devices.
@@ -578,8 +616,18 @@ class RoomController extends StateNotifier<RoomState> {
   /// successful join into a failed one. The meeting is already connected by
   /// this point, and the controls are right there to try again.
   Future<void> _applyJoinDefaults() async {
+    final forceOff = _joinMuted;
+    _joinMuted = false;
     final me = room.localParticipant;
     if (me == null) return;
+    if (forceOff) {
+      // Still sync. Returning here left the buttons showing the mic as it
+      // was before the drop: after an automatic rejoin the other side saw
+      // this person muted while their own button read "Mute" — one tap
+      // from going live while believing they were muting.
+      if (!_disposed) _syncLocalMedia();
+      return;
+    }
     try {
       if (!await MeetingDefaults.joinMuted()) {
         await me.setMicrophoneEnabled(true);
@@ -627,14 +675,10 @@ class RoomController extends StateNotifier<RoomState> {
         _reconnectWatchdog.settled();
         debugPrint('[neo-room] disconnected: ${e.reason}');
         final drop = describeDrop(e.reason);
-        // A dropped meeting is not a meeting. Left running, the service
-        // kept the "you are in a meeting" notification up over the
-        // disconnected screen.
-        if (drop != null) unawaited(MeetingPresence.instance.end());
+        if (drop != null) return _onDropped(drop);
         state = state.copyWith(
           phase: JoinPhase.failed,
           link: RoomLink.lost,
-          drop: drop,
           message: 'Disconnected from the meeting.',
         );
       })
@@ -678,13 +722,64 @@ class RoomController extends StateNotifier<RoomState> {
     if (_disposed || state.link != RoomLink.reconnecting) return;
     debugPrint('[neo-room] gave up reconnecting after '
         '${_reconnectWatchdog.timeout.inSeconds}s');
+    _onDropped(describeDrop(DisconnectReason.reconnectAttemptsExceeded)!);
+    unawaited(room.disconnect());
+  }
+
+  /// The meeting ended under this person.
+  void _onDropped(MeetingDrop drop) {
+    // A dropped meeting is not a meeting. Left running, the service kept
+    // the "you are in a meeting" notification up over the disconnected
+    // screen.
     unawaited(MeetingPresence.instance.end());
+    _lastDrop = drop;
     state = state.copyWith(
       phase: JoinPhase.failed,
       link: RoomLink.lost,
-      drop: describeDrop(DisconnectReason.reconnectAttemptsExceeded),
+      drop: drop,
+      rejoining: drop.retryAutomatically,
     );
-    unawaited(room.disconnect());
+    if (drop.retryAutomatically) _autoRejoin.start();
+  }
+
+  Future<bool> _rejoinAttempt() async {
+    if (_disposed) return true;
+    debugPrint('[neo-room] rejoining automatically');
+    _joinMuted = true;
+    await join();
+    _joinMuted = false;
+    if (_disposed) return true;
+    // Any answer but a failure ends the retrying: in the meeting, or at a
+    // gate such as the waiting room, which has its own screen.
+    if (state.phase == JoinPhase.failed) {
+      state = state.copyWith(drop: _lastDrop);
+      return false;
+    }
+    debugPrint('[neo-room] rejoined automatically, muted');
+    state = state.copyWith(
+      rejoining: false,
+      message: state.phase == JoinPhase.connected
+          ? "You're back in. Your microphone is off."
+          : null,
+    );
+    return true;
+  }
+
+  void _rejoinExpired() {
+    if (_disposed) return;
+    debugPrint('[neo-room] stopped rejoining automatically');
+    state = state.copyWith(
+      phase: JoinPhase.failed,
+      link: RoomLink.lost,
+      drop: _lastDrop,
+      rejoining: false,
+    );
+  }
+
+  void _onNetworkBack() {
+    if (_disposed || !_autoRejoin.active) return;
+    debugPrint('[neo-room] network is back, rejoining now');
+    _autoRejoin.networkAvailable();
   }
 
   /// LiveKit holds participant state on its own objects, so the UI needs a
@@ -1188,6 +1283,7 @@ class RoomController extends StateNotifier<RoomState> {
     // Stop the foreground service before disconnecting, so the "you are in
     // a meeting" notification never outlives the meeting. Ending it twice
     // is harmless; leaving it running is a lie in the status bar.
+    _autoRejoin.stop();
     await MeetingPresence.instance.end();
     await room.disconnect();
   }
@@ -1203,6 +1299,8 @@ class RoomController extends StateNotifier<RoomState> {
     _chatTimer?.cancel();
     _weakLink.dispose();
     _reconnectWatchdog.dispose();
+    _autoRejoin.stop();
+    MeetingPresence.instance.networkReturns.removeListener(_onNetworkBack);
     _listener?.dispose();
     unawaited(room.disconnect().then((_) => room.dispose()));
     super.dispose();
