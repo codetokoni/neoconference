@@ -90,7 +90,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                     : _Gate(
                         title: widget.title,
                         state: state,
-                        onRetry: controller.join,
+                        onRetry: controller.retry,
                       ),
               ),
             ),
@@ -135,15 +135,24 @@ class _Gate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = NeoTheme.of(context);
-    final waiting = state.phase == JoinPhase.connecting ||
+    // Getting back in by itself: the tries in between are failures by
+    // phase, but to the person it is one wait, not a string of errors.
+    final rejoining = state.rejoining;
+    final waiting = rejoining ||
+        state.phase == JoinPhase.connecting ||
         state.phase == JoinPhase.knocking ||
         state.phase == JoinPhase.waitingForHost;
 
     // A meeting that ended under this person is not a join that failed.
     final drop = state.phase == JoinPhase.failed ? state.drop : null;
-    final message = drop?.message ?? state.message;
+    final message = rejoining
+        ? "The connection to the meeting was lost. You'll be back in as "
+            'soon as it returns, with your microphone off.'
+        : drop?.message ?? state.message;
 
-    final (icon, headline) = drop != null
+    final (icon, headline) = rejoining
+        ? (Icons.link_off_rounded, 'Rejoining…')
+        : drop != null
         ? (Icons.link_off_rounded, drop.headline)
         : switch (state.phase) {
           JoinPhase.connecting => (Icons.wifi_tethering, 'Joining $title'),

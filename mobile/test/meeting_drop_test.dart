@@ -25,6 +25,7 @@ void main() {
       final drop = describeDrop(reason)!;
       expect(drop.headline, 'You were disconnected', reason: '$reason');
       expect(drop.canRejoin, isTrue, reason: '$reason');
+      expect(drop.retryAutomatically, isTrue, reason: '$reason');
     }
   });
 
@@ -36,12 +37,17 @@ void main() {
     expect(ended.canRejoin, isFalse);
     expect(removed.headline, 'You were removed from the meeting');
     expect(removed.canRejoin, isFalse);
+    expect(ended.retryAutomatically, isFalse);
+    expect(removed.retryAutomatically, isFalse);
   });
 
   test('joining from another device can be taken back', () {
     final elsewhere = describeDrop(DisconnectReason.duplicateIdentity)!;
     expect(elsewhere.headline, 'Joined on another device');
     expect(elsewhere.canRejoin, isTrue);
+    // Retrying by itself would take the seat back from the other device,
+    // which would then retry too.
+    expect(elsewhere.retryAutomatically, isFalse);
   });
 
   test('no reason is left saying "Could not join"', () {

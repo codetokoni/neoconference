@@ -41,6 +41,10 @@ class MeetingPresence {
   /// from the audio mode, which was measured to stay stale after a call.
   final ValueNotifier<bool> onPhoneCall = ValueNotifier<bool>(false);
 
+  /// Goes up by one each time Android reports a usable network. A count
+  /// rather than a flag, so two returns in a row are two signals.
+  final ValueNotifier<int> networkReturns = ValueNotifier<int>(0);
+
   bool _wired = false;
   bool _pipAvailable = false;
 
@@ -59,6 +63,8 @@ class MeetingPresence {
           inPip.value = call.arguments == true;
         case 'phoneCall':
           onPhoneCall.value = call.arguments == true;
+        case 'networkAvailable':
+          networkReturns.value++;
       }
       return null;
     });
