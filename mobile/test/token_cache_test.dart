@@ -47,21 +47,69 @@ void main() {
     pending.single.complete(t);
     expect(await first, t);
 
-    now = now.add(const Duration(seconds: 30));
+    now = now.add(const Duration(seconds: 20)); // well before any refresh
     expect(await cache.get('sess_1'), t);
     expect(fetched, ['sess_1'], reason: 'one trip to Clerk, not two');
   });
 
-  test('a token near expiry is replaced before the server would refuse it',
+  test('a token near expiry is still used, and the next one fetched behind it',
       () async {
+    // The meeting chat polls every ~48 s. On the phone each poll found the
+    // token just expired and waited 0.7–2 s for Clerk.
     final t = jwt(now.add(const Duration(seconds: 60)));
     final first = cache.get('sess_1');
     pending.single.complete(t);
     await first;
 
-    now = now.add(const Duration(seconds: 50)); // 10 s left, inside margin
+    now = now.add(const Duration(seconds: 48)); // 12 s left
+    expect(await cache.get('sess_1'), t, reason: 'no wait for this caller');
+    expect(fetched, ['sess_1', 'sess_1'], reason: 'the next one is on its way');
+
     cache.get('sess_1');
-    expect(fetched, ['sess_1', 'sess_1']);
+    expect(fetched, hasLength(2), reason: 'one background fetch, not one each');
+
+    final next = jwt(now.add(const Duration(seconds: 60)));
+    pending.last.complete(next);
+    await pumpEventQueue();
+    expect(await cache.get('sess_1'), next);
+  });
+
+  test('a token about to expire is not handed out', () async {
+    final t = jwt(now.add(const Duration(seconds: 60)));
+    final first = cache.get('sess_1');
+    pending.single.complete(t);
+    await first;
+
+    now = now.add(const Duration(seconds: 55)); // 5 s left, inside margin
+    final waiting = cache.get('sess_1');
+    final next = jwt(now.add(const Duration(seconds: 60)));
+    pending.last.complete(next);
+    expect(await waiting, next);
+  });
+
+  test('a background refresh that fails costs the caller nothing', () async {
+    final t = jwt(now.add(const Duration(seconds: 60)));
+    final first = cache.get('sess_1');
+    pending.single.complete(t);
+    await first;
+
+    now = now.add(const Duration(seconds: 40)); // 20 s left
+    expect(await cache.get('sess_1'), t);
+    pending.last.completeError(Exception('Connection reset by peer'));
+    await pumpEventQueue(); // an unhandled error here would fail the test
+
+    expect(await cache.get('sess_1'), t, reason: 'still good, still used');
+  });
+
+  test('a fresh token is not refreshed early', () async {
+    final t = jwt(now.add(const Duration(seconds: 60)));
+    final first = cache.get('sess_1');
+    pending.single.complete(t);
+    await first;
+
+    now = now.add(const Duration(seconds: 20)); // 40 s left
+    await cache.get('sess_1');
+    expect(fetched, ['sess_1'], reason: 'no trip to Clerk while there is time');
   });
 
   test('callers asking at the same moment share one fetch', () async {
