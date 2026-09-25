@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_controller.dart';
+import '../core/load_error.dart';
 import '../design/brand.dart';
 import '../room/room_screen.dart';
 import 'create_meeting_screen.dart';
@@ -72,7 +73,7 @@ class EventsScreen extends ConsumerWidget {
           error: (e, _) => _Message(
             icon: Icons.cloud_off,
             title: 'Could not load your meetings',
-            detail: '$e',
+            detail: describeLoadError(e),
             action: FilledButton(
               onPressed: () => ref.invalidate(eventsProvider),
               child: const Text('Try again'),

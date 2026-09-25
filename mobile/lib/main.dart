@@ -29,7 +29,7 @@ void main() {
       // of layouts serves both this app and the showcase. These are the
       // overrides that point them at the real account.
       overrides: [
-        meetingBoardProvider.overrideWith((ref) => ref.watch(realMeetingBoard.future)),
+        ...realMeetingBoardOverrides(),
         homeGreetingNameProvider.overrideWith(
           (ref) => ref.watch(authProvider.select((s) => s.displayName)),
         ),

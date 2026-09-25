@@ -16,11 +16,37 @@ final meetingBoardProvider = FutureProvider<MeetingBoard>((ref) {
   );
 });
 
+/// Load the dashboard again — from the network, not from a cached failure.
+///
+/// Invalidating [meetingBoardProvider] alone is not enough when the board
+/// is built from other providers: it re-runs, awaits them, and they still
+/// hold the first error. On a real phone one dropped connection left the
+/// dashboard on "Could not load your meetings" until the app was
+/// restarted, and Try again replayed the same failure every time. The
+/// entrypoint knows what the board is built from, so it says how to
+/// reload it.
+final reloadMeetingBoardProvider = Provider<void Function()>(
+  (ref) => () => ref.invalidate(meetingBoardProvider),
+);
+
 /// The real one: the signed-in account's meetings, from /api/events/mine.
 final realMeetingBoard = FutureProvider<MeetingBoard>((ref) async {
   final events = await ref.watch(eventsProvider.future);
   return boardFromEvents(events, now: DateTime.now());
 });
+
+/// What lib/main.dart installs so the dashboard reads the real account.
+///
+/// A function rather than inline in main so a test can build the app's
+/// exact wiring instead of a copy of it.
+List<Override> realMeetingBoardOverrides() => [
+      meetingBoardProvider
+          .overrideWith((ref) => ref.watch(realMeetingBoard.future)),
+      // The bottom of the chain. The board and its wrapper watch it, so
+      // they rebuild from the fresh fetch on their own.
+      reloadMeetingBoardProvider
+          .overrideWith((ref) => () => ref.invalidate(eventsProvider)),
+    ];
 
 /// How long a room may sit "live" before the dashboard stops treating it
 /// as something that is happening.

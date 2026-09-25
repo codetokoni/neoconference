@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/load_error.dart';
 import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
@@ -37,7 +38,10 @@ class HomeScreen extends ConsumerWidget {
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
-          onRefresh: () => ref.refresh(meetingBoardProvider.future),
+          onRefresh: () {
+            ref.read(reloadMeetingBoardProvider)();
+            return ref.read(meetingBoardProvider.future);
+          },
           color: p.primary,
           backgroundColor: p.surfaceAlt,
           child: ListView(
@@ -58,9 +62,9 @@ class HomeScreen extends ConsumerWidget {
                   NeoEmptyState(
                     icon: Icons.cloud_off_rounded,
                     title: 'Could not load your meetings',
-                    message: '$e',
+                    message: describeLoadError(e),
                     action: FilledButton(
-                      onPressed: () => ref.invalidate(meetingBoardProvider),
+                      onPressed: () => ref.read(reloadMeetingBoardProvider)(),
                       child: const Text('Try again'),
                     ),
                   ),
