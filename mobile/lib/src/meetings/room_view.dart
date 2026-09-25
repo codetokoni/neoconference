@@ -5,10 +5,8 @@ import 'package:flutter/widgets.dart';
 /// Separate from whether we joined. A call can be fully joined and silently
 /// dead, and the header must never claim otherwise — a stale participant
 /// count is worse than none, because people act on it.
-/// [weak] has no source in production yet: LiveKit reports connection
-/// quality, but nothing in the room controller subscribes to it. The state
-/// exists because the design covers it and it stays reviewable; production
-/// never sets it, rather than guessing at it from something else.
+/// [weak] is still connected: LiveKit rates this device's own link as poor.
+/// The participant count stays up, because it is still true.
 enum RoomLinkState { live, weak, reconnecting, lost }
 
 enum RoomLayout { speaker, grid }

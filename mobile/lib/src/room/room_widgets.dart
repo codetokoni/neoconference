@@ -655,7 +655,10 @@ class PipView extends StatelessWidget {
             Center(
               child: NeoAvatar(name: focus?.name ?? room.title, size: 48),
             ),
-          if (room.link != RoomLinkState.live)
+          // Weak is still connected, and veiling the video over it would
+          // read as "Connection lost" in a window too small to say more.
+          if (room.link == RoomLinkState.reconnecting ||
+              room.link == RoomLinkState.lost)
             Positioned.fill(
               child: ColoredBox(
                 color: palette.bg.withValues(alpha: 0.72),

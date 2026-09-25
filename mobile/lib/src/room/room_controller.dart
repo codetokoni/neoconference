@@ -11,6 +11,7 @@ import '../core/api_client.dart';
 import '../events/event.dart';
 import 'meeting_presence.dart';
 import 'phone_call_policy.dart';
+import 'weak_link.dart';
 import '../settings/meeting_defaults.dart';
 
 /// Data-channel topics, matching the web client exactly.
@@ -115,6 +116,7 @@ class RoomState {
     this.translationError,
     this.onPhoneCall = false,
     this.mutedByPhoneCall = false,
+    this.weakLink = false,
   });
 
   final JoinPhase phase;
@@ -182,6 +184,11 @@ class RoomState {
   /// hanging up knows there is something to tell the person.
   final bool mutedByPhoneCall;
 
+  /// LiveKit rates this device's own connection as poor. Separate from
+  /// [link]: a weak meeting is still connected, and its participant count
+  /// is still true.
+  final bool weakLink;
+
   bool get canManage => role == 'host' || role == 'cohost';
   bool get isRecording => recordingEgressId != null;
   bool get inRoom => phase == JoinPhase.connected;
@@ -213,6 +220,7 @@ class RoomState {
     String? translationError,
     bool? onPhoneCall,
     bool? mutedByPhoneCall,
+    bool? weakLink,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
@@ -252,6 +260,7 @@ class RoomState {
             : (translationError ?? this.translationError),
         onPhoneCall: onPhoneCall ?? this.onPhoneCall,
         mutedByPhoneCall: mutedByPhoneCall ?? this.mutedByPhoneCall,
+        weakLink: weakLink ?? this.weakLink,
       );
 }
 
@@ -286,6 +295,12 @@ class RoomController extends StateNotifier<RoomState> {
   Timer? _hostTimer;
   Timer? _chatTimer;
   bool _disposed = false;
+
+  late final _weakLink = WeakLinkPolicy(onChange: (weak) {
+    if (_disposed) return;
+    debugPrint('[neo-room] connection ${weak ? 'weak' : 'recovered'}');
+    state = state.copyWith(weakLink: weak);
+  });
 
   Future<void> join() async {
     debugPrint('[neo-room] join() called for $slug');
@@ -470,6 +485,11 @@ class RoomController extends StateNotifier<RoomState> {
   }
 
   Future<void> _connect(String token, String wsUrl) async {
+    // A retry after a dropped meeting comes back through here on the same
+    // controller. Without disposing the old listener every room event was
+    // handled twice from then on — seen as each connection-quality report
+    // logged twice at the same millisecond.
+    await _listener?.dispose();
     _listener = room.createListener();
     _wireEvents();
     await room.connect(wsUrl, token);
@@ -493,7 +513,11 @@ class RoomController extends StateNotifier<RoomState> {
 
     // And for the same reason, READ_PHONE_STATE: without it a phone call
     // takes the microphone and the meeting never finds out.
-    MeetingPresence.instance.onPhoneCall.addListener(_onPhoneCall);
+    // Removed first for the same retry: ValueNotifier keeps duplicates, and
+    // a call would then be handled twice.
+    MeetingPresence.instance.onPhoneCall
+      ..removeListener(_onPhoneCall)
+      ..addListener(_onPhoneCall);
     unawaited(MeetingPresence.instance.ensurePhoneState());
 
     // Join muted with the camera off unless Settings says otherwise.
@@ -569,6 +593,16 @@ class RoomController extends StateNotifier<RoomState> {
       // every state write is a new object, and StateNotifier notifies on
       // identity, so the participant list rebuilds from the same write.
       ..on<TranscriptionEvent>(_onTranscription)
+      // Only this device's own rating. Someone else's poor link is theirs
+      // to see; showing it here would tell this person their meeting is
+      // breaking up when it is not.
+      ..on<ParticipantConnectionQualityUpdatedEvent>((e) {
+        if (_disposed || e.participant is! LocalParticipant) return;
+        // Every report, not just the transitions: when "weak" never shows,
+        // this says whether the server rated the link at all.
+        debugPrint('[neo-room] connection quality ${e.connectionQuality.name}');
+        _weakLink.report(e.connectionQuality);
+      })
       ..on<TrackMutedEvent>((_) => _syncLocalMedia())
       ..on<TrackUnmutedEvent>((_) => _syncLocalMedia())
       ..on<ParticipantConnectedEvent>((_) => _bump())
@@ -1098,6 +1132,7 @@ class RoomController extends StateNotifier<RoomState> {
     _knockTimer?.cancel();
     _hostTimer?.cancel();
     _chatTimer?.cancel();
+    _weakLink.dispose();
     _listener?.dispose();
     unawaited(room.disconnect().then((_) => room.dispose()));
     super.dispose();
