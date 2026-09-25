@@ -442,35 +442,6 @@ class HostControlsSheet extends ConsumerWidget {
       ),
     );
   }
-
-  Future<void> _confirmRemove(
-    BuildContext context,
-    RoomController controller,
-    Participant p,
-    String name,
-  ) async {
-    final yes = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Remove $name?'),
-        content: const Text('They will be disconnected from the meeting.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: NeoTheme.of(context).danger,
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
-    );
-    if (yes == true) await controller.moderate(p.identity, 'kick');
-  }
 }
 
 class _SheetHandle extends StatelessWidget {
@@ -501,6 +472,36 @@ class _SheetHandle extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Asks before removing someone, from either sheet that offers it.
+Future<void> _confirmRemove(
+  BuildContext context,
+  RoomController controller,
+  Participant p,
+  String name,
+) async {
+  final yes = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text('Remove $name?'),
+      content: const Text('They will be disconnected from the meeting.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: NeoTheme.of(context).danger,
+          ),
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Remove'),
+        ),
+      ],
+    ),
+  );
+  if (yes == true) await controller.moderate(p.identity, 'kick');
 }
 
 /// Who is in the meeting.
@@ -549,6 +550,20 @@ class ParticipantsSheet extends ConsumerWidget {
                       speaking: person.isSpeaking,
                       handRaised:
                           state.raisedHands.containsKey(person.identity),
+                      // This is the list hosts open when they want someone
+                      // out. With Remove only under More -> Host controls,
+                      // a host on a real phone looked here, found nothing,
+                      // and the person stayed in the meeting.
+                      onRemove: state.canManage
+                          ? () => _confirmRemove(
+                                context,
+                                controller,
+                                person,
+                                person.name.isNotEmpty
+                                    ? person.name
+                                    : person.identity,
+                              )
+                          : null,
                     ),
                 ],
               ),
@@ -583,12 +598,16 @@ class _PersonRow extends StatelessWidget {
     required this.speaking,
     required this.handRaised,
     this.role,
+    this.onRemove,
   });
 
   final String name;
   final bool muted;
   final bool speaking;
   final bool handRaised;
+
+  /// Null unless this device may remove people, and never for its own row.
+  final VoidCallback? onRemove;
 
   /// Only known for this device: LiveKit does not carry everyone's role.
   final String? role;
@@ -619,6 +638,12 @@ class _PersonRow extends StatelessWidget {
                     ? palette.success
                     : palette.textMuted,
           ),
+          if (onRemove != null)
+            IconButton(
+              tooltip: 'Remove from meeting',
+              icon: Icon(Icons.person_remove, color: palette.danger),
+              onPressed: onRemove,
+            ),
         ],
       ),
     );
