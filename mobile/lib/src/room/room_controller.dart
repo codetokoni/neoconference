@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../events/event.dart';
 import 'meeting_presence.dart';
+import 'phone_call_policy.dart';
 import '../settings/meeting_defaults.dart';
 
 /// Data-channel topics, matching the web client exactly.
@@ -112,6 +113,8 @@ class RoomState {
     this.translatedCaption,
     this.transcriptionsSeen = 0,
     this.translationError,
+    this.onPhoneCall = false,
+    this.mutedByPhoneCall = false,
   });
 
   final JoinPhase phase;
@@ -172,6 +175,13 @@ class RoomState {
   /// Why a translation did not appear, when it did not.
   final String? translationError;
 
+  /// A phone call is ringing or in progress on this device.
+  final bool onPhoneCall;
+
+  /// The microphone is off because of that call rather than by choice, so
+  /// hanging up knows there is something to tell the person.
+  final bool mutedByPhoneCall;
+
   bool get canManage => role == 'host' || role == 'cohost';
   bool get isRecording => recordingEgressId != null;
   bool get inRoom => phase == JoinPhase.connected;
@@ -201,6 +211,8 @@ class RoomState {
     String? translatedCaption,
     int? transcriptionsSeen,
     String? translationError,
+    bool? onPhoneCall,
+    bool? mutedByPhoneCall,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
@@ -238,6 +250,8 @@ class RoomState {
         translationError: clearTranslationError
             ? null
             : (translationError ?? this.translationError),
+        onPhoneCall: onPhoneCall ?? this.onPhoneCall,
+        mutedByPhoneCall: mutedByPhoneCall ?? this.mutedByPhoneCall,
       );
 }
 
@@ -477,6 +491,11 @@ class RoomController extends StateNotifier<RoomState> {
     // the earpiece even with earbuds connected.
     unawaited(MeetingPresence.instance.ensureBluetooth());
 
+    // And for the same reason, READ_PHONE_STATE: without it a phone call
+    // takes the microphone and the meeting never finds out.
+    MeetingPresence.instance.onPhoneCall.addListener(_onPhoneCall);
+    unawaited(MeetingPresence.instance.ensurePhoneState());
+
     // Join muted with the camera off unless Settings says otherwise.
     // Arriving already broadcasting is a rude surprise on a phone, which is
     // likely to be somewhere personal, so that stays the default — but a
@@ -578,6 +597,43 @@ class RoomController extends StateNotifier<RoomState> {
       micOn: me.isMicrophoneEnabled(),
       cameraOn: me.isCameraEnabled(),
       screenSharing: me.isScreenShareEnabled(),
+    );
+  }
+
+  /// A phone call started or ended on this device.
+  ///
+  /// The judgement is [decidePhoneCall]'s; this only carries it out. The
+  /// notice goes through [RoomState.message], which the room shows as a
+  /// snackbar, and the ongoing state drives a banner for as long as the
+  /// call lasts.
+  Future<void> _onPhoneCall() async {
+    if (_disposed) return;
+    final inCall = MeetingPresence.instance.onPhoneCall.value;
+    final me = room.localParticipant;
+
+    final outcome = decidePhoneCall(
+      inCall: inCall,
+      micOn: me?.isMicrophoneEnabled() ?? false,
+      mutedByCall: state.mutedByPhoneCall,
+    );
+
+    if (outcome.muteMic && me != null) {
+      try {
+        await me.setMicrophoneEnabled(false);
+      } catch (e) {
+        // Android has already given the microphone to the call, so a
+        // failure here means it was not ours to switch off. The state
+        // below still records the call.
+        debugPrint('[neo-room] could not mute for a phone call: $e');
+      }
+    }
+    if (_disposed) return;
+
+    _syncLocalMedia();
+    state = state.copyWith(
+      onPhoneCall: inCall,
+      mutedByPhoneCall: outcome.mutedByCall,
+      message: outcome.notice,
     );
   }
 
@@ -1037,6 +1093,7 @@ class RoomController extends StateNotifier<RoomState> {
   void dispose() {
     _disposed = true;
     debugPrint('[neo-room] controller DISPOSED for $slug');
+    MeetingPresence.instance.onPhoneCall.removeListener(_onPhoneCall);
     unawaited(MeetingPresence.instance.end());
     _knockTimer?.cancel();
     _hostTimer?.cancel();

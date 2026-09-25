@@ -36,8 +36,13 @@ class MainActivity : FlutterActivity() {
      */
     private var inMeeting = false
 
+    private val phoneCalls = PhoneCallWatcher(this) { inCall ->
+        channel?.invokeMethod("phoneCall", inCall)
+    }
+
     private companion object {
         const val BLUETOOTH_REQUEST = 8801
+        const val PHONE_REQUEST = 8802
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -55,6 +60,7 @@ class MainActivity : FlutterActivity() {
                     inMeeting = true
                     val title = call.argument<String>("title") ?: "Meeting"
                     MeetingService.start(this, title)
+                    phoneCalls.start()
                     updateAutoPip()
                     result.success(true)
                 }
@@ -62,9 +68,12 @@ class MainActivity : FlutterActivity() {
                 "stopMeeting" -> {
                     inMeeting = false
                     MeetingService.stop(this)
+                    phoneCalls.stop()
                     updateAutoPip()
                     result.success(true)
                 }
+
+                "ensurePhoneState" -> result.success(ensurePhoneState())
 
                 "enterPip" -> result.success(enterPip())
 
@@ -106,6 +115,44 @@ class MainActivity : FlutterActivity() {
             BLUETOOTH_REQUEST
         )
         return false
+    }
+
+    /**
+     * Ask for READ_PHONE_STATE, which is what lets the meeting notice a
+     * phone call.
+     *
+     * Asked at the same moment as Bluetooth and for the same reason: this
+     * is where it is needed. The answer is not waited on — a meeting never
+     * blocks on a permission prompt. If it is granted after the meeting
+     * started, onRequestPermissionsResult starts watching then.
+     */
+    private fun ensurePhoneState(): Boolean {
+        if (phoneCalls.permitted) return true
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.READ_PHONE_STATE),
+            PHONE_REQUEST
+        )
+        return false
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PHONE_REQUEST &&
+            grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED &&
+            inMeeting
+        ) {
+            phoneCalls.start()
+        }
+    }
+
+    override fun onDestroy() {
+        phoneCalls.stop()
+        super.onDestroy()
     }
 
     private fun pipSupported(): Boolean =

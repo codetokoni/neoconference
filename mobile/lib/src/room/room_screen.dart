@@ -374,6 +374,7 @@ class _InMeetingState extends State<_InMeeting> {
       canManage: state.canManage,
       unreadChat: state.unreadChat,
       waitingCount: state.canManage ? state.waitingRoom.length : 0,
+      onPhoneCall: state.onPhoneCall,
     );
   }
 
