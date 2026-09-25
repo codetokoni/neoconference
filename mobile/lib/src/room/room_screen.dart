@@ -361,7 +361,9 @@ class _InMeetingState extends State<_InMeeting> {
       title: widget.title,
       people: people,
       link: switch (state.link) {
-        RoomLink.live => RoomLinkState.live,
+        // Weak only while otherwise live: reconnecting and lost say more.
+        RoomLink.live =>
+          state.weakLink ? RoomLinkState.weak : RoomLinkState.live,
         RoomLink.reconnecting => RoomLinkState.reconnecting,
         RoomLink.lost => RoomLinkState.lost,
       },

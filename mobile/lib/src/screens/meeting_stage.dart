@@ -327,8 +327,9 @@ class _Header extends StatelessWidget {
 
     // While the link is down the participant count is a leftover from when
     // it was up, so it is not shown — saying nothing beats saying
-    // something false.
+    // something false. A weak link is still up, and its count is true.
     final live = room.link == RoomLinkState.live;
+    final connected = live || room.link == RoomLinkState.weak;
     final (statusLabel, statusColor) = switch (room.link) {
       RoomLinkState.live =>
         (room.recording ? '${room.clock} · Recording' : room.clock,
@@ -405,7 +406,7 @@ class _Header extends StatelessWidget {
                 color: p.text,
               ),
             ),
-          if (onParticipants != null && live)
+          if (onParticipants != null && connected)
             TextButton.icon(
               onPressed: onParticipants,
               icon: Icon(Icons.people_alt_rounded, size: 18, color: p.text),
