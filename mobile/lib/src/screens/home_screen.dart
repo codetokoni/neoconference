@@ -29,6 +29,9 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final board = ref.watch(meetingBoardProvider);
+    // The list from the last successful load, shown while this one comes
+    // in and in place of an error page if it cannot.
+    final saved = ref.watch(savedMeetingBoardProvider).valueOrNull;
     final name = ref.watch(homeGreetingNameProvider);
     final now = ref.watch(nowProvider);
     final p = NeoTheme.of(context);
@@ -55,20 +58,18 @@ class HomeScreen extends ConsumerWidget {
               _Greeting(name: name, now: now),
               const SizedBox(height: NeoSpace.xl),
               ...board.when(
-                loading: () => const [_LoadingBlock()],
-                error: (e, _) => [
-                  const _QuickActions(),
-                  const SizedBox(height: NeoSpace.xxl),
-                  NeoEmptyState(
-                    icon: Icons.cloud_off_rounded,
-                    title: 'Could not load your meetings',
-                    message: describeLoadError(e),
-                    action: FilledButton(
-                      onPressed: () => ref.read(reloadMeetingBoardProvider)(),
-                      child: const Text('Try again'),
-                    ),
-                  ),
-                ],
+                loading: () => saved != null
+                    ? _board(context, ref, saved, now)
+                    : const [_LoadingBlock()],
+                error: (e, _) => _failed(
+                  context,
+                  ref,
+                  e,
+                  // The list already on screen this run, else the one saved
+                  // from the last.
+                  board.valueOrNull ?? saved,
+                  now,
+                ),
                 data: (board) => _board(context, ref, board, now),
               ),
             ],
@@ -76,6 +77,46 @@ class HomeScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// A load that failed. With a list to fall back on, that list stays,
+  /// marked as possibly old — better than an error page in its place.
+  /// Without one, the error page.
+  List<Widget> _failed(
+    BuildContext context,
+    WidgetRef ref,
+    Object error,
+    MeetingBoard? fallback,
+    DateTime now,
+  ) {
+    void retry() => ref.read(reloadMeetingBoardProvider)();
+    if (fallback != null) {
+      return [
+        NeoBanner(
+          icon: Icons.cloud_off_rounded,
+          tone: NeoBannerTone.warning,
+          message: '${describeLoadError(error)} Showing your meetings from '
+              'earlier.',
+          actionLabel: 'Try again',
+          action: retry,
+        ),
+        const SizedBox(height: NeoSpace.lg),
+        ..._board(context, ref, fallback, now),
+      ];
+    }
+    return [
+      const _QuickActions(),
+      const SizedBox(height: NeoSpace.xxl),
+      NeoEmptyState(
+        icon: Icons.cloud_off_rounded,
+        title: 'Could not load your meetings',
+        message: describeLoadError(error),
+        action: FilledButton(
+          onPressed: retry,
+          child: const Text('Try again'),
+        ),
+      ),
+    ];
   }
 
   List<Widget> _board(
