@@ -190,5 +190,21 @@ void main() {
       expect(recording.isRecording, isTrue);
       expect(recording.copyWith(clearRecording: true).isRecording, isFalse);
     });
+
+    test('a recording started on another device is shown here too', () {
+      // On the phone, a recording started from another device ran for over
+      // two minutes with nothing in the header: only the egress id was
+      // checked, and only the starting device has it.
+      const elsewhere = RoomState(roomRecording: true);
+      expect(elsewhere.isRecording, isTrue);
+      expect(elsewhere.recordingHere, isFalse,
+          reason: 'cannot be stopped from here, and must not start another');
+    });
+
+    test('the device that started it can stop it', () {
+      const here = RoomState(recordingEgressId: 'EG_123', roomRecording: true);
+      expect(here.isRecording, isTrue);
+      expect(here.recordingHere, isTrue);
+    });
   });
 }
