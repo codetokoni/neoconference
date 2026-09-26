@@ -31,6 +31,8 @@ export interface WaitingRoomEntry {
   email?: string;
   requestedAt: number;
   status: 'pending' | 'admitted' | 'denied';
+  /** When a host admitted or refused, ms since epoch. See lib/waitingRoom. */
+  decidedAt?: number;
 }
 
 export interface StreamLabBinding {

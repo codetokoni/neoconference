@@ -23,6 +23,7 @@ import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
 import { recordWebhookEvent, recordWebhookRejection } from '@/lib/webhookMetrics';
 import { canEnd, isInProgress } from '@/lib/meetingLifecycle';
+import { clearedForNewSession } from '@/lib/waitingRoom';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -143,6 +144,19 @@ export async function POST(req: Request) {
           reason: 'event_not_found',
         });
         return NextResponse.json({ ok: true, ignored: 'event_not_found', roomName });
+      }
+      // The room emptied: this session's admissions and refusals end with
+      // it, for every room including always-open ones. Before, a person
+      // admitted once skipped that room's waiting room for good, and one
+      // refused once could never knock again. Done first, because every
+      // branch below returns.
+      const cleared = clearedForNewSession(ev);
+      if (cleared) {
+        await eventStore.update(ev.id, (prev) => ({
+          ...prev,
+          ...(clearedForNewSession(prev) ?? {}),
+        }));
+        console.info('[webhook] waiting room reset', roomName);
       }
       // 'waiting' counts as open, not just 'live'. Checking only for
       // 'live' meant a meeting whose attendees were still in the waiting

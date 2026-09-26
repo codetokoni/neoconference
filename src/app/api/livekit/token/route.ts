@@ -4,6 +4,7 @@ import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { getPlanForUserId, getPlanLimits, type Plan } from "@/lib/plan";
 import { isAdmin } from "@/lib/roles";
 import { rejoinDropsToAttendee, reopensOnJoin } from "@/lib/meetingLifecycle";
+import { gateStatus } from "@/lib/waitingRoom";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,9 +105,12 @@ export async function GET(req: NextRequest) {
             await isHostlikeForEvent(ev);
           if (!isHostlike && !isPreApproved) {
             const entry = (ev.waitingRoom || []).find((e) => e.id === userId);
-            if (!entry || entry.status !== "admitted") {
+            // A spent refusal reads as not having knocked, so the client
+            // knocks afresh instead of showing a "no" from long ago.
+            const status = gateStatus(entry, Date.now());
+            if (status !== "admitted") {
               return NextResponse.json(
-                { error: "waiting_room", status: entry?.status || "not_knocked" },
+                { error: "waiting_room", status },
                 { status: 403 }
               );
             }
