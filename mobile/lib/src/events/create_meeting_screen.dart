@@ -8,6 +8,20 @@ import '../room/room_screen.dart';
 import 'event.dart';
 import 'languages.dart';
 
+/// The new meeting's slug from /api/events/create's reply, or null.
+///
+/// The route has returned it at the top level and nested under `event` at
+/// different times; accept either rather than leave someone staring at a
+/// meeting that was made but cannot be opened.
+String? createdSlug(Object? body) {
+  if (body is! Map) return null;
+  final top = body['slug'];
+  if (top is String && top.isNotEmpty) return top;
+  final nested = body['event'];
+  if (nested is Map && nested['slug'] is String) return nested['slug'] as String;
+  return null;
+}
+
 /// Creating a meeting from the phone.
 ///
 /// Calls the same /api/events/create the website's form does, so the rules
@@ -56,21 +70,7 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
         if (_languages.isNotEmpty) 'languages': _languages.toList(),
       });
 
-      // The create route has returned the slug at the top level and nested
-      // under `event` at different times; accept either rather than leave
-      // someone staring at a meeting that was made but cannot be opened.
-      String? slug;
-      if (body is Map) {
-        final top = body['slug'];
-        if (top is String && top.isNotEmpty) {
-          slug = top;
-        } else {
-          final nested = body['event'];
-          if (nested is Map && nested['slug'] is String) {
-            slug = nested['slug'] as String;
-          }
-        }
-      }
+      final slug = createdSlug(body);
       if (slug == null) {
         setState(() {
           _busy = false;
