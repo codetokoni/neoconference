@@ -1244,7 +1244,34 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
     fromName: string;
   } | null>(null);
 
-  const isRecording = !!egressId || !!remoteRecording;
+  // LiveKit's own word on whether the room is being recorded, whoever
+  // started it. The data message above only arrives from another web
+  // client, and only to clients already in the room when it was sent: a
+  // recording started from the mobile app, or before this tab joined,
+  // never showed REC here.
+  const [lkRecording, setLkRecording] = useState<boolean>(
+    () => !!room?.isRecording,
+  );
+  useEffect(() => {
+    if (!room) return;
+    setLkRecording(!!room.isRecording);
+    const onStatus = (recording: boolean) => {
+      setLkRecording(recording);
+      // Nothing is recording at all: a REC left from a lost "stopped"
+      // message would otherwise stay up for the rest of the meeting.
+      if (!recording) setRemoteRecording(null);
+    };
+    room.on(RoomEvent.RecordingStatusChanged, onStatus);
+    return () => {
+      room.off(RoomEvent.RecordingStatusChanged, onStatus);
+    };
+  }, [room]);
+
+  const isRecording = !!egressId || !!remoteRecording || lkRecording;
+  /** Recording, but started somewhere else: this tab cannot stop it (the
+   *  stop route needs an egress id only the starter has), and Record would
+   *  start a second one. */
+  const recordingElsewhere = isRecording && !egressId;
   const isHost = roomRole === "host" || roomRole === "cohost";
 
   // Brief "Recording started" flash shown to non-hosts on the false→true
@@ -1662,8 +1689,8 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
           type="button"
           data-room-chrome="true"
           onClick={egressId ? stop : start}
-          disabled={busy || recordPending === "asking"}
-          title={egressId ? "Stop recording" : recordPending === "asking" ? "Waiting for host approval…" : "Start recording"}
+          disabled={busy || recordPending === "asking" || recordingElsewhere}
+          title={egressId ? "Stop recording" : recordingElsewhere ? "Being recorded from another device" : recordPending === "asking" ? "Waiting for host approval…" : "Start recording"}
           className={
             (egressId
               ? "inline-flex items-center gap-1.5 rounded-lg border border-red-500 bg-red-600/90 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-500 active:scale-[0.98] transition"
@@ -1679,6 +1706,11 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
             <>
               <span className="inline-block h-2 w-2 bg-white" aria-hidden />
               Stop recording
+            </>
+          ) : recordingElsewhere ? (
+            <>
+              <span className="inline-block h-2 w-2 rounded-full bg-red-500" aria-hidden />
+              Recording…
             </>
           ) : (
             <>
