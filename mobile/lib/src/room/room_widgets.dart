@@ -374,8 +374,14 @@ class HostControlsSheet extends ConsumerWidget {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
+                    // A recording started on another device cannot be stopped
+                    // from here (the stop route needs its egress id), and
+                    // offering Record would start a second one. Shown, not
+                    // offered.
                     child: OutlinedButton.icon(
-                      onPressed: controller.toggleRecording,
+                      onPressed: state.isRecording && !state.recordingHere
+                          ? null
+                          : controller.toggleRecording,
                       icon: Icon(
                         state.isRecording
                             ? Icons.stop_circle_outlined
@@ -383,7 +389,13 @@ class HostControlsSheet extends ConsumerWidget {
                         size: 18,
                         color: state.isRecording ? palette.danger : null,
                       ),
-                      label: Text(state.isRecording ? 'Stop' : 'Record'),
+                      label: Text(
+                        !state.isRecording
+                            ? 'Record'
+                            : state.recordingHere
+                                ? 'Stop'
+                                : 'Recording',
+                      ),
                     ),
                   ),
                 ),

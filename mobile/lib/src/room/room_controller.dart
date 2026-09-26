@@ -108,6 +108,8 @@ class RoomState {
     this.raisedHands = const {},
     this.waitingRoom = const [],
     this.recordingEgressId,
+    this.recordingAudioEgressId,
+    this.recordingFilepath,
     this.unreadChat = 0,
     this.chatError,
     this.chatPacketsSeen = 0,
@@ -127,6 +129,7 @@ class RoomState {
     this.rejoining = false,
     this.callEndedMuted = false,
     this.endPinRequired = false,
+    this.roomRecording = false,
   });
 
   final JoinPhase phase;
@@ -145,6 +148,14 @@ class RoomState {
   final Map<String, String> raisedHands;
   final List<Map<String, dynamic>> waitingRoom;
   final String? recordingEgressId;
+
+  /// The audio-only recording the server starts beside the video one, and
+  /// the video's file path. Both go back on Stop, as the web sends them.
+  /// The app used to keep only [recordingEgressId], so Stop ended the video
+  /// and left the audio recording running: LiveKit still reported the room
+  /// as recorded fifteen minutes later, until the room was closed.
+  final String? recordingAudioEgressId;
+  final String? recordingFilepath;
   final int unreadChat;
 
   /// Why the chat is empty, when it is empty for a reason.
@@ -215,8 +226,23 @@ class RoomState {
   /// role lookup, so the app can ask before trying rather than after.
   final bool endPinRequired;
 
+  /// LiveKit says the room is being recorded, whoever started it. Sent to
+  /// every participant by the server; [recordingEgressId] is only known to
+  /// the device that started the recording.
+  final bool roomRecording;
+
   bool get canManage => role == 'host' || role == 'cohost';
-  bool get isRecording => recordingEgressId != null;
+  /// Whether the meeting is being recorded, as far as anyone can tell.
+  ///
+  /// Used to be only [recordingEgressId], which is set on the device that
+  /// pressed Record and nowhere else: on the phone, a recording started
+  /// from another device ran for over two minutes with no sign of it in
+  /// the header. Everyone in a recorded meeting is entitled to know.
+  bool get isRecording => recordingEgressId != null || roomRecording;
+
+  /// Whether this device started the recording, and so can stop it: the
+  /// server's stop route needs the egress id, which only it has.
+  bool get recordingHere => recordingEgressId != null;
   bool get inRoom => phase == JoinPhase.connected;
 
   RoomState copyWith({
@@ -232,6 +258,8 @@ class RoomState {
     Map<String, String>? raisedHands,
     List<Map<String, dynamic>>? waitingRoom,
     String? recordingEgressId,
+    String? recordingAudioEgressId,
+    String? recordingFilepath,
     int? unreadChat,
     String? chatError,
     int? chatPacketsSeen,
@@ -251,6 +279,7 @@ class RoomState {
     bool? rejoining,
     bool? callEndedMuted,
     bool? endPinRequired,
+    bool? roomRecording,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
@@ -273,6 +302,12 @@ class RoomState {
         waitingRoom: waitingRoom ?? this.waitingRoom,
         recordingEgressId:
             clearRecording ? null : (recordingEgressId ?? this.recordingEgressId),
+        recordingAudioEgressId: clearRecording
+            ? null
+            : (recordingAudioEgressId ?? this.recordingAudioEgressId),
+        recordingFilepath: clearRecording
+            ? null
+            : (recordingFilepath ?? this.recordingFilepath),
         unreadChat: unreadChat ?? this.unreadChat,
         chatError: clearChatError ? null : (chatError ?? this.chatError),
         chatPacketsSeen: chatPacketsSeen ?? this.chatPacketsSeen,
@@ -296,6 +331,7 @@ class RoomState {
         rejoining: rejoining ?? this.rejoining,
         callEndedMuted: callEndedMuted ?? this.callEndedMuted,
         endPinRequired: endPinRequired ?? this.endPinRequired,
+        roomRecording: roomRecording ?? this.roomRecording,
       );
 }
 
@@ -603,6 +639,14 @@ class RoomController extends StateNotifier<RoomState> {
     _wireEvents();
     await room.connect(wsUrl, token);
     _wasIn = true;
+    // Joining a meeting that is already being recorded: the status event
+    // may have fired before this listener existed, so read it directly.
+    if (room.isRecording) {
+      state = state.copyWith(
+        roomRecording: true,
+        message: 'This meeting is being recorded.',
+      );
+    }
     // link: a rejoin after a drop comes through here with the link still
     // marked lost, and the header would go on saying "Connection lost"
     // over a working meeting.
@@ -737,6 +781,19 @@ class RoomController extends StateNotifier<RoomState> {
       // every state write is a new object, and StateNotifier notifies on
       // identity, so the participant list rebuilds from the same write.
       ..on<TranscriptionEvent>(_onTranscription)
+      ..on<RoomRecordingStatusChanged>((e) {
+        if (_disposed) return;
+        debugPrint('[neo-rec] LiveKit says recording=${e.activeRecording}');
+        final started = e.activeRecording && !state.roomRecording;
+        state = state.copyWith(
+          roomRecording: e.activeRecording,
+          // Said out loud, not only shown in the header: this is the moment
+          // someone would want to know, and the header is easy to miss.
+          message: started && !state.recordingHere
+              ? 'This meeting is being recorded.'
+              : null,
+        );
+      })
       // Only this device's own rating. Someone else's poor link is theirs
       // to see; showing it here would tell this person their meeting is
       // breaking up when it is not.
@@ -1331,20 +1388,32 @@ class RoomController extends StateNotifier<RoomState> {
       if (state.recordingEgressId == null) {
         final body = await api.post('/api/livekit/egress/start', {'room': slug});
         final id = (body is Map ? body['egressId'] : null) as String?;
+        final audioId = (body is Map ? body['audioEgressId'] : null) as String?;
+        final filepath = (body is Map ? body['filepath'] : null) as String?;
+        debugPrint('[neo-rec] start -> egressId=$id audioEgressId=$audioId');
         state = state.copyWith(
           recordingEgressId: id,
+          recordingAudioEgressId: audioId,
+          recordingFilepath: filepath,
           message: id != null ? 'Recording started.' : 'Recording did not start.',
         );
       } else {
-        await api.post('/api/livekit/egress/stop', {
+        final stopped = await api.post('/api/livekit/egress/stop', {
           'egressId': state.recordingEgressId,
+          'filepath': ?state.recordingFilepath,
+          'audioEgressId': ?state.recordingAudioEgressId,
         });
+        // Status only: the response also carries a signed download link to
+        // the recording, which has no business in a device log.
+        debugPrint('[neo-rec] stop -> ok=${stopped is Map ? stopped['ok'] : '?'} '
+            'status=${stopped is Map ? stopped['status'] : '?'}');
         state = state.copyWith(
           clearRecording: true,
           message: 'Recording stopped. It will appear on the event page.',
         );
       }
     } on ApiException catch (e) {
+      debugPrint('[neo-rec] refused: ${e.status} ${e.message}');
       state = state.copyWith(message: e.message);
     }
   }
