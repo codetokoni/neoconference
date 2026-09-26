@@ -122,7 +122,11 @@ export default async function EventAdminPage({
               Public page
             </Link>
             {ev.state !== "ended" && ev.state !== "archived" ? (
-              <EndEventButton eventId={ev.id} alwaysOpen={alwaysOpen} />
+              <EndEventButton
+                eventId={ev.id}
+                alwaysOpen={alwaysOpen}
+                pinRequired={Boolean(ev.endPin)}
+              />
             ) : null}
             {/* Restart flow — POST /start now accepts state=ended and flips
                 it back to live, so the owner can re-open an event they
