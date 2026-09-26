@@ -22,7 +22,11 @@ import { submitTranscribeJob, isTranscribeConfigured } from '@/lib/transcribe';
 import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
 import { recordWebhookEvent, recordWebhookRejection } from '@/lib/webhookMetrics';
-import { canEnd, isInProgress } from '@/lib/meetingLifecycle';
+import {
+  canEnd,
+  endsWhenRoomFinishes,
+  goesLiveWhenRoomStarts,
+} from '@/lib/meetingLifecycle';
 import { clearedForNewSession } from '@/lib/waitingRoom';
 
 export const runtime = 'nodejs';
@@ -158,26 +162,6 @@ export async function POST(req: Request) {
         }));
         console.info('[webhook] waiting room reset', roomName);
       }
-      // 'waiting' counts as open, not just 'live'. Checking only for
-      // 'live' meant a meeting whose attendees were still in the waiting
-      // room when the room closed could never be ended by this webhook at
-      // all — it sat open until someone noticed months later.
-      if (!isInProgress(ev.state)) {
-        await recordWebhookRejection({
-          event: 'room_finished',
-          room: roomName,
-          reason: 'not_in_progress',
-          state: ev.state,
-          eventId: ev.id,
-        });
-        return NextResponse.json({
-          ok: true,
-          transitioned: false,
-          reason: 'not_in_progress',
-          state: ev.state,
-          eventId: ev.id,
-        });
-      }
       // An always-open room emptying is not a meeting ending. Marking it
       // 'ended' here, every time the last person left, is what made its
       // owner rejoin as an attendee.
@@ -196,6 +180,27 @@ export async function POST(req: Request) {
           eventId: ev.id,
         });
       }
+      // 'waiting' counts as open, not just 'live'. Checking only for
+      // 'live' meant a meeting whose attendees were still in the waiting
+      // room when the room closed could never be ended by this webhook at
+      // all — it sat open until someone noticed months later. So does a
+      // 'scheduled' one whose time has come (see endsWhenRoomFinishes).
+      if (!endsWhenRoomFinishes(ev, Date.now())) {
+        await recordWebhookRejection({
+          event: 'room_finished',
+          room: roomName,
+          reason: 'not_in_progress',
+          state: ev.state,
+          eventId: ev.id,
+        });
+        return NextResponse.json({
+          ok: true,
+          transitioned: false,
+          reason: 'not_in_progress',
+          state: ev.state,
+          eventId: ev.id,
+        });
+      }
       const endedAt = isoFromWebhookCreatedAt(event.createdAt);
       await eventStore.update(ev.id, (prev) => ({
         ...prev,
@@ -206,7 +211,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, transitioned: true, eventId: ev.id, endedAt });
     }
 
-    // ----- room_started: set startedAt if it isn't already set -----
+    // ----- room_started: set startedAt, and a due meeting is now live -----
     if (event?.event === 'room_started') {
       const roomName = event.room?.name;
       if (!roomName) {
@@ -216,16 +221,21 @@ export async function POST(req: Request) {
       if (!ev) {
         return NextResponse.json({ ok: true, ignored: 'event_not_found', roomName });
       }
-      if (ev.startedAt) {
+      const now = Date.now();
+      const goLive = goesLiveWhenRoomStarts(ev, now);
+      if (ev.startedAt && !goLive) {
         return NextResponse.json({ ok: true, transitioned: false, reason: 'already_started', eventId: ev.id });
       }
       const startedAt = isoFromWebhookCreatedAt(event.createdAt);
       await eventStore.update(ev.id, (prev) => ({
         ...prev,
+        // Re-checked on the stored copy: another writer may have moved it.
+        state: goesLiveWhenRoomStarts(prev, now) ? ('live' as const) : prev.state,
         startedAt: prev.startedAt || startedAt,
         updatedAt: new Date().toISOString(),
       }));
-      return NextResponse.json({ ok: true, transitioned: true, eventId: ev.id, startedAt });
+      if (goLive) console.info('[webhook] meeting went live', roomName);
+      return NextResponse.json({ ok: true, transitioned: true, live: goLive, eventId: ev.id, startedAt });
     }
 
     // We only auto-transcribe when a recording egress finished writing.

@@ -9,6 +9,9 @@ import {
   isInProgress,
   sweepStaleMeetings,
   DEFAULT_GRACE_MS,
+  EARLY_START_MS,
+  endsWhenRoomFinishes,
+  goesLiveWhenRoomStarts,
 } from "../../src/lib/meetingLifecycle";
 import type { NeoEvent, EventState } from "../../src/types/event";
 
@@ -363,5 +366,55 @@ test.describe("always-open rooms", () => {
     // An ordinary meeting that ended stays ended (FRS §7.4).
     expect(reopensOnJoin({ state: "ended" })).toBe(false);
     expect(reopensOnJoin({ state: "ended", isPermanent: false })).toBe(false);
+  });
+});
+
+test.describe("meetings joined without pressing Start", () => {
+  // Found on knock-test: made from the phone's Start, run for half an hour,
+  // and still 'scheduled' — so room_finished refused to end it, as it had
+  // for 17 of the last 43 meetings it turned away.
+  const at = (ms: number) => new Date(now + ms).toISOString();
+
+  test("one with no set time goes live when its room starts, and ends when it empties", () => {
+    const m = { state: "scheduled" as EventState };
+    expect(goesLiveWhenRoomStarts(m, now)).toBe(true);
+    expect(endsWhenRoomFinishes(m, now)).toBe(true);
+  });
+
+  test("one that is due goes live, including a few minutes early", () => {
+    expect(goesLiveWhenRoomStarts({ state: "scheduled", scheduledAt: at(-HOUR) }, now)).toBe(true);
+    expect(goesLiveWhenRoomStarts({ state: "scheduled", scheduledAt: at(EARLY_START_MS) }, now)).toBe(true);
+  });
+
+  test("a look at tomorrow's room today does not start or end tomorrow's meeting", () => {
+    // Otherwise the host's leaving would end it, and they would come back
+    // tomorrow as an attendee.
+    const tomorrow = { state: "scheduled" as EventState, scheduledAt: at(DAY) };
+    expect(goesLiveWhenRoomStarts(tomorrow, now)).toBe(false);
+    expect(endsWhenRoomFinishes(tomorrow, now)).toBe(false);
+  });
+
+  test("a host who came very early and stayed through the start still ends it", () => {
+    // The room started too early to go live and never started again.
+    const due = { state: "scheduled" as EventState, scheduledAt: at(-10 * 60 * 1000) };
+    expect(endsWhenRoomFinishes(due, now)).toBe(true);
+  });
+
+  test("an always-open room is never ended, whatever its state", () => {
+    expect(endsWhenRoomFinishes({ state: "live", isPermanent: true }, now)).toBe(false);
+    expect(endsWhenRoomFinishes({ state: "scheduled", isPermanent: true }, now)).toBe(false);
+  });
+
+  test("only scheduled meetings are started; an ended one stays ended", () => {
+    for (const state of ["live", "waiting", "ended", "archived", "replay"] as EventState[]) {
+      expect(goesLiveWhenRoomStarts({ state }, now)).toBe(false);
+    }
+    expect(endsWhenRoomFinishes({ state: "ended" }, now)).toBe(false);
+    expect(endsWhenRoomFinishes({ state: "live" }, now)).toBe(true);
+    expect(endsWhenRoomFinishes({ state: "waiting" }, now)).toBe(true);
+  });
+
+  test("a garbled scheduled time counts as no time, not as never", () => {
+    expect(goesLiveWhenRoomStarts({ state: "scheduled", scheduledAt: "soon" }, now)).toBe(true);
   });
 });
