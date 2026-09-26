@@ -1,9 +1,11 @@
 import { test, expect } from "@playwright/test";
 import {
+  KNOCK_GONE_MS,
   REFUSAL_HOLDS_MS,
   clearedForNewSession,
   gateStatus,
   refusalHolds,
+  stillWaiting,
 } from "../../src/lib/waitingRoom";
 import type { RoleAssignment, WaitingRoomEntry } from "../../src/types/event";
 
@@ -123,5 +125,34 @@ test.describe("when the room empties", () => {
       roles: [role("streamlab"), role("joshbender"), role("the_msi")],
     });
     expect(next).toEqual({ waitingRoom: [], roles: [] });
+  });
+});
+
+test.describe("someone who walked away", () => {
+  // The test account sat in a host's list from 14:50 until evening: its
+  // app had long stopped knocking, and nothing noticed.
+  const entries = [
+    entry("waiting", "pending"),
+    entry("gone", "pending"),
+    entry("never-timed", "pending"),
+    entry("in", "admitted", now),
+    entry("no", "denied", now),
+  ];
+  const seen = new Map([
+    ["waiting", now - 4_000],
+    ["gone", now - KNOCK_GONE_MS],
+  ]);
+
+  test("is left out of the host's list; the rest stay", () => {
+    expect(stillWaiting(entries, seen, now).map((e) => e.id)).toEqual([
+      "waiting",
+      "in",
+      "no",
+    ]);
+  });
+
+  test("a few missed knocks on a slow link are not leaving", () => {
+    const slow = new Map([["waiting", now - (KNOCK_GONE_MS - 1)]]);
+    expect(stillWaiting([entry("waiting", "pending")], slow, now)).toHaveLength(1);
   });
 });
