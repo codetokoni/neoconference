@@ -3,6 +3,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { getPlanForUserId, getPlanLimits, type Plan } from "@/lib/plan";
 import { isAdmin } from "@/lib/roles";
+import { rejoinDropsToAttendee } from "@/lib/meetingLifecycle";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -311,8 +312,9 @@ export async function GET(req: NextRequest) {
         if (__evRole) {
           // FRS §7.4: role restoration continues only until the meeting is
           // formally ended. Once state==='ended', a rejoin drops to attendee
-          // regardless of any persisted assignment.
-          if (__evRole.state === 'ended') {
+          // regardless of any persisted assignment — except in an always-
+          // open room, which is never formally ended (see canEnd).
+          if (rejoinDropsToAttendee(__evRole)) {
             participantRole = "attendee";
           } else {
             const uRole = await currentUser().catch(() => null);

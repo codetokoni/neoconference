@@ -12,6 +12,7 @@ import { RoomServiceClient } from "livekit-server-sdk";
 import { eventStore } from "@/lib/eventStore";
 import { authorize } from "@/lib/authz";
 import { verifyMeetingPassword } from "@/lib/eventPassword";
+import { canEnd } from "@/lib/meetingLifecycle";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,12 +47,16 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       );
     }
   }
-  const next = await eventStore.update(ev.id, (prev) => ({
-    ...prev,
-    state: "ended",
-    endedAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  }));
+  // An always-open room is emptied, not ended: everyone is disconnected
+  // below, and the room stays open for its owner to come back to as host.
+  const next = canEnd(ev)
+    ? await eventStore.update(ev.id, (prev) => ({
+        ...prev,
+        state: "ended",
+        endedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }))
+    : ev;
 
   // Force-disconnect any active LiveKit participants. Abrupt (no graceful
   // "meeting ended" message) — adding a graceful toast/redirect requires a

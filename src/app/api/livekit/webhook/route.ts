@@ -22,7 +22,7 @@ import { submitTranscribeJob, isTranscribeConfigured } from '@/lib/transcribe';
 import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
 import { recordWebhookEvent, recordWebhookRejection } from '@/lib/webhookMetrics';
-import { isInProgress } from '@/lib/meetingLifecycle';
+import { canEnd, isInProgress } from '@/lib/meetingLifecycle';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -161,6 +161,24 @@ export async function POST(req: Request) {
           transitioned: false,
           reason: 'not_in_progress',
           state: ev.state,
+          eventId: ev.id,
+        });
+      }
+      // An always-open room emptying is not a meeting ending. Marking it
+      // 'ended' here, every time the last person left, is what made its
+      // owner rejoin as an attendee.
+      if (!canEnd(ev)) {
+        await recordWebhookRejection({
+          event: 'room_finished',
+          room: roomName,
+          reason: 'permanent_room',
+          state: ev.state,
+          eventId: ev.id,
+        });
+        return NextResponse.json({
+          ok: true,
+          transitioned: false,
+          reason: 'permanent_room',
           eventId: ev.id,
         });
       }

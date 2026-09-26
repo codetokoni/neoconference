@@ -40,6 +40,37 @@ export function isInProgress(state: EventState): boolean {
 }
 
 /**
+ * Whether this meeting can be over at all.
+ *
+ * A personal room is created `isPermanent` and shown as "Always open".
+ * Nothing here treated it differently: the room_finished webhook marked
+ * it 'ended' every time the last person left, the sweep did the same once
+ * it had sat empty for an hour, and ending it for everyone did too. After
+ * that the token route gave everyone who rejoined — the owner included —
+ * the 'attendee' role, so an owner lost host controls in their own room.
+ *
+ * An empty permanent room is simply not in use. Everyone can still be
+ * disconnected from it; it just never becomes an ended meeting.
+ */
+export function canEnd(ev: Pick<NeoEvent, "isPermanent">): boolean {
+  return !ev.isPermanent;
+}
+
+/**
+ * Whether rejoining this meeting drops every role to 'attendee'.
+ *
+ * FRS §7.4: roles are restored only until the meeting is formally ended.
+ * A permanent room is never formally ended — including ones already
+ * marked 'ended' by the webhook before this rule existed, which is why
+ * this checks the flag and not just the state.
+ */
+export function rejoinDropsToAttendee(
+  ev: Pick<NeoEvent, "state" | "isPermanent">
+): boolean {
+  return ev.state === "ended" && canEnd(ev);
+}
+
+/**
  * How long a meeting may be in progress with no LiveKit room before we
  * conclude it is over.
  *
@@ -99,6 +130,8 @@ export function decideSweep(params: {
 
   for (const ev of events) {
     if (!isInProgress(ev.state)) continue;
+    // An always-open room is empty most of the time; that is not over.
+    if (!canEnd(ev)) continue;
 
     const room = (ev.livekitRoom || ev.slug || "").toLowerCase();
     if (room && activeRooms.has(room)) {
