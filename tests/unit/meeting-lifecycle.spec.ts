@@ -418,3 +418,33 @@ test.describe("meetings joined without pressing Start", () => {
     expect(goesLiveWhenRoomStarts({ state: "scheduled", scheduledAt: "soon" }, now)).toBe(true);
   });
 });
+
+test.describe("a meeting that emptied is not a meeting that was ended", () => {
+  // Found with the test account: it started "Host check", left, the room
+  // closed and the meeting went to 'ended'; rejoining its own meeting it
+  // was tagged attendee, and a host's Mute everyone muted it. In a fresh
+  // meeting the same press left it alone.
+  test("rejoining after the room emptied keeps roles", () => {
+    expect(rejoinDropsToAttendee({ state: "ended", endedBy: "room_empty" })).toBe(false);
+  });
+
+  test("rejoining after someone ended it for everyone drops to attendee (FRS 7.4)", () => {
+    expect(rejoinDropsToAttendee({ state: "ended", endedBy: "host" })).toBe(true);
+  });
+
+  test("a meeting ended before the reason was kept counts as ended on purpose", () => {
+    expect(rejoinDropsToAttendee({ state: "ended" })).toBe(true);
+  });
+
+  test("its room starting again puts an emptied meeting back on; an ended one stays ended", () => {
+    expect(goesLiveWhenRoomStarts({ state: "ended", endedBy: "room_empty" }, now)).toBe(true);
+    expect(goesLiveWhenRoomStarts({ state: "ended", endedBy: "host" }, now)).toBe(false);
+    expect(goesLiveWhenRoomStarts({ state: "ended" }, now)).toBe(false);
+  });
+
+  test("an always-open room is never dropped either way", () => {
+    expect(
+      rejoinDropsToAttendee({ state: "ended", endedBy: "host", isPermanent: true })
+    ).toBe(false);
+  });
+});

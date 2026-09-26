@@ -256,6 +256,13 @@ export interface NeoEvent {
   startedAt?: string;
   /** ISO timestamp for when event ended. */
   endedAt?: string;
+  /**
+   * Why it ended. 'host': ended for everyone on purpose. 'room_empty': the
+   * LiveKit room closed with nobody left, or the sweep found it gone. Only
+   * a deliberate end drops rejoiners to attendee; see meetingLifecycle.
+   * Unset on meetings ended before this existed, which count as deliberate.
+   */
+  endedBy?: 'host' | 'room_empty';
 
   /** LiveKit room name (must match the route /room/<name>). */
   livekitRoom: string;

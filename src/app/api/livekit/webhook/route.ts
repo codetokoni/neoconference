@@ -205,6 +205,8 @@ export async function POST(req: Request) {
       await eventStore.update(ev.id, (prev) => ({
         ...prev,
         state: 'ended',
+        // Emptied, not ended by anyone: rejoining keeps roles and reopens it.
+        endedBy: 'room_empty' as const,
         endedAt: prev.endedAt || endedAt,
         updatedAt: new Date().toISOString(),
       }));
@@ -227,13 +229,24 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, transitioned: false, reason: 'already_started', eventId: ev.id });
       }
       const startedAt = isoFromWebhookCreatedAt(event.createdAt);
-      await eventStore.update(ev.id, (prev) => ({
-        ...prev,
+      await eventStore.update(ev.id, (prev) => {
         // Re-checked on the stored copy: another writer may have moved it.
-        state: goesLiveWhenRoomStarts(prev, now) ? ('live' as const) : prev.state,
-        startedAt: prev.startedAt || startedAt,
-        updatedAt: new Date().toISOString(),
-      }));
+        if (!goesLiveWhenRoomStarts(prev, now)) {
+          return { ...prev, startedAt: prev.startedAt || startedAt, updatedAt: new Date().toISOString() };
+        }
+        // Back on after emptying: its old end no longer stands. Left in
+        // place, the next close would keep it (room_finished only fills an
+        // empty endedAt).
+        const { endedAt: _endedAt, endedBy: _endedBy, ...rest } = prev;
+        void _endedAt;
+        void _endedBy;
+        return {
+          ...rest,
+          state: 'live' as const,
+          startedAt: prev.startedAt || startedAt,
+          updatedAt: new Date().toISOString(),
+        };
+      });
       if (goLive) console.info('[webhook] meeting went live', roomName);
       return NextResponse.json({ ok: true, transitioned: true, live: goLive, eventId: ev.id, startedAt });
     }

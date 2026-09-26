@@ -76,6 +76,8 @@ export async function runMeetingSweep(options?: {
       await eventStore.update(ev.id, (prev) => ({
         ...prev,
         state: "ended",
+        // The room is gone and nobody ended it: the same as it emptying.
+        endedBy: "room_empty" as const,
         endedAt: inferredEndedAt(prev),
         updatedAt: new Date().toISOString(),
       }));
