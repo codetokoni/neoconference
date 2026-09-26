@@ -3,6 +3,8 @@ import {
   decideSweep,
   inProgressSince,
   inferredEndedAt,
+  canEnd,
+  rejoinDropsToAttendee,
   isInProgress,
   sweepStaleMeetings,
   DEFAULT_GRACE_MS,
@@ -47,6 +49,30 @@ test.describe("which meetings are over", () => {
 
     const decision = decideSweep({
       events: [stale],
+      activeRooms: new Set<string>(),
+      now,
+    });
+
+    expect(decision.end.map((e) => e.slug)).toEqual(["orbit-o03c"]);
+  });
+
+  test("an always-open room that has sat empty for weeks is not over", () => {
+    // A personal room is empty most of the time. The sweep was ending it,
+    // and after that its owner rejoined as an attendee.
+    const personal = ev({
+      slug: "victor4christ",
+      state: "live",
+      isPermanent: true,
+      startedAt: new Date(now - 30 * DAY).toISOString(),
+    });
+    const ordinary = ev({
+      slug: "orbit-o03c",
+      state: "live",
+      startedAt: new Date(now - 30 * DAY).toISOString(),
+    });
+
+    const decision = decideSweep({
+      events: [personal, ordinary],
       activeRooms: new Set<string>(),
       now,
     });
@@ -299,5 +325,27 @@ test.describe("the sweep as a whole", () => {
 
     expect(ended).toEqual(["second"]);
     expect(summary).toMatchObject({ ok: true, ended: 1, failed: 1 });
+  });
+});
+
+test.describe("always-open rooms", () => {
+  test("can never be over; ordinary meetings can", () => {
+    expect(canEnd({ isPermanent: true })).toBe(false);
+    expect(canEnd({ isPermanent: false })).toBe(true);
+    expect(canEnd({})).toBe(true);
+  });
+
+  test("rejoining an ended meeting drops to attendee, as FRS §7.4 says", () => {
+    expect(rejoinDropsToAttendee({ state: "ended" })).toBe(true);
+    expect(rejoinDropsToAttendee({ state: "live" })).toBe(false);
+  });
+
+  test("but not in an always-open room, even one already marked ended", () => {
+    // The webhook marked personal rooms 'ended' every time they emptied,
+    // before this rule existed. Their owners must get host back on rejoin
+    // without anyone having to repair the stored state first.
+    expect(rejoinDropsToAttendee({ state: "ended", isPermanent: true })).toBe(
+      false
+    );
   });
 });
