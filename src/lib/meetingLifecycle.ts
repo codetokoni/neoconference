@@ -57,6 +57,53 @@ export function canEnd(ev: Pick<NeoEvent, "isPermanent">): boolean {
 }
 
 /**
+ * How far ahead of its time a meeting may start and count as under way.
+ * Joining earlier than this is someone checking the room, not the meeting.
+ */
+export const EARLY_START_MS = 15 * 60 * 1000;
+
+/**
+ * Whether LiveKit opening this meeting's room means it is now live.
+ *
+ * Nothing else did it unless someone pressed Start on the web dashboard: a
+ * meeting made from the phone's Start, or joined by its link, stayed
+ * 'scheduled' while it ran. room_finished then refused to end it — 17 of
+ * the last 43 refusals it recorded were exactly that — so those meetings
+ * were never over.
+ *
+ * Only a meeting that is due. A host checking tomorrow's room today must
+ * not make it live, or their leaving would end it and they would come back
+ * tomorrow as an attendee (see rejoinDropsToAttendee).
+ */
+export function goesLiveWhenRoomStarts(
+  ev: Pick<NeoEvent, "state" | "scheduledAt">,
+  now: number
+): boolean {
+  if (ev.state !== "scheduled") return false;
+  const at = ev.scheduledAt ? Date.parse(ev.scheduledAt) : NaN;
+  return Number.isNaN(at) || at - now <= EARLY_START_MS;
+}
+
+/**
+ * Whether the room emptying ends this meeting.
+ *
+ * A meeting in progress, as before. And one still marked 'scheduled' whose
+ * time has come: a host who joined more than EARLY_START_MS early and
+ * stayed through it never saw the room start again, so it never went live.
+ * One whose time is still ahead was only a look at the room.
+ */
+export function endsWhenRoomFinishes(
+  ev: Pick<NeoEvent, "state" | "scheduledAt" | "isPermanent">,
+  now: number
+): boolean {
+  if (!canEnd(ev)) return false;
+  if (isInProgress(ev.state)) return true;
+  if (ev.state !== "scheduled") return false;
+  const at = ev.scheduledAt ? Date.parse(ev.scheduledAt) : NaN;
+  return Number.isNaN(at) || at <= now;
+}
+
+/**
  * Whether rejoining this meeting drops every role to 'attendee'.
  *
  * FRS §7.4: roles are restored only until the meeting is formally ended.
