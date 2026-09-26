@@ -10,15 +10,16 @@
 // Knock is idempotent: calling twice returns the same entry. Host operations
 // require ownership or a 'host'/'cohost' RoleAssignment for the event.
 //
-// On admit, the entry's status is flipped to 'admitted' AND the user is
-// added to event.roles with preApproved=true so the LiveKit token route
-// will let them through on the next attempt.
+// On admit, the entry's status is flipped to 'admitted', which the LiveKit
+// token route lets through. That lasts until the room empties, and a
+// refusal holds for a minute; see lib/waitingRoom.
 
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { isAdmin } from "@/lib/roles";
-import type { NeoEvent, RoleAssignment, WaitingRoomEntry } from "@/types/event";
+import { refusalHolds } from "@/lib/waitingRoom";
+import type { NeoEvent, WaitingRoomEntry } from "@/types/event";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -133,8 +134,11 @@ async function knock(ev: NeoEvent, caller: CallerInfo) {
     return NextResponse.json({ status: "admitted", entryId: caller.userId });
   }
 
+  const now = Date.now();
   const existing = (ev.waitingRoom || []).find((e) => e.id === caller.userId);
-  if (existing) {
+  // A refusal answers for a minute, then a knock is a new request — it used
+  // to answer every knock forever (see lib/waitingRoom).
+  if (existing && (existing.status !== "denied" || refusalHolds(existing, now))) {
     return NextResponse.json({ status: existing.status, entryId: existing.id });
   }
 
@@ -142,13 +146,17 @@ async function knock(ev: NeoEvent, caller: CallerInfo) {
     id: caller.userId,
     name: caller.displayName,
     email: caller.emails[0],
-    requestedAt: Date.now(),
+    requestedAt: now,
     status: "pending",
   };
 
+  // Replaces a spent refusal rather than adding beside it; one entry each.
   await eventStore.update(ev.id, (prev) => ({
     ...prev,
-    waitingRoom: [...(prev.waitingRoom || []), entry],
+    waitingRoom: [
+      ...(prev.waitingRoom || []).filter((e) => e.id !== entry.id),
+      entry,
+    ],
     updatedAt: new Date().toISOString(),
   }));
 
@@ -172,39 +180,20 @@ async function decide(
     return NextResponse.json({ error: "entry_not_found" }, { status: 404 });
   }
 
+  // Only the queue entry changes. Admitting used to also write a
+  // pre-approved viewer role, which nothing ever removed: the person then
+  // skipped this room's waiting room for good. The admitted entry is what
+  // the token route checks, and it is cleared when the room empties.
+  const decidedAt = Date.now();
   await eventStore.update(ev.id, (prev) => {
     const nextQueue: WaitingRoomEntry[] = (prev.waitingRoom || []).map((e) =>
       e.id === entryId
-        ? { ...e, status: decision === "admit" ? "admitted" : "denied" }
+        ? { ...e, status: decision === "admit" ? "admitted" : "denied", decidedAt }
         : e
     );
-    let nextRoles: RoleAssignment[] = prev.roles || [];
-    if (decision === "admit") {
-      const found = nextRoles.find(
-        (rr) => rr.identifier.toLowerCase() === entryId.toLowerCase()
-      );
-      if (found) {
-        nextRoles = nextRoles.map((rr) =>
-          rr.identifier.toLowerCase() === entryId.toLowerCase()
-            ? { ...rr, preApproved: true }
-            : rr
-        );
-      } else {
-        nextRoles = [
-          ...nextRoles,
-          {
-            identifier: entryId,
-            role: "viewer",
-            label: target.name,
-            preApproved: true,
-          },
-        ];
-      }
-    }
     return {
       ...prev,
       waitingRoom: nextQueue,
-      roles: nextRoles,
       updatedAt: new Date().toISOString(),
     };
   });

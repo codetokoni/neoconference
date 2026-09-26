@@ -32,9 +32,13 @@ export async function POST(
   if (!entryId || (action !== "admit" && action !== "deny")) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
+  // decidedAt: how long the answer holds is measured from it (lib/waitingRoom).
+  const decidedAt = Date.now();
   const next = await eventStore.update(ev.id, (prev) => {
     const list = (prev.waitingRoom || []).map((e) =>
-      e.id === entryId ? { ...e, status: action === "admit" ? "admitted" : "denied" } : e
+      e.id === entryId
+        ? { ...e, status: action === "admit" ? "admitted" : "denied", decidedAt }
+        : e
     ) as WaitingRoomEntry[];
     return { ...prev, waitingRoom: list, updatedAt: new Date().toISOString() };
   });
