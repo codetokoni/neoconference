@@ -40,6 +40,27 @@ class MeetingService : Service() {
         private const val CHANNEL_ID = "neo_meeting"
         private const val NOTIFICATION_ID = 4711
 
+        /**
+         * The screen is being shared. Set before restarting the service,
+         * which then also claims the media-projection type.
+         *
+         * Android 14 refuses screen capture without a foreground service
+         * of that type, and does it by throwing out of the capture call:
+         * pressing Share screen crashed the whole app. The type can only
+         * be claimed after the person has agreed to the capture, so it is
+         * added for the length of a share rather than declared up front.
+         */
+        @Volatile
+        var projecting = false
+
+        /**
+         * Told the type the service actually started with, or -1 when
+         * Android refused the start. The screen share waits for this: the
+         * capture must not begin before the service carries the type.
+         */
+        @Volatile
+        var onForeground: ((Int) -> Unit)? = null
+
         fun start(context: Context, title: String) {
             val intent = Intent(context, MeetingService::class.java).apply {
                 action = ACTION_START
@@ -114,12 +135,15 @@ class MeetingService : Service() {
         // meeting is joined muted, so RECORD_AUDIO had never been granted
         // and the process died on connect.
         try {
+            val type = serviceType()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(NOTIFICATION_ID, notification, serviceType())
+                startForeground(NOTIFICATION_ID, notification, type)
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+            onForeground?.invoke(type)
         } catch (e: Exception) {
+            onForeground?.invoke(-1)
             // Nothing here is worth losing a meeting over. Give up on
             // keeping it alive in the background and let the call carry on
             // in the foreground, which is what happened before this
@@ -142,6 +166,9 @@ class MeetingService : Service() {
         var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
         if (hasRecordAudio()) {
             type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        }
+        if (projecting && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
         }
         return type
     }

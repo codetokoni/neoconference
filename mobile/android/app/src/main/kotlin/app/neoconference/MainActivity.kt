@@ -36,6 +36,9 @@ class MainActivity : FlutterActivity() {
      */
     private var inMeeting = false
 
+    /** The meeting's title, for restarting the service with a new type. */
+    private var meetingTitle = "Meeting"
+
     private val phoneCalls = PhoneCallWatcher(this) { inCall ->
         channel?.invokeMethod("phoneCall", inCall)
     }
@@ -66,14 +69,24 @@ class MainActivity : FlutterActivity() {
                 "startMeeting" -> {
                     inMeeting = true
                     val title = call.argument<String>("title") ?: "Meeting"
+                    meetingTitle = title
                     MeetingService.start(this, title)
                     phoneCalls.start()
                     updateAutoPip()
                     result.success(true)
                 }
 
+                "beginScreenShare" -> beginScreenShare(result)
+
+                "endScreenShare" -> {
+                    MeetingService.projecting = false
+                    if (inMeeting) MeetingService.start(this, meetingTitle)
+                    result.success(true)
+                }
+
                 "stopMeeting" -> {
                     inMeeting = false
+                    MeetingService.projecting = false
                     MeetingService.stop(this)
                     phoneCalls.stop()
                     updateAutoPip()
@@ -161,6 +174,35 @@ class MainActivity : FlutterActivity() {
         phoneCalls.stop()
         network.stop()
         super.onDestroy()
+    }
+
+    /**
+     * Gives the meeting's service the media-projection type, and answers
+     * only once Android has accepted it — or refused, or not answered in
+     * three seconds. Call after the person has agreed to the capture and
+     * before the capture starts.
+     */
+    private fun beginScreenShare(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            result.success(true)
+            return
+        }
+        var answered = false
+        val handler = android.os.Handler(mainLooper)
+        fun answer(ok: Boolean) {
+            if (answered) return
+            answered = true
+            MeetingService.onForeground = null
+            result.success(ok)
+        }
+        MeetingService.onForeground = { type ->
+            val ok = type != -1 &&
+                (type and android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION) != 0
+            handler.post { answer(ok) }
+        }
+        handler.postDelayed({ answer(false) }, 3000)
+        MeetingService.projecting = true
+        MeetingService.start(this, meetingTitle)
     }
 
     private fun pipSupported(): Boolean =

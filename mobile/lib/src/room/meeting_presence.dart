@@ -137,6 +137,32 @@ class MeetingPresence {
     }
   }
 
+  /// Ready the platform for a screen share: the meeting's service takes the
+  /// media-projection type Android 14 requires before any screen capture.
+  /// Call after the person has agreed to the capture.
+  ///
+  /// Returns false when that could not be done; sharing then would crash
+  /// the app, so the caller must not start it.
+  Future<bool> beginScreenShare() async {
+    if (!supported) return true;
+    try {
+      return await _channel.invokeMethod<bool>('beginScreenShare') ?? false;
+    } catch (e) {
+      debugPrint('[presence] could not prepare screen share: $e');
+      return false;
+    }
+  }
+
+  /// Drop the media-projection type again once sharing has stopped.
+  Future<void> endScreenShare() async {
+    if (!supported) return;
+    try {
+      await _channel.invokeMethod<bool>('endScreenShare');
+    } catch (e) {
+      debugPrint('[presence] could not end screen share: $e');
+    }
+  }
+
   /// Float the meeting now.
   ///
   /// Returns false when the platform refused — PiP is disabled per-app in

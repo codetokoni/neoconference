@@ -35,6 +35,10 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   livekit_client: ^2.13.0
+  # Direct only for Helper.requestCapturePermission, which screen sharing on
+  # Android 14 needs before the capture starts (see toggleScreenShare).
+  # Pinned to what livekit_client already resolves.
+  flutter_webrtc: 1.6.2+hotfix.3
   flutter_riverpod: ^2.6.1
   http: ^1.6.0
   shared_preferences: ^2.5.5
