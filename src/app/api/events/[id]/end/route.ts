@@ -53,6 +53,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     ? await eventStore.update(ev.id, (prev) => ({
         ...prev,
         state: "ended",
+        // Ended on purpose: rejoiners come back as attendees (FRS §7.4).
+        endedBy: "host" as const,
         endedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }))

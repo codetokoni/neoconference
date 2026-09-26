@@ -76,9 +76,12 @@ export const EARLY_START_MS = 15 * 60 * 1000;
  * tomorrow as an attendee (see rejoinDropsToAttendee).
  */
 export function goesLiveWhenRoomStarts(
-  ev: Pick<NeoEvent, "state" | "scheduledAt">,
+  ev: Pick<NeoEvent, "state" | "scheduledAt" | "endedBy">,
   now: number
 ): boolean {
+  // Closed only because it emptied: people are back, so it is on again.
+  // One ended on purpose stays ended.
+  if (endedByEmptyRoom(ev)) return true;
   if (ev.state !== "scheduled") return false;
   const at = ev.scheduledAt ? Date.parse(ev.scheduledAt) : NaN;
   return Number.isNaN(at) || at - now <= EARLY_START_MS;
@@ -127,9 +130,18 @@ export function reopensOnJoin(
 }
 
 export function rejoinDropsToAttendee(
-  ev: Pick<NeoEvent, "state" | "isPermanent">
+  ev: Pick<NeoEvent, "state" | "isPermanent" | "endedBy">
 ): boolean {
-  return ev.state === "ended" && canEnd(ev);
+  // "Formally ended" is someone ending it. A room that closed because
+  // everyone had left — which since meetings go live on joining is most
+  // of them — is not: the owner coming back to their own meeting was
+  // tagged attendee, and Mute everyone muted them in it.
+  return ev.state === "ended" && canEnd(ev) && ev.endedBy !== "room_empty";
+}
+
+/** Whether this meeting closed only because its room emptied. */
+export function endedByEmptyRoom(ev: Pick<NeoEvent, "state" | "endedBy">): boolean {
+  return ev.state === "ended" && ev.endedBy === "room_empty";
 }
 
 /**
