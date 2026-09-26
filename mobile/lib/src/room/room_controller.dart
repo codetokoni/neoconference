@@ -87,6 +87,24 @@ class ChatLine {
       );
 }
 
+/// What to tell a host when the waiting list changes from [before] to
+/// [after], or null when nobody new is waiting.
+///
+/// Only arrivals are announced. Someone admitted, refused, or giving up is
+/// not news, and a list that merely reappears after a failed poll must not
+/// re-announce everyone in it — so this compares ids, not counts.
+String? newKnockMessage(
+  List<Map<String, dynamic>> before,
+  List<Map<String, dynamic>> after,
+) {
+  final known = {for (final e in before) e['id']};
+  final arrived = after.where((e) => !known.contains(e['id'])).toList();
+  if (arrived.isEmpty) return null;
+  if (arrived.length > 1) return '${arrived.length} people are waiting to join.';
+  final name = (arrived.single['name'] as String?)?.trim();
+  return '${name == null || name.isEmpty ? 'Someone' : name} is waiting to join.';
+}
+
 @immutable
 class Reaction {
   const Reaction(this.emoji, this.at);
@@ -375,6 +393,10 @@ class RoomController extends StateNotifier<RoomState> {
   Timer? _hostTimer;
   late final _chatPoller =
       ChatPoller(poll: () => _loadChatHistory(merge: true));
+  late final _waitingPoller = ChatPoller(
+    poll: () => refreshWaitingRoom(announce: true),
+    cadence: waitingPollInterval,
+  );
 
   /// Whether the meeting is in front of the person: the app in the
   /// foreground, or floating in Picture in Picture. Drives how often chat
@@ -586,11 +608,22 @@ class RoomController extends StateNotifier<RoomState> {
     _knockTimer ??= Timer.periodic(const Duration(seconds: 4), (_) => _knock());
   }
 
+  /// One knock or host check at a time.
+  ///
+  /// Both run off a periodic timer that does not wait for the last request.
+  /// On the emulator's slow link each knock took 4–8 s, so several were in
+  /// flight at once; when the host admitted, three came back "admitted" and
+  /// each started its own join. The joins fought over the room and the
+  /// person landed on "Could not join" having just been let in.
+  bool _gateInFlight = false;
+
   Future<void> _knock() async {
-    if (_disposed) return;
+    if (_disposed || _gateInFlight) return;
+    _gateInFlight = true;
     try {
       final body = await api.post('/api/waiting-room', {'op': 'knock', 'slug': slug});
       final status = (body is Map ? body['status'] : null) as String?;
+      if (_disposed) return;
       if (status == 'admitted') {
         _knockTimer?.cancel();
         _knockTimer = null;
@@ -603,21 +636,46 @@ class RoomController extends StateNotifier<RoomState> {
           message: 'The host did not admit you.',
         );
       }
-    } on ApiException {
-      // Transient; the next tick tries again.
+    } catch (e) {
+      // Transient — a refusal, or no network at all; the next tick tries
+      // again. Only ApiException used to be caught, and a dropped
+      // connection escaped as an unhandled error on every tick.
+      if (e is! ApiException) debugPrint('[neo-room] knock failed: $e');
+    } finally {
+      _gateInFlight = false;
     }
   }
 
   Future<void> _retry() async {
-    if (_disposed || state.phase == JoinPhase.connected) return;
+    if (_disposed || _gateInFlight || state.phase == JoinPhase.connected) {
+      return;
+    }
+    _gateInFlight = true;
     try {
-      final creds = await _token();
-      if (creds == null) return;
+      final Map<String, dynamic>? creds;
+      try {
+        creds = await _token();
+      } catch (e) {
+        // Still gated, or offline. Leave the waiting screen as it is.
+        if (e is! ApiException) debugPrint('[neo-room] host check failed: $e');
+        return;
+      }
+      if (creds == null || _disposed) return;
       _hostTimer?.cancel();
       _hostTimer = null;
-      await _connect(creds['token'] as String, creds['wsUrl'] as String);
-    } on ApiException {
-      // Still gated. Leave the waiting screen as it is.
+      try {
+        await _connect(creds['token'] as String, creds['wsUrl'] as String);
+      } catch (e) {
+        // Let in, and the connection itself failed. The timer is gone, so
+        // staying on the waiting screen would wait forever; say so, as
+        // join() does.
+        state = state.copyWith(
+          phase: JoinPhase.failed,
+          message: 'Could not join: $e',
+        );
+      }
+    } finally {
+      _gateInFlight = false;
     }
   }
 
@@ -691,7 +749,9 @@ class RoomController extends StateNotifier<RoomState> {
 
     await _loadChatHistory();
     _startChatPolling();
-    if (state.canManage) unawaited(refreshWaitingRoom());
+    // Said out loud: a host arriving to a queue should hear about it, as the
+    // web room chimes for it.
+    unawaited(refreshWaitingRoom(announce: true));
   }
 
   /// Turns on whatever the person asked to join with.
@@ -1259,6 +1319,7 @@ class RoomController extends StateNotifier<RoomState> {
       ..removeListener(_updateChatVisibility)
       ..addListener(_updateChatVisibility);
     _chatPoller.start();
+    _waitingPoller.start();
   }
 
   void _updateChatVisibility() {
@@ -1267,6 +1328,7 @@ class RoomController extends StateNotifier<RoomState> {
         _appState == AppLifecycleState.resumed ||
         MeetingPresence.instance.inPip.value;
     _chatPoller.visible(visible);
+    _waitingPoller.visible(visible);
   }
 
   /// The chat sheet opened or closed: poll quickly only while it is open.
@@ -1381,15 +1443,28 @@ class RoomController extends StateNotifier<RoomState> {
     }
   }
 
-  Future<void> refreshWaitingRoom() async {
+  /// Asks who is knocking. With [announce], also says so when someone new
+  /// has started waiting — the door button alone is small and in a corner.
+  Future<void> refreshWaitingRoom({bool announce = false}) async {
+    // Only hosts may see the list; everyone else would be asking every few
+    // seconds to be told no. Checked each time, as a co-host can be made
+    // one mid-meeting.
+    if (_disposed || !state.canManage) return;
     try {
       final body = await api.get('/api/waiting-room', {'slug': slug});
+      if (_disposed) return;
       final entries = (body is Map ? body['entries'] : null) as List? ?? const [];
+      final pending = entries
+          .whereType<Map<String, dynamic>>()
+          .where((e) => e['status'] == 'pending')
+          .toList();
+      final news = announce ? newKnockMessage(state.waitingRoom, pending) : null;
+      if (pending.length != state.waitingRoom.length || news != null) {
+        debugPrint('[neo-room] waiting list: ${pending.length} pending');
+      }
       state = state.copyWith(
-        waitingRoom: entries
-            .whereType<Map<String, dynamic>>()
-            .where((e) => e['status'] == 'pending')
-            .toList(),
+        waitingRoom: pending,
+        message: news,
       );
     } on ApiException {
       // Not a host, or a blip. Either way there is nothing to show.
@@ -1498,6 +1573,7 @@ class RoomController extends StateNotifier<RoomState> {
     _knockTimer?.cancel();
     _hostTimer?.cancel();
     _chatPoller.stop();
+    _waitingPoller.stop();
     _lifecycle?.dispose();
     MeetingPresence.instance.inPip.removeListener(_updateChatVisibility);
     _weakLink.dispose();

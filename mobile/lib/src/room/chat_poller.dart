@@ -19,7 +19,19 @@ Duration chatPollInterval({required bool chatOpen, required bool visible}) {
   return const Duration(seconds: 60);
 }
 
-/// Runs the chat poll at [chatPollInterval], one request at a time.
+/// How often a host asks who is knocking.
+///
+/// The door button that opens the waiting list only appears once a poll has
+/// found someone, and the app used to ask only on joining: someone knocking
+/// on a meeting the host was already in waited until the host left and came
+/// back. Four seconds on screen matches the web room, so a host on either
+/// sees a knock at about the same moment. In the background nothing shows;
+/// the slow poll has the button ready for when they come back.
+Duration waitingPollInterval({required bool chatOpen, required bool visible}) =>
+    visible ? const Duration(seconds: 4) : const Duration(seconds: 30);
+
+/// Runs a poll at [cadence] ([chatPollInterval] unless given), one request
+/// at a time.
 ///
 /// A fixed periodic timer, as before, starts the next request whether or
 /// not the last one has answered; on a slow link they pile up. This waits
@@ -29,10 +41,13 @@ class ChatPoller {
   ChatPoller({
     required this.poll,
     Timer Function(Duration, void Function())? schedule,
+    this.cadence = chatPollInterval,
   }) : _schedule = schedule ?? Timer.new;
 
   final Future<void> Function() poll;
   final Timer Function(Duration, void Function()) _schedule;
+  final Duration Function({required bool chatOpen, required bool visible})
+      cadence;
 
   bool _running = false;
   bool _chatOpen = false;
@@ -40,8 +55,7 @@ class ChatPoller {
   bool _inFlight = false;
   Timer? _timer;
 
-  Duration get interval =>
-      chatPollInterval(chatOpen: _chatOpen, visible: _visible);
+  Duration get interval => cadence(chatOpen: _chatOpen, visible: _visible);
 
   void start() {
     if (_running) return;

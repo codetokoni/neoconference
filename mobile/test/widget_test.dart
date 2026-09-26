@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neoconference/src/core/api_client.dart';
 import 'package:neoconference/src/events/event.dart';
+import 'package:neoconference/src/room/chat_poller.dart';
 import 'package:neoconference/src/room/room_controller.dart';
 
 void main() {
@@ -152,6 +153,47 @@ void main() {
       // an older one, so appending blindly would show them out of order.
       final merged = merge([line('c', 3)], [line('a', 1), line('c', 3)]);
       expect(merged.map((l) => l.id), ['a', 'c']);
+    });
+  });
+
+  group('waiting room', () {
+    // A host already in the meeting was never told anyone had knocked: the
+    // list was fetched only on joining, and the button that opens it only
+    // appears once it has someone in it.
+    Map<String, dynamic> knock(String id, [String? name]) =>
+        {'id': id, 'name': name ?? id, 'status': 'pending'};
+
+    test('a new knock is announced by name', () {
+      expect(newKnockMessage(const [], [knock('u1', 'streamlab')]),
+          'streamlab is waiting to join.');
+    });
+
+    test('someone already waiting is not announced again', () {
+      final waiting = [knock('u1')];
+      expect(newKnockMessage(waiting, [knock('u1')]), isNull);
+    });
+
+    test('someone leaving the list is not news', () {
+      expect(newKnockMessage([knock('u1'), knock('u2')], [knock('u2')]), isNull);
+    });
+
+    test('same count, different person, is still a new knock', () {
+      expect(newKnockMessage([knock('u1', 'Ada')], [knock('u2', 'Bo')]),
+          'Bo is waiting to join.');
+    });
+
+    test('several at once are counted, and a blank name still reads', () {
+      expect(newKnockMessage(const [], [knock('a'), knock('b')]),
+          '2 people are waiting to join.');
+      expect(newKnockMessage(const [], [knock('a', ' ')]),
+          'Someone is waiting to join.');
+    });
+
+    test('the host polls at the web room\'s pace, slower when away', () {
+      expect(waitingPollInterval(chatOpen: false, visible: true),
+          const Duration(seconds: 4));
+      expect(waitingPollInterval(chatOpen: false, visible: false),
+          const Duration(seconds: 30));
     });
   });
 
