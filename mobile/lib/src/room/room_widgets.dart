@@ -401,6 +401,20 @@ class HostControlsSheet extends ConsumerWidget {
                 ),
               ],
             ),
+            // Not offered until the server has said which way it is set.
+            if (state.waitingRoomEnabled != null)
+              SwitchListTile(
+                value: state.waitingRoomEnabled!,
+                onChanged: controller.setWaitingRoom,
+                title: Text('Waiting room',
+                    style: TextStyle(color: palette.text)),
+                subtitle: Text(
+                  state.waitingRoomEnabled!
+                      ? 'New arrivals wait for you to let them in.'
+                      : 'Anyone with the link comes straight in.',
+                  style: TextStyle(color: palette.textMuted),
+                ),
+              ),
             const Divider(height: 24),
             Expanded(
               child: people.isEmpty

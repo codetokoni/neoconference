@@ -126,6 +126,7 @@ class RoomState {
     this.reactions = const [],
     this.raisedHands = const {},
     this.waitingRoom = const [],
+    this.waitingRoomEnabled,
     this.recordingEgressId,
     this.recordingAudioEgressId,
     this.recordingFilepath,
@@ -166,6 +167,11 @@ class RoomState {
   /// identity -> display name, for everyone currently raising a hand.
   final Map<String, String> raisedHands;
   final List<Map<String, dynamic>> waitingRoom;
+
+  /// Whether this meeting has a waiting room, as the server last said.
+  /// Null until a host's first look at the queue answers; others never
+  /// learn it, and never need to.
+  final bool? waitingRoomEnabled;
   final String? recordingEgressId;
 
   /// The audio-only recording the server starts beside the video one, and
@@ -276,6 +282,7 @@ class RoomState {
     List<Reaction>? reactions,
     Map<String, String>? raisedHands,
     List<Map<String, dynamic>>? waitingRoom,
+    bool? waitingRoomEnabled,
     String? recordingEgressId,
     String? recordingAudioEgressId,
     String? recordingFilepath,
@@ -319,6 +326,7 @@ class RoomState {
         reactions: reactions ?? this.reactions,
         raisedHands: raisedHands ?? this.raisedHands,
         waitingRoom: waitingRoom ?? this.waitingRoom,
+        waitingRoomEnabled: waitingRoomEnabled ?? this.waitingRoomEnabled,
         recordingEgressId:
             clearRecording ? null : (recordingEgressId ?? this.recordingEgressId),
         recordingAudioEgressId: clearRecording
@@ -616,6 +624,10 @@ class RoomController extends StateNotifier<RoomState> {
   /// each started its own join. The joins fought over the room and the
   /// person landed on "Could not join" having just been let in.
   bool _gateInFlight = false;
+
+  /// Counts the host's flips of the waiting-room switch; see
+  /// refreshWaitingRoom.
+  int _waitingSwitchFlips = 0;
 
   Future<void> _knock() async {
     if (_disposed || _gateInFlight) return;
@@ -1450,6 +1462,7 @@ class RoomController extends StateNotifier<RoomState> {
     // seconds to be told no. Checked each time, as a co-host can be made
     // one mid-meeting.
     if (_disposed || !state.canManage) return;
+    final flipsBefore = _waitingSwitchFlips;
     try {
       final body = await api.get('/api/waiting-room', {'slug': slug});
       if (_disposed) return;
@@ -1462,12 +1475,51 @@ class RoomController extends StateNotifier<RoomState> {
       if (pending.length != state.waitingRoom.length || news != null) {
         debugPrint('[neo-room] waiting list: ${pending.length} pending');
       }
+      final enabled = body is Map ? body['enabled'] : null;
+      // A poll that set off before the switch was flipped carries the old
+      // setting; it would flip the switch back until the next one.
+      final current = flipsBefore == _waitingSwitchFlips;
       state = state.copyWith(
         waitingRoom: pending,
+        // A server from before `enabled` was sent leaves this unknown, and
+        // the switch is then not offered rather than guessed.
+        waitingRoomEnabled: enabled is bool && current ? enabled : null,
         message: news,
       );
     } on ApiException {
       // Not a host, or a blip. Either way there is nothing to show.
+    }
+  }
+
+  /// Turns the waiting room on or off for everyone who arrives next.
+  ///
+  /// Turning it off lets in whoever is waiting: the server answers their
+  /// next knock "admitted".
+  Future<void> setWaitingRoom(bool enabled) async {
+    _waitingSwitchFlips++;
+    final before = state.waitingRoomEnabled;
+    // Shown at once; put back if the server says no.
+    state = state.copyWith(waitingRoomEnabled: enabled);
+    try {
+      await api.post('/api/waiting-room', {
+        'op': 'set',
+        'slug': slug,
+        'enabled': enabled,
+      });
+      state = state.copyWith(
+        message: enabled
+            ? 'Waiting room on. New arrivals wait for you to let them in.'
+            : state.waitingRoom.isEmpty
+                ? 'Waiting room off. Anyone with the link can join.'
+                : 'Waiting room off. Everyone waiting is being let in.',
+      );
+    } on ApiException catch (e) {
+      state = state.copyWith(
+        waitingRoomEnabled: before,
+        message: e.status == 403
+            ? 'Only a host can change the waiting room.'
+            : "Couldn't change the waiting room: ${e.message}",
+      );
     }
   }
 

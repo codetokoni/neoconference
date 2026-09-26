@@ -5,6 +5,7 @@
 // POST { op: 'knock', slug }                   - attendee asks to enter
 // POST { op: 'decide', slug, entryId, decision: 'admit' | 'deny' }
 //                                              - host/cohost approves or rejects
+// POST { op: 'set', slug, enabled }            - host/cohost turns it on or off
 // GET  ?slug=<event slug>                      - host/cohost lists pending queue
 //
 // Knock is idempotent: calling twice returns the same entry. Host operations
@@ -99,6 +100,12 @@ export async function POST(req: Request) {
     }
     return decide(ev, caller, entryId, decision as "admit" | "deny");
   }
+  if (op === "set") {
+    if (typeof body.enabled !== "boolean") {
+      return NextResponse.json({ error: "bad_args" }, { status: 400 });
+    }
+    return setEnabled(ev, caller, body.enabled);
+  }
   return NextResponse.json({ error: "bad_op" }, { status: 400 });
 }
 
@@ -121,7 +128,31 @@ export async function GET(req: Request) {
   if (!r.isHostlike) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
-  return NextResponse.json({ entries: ev.waitingRoom || [] });
+  // `enabled` rides along so a host's app, which polls this, shows the
+  // switch as it is — including after someone changed it on the web.
+  return NextResponse.json({
+    entries: ev.waitingRoom || [],
+    enabled: Boolean(ev.waitingRoomEnabled),
+  });
+}
+
+async function setEnabled(ev: NeoEvent, caller: CallerInfo, enabled: boolean) {
+  // The same people who admit and refuse. The dashboard's PATCH is the
+  // owner's alone and edits the whole event; a co-host running the
+  // meeting needs this one switch, from inside it.
+  const r = callerRole(ev, caller);
+  if (!r.isHostlike) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  // Turning it off needs nothing else: a knock on a room without a
+  // waiting room is answered "admitted", so anyone waiting walks in on
+  // their next knock.
+  await eventStore.update(ev.id, (prev) => ({
+    ...prev,
+    waitingRoomEnabled: enabled,
+    updatedAt: new Date().toISOString(),
+  }));
+  return NextResponse.json({ ok: true, enabled });
 }
 
 // ---------- handlers ----------
