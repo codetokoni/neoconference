@@ -177,9 +177,9 @@ class RoomState {
   ///
   /// Kept because "nobody is speaking" and "captions are not reaching this
   /// device" look identical on screen and need opposite fixes — the same
-  /// reason the chat packet counters exist. Inbound data on this SDK is
-  /// the subject of livekit/client-sdk-flutter#1221, and transcriptions
-  /// travel the same path.
+  /// reason the chat packet counters exist. Transcriptions travel the same
+  /// path as data packets, which failed entirely on one bad network
+  /// (livekit/client-sdk-flutter#1221) and worked on the next.
   final int transcriptionsSeen;
 
   /// Why a translation did not appear, when it did not.
@@ -1089,7 +1089,7 @@ class RoomController extends StateNotifier<RoomState> {
       'name': me.name.isNotEmpty ? me.name : 'Someone',
       'on': raising,
       'ts': DateTime.now().millisecondsSinceEpoch,
-    }, reliable: false);
+    }, reliable: true);
     final hands = Map<String, String>.from(state.raisedHands);
     if (raising) {
       hands[me.identity] = me.name.isNotEmpty ? me.name : 'Someone';
@@ -1125,7 +1125,7 @@ class RoomController extends StateNotifier<RoomState> {
         );
         return;
       }
-      await _publish(Topics.chat, saved, reliable: false);
+      await _publish(Topics.chat, saved, reliable: true);
       state = state.copyWith(
         chat: [...state.chat, ChatLine.fromJson(saved)],
         clearChatError: true,
@@ -1214,21 +1214,18 @@ class RoomController extends StateNotifier<RoomState> {
     }
   }
 
-  /// Everything this app publishes goes out on the lossy channel.
+  /// Sends on the same channel the web client uses for the same topic:
+  /// reliable for chat and raised hands, lossy for reactions.
   ///
-  /// Not a preference — a workaround. In this LiveKit Flutter SDK (2.13.0)
-  /// the reliable data channel does not work against LiveKit Cloud: a
-  /// browser's reliable packets never reach this app's handler, while its
-  /// lossy ones arrive fine, and the same split appears in the other
-  /// direction. Two browsers talking to each other over the reliable
-  /// channel work perfectly, so the fault is on this side. I could not
-  /// isolate it any further from a release build, where Dart logging is
-  /// stripped.
+  /// For a while everything went out lossy, as a workaround: on 2026-09-24
+  /// the phone received no data packets at all, reliable or not. On
+  /// 2026-09-26, same SDK (2.13.0), both the phone on its Wi-Fi and an
+  /// emulator on a clean network received every reliable chat packet from
+  /// the web. The total loss was that day's network, which was dropping
+  /// half its packets — not the SDK.
   ///
-  /// Lossy delivery can drop a packet. For chat that is covered: every
-  /// message is also persisted over HTTP and this app polls that history,
-  /// so a dropped packet costs latency, not the message. For a raised hand
-  /// it is not covered, and raising a hand again re-sends it.
+  /// Chat is still also persisted over HTTP and polled (ChatPoller), so a
+  /// network where the data channel fails costs latency, not the message.
   Future<void> _publish(
     String topic,
     Map<String, dynamic> payload, {

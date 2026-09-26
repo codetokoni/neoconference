@@ -73,9 +73,8 @@ Future<void> _openRoom(
 /// The SDK reports the interesting things at FINE — including whether the
 /// server ever opens the reliable data channel toward this client, and
 /// whether an arriving packet is dropped as a duplicate. Both are silent
-/// otherwise, which is why the reliable-channel problem took so long to
-/// pin down. Release builds do not print, so this is gated rather than
-/// left on.
+/// otherwise, which is why the data-channel problem took so long to pin
+/// down. The SDK's logging is verbose, so it is gated to debug builds.
 void _enableLiveKitLogsInDebug() {
   if (!kDebugMode) return;
   // Required before any non-root logger's level can be set, which is the

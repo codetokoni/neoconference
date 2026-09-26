@@ -2,9 +2,10 @@ import 'dart:async';
 
 /// How often to ask the server for chat, given what the person can see.
 ///
-/// Chat in this app arrives by polling — LiveKit's reliable data channel,
-/// which the web client sends chat on, never reaches this SDK — and it
-/// polled every 4 s, open or closed, foreground or pocketed: measured on
+/// Chat is polled as well as delivered live, because the live path, LiveKit's
+/// data channel, failed completely on one bad network and the poll is what
+/// kept chat working there. It polled every 4 s, open or closed,
+/// foreground or pocketed: measured on
 /// the phone, 112 requests in 7½ minutes for a chat nobody had open. Every
 /// person in a meeting pays that, and so does the server, per person.
 ///
