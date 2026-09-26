@@ -1,6 +1,10 @@
+import 'package:flutter/material.dart' show TimeOfDay;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neoconference/src/core/api_client.dart';
+import 'package:neoconference/src/events/create_meeting_screen.dart'
+    show createdSlug;
 import 'package:neoconference/src/events/event.dart';
+import 'package:neoconference/src/screens/schedule_screen.dart';
 import 'package:neoconference/src/room/chat_poller.dart';
 import 'package:neoconference/src/room/room_controller.dart';
 
@@ -153,6 +157,32 @@ void main() {
       // an older one, so appending blindly would show them out of order.
       final merged = merge([line('c', 3)], [line('a', 1), line('c', 3)]);
       expect(merged.map((l) => l.id), ['a', 'c']);
+    });
+  });
+
+  group('scheduling', () {
+    // The Schedule screen used to close without creating anything.
+    test('the create reply gives the slug, wherever it is put', () {
+      expect(createdSlug({'slug': 'sync-ab12'}), 'sync-ab12');
+      expect(createdSlug({'event': {'slug': 'sync-ab12'}}), 'sync-ab12');
+      expect(createdSlug({'slug': ''}), isNull);
+      expect(createdSlug('not a map'), isNull);
+    });
+
+    test('the date and time picked are one moment on this phone', () {
+      final when = scheduledFor(
+        DateTime(2026, 9, 27, 23, 59),
+        const TimeOfDay(hour: 10, minute: 30),
+      );
+      expect(when, DateTime(2026, 9, 27, 10, 30));
+      expect(when.isUtc, isFalse, reason: 'sent as UTC, picked as local');
+    });
+
+    test('a time already gone cannot be scheduled', () {
+      final now = DateTime(2026, 9, 26, 15, 0);
+      expect(scheduleProblem(DateTime(2026, 9, 26, 14, 59), now), isNotNull);
+      expect(scheduleProblem(now, now), isNotNull);
+      expect(scheduleProblem(DateTime(2026, 9, 26, 15, 1), now), isNull);
     });
   });
 
