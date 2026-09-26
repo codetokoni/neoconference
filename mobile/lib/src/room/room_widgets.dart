@@ -162,8 +162,8 @@ class _ChatSheetState extends ConsumerState<ChatSheet> {
                               style: TextStyle(color: p.textMuted),
                             ),
                             // The packet counters are a debugging instrument
-                            // for the unresolved reliable-data-channel
-                            // problem (see RoomController._publish), not
+                            // for data-channel trouble on bad networks (see
+                            // RoomController._publish), not
                             // something to put in front of someone waiting
                             // for a colleague to say hello.
                             if (kDebugMode) ...[
