@@ -9,6 +9,7 @@ import 'package:livekit_client/livekit_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
+import '../core/load_error.dart';
 import '../events/event.dart';
 import 'auto_rejoin.dart';
 import 'chat_poller.dart';
@@ -125,6 +126,7 @@ class RoomState {
     this.drop,
     this.rejoining = false,
     this.callEndedMuted = false,
+    this.endPinRequired = false,
   });
 
   final JoinPhase phase;
@@ -209,6 +211,10 @@ class RoomState {
   /// still off. Shown until the person unmutes or puts it away.
   final bool callEndedMuted;
 
+  /// Ending this meeting for everyone needs its End Meeting PIN. From the
+  /// role lookup, so the app can ask before trying rather than after.
+  final bool endPinRequired;
+
   bool get canManage => role == 'host' || role == 'cohost';
   bool get isRecording => recordingEgressId != null;
   bool get inRoom => phase == JoinPhase.connected;
@@ -244,6 +250,7 @@ class RoomState {
     MeetingDrop? drop,
     bool? rejoining,
     bool? callEndedMuted,
+    bool? endPinRequired,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
@@ -288,6 +295,7 @@ class RoomState {
         drop: clearDrop ? null : (drop ?? this.drop),
         rejoining: rejoining ?? this.rejoining,
         callEndedMuted: callEndedMuted ?? this.callEndedMuted,
+        endPinRequired: endPinRequired ?? this.endPinRequired,
       );
 }
 
@@ -360,6 +368,10 @@ class RoomController extends StateNotifier<RoomState> {
   /// "Rejoining… the connection to the meeting was lost" — to someone
   /// who had never been in it.
   bool _wasIn = false;
+
+  /// This device asked the server to end the meeting for everyone. The
+  /// disconnect that follows is the host's own doing, not a drop.
+  bool _endingForAll = false;
 
   late final _weakLink = WeakLinkPolicy(onChange: (weak) {
     if (_disposed) return;
@@ -462,6 +474,7 @@ class RoomController extends StateNotifier<RoomState> {
       if (body is! Map) return;
       final role = body['role'] as String?;
       if (role != null) state = state.copyWith(role: role);
+      state = state.copyWith(endPinRequired: body['endPinRequired'] == true);
       final room = body['livekitRoom'] as String?;
       if (room != null && room.isNotEmpty) _livekitRoom = room;
     } on ApiException {
@@ -701,7 +714,9 @@ class RoomController extends StateNotifier<RoomState> {
         if (_disposed) return;
         _reconnectWatchdog.settled();
         debugPrint('[neo-room] disconnected: ${e.reason}');
-        final drop = describeDrop(e.reason);
+        // The host who ended it gets no "The meeting has ended" screen:
+        // they are leaving, and the screen closes behind them.
+        final drop = _endingForAll ? null : describeDrop(e.reason);
         if (drop != null && (_wasIn || _autoRejoin.active)) {
           return _onDropped(drop);
         }
@@ -1335,6 +1350,36 @@ class RoomController extends StateNotifier<RoomState> {
   }
 
   void clearMessage() => state = state.copyWith(clearMessage: true);
+
+  /// Ends the meeting for everyone: the server marks it ended and closes
+  /// the LiveKit room, so everyone else sees "The meeting has ended".
+  ///
+  /// Returns null when it worked, or what to tell the host when it did
+  /// not — in which case they are still in the meeting.
+  Future<String?> endForEveryone({String? pin}) async {
+    _endingForAll = true;
+    try {
+      await api.post(
+        '/api/events/$slug/end',
+        pin == null ? null : {'pin': pin},
+      );
+    } on ApiException catch (e) {
+      _endingForAll = false;
+      if (e.code == 'invalid_pin') {
+        return pin == null || pin.isEmpty
+            ? 'This meeting needs its End Meeting PIN.'
+            : "That PIN isn't right.";
+      }
+      if (e.status == 403) return 'Only a host can end this meeting.';
+      return describeLoadError(e);
+    } catch (e) {
+      _endingForAll = false;
+      return describeLoadError(e);
+    }
+    debugPrint('[neo-room] ended the meeting for everyone');
+    await leave();
+    return null;
+  }
 
   Future<void> leave() async {
     // Stop the foreground service before disconnecting, so the "you are in
