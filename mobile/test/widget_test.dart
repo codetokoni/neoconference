@@ -219,6 +219,17 @@ void main() {
           'Someone is waiting to join.');
     });
 
+    test('the switch keeps its setting until the server says otherwise', () {
+      // Null is "not known yet": the switch is not offered then. A poll with
+      // nothing to say about it (an older server, or one overtaken by a
+      // flip) must not reset a known setting.
+      const unknown = RoomState();
+      expect(unknown.waitingRoomEnabled, isNull);
+      final on = unknown.copyWith(waitingRoomEnabled: true);
+      expect(on.copyWith(waitingRoom: const []).waitingRoomEnabled, isTrue);
+      expect(on.copyWith(waitingRoomEnabled: false).waitingRoomEnabled, isFalse);
+    });
+
     test('the host polls at the web room\'s pace, slower when away', () {
       expect(waitingPollInterval(chatOpen: false, visible: true),
           const Duration(seconds: 4));
