@@ -102,7 +102,7 @@
         <service
             android:name=".MeetingService"
             android:exported="false"
-            android:foregroundServiceType="mediaPlayback|microphone" />
+            android:foregroundServiceType="mediaPlayback|microphone|mediaProjection" />
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

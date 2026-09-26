@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleListener, AppLifecycleState;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper;
 import 'package:livekit_client/livekit_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1145,10 +1146,39 @@ class RoomController extends StateNotifier<RoomState> {
   /// capture runs in a foreground service — declared in AndroidManifest as
   /// mediaProjection. Without the person accepting that dialog nothing is
   /// captured, which is the platform's decision, not ours.
+  /// Starts or stops sharing the screen.
+  ///
+  /// On Android the order matters, and getting it wrong crashed the app:
+  /// consent first (Helper.requestCapturePermission keeps it for the
+  /// capture to reuse), then the meeting's service takes the
+  /// media-projection type, and only then does the capture start. Android
+  /// 14 throws out of the capture if the service does not carry that type
+  /// yet, and the type cannot be claimed before consent.
   Future<void> toggleScreenShare() async {
     final me = room.localParticipant;
     if (me == null) return;
-    await me.setScreenShareEnabled(!me.isScreenShareEnabled());
+    final sharing = me.isScreenShareEnabled();
+    try {
+      if (!sharing) {
+        if (MeetingPresence.supported) {
+          if (!await Helper.requestCapturePermission()) return; // declined
+          if (!await MeetingPresence.instance.beginScreenShare()) {
+            state = state.copyWith(
+              message: "Screen sharing couldn't start on this phone.",
+            );
+            return;
+          }
+        }
+        await me.setScreenShareEnabled(true);
+      } else {
+        await me.setScreenShareEnabled(false);
+        await MeetingPresence.instance.endScreenShare();
+      }
+    } catch (e) {
+      debugPrint('[neo-room] screen share failed: $e');
+      state = state.copyWith(message: "Screen sharing couldn't start.");
+      if (!sharing) unawaited(MeetingPresence.instance.endScreenShare());
+    }
     _syncLocalMedia();
   }
 
