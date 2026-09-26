@@ -71,11 +71,35 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
             canPop: false,
             onPopInvokedWithResult: (didPop, _) async {
               if (didPop) return;
-              final leave = !state.inRoom || await _confirmLeave(context);
-              if (leave && context.mounted) {
+              if (!state.inRoom) {
                 await controller.leave();
                 if (context.mounted) Navigator.of(context).pop();
+                return;
               }
+              final choice = await _confirmLeave(context, state);
+              if (!context.mounted) return;
+              switch (choice) {
+                case _LeaveChoice.stay:
+                  return;
+                case _LeaveChoice.leave:
+                  await controller.leave();
+                case _LeaveChoice.endForEveryone:
+                  String? pin;
+                  if (state.endPinRequired) {
+                    pin = await _askEndPin(context);
+                    if (pin == null || !context.mounted) return;
+                  }
+                  final problem = await controller.endForEveryone(pin: pin);
+                  if (problem != null) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(SnackBar(content: Text(problem)));
+                    }
+                    return;
+                  }
+              }
+              if (context.mounted) Navigator.of(context).pop();
             },
             child: Scaffold(
               backgroundColor: p.bg,
@@ -100,27 +124,76 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     );
   }
 
-  Future<bool> _confirmLeave(BuildContext context) async {
-    final result = await showDialog<bool>(
+  /// Leaving, and for a host, ending it for everyone — offered in the same
+  /// place, because Leave is where people look for it.
+  Future<_LeaveChoice> _confirmLeave(
+    BuildContext context,
+    RoomState state,
+  ) async {
+    // Only a host: the server refuses anyone below that rank, and a button
+    // that can only fail is worse than none.
+    final canEnd = state.role == 'host';
+    final danger = NeoTheme.of(context).danger;
+    final result = await showDialog<_LeaveChoice>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Leave the meeting?'),
+        content: canEnd
+            ? const Text('Ending it for everyone closes the meeting for '
+                'all participants.')
+            : null,
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context, _LeaveChoice.stay),
             child: const Text('Stay'),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: NeoTheme.of(context).danger,
+          if (canEnd)
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: danger),
+              onPressed: () =>
+                  Navigator.pop(context, _LeaveChoice.endForEveryone),
+              child: const Text('End for everyone'),
             ),
-            onPressed: () => Navigator.pop(context, true),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: danger),
+            onPressed: () => Navigator.pop(context, _LeaveChoice.leave),
             child: const Text('Leave'),
           ),
         ],
       ),
     );
-    return result ?? false;
+    return result ?? _LeaveChoice.stay;
+  }
+
+  /// The meeting's End Meeting PIN, or null if the host backed out.
+  Future<String?> _askEndPin(BuildContext context) async {
+    final field = TextEditingController();
+    final pin = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('End Meeting PIN'),
+        content: TextField(
+          controller: field,
+          autofocus: true,
+          obscureText: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(hintText: 'PIN'),
+          onSubmitted: (v) => Navigator.pop(context, v.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, field.text.trim()),
+            child: const Text('End meeting'),
+          ),
+        ],
+      ),
+    );
+    field.dispose();
+    return pin;
   }
 }
 
@@ -491,3 +564,4 @@ class _InMeetingState extends State<_InMeeting> {
   }
 }
 
+enum _LeaveChoice { stay, leave, endForEveryone }
