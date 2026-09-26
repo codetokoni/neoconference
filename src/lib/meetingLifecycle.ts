@@ -64,6 +64,21 @@ export function canEnd(ev: Pick<NeoEvent, "isPermanent">): boolean {
  * marked 'ended' by the webhook before this rule existed, which is why
  * this checks the flag and not just the state.
  */
+/**
+ * Whether joining this meeting should set it back to 'live'.
+ *
+ * Only for an always-open room stored as 'ended' — the state the
+ * room_finished webhook left personal rooms in, every time they emptied,
+ * before canEnd existed. Rejoining one already restores host (see
+ * rejoinDropsToAttendee), but anything else reading the state still saw an
+ * ended meeting. 'archived' is a deletion and stays deleted.
+ */
+export function reopensOnJoin(
+  ev: Pick<NeoEvent, "state" | "isPermanent">
+): boolean {
+  return !canEnd(ev) && ev.state === "ended";
+}
+
 export function rejoinDropsToAttendee(
   ev: Pick<NeoEvent, "state" | "isPermanent">
 ): boolean {

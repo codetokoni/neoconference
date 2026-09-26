@@ -5,6 +5,7 @@ import {
   inferredEndedAt,
   canEnd,
   rejoinDropsToAttendee,
+  reopensOnJoin,
   isInProgress,
   sweepStaleMeetings,
   DEFAULT_GRACE_MS,
@@ -347,5 +348,20 @@ test.describe("always-open rooms", () => {
     expect(rejoinDropsToAttendee({ state: "ended", isPermanent: true })).toBe(
       false
     );
+  });
+
+  test("one already stored as ended is reopened when someone joins", () => {
+    // Production: victor4christ's room had been 'ended' since at least
+    // 2026-09-24 22:18, and every room_finished since said so.
+    expect(reopensOnJoin({ state: "ended", isPermanent: true })).toBe(true);
+  });
+
+  test("nothing else is reopened by joining", () => {
+    expect(reopensOnJoin({ state: "live", isPermanent: true })).toBe(false);
+    // A deleted room stays deleted, permanent or not.
+    expect(reopensOnJoin({ state: "archived", isPermanent: true })).toBe(false);
+    // An ordinary meeting that ended stays ended (FRS §7.4).
+    expect(reopensOnJoin({ state: "ended" })).toBe(false);
+    expect(reopensOnJoin({ state: "ended", isPermanent: false })).toBe(false);
   });
 });

@@ -3,7 +3,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { getPlanForUserId, getPlanLimits, type Plan } from "@/lib/plan";
 import { isAdmin } from "@/lib/roles";
-import { rejoinDropsToAttendee } from "@/lib/meetingLifecycle";
+import { rejoinDropsToAttendee, reopensOnJoin } from "@/lib/meetingLifecycle";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -308,6 +308,23 @@ export async function GET(req: NextRequest) {
           const __u = await currentUser().catch(() => null);
           const __primaryEmail = (__u?.emailAddresses?.find((e: { id: string; emailAddress: string }) => e.id === __u?.primaryEmailAddressId)?.emailAddress || __u?.emailAddresses?.[0]?.emailAddress || "").toLowerCase();
           __evRole = await __adoptRoom(eventSlug, userId, __primaryEmail || undefined);
+        }
+        if (__evRole && reopensOnJoin(__evRole)) {
+          // An always-open room stored as 'ended' — how the webhook left
+          // personal rooms before canEnd existed — is open again the moment
+          // someone joins it. Best effort: a failed write must not stop the
+          // join, and the role below does not depend on it.
+          try {
+            const __reopenedAt = new Date().toISOString();
+            __evRole = await __esRole.update(__evRole.id, (prev) => ({
+              ...prev,
+              state: "live" as const,
+              updatedAt: __reopenedAt,
+            }));
+            console.info("[token] reopened always-open room", eventSlug);
+          } catch (e) {
+            console.warn("[token] could not reopen always-open room", eventSlug, e);
+          }
         }
         if (__evRole) {
           // FRS §7.4: role restoration continues only until the meeting is
