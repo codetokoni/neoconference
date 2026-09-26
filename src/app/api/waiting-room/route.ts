@@ -19,7 +19,7 @@ import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { isAdmin } from "@/lib/roles";
-import { refusalHolds } from "@/lib/waitingRoom";
+import { lastKnocks, noteKnock, refusalHolds, stillWaiting } from "@/lib/waitingRoom";
 import type { NeoEvent, WaitingRoomEntry } from "@/types/event";
 
 export const runtime = "nodejs";
@@ -130,8 +130,19 @@ export async function GET(req: Request) {
   }
   // `enabled` rides along so a host's app, which polls this, shows the
   // switch as it is — including after someone changed it on the web.
+  // Someone who stopped knocking has gone; they are left out of the list
+  // (not the queue) until they knock again. If the knock times cannot be
+  // read, show everyone rather than no one.
+  const queue = ev.waitingRoom || [];
+  let entries = queue;
+  try {
+    const pendingIds = queue.filter((e) => e.status === "pending").map((e) => e.id);
+    entries = stillWaiting(queue, await lastKnocks(ev.id, pendingIds), Date.now());
+  } catch (e) {
+    console.warn("[waiting-room] could not read knock times", e);
+  }
   return NextResponse.json({
-    entries: ev.waitingRoom || [],
+    entries,
     enabled: Boolean(ev.waitingRoomEnabled),
   });
 }
@@ -170,6 +181,7 @@ async function knock(ev: NeoEvent, caller: CallerInfo) {
   // A refusal answers for a minute, then a knock is a new request — it used
   // to answer every knock forever (see lib/waitingRoom).
   if (existing && (existing.status !== "denied" || refusalHolds(existing, now))) {
+    if (existing.status === "pending") await markKnock(ev.id, caller.userId, now);
     return NextResponse.json({ status: existing.status, entryId: existing.id });
   }
 
@@ -190,8 +202,18 @@ async function knock(ev: NeoEvent, caller: CallerInfo) {
     ],
     updatedAt: new Date().toISOString(),
   }));
+  await markKnock(ev.id, caller.userId, now);
 
   return NextResponse.json({ status: "pending", entryId: entry.id });
+}
+
+/** Best effort: a knock that could not be timed is still a knock. */
+async function markKnock(eventId: string, userId: string, now: number) {
+  try {
+    await noteKnock(eventId, userId, now);
+  } catch (e) {
+    console.warn("[waiting-room] could not record knock", e);
+  }
 }
 
 async function decide(
