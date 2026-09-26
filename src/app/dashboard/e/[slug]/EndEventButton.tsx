@@ -3,7 +3,18 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-export default function EndEventButton({ eventId }: { eventId: string }) {
+/**
+ * Ends the meeting — or, for an always-open room, disconnects everyone in
+ * it: the end route never ends one of those, so "End event" promised
+ * something that did not happen.
+ */
+export default function EndEventButton({
+  eventId,
+  alwaysOpen = false,
+}: {
+  eventId: string;
+  alwaysOpen?: boolean;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [confirming, setConfirming] = useState(false);
@@ -30,7 +41,7 @@ export default function EndEventButton({ eventId }: { eventId: string }) {
         onClick={() => setConfirming(true)}
         className="px-4 py-2 rounded-full border border-rose-500/50 text-rose-200 hover:bg-rose-500/15 transition text-sm"
       >
-        End event
+        {alwaysOpen ? "Disconnect everyone" : "End event"}
       </button>
     );
   }
@@ -42,7 +53,9 @@ export default function EndEventButton({ eventId }: { eventId: string }) {
         disabled={isPending}
         className="px-4 py-2 rounded-full bg-rose-500 text-slate-950 font-medium hover:bg-rose-400 transition text-sm disabled:opacity-60"
       >
-        {isPending ? "Ending..." : "Confirm end"}
+        {alwaysOpen
+          ? isPending ? "Disconnecting..." : "Confirm — the room stays open"
+          : isPending ? "Ending..." : "Confirm end"}
       </button>
       <button
         onClick={() => setConfirming(false)}

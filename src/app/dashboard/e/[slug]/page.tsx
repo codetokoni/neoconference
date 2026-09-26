@@ -7,6 +7,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { eventStore } from "@/lib/eventStore";
+import { canEnd } from "@/lib/meetingLifecycle";
 import EndEventButton from "./EndEventButton";
 import StartEventButton from "@/components/StartEventButton";
 import DeleteEventButton from "./DeleteEventButton";
@@ -84,6 +85,13 @@ export default async function EventAdminPage({
   const transcripts = recordings.filter((r) => r.kind === "transcript");
   const videos = recordings.filter((r) => r.kind !== "transcript");
   const liveOrWaiting = ev.state === "live" || ev.state === "waiting";
+  // An always-open room is never over. It showed "Ended 24/9" beside LIVE —
+  // a date left by the webhook before canEnd existed — and offered End
+  // event, which for this room only disconnects everyone.
+  const alwaysOpen = !canEnd(ev);
+  // Only a meeting that is over has an end worth showing; a restarted one
+  // keeps its old endedAt, as the always-open rooms did.
+  const isOver = ev.state === "ended" || ev.state === "replay" || ev.state === "archived";
 
   return (
     <main className="min-h-screen bg-[#05060a] text-slate-100">
@@ -114,7 +122,7 @@ export default async function EventAdminPage({
               Public page
             </Link>
             {ev.state !== "ended" && ev.state !== "archived" ? (
-              <EndEventButton eventId={ev.id} />
+              <EndEventButton eventId={ev.id} alwaysOpen={alwaysOpen} />
             ) : null}
             {/* Restart flow — POST /start now accepts state=ended and flips
                 it back to live, so the owner can re-open an event they
@@ -163,7 +171,10 @@ export default async function EventAdminPage({
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
             <div className="text-xs text-slate-500 uppercase tracking-wider">Waiting</div>
-            <div className="text-2xl font-semibold mt-1">{(ev.waitingRoom || []).length}</div>
+            {/* Still waiting only; the queue also keeps who was let in or refused. */}
+            <div className="text-2xl font-semibold mt-1">
+              {(ev.waitingRoom || []).filter((w) => w.status === "pending").length}
+            </div>
           </div>
         </section>
 
@@ -179,7 +190,9 @@ export default async function EventAdminPage({
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
             <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">Ended</div>
-            <div className="text-slate-200">{fmt(ev.endedAt)}</div>
+            <div className="text-slate-200">
+              {alwaysOpen ? "Always open" : fmt(isOver ? ev.endedAt : undefined)}
+            </div>
           </div>
         </section>
 
