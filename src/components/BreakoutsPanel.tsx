@@ -18,7 +18,7 @@
 // Anyone who joins later will see whatever the host last broadcast,
 // because the host re-sends on RoomEvent.ParticipantConnected.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useRoomContext,
   useParticipants,
@@ -85,7 +85,7 @@ export default function BreakoutsPanel({
   // Debounce timer for host-side PUTs to /api/breakouts/<slug>.
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const broadcast = async (next: BreakoutState) => {
+  const broadcast = useCallback(async (next: BreakoutState) => {
     if (!room || !localParticipant) return;
     try {
       const stamped: BreakoutState = {
@@ -99,7 +99,7 @@ export default function BreakoutsPanel({
     } catch (e) {
       console.error("[breakouts] publishData failed", e);
     }
-  };
+  }, [room, localParticipant]);
 
   // ---- Hydrate from KV on mount (event-bound rooms only) ----
   useEffect(() => {
@@ -180,7 +180,7 @@ export default function BreakoutsPanel({
     return () => {
       room.off(RoomEvent.ParticipantConnected, onJoin);
     };
-  }, [room, isHost, state]);
+  }, [room, isHost, state, broadcast]);
 
   const myGroupId = useMemo(() => {
     const id = localParticipant?.identity;

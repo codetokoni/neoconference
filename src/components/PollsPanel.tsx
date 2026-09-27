@@ -136,7 +136,7 @@ export default function PollsPanel({
     return () => {
       room.off(RoomEvent.DataReceived, onData);
     };
-  }, [room, send]);
+  }, [room, send, localParticipant?.identity]);
 
   // Auto-dismiss the new-poll notification after 10 seconds.
   useEffect(() => {
