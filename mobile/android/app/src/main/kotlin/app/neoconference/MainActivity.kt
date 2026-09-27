@@ -49,6 +49,14 @@ class MainActivity : FlutterActivity() {
         runOnUiThread { channel?.invokeMethod("networkAvailable", null) }
     }
 
+    // Arrives on the main executor already.
+    private val callAudio = CallAudioRoute(this) { route, headset ->
+        channel?.invokeMethod(
+            "callAudioChanged",
+            mapOf("route" to route, "headset" to headset)
+        )
+    }
+
     private companion object {
         const val BLUETOOTH_REQUEST = 8801
         const val PHONE_REQUEST = 8802
@@ -72,9 +80,16 @@ class MainActivity : FlutterActivity() {
                     meetingTitle = title
                     MeetingService.start(this, title)
                     phoneCalls.start()
+                    callAudio.start()
                     updateAutoPip()
                     result.success(true)
                 }
+
+                "callAudio" -> result.success(
+                    mapOf("route" to callAudio.route(), "headset" to callAudio.headsetName())
+                )
+
+                "useHeadset" -> result.success(callAudio.useHeadset())
 
                 "beginScreenShare" -> beginScreenShare(result)
 
@@ -89,6 +104,7 @@ class MainActivity : FlutterActivity() {
                     MeetingService.projecting = false
                     MeetingService.stop(this)
                     phoneCalls.stop()
+                    callAudio.stop()
                     updateAutoPip()
                     result.success(true)
                 }
@@ -172,6 +188,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         phoneCalls.stop()
+        callAudio.stop()
         network.stop()
         super.onDestroy()
     }
