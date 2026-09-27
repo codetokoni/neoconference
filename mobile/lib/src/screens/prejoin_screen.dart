@@ -184,9 +184,22 @@ class _PreJoinScreenState extends ConsumerState<PreJoinScreen> {
                       instant: widget.instant,
                     ),
                     child: Text(
-                      widget.instant ? 'Start meeting' : 'Join now',
+                      widget.instant
+                          ? 'Start meeting'
+                          : _reopens
+                              ? 'Reopen and join'
+                              : 'Join now',
                     ),
                   ),
+                  if (_reopens) ...[
+                    const SizedBox(height: NeoSpace.sm),
+                    Text(
+                      'This meeting has ended. Reopening starts it again '
+                      'for everyone with the link.',
+                      textAlign: TextAlign.center,
+                      style: text.bodySmall?.copyWith(color: p.textMuted),
+                    ),
+                  ],
                   const SizedBox(height: NeoSpace.md),
                 ],
               ),
@@ -215,6 +228,10 @@ class _PreJoinScreenState extends ConsumerState<PreJoinScreen> {
     // code under a title that already is the code says nothing twice.
     return m.code == m.title ? null : m.code;
   }
+
+  /// An ended meeting of the user's own: joining it reopens it first (the
+  /// launcher does, with the event id), as "Restart event" does on the web.
+  bool get _reopens => !widget.instant && widget.meeting?.isPast == true;
 
   MeetingView get _instantMeeting => const MeetingView(
         title: 'Instant meeting',

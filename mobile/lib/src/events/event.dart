@@ -20,6 +20,7 @@ class NeoEvent {
     required this.waitingRoomEnabled,
     this.scheduledAt,
     this.startedAt,
+    this.endedAt,
   });
 
   final String id;
@@ -34,11 +35,17 @@ class NeoEvent {
   final DateTime? scheduledAt;
   final DateTime? startedAt;
 
+  /// When it last finished. startedAt is the first start and is kept when a
+  /// meeting is reopened, so a past meeting is dated by this instead.
+  final DateTime? endedAt;
+
   bool get isLive => state == 'live' || state == 'waiting';
 
-  /// A permanent personal room is always joinable; a finished meeting is
-  /// not something to walk back into.
-  bool get canJoin => isPermanent || state != 'ended' && state != 'archived';
+  /// Every meeting in this list is the user's own (/api/events/mine), and
+  /// an owner can reopen one that ended — the website's "Restart event".
+  /// Its card opens pre-join, which offers to reopen it. Only an archived
+  /// meeting is closed for good.
+  bool get canJoin => state != 'archived';
 
   static DateTime? _date(dynamic v) =>
       v is String && v.isNotEmpty ? DateTime.tryParse(v)?.toLocal() : null;
@@ -55,6 +62,7 @@ class NeoEvent {
         waitingRoomEnabled: json['waitingRoomEnabled'] == true,
         scheduledAt: _date(json['scheduledAt']),
         startedAt: _date(json['startedAt']),
+        endedAt: _date(json['endedAt']),
       );
 }
 

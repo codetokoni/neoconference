@@ -18,6 +18,7 @@ void main() {
     required String state,
     DateTime? scheduledAt,
     DateTime? startedAt,
+    DateTime? endedAt,
     bool permanent = false,
   }) =>
       NeoEvent(
@@ -30,6 +31,7 @@ void main() {
         waitingRoomEnabled: false,
         scheduledAt: scheduledAt,
         startedAt: startedAt,
+        endedAt: endedAt,
       );
 
   test('a meeting whose time has passed is not upcoming', () {
@@ -161,5 +163,30 @@ void main() {
     ], now: now);
 
     expect(board.recent.map((m) => m.code), ['newer', 'older']);
+  });
+
+  test('a reopened meeting is dated by when it last ran, not its first start', () {
+    // startedAt is kept through a reopen. testneo, used an hour ago, read
+    // "3 days ago" and sorted below meetings that really were older.
+    final board = boardFromEvents([
+      event(
+        slug: 'reopened',
+        state: 'ended',
+        startedAt: now.subtract(const Duration(days: 3)),
+        endedAt: now.subtract(const Duration(hours: 1)),
+      ),
+      event(
+        slug: 'yesterday',
+        state: 'ended',
+        startedAt: now.subtract(const Duration(days: 1, hours: 2)),
+        endedAt: now.subtract(const Duration(days: 1)),
+      ),
+    ], now: now);
+
+    expect(board.recent.map((m) => m.code), ['reopened', 'yesterday']);
+    expect(board.recent.first.startsAt, now.subtract(const Duration(hours: 1)));
+    // The id travels with it, so the app can ask the server to reopen it.
+    expect(board.recent.first.eventId, 'reopened');
+    expect(board.recent.first.canJoin, isTrue);
   });
 }

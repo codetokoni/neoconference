@@ -138,8 +138,13 @@ MeetingBoard boardFromEvents(List<NeoEvent> events, {required DateTime now}) {
 }
 
 MeetingView meetingFromEvent(NeoEvent e, {required DateTime now}) {
-  final when = e.startedAt ?? e.scheduledAt;
+  // A finished meeting is dated by when it last ran. startedAt stays at the
+  // first start through every reopen, so a meeting used an hour ago read
+  // "3 days ago" and sorted below older ones.
+  final ended = e.state == 'ended' || e.state == 'archived' || e.state == 'replay';
+  final when = (ended ? e.endedAt : null) ?? e.startedAt ?? e.scheduledAt;
   return MeetingView(
+    eventId: e.id.isEmpty ? null : e.id,
     title: e.name,
     code: e.slug,
     status: _status(e, when, now),
