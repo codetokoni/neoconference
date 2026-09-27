@@ -112,16 +112,21 @@ export function gateStatus(
 
 /**
  * A role the old admit wrote: a pre-approved viewer whose identifier is an
- * admitted queue entry. Invites and ticket purchases write pre-approved
- * roles too, and those must stay — they are why this matches on the queue
- * entry and not on the role alone.
+ * admitted queue entry, labelled with that entry's name — admit copied
+ * `label: target.name`. Invites and ticket purchases write pre-approved
+ * roles too, and those must stay: matching the id alone deleted a real
+ * viewer invite from anyone who had once been admitted. An invite's label
+ * is the first name or username, so it can still coincide for a
+ * username-only account; the cost then is one knock, not a lost invite
+ * for good.
  */
-function admitWroteRole(role: RoleAssignment, admitted: Set<string>): boolean {
-  return (
-    role.role === "viewer" &&
-    role.preApproved === true &&
-    admitted.has(role.identifier.toLowerCase())
-  );
+function admitWroteRole(
+  role: RoleAssignment,
+  admittedNames: Map<string, string>
+): boolean {
+  if (role.role !== "viewer" || role.preApproved !== true) return false;
+  const name = admittedNames.get(role.identifier.toLowerCase());
+  return name !== undefined && role.label === name;
 }
 
 /**
@@ -137,8 +142,10 @@ export function clearedForNewSession(
 ): { waitingRoom: WaitingRoomEntry[]; roles: RoleAssignment[] } | null {
   const queue = ev.waitingRoom || [];
   const roles = ev.roles || [];
-  const admitted = new Set(
-    queue.filter((e) => e.status === "admitted").map((e) => e.id.toLowerCase())
+  const admitted = new Map(
+    queue
+      .filter((e) => e.status === "admitted")
+      .map((e) => [e.id.toLowerCase(), e.name] as const)
   );
   const waitingRoom = queue.filter((e) => e.status === "pending");
   const keptRoles = roles.filter((r) => !admitWroteRole(r, admitted));

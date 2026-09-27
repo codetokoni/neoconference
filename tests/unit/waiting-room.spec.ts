@@ -102,7 +102,8 @@ test.describe("when the room empties", () => {
   test("matches role identifiers case-insensitively, as the gate does", () => {
     const next = clearedForNewSession({
       waitingRoom: [entry("User_Mixed", "admitted", now)],
-      roles: [role("user_mixed")],
+      // Admit copied the entry's name as the label.
+      roles: [role("user_mixed", { label: "User_Mixed" })],
     });
     expect(next?.roles).toHaveLength(0);
   });
@@ -125,6 +126,16 @@ test.describe("when the room empties", () => {
       roles: [role("streamlab"), role("joshbender"), role("the_msi")],
     });
     expect(next).toEqual({ waitingRoom: [], roles: [] });
+  });
+
+  test("a viewer invite for someone once admitted survives", () => {
+    // Admitted from the queue as "Ada Lovelace", later invited as viewer:
+    // the invite route labels the role with the first name.
+    const next = clearedForNewSession({
+      waitingRoom: [{ ...entry("user_ada", "admitted", now), name: "Ada Lovelace" }],
+      roles: [role("user_ada", { label: "Ada" })],
+    });
+    expect(next?.roles.map((r) => r.identifier)).toEqual(["user_ada"]);
   });
 });
 

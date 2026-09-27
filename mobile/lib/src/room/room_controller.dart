@@ -667,9 +667,27 @@ class RoomController extends StateNotifier<RoomState> {
       final Map<String, dynamic>? creds;
       try {
         creds = await _token();
+      } on ApiException catch (e) {
+        // Still no host: leave the waiting screen as it is. Any other gate
+        // is a different screen. The waiting room is checked before the
+        // host, so once a host arrived and turned it on, every check came
+        // back "waiting_room" — and was thrown away as "still no host":
+        // the person sat on "Waiting for the host" beside a host who could
+        // not see them, and never knocked.
+        // Only real gates move the screen; a passing server error is
+        // retried like being offline.
+        const gates = {'waiting_room', 'meeting_locked', 'room_full'};
+        if (gates.contains(e.code)) {
+          _hostTimer?.cancel();
+          _hostTimer = null;
+          _handleJoinRefusal(e);
+        } else if (e.code != 'wait_for_host') {
+          debugPrint('[neo-room] host check failed: ${e.status} ${e.code}');
+        }
+        return;
       } catch (e) {
-        // Still gated, or offline. Leave the waiting screen as it is.
-        if (e is! ApiException) debugPrint('[neo-room] host check failed: $e');
+        // Offline. The next tick tries again.
+        debugPrint('[neo-room] host check failed: $e');
         return;
       }
       if (creds == null || _disposed) return;
@@ -1479,6 +1497,9 @@ class RoomController extends StateNotifier<RoomState> {
       // A poll that set off before the switch was flipped carries the old
       // setting; it would flip the switch back until the next one.
       final current = flipsBefore == _waitingSwitchFlips;
+      // Quick only while there can be anyone to see. An older server that
+      // does not say keeps the quick pace it always had.
+      if (current) _waitingPoller.chatOpen(enabled is bool ? enabled : true);
       state = state.copyWith(
         waitingRoom: pending,
         // A server from before `enabled` was sent leaves this unknown, and
@@ -1497,6 +1518,7 @@ class RoomController extends StateNotifier<RoomState> {
   /// next knock "admitted".
   Future<void> setWaitingRoom(bool enabled) async {
     _waitingSwitchFlips++;
+    _waitingPoller.chatOpen(enabled);
     final before = state.waitingRoomEnabled;
     // Shown at once; put back if the server says no.
     state = state.copyWith(waitingRoomEnabled: enabled);

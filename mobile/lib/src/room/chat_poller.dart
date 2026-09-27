@@ -27,8 +27,12 @@ Duration chatPollInterval({required bool chatOpen, required bool visible}) {
 /// back. Four seconds on screen matches the web room, so a host on either
 /// sees a knock at about the same moment. In the background nothing shows;
 /// the slow poll has the button ready for when they come back.
+///
+/// [chatOpen] here means the meeting has a waiting room at all: without one
+/// nobody can be in the list, and asking every 4 s was 15 requests a minute
+/// per host for nothing. 30 s still notices it being turned on from the web.
 Duration waitingPollInterval({required bool chatOpen, required bool visible}) =>
-    visible ? const Duration(seconds: 4) : const Duration(seconds: 30);
+    chatOpen && visible ? const Duration(seconds: 4) : const Duration(seconds: 30);
 
 /// Runs a poll at [cadence] ([chatPollInterval] unless given), one request
 /// at a time.

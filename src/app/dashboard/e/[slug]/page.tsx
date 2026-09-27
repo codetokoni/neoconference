@@ -8,6 +8,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { eventStore } from "@/lib/eventStore";
 import { canEnd } from "@/lib/meetingLifecycle";
+import { lastKnocks, stillWaiting } from "@/lib/waitingRoom";
 import EndEventButton from "./EndEventButton";
 import StartEventButton from "@/components/StartEventButton";
 import DeleteEventButton from "./DeleteEventButton";
@@ -92,6 +93,17 @@ export default async function EventAdminPage({
   // Only a meeting that is over has an end worth showing; a restarted one
   // keeps its old endedAt, as the always-open rooms did.
   const isOver = ev.state === "ended" || ev.state === "replay" || ev.state === "archived";
+  // The queue as the meeting's own lists show it: someone who stopped
+  // knocking has gone (lib/waitingRoom). Read raw, this page offered Admit
+  // for people who left hours ago. On a read failure, show everyone.
+  const storedQueue = ev.waitingRoom || [];
+  let queue = storedQueue;
+  try {
+    const pendingIds = storedQueue.filter((w) => w.status === "pending").map((w) => w.id);
+    queue = stillWaiting(storedQueue, await lastKnocks(ev.id, pendingIds), Date.now());
+  } catch {
+    // keep the stored queue
+  }
 
   return (
     <main className="min-h-screen bg-[#05060a] text-slate-100">
@@ -177,7 +189,7 @@ export default async function EventAdminPage({
             <div className="text-xs text-slate-500 uppercase tracking-wider">Waiting</div>
             {/* Still waiting only; the queue also keeps who was let in or refused. */}
             <div className="text-2xl font-semibold mt-1">
-              {(ev.waitingRoom || []).filter((w) => w.status === "pending").length}
+              {queue.filter((w) => w.status === "pending").length}
             </div>
           </div>
         </section>
@@ -302,7 +314,7 @@ export default async function EventAdminPage({
         {/* Waiting room */}
         <section className="space-y-3">
           <h2 className="text-sm uppercase tracking-widest text-slate-400">Waiting room</h2>
-          <WaitingRoomPanel eventId={ev.id} initial={ev.waitingRoom || []} />
+          <WaitingRoomPanel eventId={ev.id} initial={queue} />
         </section>
 
         {/* Chapter markers */}

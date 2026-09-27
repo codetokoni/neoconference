@@ -231,9 +231,16 @@ void main() {
     });
 
     test('the host polls at the web room\'s pace, slower when away', () {
-      expect(waitingPollInterval(chatOpen: false, visible: true),
+      // `chatOpen` is "this meeting has a waiting room".
+      expect(waitingPollInterval(chatOpen: true, visible: true),
           const Duration(seconds: 4));
-      expect(waitingPollInterval(chatOpen: false, visible: false),
+      expect(waitingPollInterval(chatOpen: true, visible: false),
+          const Duration(seconds: 30));
+    });
+
+    test('without a waiting room the host barely asks', () {
+      // Every host polled every 4 s for a list nobody could be in.
+      expect(waitingPollInterval(chatOpen: false, visible: true),
           const Duration(seconds: 30));
     });
   });

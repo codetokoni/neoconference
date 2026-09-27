@@ -207,7 +207,11 @@ export async function POST(req: Request) {
         state: 'ended',
         // Emptied, not ended by anyone: rejoining keeps roles and reopens it.
         endedBy: 'room_empty' as const,
-        endedAt: prev.endedAt || endedAt,
+        // This close's own time. Only a meeting in progress gets here, so a
+        // stored endedAt is left over from an earlier end — keeping it, as
+        // `prev.endedAt || endedAt` did, recorded a restarted meeting as
+        // ending hours before it did.
+        endedAt,
         updatedAt: new Date().toISOString(),
       }));
       return NextResponse.json({ ok: true, transitioned: true, eventId: ev.id, endedAt });
@@ -234,16 +238,14 @@ export async function POST(req: Request) {
         if (!goesLiveWhenRoomStarts(prev, now)) {
           return { ...prev, startedAt: prev.startedAt || startedAt, updatedAt: new Date().toISOString() };
         }
-        // Back on after emptying: its old end no longer stands. Left in
-        // place, the next close would keep it (room_finished only fills an
-        // empty endedAt).
-        const { endedAt: _endedAt, endedBy: _endedBy, ...rest } = prev;
-        void _endedAt;
-        void _endedBy;
+        // Back on after emptying: its old end no longer stands. (undefined
+        // is dropped when the event is stored.)
         return {
-          ...rest,
+          ...prev,
           state: 'live' as const,
           startedAt: prev.startedAt || startedAt,
+          endedAt: undefined,
+          endedBy: undefined,
           updatedAt: new Date().toISOString(),
         };
       });
