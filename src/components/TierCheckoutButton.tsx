@@ -51,7 +51,7 @@ export default function TierCheckoutButton({
         return;
       }
       window.location.href = data.url as string;
-    } catch (e) {
+    } catch {
       setError("Network error. Please try again.");
       setLoading(false);
     }

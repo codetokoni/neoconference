@@ -162,7 +162,7 @@ export default function InviteByKingsChat({
 
       <p className="text-[11px] text-slate-400">
         Assigns the role under their KingsChat handle. Applies the moment
-        they sign in via KingsChat. If they've signed in with KC before,
+        they sign in via KingsChat. If they&apos;ve signed in with KC before,
         we can also push an invite message directly to their chat.
       </p>
 

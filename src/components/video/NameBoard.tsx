@@ -62,7 +62,7 @@ export default function NameBoard({
   const [data, setData] = useState<RoomPayload | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [spot, setSpot] = useState<Participant | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [, setBusy] = useState(false);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement | null>(null);
 
@@ -121,7 +121,9 @@ export default function NameBoard({
     return () => window.removeEventListener("keydown", onKey);
   }, [spot]);
 
-  const feature = useCallback(
+  // Written, but no control calls it yet (found by lint, 2026-09-27). Kept
+  // for the operator console rather than deleted; wire it up or remove it.
+  const _feature = useCallback(
     async (p: Participant) => {
       setBusy(true);
       try {
@@ -143,7 +145,9 @@ export default function NameBoard({
     [room],
   );
 
-  const sendToPreview = useCallback(
+  // Written, but no control calls it yet (found by lint, 2026-09-27). Kept
+  // for the operator console rather than deleted; wire it up or remove it.
+  const _sendToPreview = useCallback(
     async (p: Participant) => {
       setBusy(true);
       try {

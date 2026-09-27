@@ -154,7 +154,7 @@ export async function GET(req: NextRequest) {
                   return true;
                 });
                 hostPresent = humans.length > 0;
-              } catch (listErr) {
+              } catch {
                 // If the room does not exist yet, listParticipants throws â treat as no host present.
                 hostPresent = false;
               }

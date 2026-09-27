@@ -200,10 +200,10 @@ export default function RosterPanel({ room }: { room: string }) {
           <p className="text-xs text-white/60">
             Needs a <b>NAME</b> column. Extras (COUNTRY, CONDITION, …) are preserved.
             <br />
-            <b>Append on</b> — the default — places the file's rows immediately after
-            the last named slot, so a second xlsx doesn't overwrite the first.
+            <b>Append on</b> — the default — places the file&apos;s rows immediately after
+            the last named slot, so a second xlsx doesn&apos;t overwrite the first.
             <br />
-            <b>Append off</b> — the file's <b>S/N</b> becomes the target slot, and
+            <b>Append off</b> — the file&apos;s <b>S/N</b> becomes the target slot, and
             rows without S/N fall in by order starting at slot 1 (overwrites).
           </p>
         </div>
@@ -339,7 +339,7 @@ export default function RosterPanel({ room }: { room: string }) {
             </button>
             <p className="text-xs text-white/60">
               Reissues every code with a fresh random suffix so knowing one
-              code doesn't leak the pattern. Names, slots and meta preserved;
+              code doesn&apos;t leak the pattern. Names, slots and meta preserved;
               every previously distributed code stops working. Confirm phrase:{" "}
               <code className="text-white/80">rotate</code>.
             </p>

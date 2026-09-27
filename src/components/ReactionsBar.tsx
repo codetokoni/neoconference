@@ -40,7 +40,7 @@ export default function ReactionsBar() {
   const room = useRoomContext();
   const [floats, setFloats] = useState<Floating[]>([]);
   const [isMobile, setIsMobile] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [, setPickerOpen] = useState(false);
   const idRef = useRef(0);
 
   // Track mobile breakpoint via matchMedia so we react to rotation / resize.

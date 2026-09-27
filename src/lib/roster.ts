@@ -188,7 +188,7 @@ function readLayout(buffer: Buffer): TemplateLayout | null {
   // Where does the data end? Walk down from headerRow+1 until we run
   // out of populated rows in the name column — trailing blank rows in
   // the admin's file shouldn't turn into empty participant rows.
-  let dataStartRow = headerRow + 1;
+  const dataStartRow = headerRow + 1;
   let dataEndRow = headerRow;
   for (let r = dataStartRow; r <= range.e.r; r++) {
     const cell = ws[XLSX.utils.encode_cell({ r, c: nameCol })];

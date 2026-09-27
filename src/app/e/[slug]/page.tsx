@@ -12,7 +12,6 @@
 
 import { eventStore } from '@/lib/eventStore';
 import { toPublicView } from '@/types/event';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import TicketsList from './TicketsList';
 import { auth, currentUser } from '@clerk/nextjs/server';

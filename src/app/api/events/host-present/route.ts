@@ -5,8 +5,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { RoomServiceClient } from "livekit-server-sdk";
 import { eventStore } from "@/lib/eventStore";
-import { isAdmin } from "@/lib/roles";
-import { getMeetingRole, getMeetingRoleByEmail } from "@/lib/meeting-roles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

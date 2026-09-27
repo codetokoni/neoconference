@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import {
   LiveKitRoom,
-  VideoConference,
   RoomAudioRenderer,
   type LocalUserChoices,
   useRoomContext,
@@ -16,7 +15,7 @@ import {
 import MobileVideoConference from "@/components/MobileVideoConference";
 import HostMenuOverlay from "@/components/HostMenuOverlay";
 import MediaRequestPrompt from "@/components/MediaRequestPrompt";
-import { RoomEvent, Track, type Participant } from "livekit-client";
+import { RoomEvent, type Participant } from "livekit-client";
 import "@livekit/components-styles";
 import "./initials-overlay.css";
 import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
@@ -257,7 +256,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
       <div className="p-8 max-w-md mx-auto text-center">
         <h1 className="text-xl font-semibold mb-2">Could not join room</h1>
         <p className="text-sm text-gray-600 mb-4">
-          We couldn't get a connection token for <strong>{roomName}</strong>.
+          We couldn&apos;t get a connection token for <strong>{roomName}</strong>.
         </p>
         <p className="text-xs text-red-600 break-all">{error}</p>
         <a href="/" className="inline-block mt-6 underline text-sm">
@@ -519,7 +518,7 @@ function RenameUrlButton({
         return;
       }
       window.location.href = j.roomUrl;
-    } catch (e) {
+    } catch {
       setErr(humanizeRenameError("network_error"));
       setBusy(false);
     }
@@ -2015,7 +2014,7 @@ function BackgroundPickerPanel({
         />
 
         <p className="mt-4 text-[11px] text-white/40">
-          Tip: Background effects can slow down older devices. We'll auto-disable if performance drops.
+          Tip: Background effects can slow down older devices. We&apos;ll auto-disable if performance drops.
         </p>
       </div>
     </div>

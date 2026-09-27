@@ -11,7 +11,6 @@ import { useState } from 'react';
 export default function StartEventButton({
   eventId,
   slug,
-  livekitRoom,
   label = 'Start now',
   busyLabel = 'Starting…',
 }: {

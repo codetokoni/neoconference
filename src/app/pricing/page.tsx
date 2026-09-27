@@ -50,7 +50,7 @@ export default function PricingPage() {
             The meeting ends automatically. You can immediately start a new one — but for uninterrupted long calls, upgrade to Starter or Pro.
           </Faq>
           <Faq q="What is the 5-lifetime-meeting cap?">
-            The Free plan lets you create up to 5 meetings ever (across the lifetime of the account). Once you hit that, you'll need to upgrade to keep hosting. Joining other people's meetings stays free.
+            The Free plan lets you create up to 5 meetings ever (across the lifetime of the account). Once you hit that, you&apos;ll need to upgrade to keep hosting. Joining other people&apos;s meetings stays free.
           </Faq>
           <Faq q="Do existing paid users get the new participant limits?">
             Yes. The new caps (Starter 100 / Pro 200 / Business 500) apply to every paid user on their next session — nothing to do, no migration needed.
