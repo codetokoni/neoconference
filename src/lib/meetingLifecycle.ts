@@ -139,6 +139,24 @@ export function rejoinDropsToAttendee(
   return ev.state === "ended" && canEnd(ev) && ev.endedBy !== "room_empty";
 }
 
+/**
+ * Whether ending this meeting needs its End Meeting PIN from this caller.
+ *
+ * The PIN is a second lock among the people who may end a meeting at all
+ * (owner and host): one host cannot close it over another's head, and a
+ * stray tap cannot close it for everyone. Platform admins are not on that
+ * ladder — they end meetings from outside, often abandoned or misbehaving
+ * ones, and having to find the owner's PIN defeated the point: the admin
+ * page's End simply failed on any meeting with one. They pass, and the
+ * end route logs that they did.
+ */
+export function endNeedsPin(
+  ev: Pick<NeoEvent, "endPin">,
+  caller: { isPlatformAdmin: boolean }
+): boolean {
+  return Boolean(ev.endPin) && !caller.isPlatformAdmin;
+}
+
 /** Whether this meeting closed only because its room emptied. */
 export function endedByEmptyRoom(ev: Pick<NeoEvent, "state" | "endedBy">): boolean {
   return ev.state === "ended" && ev.endedBy === "room_empty";

@@ -12,6 +12,7 @@ import {
   EARLY_START_MS,
   endsWhenRoomFinishes,
   goesLiveWhenRoomStarts,
+  endNeedsPin,
 } from "../../src/lib/meetingLifecycle";
 import type { NeoEvent, EventState } from "../../src/types/event";
 
@@ -446,5 +447,23 @@ test.describe("a meeting that emptied is not a meeting that was ended", () => {
     expect(
       rejoinDropsToAttendee({ state: "ended", endedBy: "host", isPermanent: true })
     ).toBe(false);
+  });
+});
+
+test.describe("who needs the End Meeting PIN", () => {
+  // The admin page's End posted no PIN and failed on every meeting with
+  // one. The PIN is a lock among a meeting's own hosts; platform admins
+  // end from outside, and pass.
+  test("an owner or host needs it when one is set", () => {
+    expect(endNeedsPin({ endPin: "hash" }, { isPlatformAdmin: false })).toBe(true);
+  });
+
+  test("a platform admin does not", () => {
+    expect(endNeedsPin({ endPin: "hash" }, { isPlatformAdmin: true })).toBe(false);
+  });
+
+  test("nobody needs one that was never set", () => {
+    expect(endNeedsPin({}, { isPlatformAdmin: false })).toBe(false);
+    expect(endNeedsPin({ endPin: "" }, { isPlatformAdmin: false })).toBe(false);
   });
 });

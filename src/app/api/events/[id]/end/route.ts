@@ -12,7 +12,7 @@ import { RoomServiceClient } from "livekit-server-sdk";
 import { eventStore } from "@/lib/eventStore";
 import { authorize } from "@/lib/authz";
 import { verifyMeetingPassword } from "@/lib/eventPassword";
-import { canEnd } from "@/lib/meetingLifecycle";
+import { canEnd, endNeedsPin } from "@/lib/meetingLifecycle";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,8 +28,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   // FRS §6: when the meeting has an End Meeting PIN configured, require the
   // caller to submit the matching plaintext. Body is optional — a body-less
-  // POST from a room without a PIN keeps the historical behaviour.
-  if (ev.endPin) {
+  // POST from a room without a PIN keeps the historical behaviour. Platform
+  // admins pass without it (endNeedsPin), and each time is logged so it can
+  // be traced.
+  if (ev.endPin && !endNeedsPin(ev, gate.actor)) {
+    console.info("[end] platform admin ended a PIN-protected meeting without its PIN", {
+      eventId: ev.id,
+      slug: ev.slug,
+      userId: gate.actor.userId,
+    });
+  }
+  if (endNeedsPin(ev, gate.actor)) {
     let submittedPin = "";
     try {
       const bodyText = await req.text();

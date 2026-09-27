@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { eventStore, adoptOrphanRoom } from "@/lib/eventStore";
 import { isAdmin } from "@/lib/roles";
+import { endNeedsPin } from "@/lib/meetingLifecycle";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,6 +52,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ id: ev.id, livekitRoom: ev.livekitRoom || slug, role: "guest", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
   }
 
+  // Whether this caller would be asked for the End Meeting PIN. Admins pass
+  // without it (endNeedsPin), so their app and web room must not ask — a
+  // prompt whose answer is ignored is worse than none.
+  const endPinRequired = endNeedsPin(ev, {
+    isPlatformAdmin: userEmails.some((e) => isAdmin(e)),
+  });
+
   // Owner check runs BEFORE the platform-admin branch. Previously they were
   // in the opposite order, so a user who was both an ADMIN_EMAILS admin AND
   // the actual event owner got isOwner:false — which then hid the FRS §1.1
@@ -60,14 +68,14 @@ export async function GET(req: Request) {
   const isOwner = ev.ownerUserId === userId
     || (ownerEmail !== "" && userEmails.includes(ownerEmail));
   if (isOwner) {
-    return NextResponse.json({ id: ev.id, livekitRoom: ev.livekitRoom || slug, role: "host", preApproved: true, isOwner: true, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
+    return NextResponse.json({ id: ev.id, livekitRoom: ev.livekitRoom || slug, role: "host", preApproved: true, isOwner: true, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired, inactivity: ev.inactivity ?? null });
   }
 
   // Permanent admins (ADMIN_EMAILS env var) who are NOT the actual event
   // owner are treated as host of any room they join. Keep isOwner=false —
   // they are *acting as* host, not the actual owner of the event record.
   if (userEmails.some((e) => isAdmin(e))) {
-    return NextResponse.json({ id: ev.id, livekitRoom: ev.livekitRoom || slug, role: "host", preApproved: true, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
+    return NextResponse.json({ id: ev.id, livekitRoom: ev.livekitRoom || slug, role: "host", preApproved: true, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired, inactivity: ev.inactivity ?? null });
   }
 
   // Prefer the Redis membership hash. Assignments made through the RBAC
@@ -96,7 +104,7 @@ export async function GET(req: Request) {
   ]);
   const hashRoles = lookups.filter((r): r is NonNullable<typeof r> => r !== null);
   if (hashRoles.length === 0) {
-    return NextResponse.json({ id: ev.id, livekitRoom: ev.livekitRoom || slug, role: "viewer", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
+    return NextResponse.json({ id: ev.id, livekitRoom: ev.livekitRoom || slug, role: "viewer", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired, inactivity: ev.inactivity ?? null });
   }
   const best = hashRoles.reduce((a, b) => (RANK[b] > RANK[a] ? b : a));
   return NextResponse.json({
@@ -107,7 +115,7 @@ export async function GET(req: Request) {
     isOwner: false,
     ownerUserId: ev.ownerUserId || null,
     isLocked: Boolean(ev.isLocked),
-    endPinRequired: Boolean(ev.endPin),
+    endPinRequired,
     inactivity: ev.inactivity ?? null,
   });
 }
