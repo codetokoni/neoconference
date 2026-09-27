@@ -162,7 +162,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, roomName, choices, eventSlug, waitingState, waitForHost]);
+  }, [isLoaded, isSignedIn, roomName, choices, eventSlug, waitingState, waitForHost, tabNonce]);
 
   // While waiting in the queue, re-knock every 4s. When the host admits us
   // the response flips to "admitted" and we clear waitingState which causes

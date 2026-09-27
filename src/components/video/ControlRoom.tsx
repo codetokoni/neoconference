@@ -239,7 +239,7 @@ export default function ControlRoom({
     } catch {
       /* transient */
     }
-  }, [room, screen]);
+  }, [room]);
 
   useEffect(() => {
     loadPreview();

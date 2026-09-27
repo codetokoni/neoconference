@@ -475,7 +475,7 @@ export default function SimulcastPlayer({
       });
     }, 2000);
     return () => clearTimeout(t);
-  }, [active, mode, setTrackEnabled]);
+  }, [active, mode, setTrackEnabled, channels]);
 
   /* ---- HLS fallback: the picture ---- */
   useEffect(() => {

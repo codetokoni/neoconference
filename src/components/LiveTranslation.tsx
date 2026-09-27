@@ -286,6 +286,9 @@ export default function LiveTranslation() {
   useEffect(() => {
     if (!room) return;
     if (targetLang === 'off') return;
+    // The same Map for the component's life (never reassigned); held here so
+    // the cleanup reads it without reaching back through the ref.
+    const ducked = preDuckState.current;
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
     const seenFinalIds = new Set<string>();
@@ -439,14 +442,14 @@ export default function LiveTranslation() {
       // (rather than blindly setting volume = 1) so we never
       // clobber elements that were muted for a legitimate reason.
       activeUtteranceCount.current = 0;
-      preDuckState.current.forEach((prev, el) => {
+      ducked.forEach((prev, el) => {
         if (!document.body.contains(el)) return;
         el.volume = prev.volume;
         el.muted = prev.muted;
       });
-      preDuckState.current.clear();
+      ducked.clear();
     };
-  }, [room, targetLang, voice]);
+  }, [room, targetLang, voice, bumpDiag]);
 
   const currentLabel = useMemo(() => {
     if (targetLang === 'off') return 'Off';

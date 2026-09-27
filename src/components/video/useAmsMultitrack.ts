@@ -75,6 +75,9 @@ export function useAmsMultitrack(
   useEffect(() => {
     if (!enabled || !mainTrack) return;
     deadRef.current = false;
+    // The subtrack names, from the key this effect is keyed on rather than
+    // the array (a new array each render would reconnect every render).
+    const tracks = trackKey ? trackKey.split(",") : [];
 
     let attempt = 0;
 
@@ -179,8 +182,8 @@ export function useAmsMultitrack(
         const generic = /^(?:video|audio)Track(\d+)$/.exec(id);
         if (generic) {
           const n = parseInt(generic[1], 10);
-          if (n >= 0 && n < trackList.length && trackList[n]) {
-            id = trackList[n];
+          if (n >= 0 && n < tracks.length && tracks[n]) {
+            id = tracks[n];
           }
         }
 
