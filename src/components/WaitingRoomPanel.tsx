@@ -18,6 +18,17 @@ interface WaitingEntry {
   status: "pending" | "admitted" | "denied";
 }
 
+/**
+ * One knock, not one person. The panel hides knocks this tab has denied,
+ * and used to hide the person: a refusal now lasts a minute (#317) and a
+ * later knock from the same account is a new request with a new
+ * requestedAt, but the host who denied them never saw it again for the
+ * rest of the tab session — "No one waiting" while the toolbar said
+ * "Waiting (1)". Ids stored by the old code simply never match.
+ */
+const knockKey = (e: Pick<WaitingEntry, "id" | "requestedAt">) =>
+  `${e.id}@${e.requestedAt}`;
+
 export default function WaitingRoomPanel({
   open,
   onClose,
@@ -33,17 +44,17 @@ export default function WaitingRoomPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [deniedIds, setDeniedIds] = useState<Set<string>>(new Set());
+  const [deniedKnocks, setDeniedKnocks] = useState<Set<string>>(new Set());
   const [admitAllBusy, setAdmitAllBusy] = useState(false);
-  // Hydrate denied set from sessionStorage (per-room key) so denied attendees
-  // stay suppressed for the rest of this tab session.
+  // Hydrate denied set from sessionStorage (per-room key) so denied knocks
+  // stay suppressed for the rest of this tab session (see knockKey).
   useEffect(() => {
     if (typeof window === "undefined" || !eventSlug) return;
     try {
       const raw = sessionStorage.getItem(`nc:waiting:denied:${eventSlug}`);
       if (raw) {
         const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) setDeniedIds(new Set(arr));
+        if (Array.isArray(arr)) setDeniedKnocks(new Set(arr));
       }
     } catch {}
   }, [eventSlug]);
@@ -53,10 +64,10 @@ export default function WaitingRoomPanel({
     try {
       sessionStorage.setItem(
         `nc:waiting:denied:${eventSlug}`,
-        JSON.stringify(Array.from(deniedIds))
+        JSON.stringify(Array.from(deniedKnocks))
       );
     } catch {}
-  }, [deniedIds, eventSlug]);
+  }, [deniedKnocks, eventSlug]);
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -123,11 +134,14 @@ export default function WaitingRoomPanel({
         throw new Error(body.error || `HTTP ${res.status}`);
       }
       if (decision === "deny") {
-        setDeniedIds((prev) => {
-          const next = new Set(prev);
-          next.add(entryId);
-          return next;
-        });
+        const target = entries.find((e) => e.id === entryId);
+        if (target) {
+          setDeniedKnocks((prev) => {
+            const next = new Set(prev);
+            next.add(knockKey(target));
+            return next;
+          });
+        }
       }
       setEntries((prev) =>
         prev.map((e) =>
@@ -147,7 +161,7 @@ export default function WaitingRoomPanel({
   const admitAll = async () => {
     if (!eventSlug || admitAllBusy) return;
     const queue = entries.filter(
-      (e) => e.status === "pending" && !deniedIds.has(e.id)
+      (e) => e.status === "pending" && !deniedKnocks.has(knockKey(e))
     );
     if (queue.length === 0) return;
     setAdmitAllBusy(true);
@@ -215,7 +229,7 @@ export default function WaitingRoomPanel({
       };
 
   const pending = entries.filter(
-    (e) => e.status === "pending" && !deniedIds.has(e.id)
+    (e) => e.status === "pending" && !deniedKnocks.has(knockKey(e))
   );
   const decided = entries.filter((e) => e.status !== "pending").slice(-10);
 
