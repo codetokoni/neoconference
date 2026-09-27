@@ -3,8 +3,10 @@
 // POST /api/transcribe
 // Body: { recordingKey: string; eventSlug?: string; language?: string }
 //
-// Submits an async transcription job. In stub mode (no provider env var
-// configured) the job stays 'queued' forever - useful for UI scaffolding.
+// Submits an async transcription job. With no provider configured it
+// refuses with 503 transcribe_not_configured (see transcribeNotSetUp.ts);
+// it used to store a job that stayed 'queued' forever, which the
+// recordings page showed as success.
 // Once TRANSCRIBE_PROVIDER + provider key are set, this dispatches to the
 // real provider, persists the job in transcribeStore, and (when the job
 // resolves to 'done' with an eventSlug) appends a transcript artifact onto
@@ -23,6 +25,7 @@ import {
 } from '@/lib/transcribe';
 import { eventStore } from '@/lib/eventStore';
 import { authorize } from '@/lib/authz';
+import { asReported, TRANSCRIBE_NOT_SET_UP } from '@/lib/transcribeNotSetUp';
 import type { NeoEvent, RecordingArtifact } from '@/types/event';
 
 export const runtime = 'nodejs';
@@ -69,6 +72,13 @@ export async function POST(req: NextRequest) {
       const gate = await authorize(ev, 'summary:generate');
       if (!gate.ok) return gate.response;
     }
+  }
+
+  if (!isTranscribeConfigured()) {
+    return NextResponse.json(
+      { ok: false, error: 'transcribe_not_configured', message: TRANSCRIBE_NOT_SET_UP },
+      { status: 503 }
+    );
   }
 
   try {
@@ -136,7 +146,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const job = await getTranscribeJob(id);
+  const stored = await getTranscribeJob(id);
+  const job = stored ? asReported(stored) : null;
   if (!job) {
     return NextResponse.json(
       {
