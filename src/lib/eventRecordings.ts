@@ -79,10 +79,15 @@ export async function listEventRecordingObjects(
   }
 
   const perPrefixMax = Math.max(20, Math.floor(max / Math.max(1, candidateIds.size)));
+  // Independent listings, so side by side; merged in candidate order, as
+  // the one-after-another loop did.
+  const listed = await Promise.all(
+    Array.from(candidateIds, (uid) =>
+      listRecordings("recordings/" + sanitizeSegment(uid) + "/" + eventSeg + "/", perPrefixMax)
+    )
+  );
   const collected = new Map<string, StoredObject>();
-  for (const uid of candidateIds) {
-    const prefix = "recordings/" + sanitizeSegment(uid) + "/" + eventSeg + "/";
-    const items = await listRecordings(prefix, perPrefixMax);
+  for (const items of listed) {
     for (const o of items) {
       if (o.size > 0 && !collected.has(o.key)) collected.set(o.key, o);
     }
@@ -91,15 +96,36 @@ export async function listEventRecordingObjects(
 }
 
 /**
- * The finished transcripts of this meeting's recordings, oldest recording
- * first (keys end in the recording's timestamp).
+ * The file name without its folders: the recording's start time
+ * ("2026-09-27-09-12-54.mp4"), which sorts in time order whoever recorded.
+ */
+function recordedAt(key: string): string {
+  return key.slice(key.lastIndexOf("/") + 1);
+}
+
+/** Oldest recording first, whoever recorded it. */
+export function byRecordingTime(a: string, b: string): number {
+  return recordedAt(a).localeCompare(recordedAt(b)) || a.localeCompare(b);
+}
+
+/**
+ * The finished transcripts of this meeting's recordings, oldest first.
+ *
+ * Under every slug the meeting has had: files are written under the slug in
+ * use at the time, so a meeting renamed after recording keeps its earlier
+ * recordings under the old one. And ordered by start time, not by full key —
+ * the key begins with the recorder's id, which grouped two hosts' recordings
+ * by who pressed Record instead of when.
  */
 export async function eventTranscripts(
   ev: NeoEvent,
   max = 100
 ): Promise<Array<{ recordingKey: string; text: string }>> {
-  const objects = await listEventRecordingObjects(ev, max);
-  const keys = objects.map((o) => o.key).filter(isVideoKey).sort();
+  const slugs = Array.from(new Set([ev.slug, ...(ev.aliasSlugs || [])]));
+  const listed = await Promise.all(slugs.map((s) => listEventRecordingObjects(ev, max, s)));
+  const keys = Array.from(new Set(listed.flat().map((o) => o.key)))
+    .filter(isVideoKey)
+    .sort(byRecordingTime);
   const jobs = await transcribeStore.getByRecordingKeys(keys);
   const out: Array<{ recordingKey: string; text: string }> = [];
   for (const key of keys) {
