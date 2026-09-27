@@ -32,6 +32,23 @@ const memEvents = new Map<string, NeoEvent>();
 const memSlug = new Map<string, string>();
 const memOwner = new Map<string, Set<string>>();
 
+/**
+ * Drop a slug's index entry, but only if it still points at this event.
+ *
+ * Records left by the old adoption race share a slug with the event the
+ * index actually points at. Deleting one of those unconditionally deleted
+ * the real meeting's entry too, and every remaining copy became
+ * unreachable: Manage gave a 404 and Open room adopted the slug as a new
+ * meeting. orbit-o03c and zenith-nj67 were left that way.
+ */
+async function releaseSlug(slug: string, id: string): Promise<void> {
+  if (!isKvConfigured()) {
+    if (memSlug.get(slug) === id) memSlug.delete(slug);
+    return;
+  }
+  if ((await kv.get<string>(SLUG + slug)) === id) await kv.del(SLUG + slug);
+}
+
 let warned = false;
 function warnOnce() {
   if (warned) return;
@@ -137,14 +154,14 @@ export const eventStore = {
       memEvents.set(id, next);
       // re-index slug if it changed
       if (prev.slug !== next.slug) {
-        memSlug.delete(prev.slug);
+        await releaseSlug(prev.slug, id);
         memSlug.set(next.slug, id);
       }
       return next;
     }
     await kv.set(PREFIX + id, next);
     if (prev.slug !== next.slug) {
-      await kv.del(SLUG + prev.slug);
+      await releaseSlug(prev.slug, id);
       await kv.set(SLUG + next.slug, id);
     }
     return next;
@@ -226,15 +243,19 @@ export const eventStore = {
     };
     if (!isKvConfigured()) {
       memEvents.set(id, next);
-      // Keep the old slug pointing at the same id so old links still resolve.
-      memSlug.set(prev.slug, id);
+      // Keep the old slug pointing at the same id so old links still resolve
+      // — unless it already opens a different event, which keeps it.
+      if (!memSlug.has(prev.slug)) memSlug.set(prev.slug, id);
       memSlug.set(newSlug, id);
       return { ok: true, event: next };
     }
     await kv.set(PREFIX + id, next);
     await kv.set(SLUG + newSlug, id);
-    // Intentionally do NOT delete SLUG + prev.slug — old links keep working as aliases.
-    await kv.set(SLUG + prev.slug, id);
+    // Intentionally do NOT delete SLUG + prev.slug — old links keep working
+    // as aliases. NX: when this record was a leftover whose slug already
+    // opens a different event, renaming it must not take that address.
+    // When the entry is ours it already points here, so NX changes nothing.
+    await kv.set(SLUG + prev.slug, id, { nx: true });
     return { ok: true, event: next };
   },
 
@@ -244,13 +265,13 @@ export const eventStore = {
     const allSlugs = [prev.slug, ...((prev.aliasSlugs || []) as string[])];
     if (!isKvConfigured()) {
       memEvents.delete(id);
-      for (const s of allSlugs) memSlug.delete(s);
+      for (const s of allSlugs) await releaseSlug(s, id);
       memOwner.get(prev.ownerUserId)?.delete(id);
       await deleteAllMeetingRoles(id);
       return true;
     }
     await kv.del(PREFIX + id);
-    for (const s of allSlugs) await kv.del(SLUG + s);
+    for (const s of allSlugs) await releaseSlug(s, id);
     await kv.srem(OWNER + prev.ownerUserId, id);
     await kv.srem(ALL, id);
     // Role assignments live outside the event JSON; without this the hash
