@@ -3,6 +3,7 @@
 // Polls eventStore every few seconds and emits any redemptions newer than
 // the timestamp tracked per-connection.
 
+import { errorMessage } from "@/lib/errorMessage";
 import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { assertOwnerOrAdmin } from "@/lib/roles";
@@ -30,7 +31,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   let lastTs = Date.now();
   const startedAt = Date.now();
-  let interval: any = null;
+  let interval: ReturnType<typeof setInterval> | null = null;
   let closed = false;
 
   const stream = new ReadableStream({
@@ -57,17 +58,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         }
         try {
           const fresh = await eventStore.byId(id);
-          const list = (fresh?.recentRedemptions || []).filter((r: any) => r.ts > lastTs);
+          const list = (fresh?.recentRedemptions || []).filter((r) => r.ts > lastTs);
           if (list.length > 0) {
-            for (const r of list.sort((a: any, b: any) => a.ts - b.ts)) {
+            for (const r of list.sort((a, b) => a.ts - b.ts)) {
               send({ redemption: r });
               lastTs = Math.max(lastTs, r.ts);
             }
           } else {
             send({ heartbeat: true, ts: Date.now() });
           }
-        } catch (e: any) {
-          send({ error: e?.message || "poll_failed" });
+        } catch (e) {
+          send({ error: errorMessage(e) || "poll_failed" });
         }
       };
       interval = setInterval(tick, POLL_MS);

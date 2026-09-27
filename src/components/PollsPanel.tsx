@@ -68,7 +68,7 @@ export default function PollsPanel({
     async (msg: PollMsg) => {
       try {
         const payload = new TextEncoder().encode(JSON.stringify(msg));
-        await localParticipant.publishData(payload, { reliable: true } as any);
+        await localParticipant.publishData(payload, { reliable: true });
       } catch {
         // ignore
       }
@@ -80,6 +80,7 @@ export default function PollsPanel({
   useEffect(() => {
     if (!room) return;
     const onData = (payload: Uint8Array, _participant?: Participant) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a data-channel message, checked field by field below
       let msg: any;
       try {
         msg = JSON.parse(new TextDecoder().decode(payload));

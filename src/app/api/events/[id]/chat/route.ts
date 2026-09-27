@@ -3,6 +3,7 @@
 // GET  -> recent chat (public if event is public)
 // POST -> append message (must be authenticated)
 
+import { errorMessage } from "@/lib/errorMessage";
 import { NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
@@ -20,7 +21,7 @@ async function findEvent(idOrSlugOrRoom: string) {
   if (ev) return ev;
   try {
     const all = await eventStore.listAll();
-    return all.find((e) => (e as any).livekitRoom === idOrSlugOrRoom) || null;
+    return all.find((e) => e.livekitRoom === idOrSlugOrRoom) || null;
   } catch { return null; }
 }
 
@@ -48,7 +49,7 @@ export async function POST(
   const ev = await findEvent(params.id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  let body: any = {};
+  let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch {}
   const text = String(body?.text || "").trim();
   // Attachments — parsed here so an attachment-only message ("no
@@ -65,16 +66,17 @@ export async function POST(
   // Optional reply context
   let replyTo: { id: string; name: string; snippet: string } | undefined;
   if (body?.replyTo && typeof body.replyTo === 'object') {
-    const rid = String(body.replyTo.id || '').slice(0, 64);
-    const rname = String(body.replyTo.name || '').slice(0, 80);
-    const rsnip = String(body.replyTo.snippet || '').slice(0, 140);
+    const reply = body.replyTo as Record<string, unknown>;
+    const rid = String(reply.id || '').slice(0, 64);
+    const rname = String(reply.name || '').slice(0, 80);
+    const rsnip = String(reply.snippet || '').slice(0, 140);
     if (rid && rname) replyTo = { id: rid, name: rname, snippet: rsnip };
   }
   // Optional mentions list
   let mentions: string[] | undefined;
   if (Array.isArray(body?.mentions)) {
     const cleaned = body.mentions
-      .map((x: any) => String(x || '').toLowerCase().slice(0, 80))
+      .map((x: unknown) => String(x || '').toLowerCase().slice(0, 80))
       .filter((x: string) => x.length > 0)
       .slice(0, 25);
     if (cleaned.length > 0) mentions = cleaned;
@@ -103,8 +105,8 @@ export async function POST(
   try {
     const saved = await chatStore.append(ev.id, msg);
     return NextResponse.json({ message: saved });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "append_failed" }, { status: 400 });
+  } catch (e) {
+    return NextResponse.json({ error: errorMessage(e) || "append_failed" }, { status: 400 });
   }
 }
 

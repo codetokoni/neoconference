@@ -11,6 +11,7 @@ import { NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
 import { inviteStore } from '@/lib/inviteStore';
+import type { EventRole } from '@/types/event';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -75,13 +76,13 @@ export async function POST(
   const roles = [...(ev.roles || [])];
   const idx = roles.findIndex((r) => r.identifier === userId);
   if (idx >= 0) {
-    roles[idx] = { ...roles[idx], role: inv.role as any, preApproved: true, label: roles[idx].label || label };
+    roles[idx] = { ...roles[idx], role: inv.role as EventRole, preApproved: true, label: roles[idx].label || label };
   } else {
-    roles.push({ identifier: userId, role: inv.role as any, preApproved: true, label });
+    roles.push({ identifier: userId, role: inv.role as EventRole, preApproved: true, label });
   }
   // Track this redemption (newest 50, prune oldest).
   const redemption = { token: params.token, identifier: userId, role: inv.role, ts: Date.now() };
-  const recentRedemptions = [redemption, ...((ev.recentRedemptions || []) as any[])].slice(0, 50);
+  const recentRedemptions = [redemption, ...(ev.recentRedemptions || [])].slice(0, 50);
   await eventStore.update(ev.id, { roles, recentRedemptions });
 
   return NextResponse.json({ ok: true, eventSlug: ev.slug, role: inv.role });

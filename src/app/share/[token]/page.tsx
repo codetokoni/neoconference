@@ -2,6 +2,7 @@
 // Public landing page for a recording share link.
 // Resolves the token via /api/recordings/share and offers a download.
 
+import { errorMessage } from "@/lib/errorMessage";
 import { headers } from "next/headers";
 import Link from "next/link";
 
@@ -19,8 +20,8 @@ async function resolve(token: string): Promise<{ ok: boolean; downloadUrl?: stri
     const data = await res.json();
     if (!res.ok) return { ok: false, error: data?.error || "unavailable" };
     return { ok: true, downloadUrl: data.downloadUrl, label: data.label, expiresAt: data.expiresAt };
-  } catch (e: any) {
-    return { ok: false, error: e?.message || "fetch_failed" };
+  } catch (e) {
+    return { ok: false, error: errorMessage(e) || "fetch_failed" };
   }
 }
 

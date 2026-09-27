@@ -5,6 +5,7 @@
 // GET    - public: resolves a share token to a short-lived signed download URL.
 // DELETE - owner-only: revokes a share token.
 
+import { errorMessage } from "@/lib/errorMessage";
 import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { shareStore } from "@/lib/shareStore";
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
   if (!shareStore.isConfigured()) {
     return NextResponse.json({ error: "kv_not_configured" }, { status: 503 });
   }
-  let body: any = {};
+  let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch {}
   const key = typeof body.key === "string" ? body.key : "";
   if (!key || key.includes("..")) {
@@ -57,8 +58,8 @@ export async function GET(req: NextRequest) {
       label: rec.label || null,
       expiresAt: rec.expiresAt,
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "sign_failed" }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: errorMessage(e) || "sign_failed" }, { status: 500 });
   }
 }
 

@@ -95,7 +95,7 @@ export default function BreakoutsPanel({
       const payload = new TextEncoder().encode(
         JSON.stringify({ type: "breakout", payload: stamped })
       );
-      await localParticipant.publishData(payload, { reliable: true } as any);
+      await localParticipant.publishData(payload, { reliable: true });
     } catch (e) {
       console.error("[breakouts] publishData failed", e);
     }

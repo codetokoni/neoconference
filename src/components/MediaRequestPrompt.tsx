@@ -28,7 +28,7 @@ export default function MediaRequestPrompt() {
       try {
         const msg = JSON.parse(new TextDecoder().decode(payload));
         if (msg?.type !== 'media_request') return;
-        const myIdentity = (room as any).localParticipant?.identity;
+        const myIdentity = room.localParticipant?.identity;
         if (msg.to && myIdentity && msg.to !== myIdentity) return;
         if (msg.kind !== 'audio' && msg.kind !== 'video') return;
         setPending({ kind: msg.kind, fromName: String(msg.fromName || 'Host') });
@@ -36,8 +36,8 @@ export default function MediaRequestPrompt() {
         // ignore malformed messages
       }
     };
-    (room as any).on(RoomEvent.DataReceived, onData);
-    return () => { (room as any).off(RoomEvent.DataReceived, onData); };
+    room.on(RoomEvent.DataReceived, onData);
+    return () => { room.off(RoomEvent.DataReceived, onData); };
   }, [room]);
 
   if (!pending) return null;

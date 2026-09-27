@@ -1,3 +1,4 @@
+import { errorMessage } from "@/lib/errorMessage";
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
@@ -143,10 +144,10 @@ export async function POST(req: Request) {
       audioFilepath: audioFilepathOut,
       startedAt: Date.now(),
     });
-  } catch (e: any) {
+  } catch (e) {
     console.error("egress/start failed", e);
     return NextResponse.json(
-      { error: e?.message || "Failed to start egress" },
+      { error: errorMessage(e) || "Failed to start egress" },
       { status: 500 }
     );
   }

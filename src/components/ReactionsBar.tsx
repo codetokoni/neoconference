@@ -18,7 +18,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRoomContext } from '@livekit/components-react';
-import { RoomEvent } from 'livekit-client';
+import { RoomEvent, type RemoteParticipant, type DataPacket_Kind } from "livekit-client";
 
 const REACTIONS = ['heart','thumbs','clap','laugh','wow','fire'] as const;
 type ReactionKey = typeof REACTIONS[number];
@@ -70,7 +70,7 @@ export default function ReactionsBar() {
   useEffect(() => {
     if (!room) return;
     const dec = new TextDecoder();
-    const handler = (payload: Uint8Array, _participant: any, _kind: any, topic?: string) => {
+    const handler = (payload: Uint8Array, _participant?: RemoteParticipant, _kind?: DataPacket_Kind, topic?: string) => {
       if (topic && topic !== TOPIC) return;
       try {
         const msg = JSON.parse(dec.decode(payload));
@@ -79,8 +79,8 @@ export default function ReactionsBar() {
         }
       } catch {}
     };
-    room.on(RoomEvent.DataReceived, handler as any);
-    return () => { room.off(RoomEvent.DataReceived, handler as any); };
+    room.on(RoomEvent.DataReceived, handler);
+    return () => { room.off(RoomEvent.DataReceived, handler); };
   }, [room, spawn]);
 
   const send = useCallback(async (k: ReactionKey) => {

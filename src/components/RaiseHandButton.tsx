@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useRoomContext, useParticipants } from '@livekit/components-react';
-import { RoomEvent } from 'livekit-client';
+import { RoomEvent, type RemoteParticipant, type DataPacket_Kind } from "livekit-client";
 import { useIsMobile } from '@/hooks/useIsMobile';
 
 const TOPIC = 'neo-hand';
@@ -39,7 +39,7 @@ export default function RaiseHandButton({ isHost = false }: Props) {
   useEffect(() => {
     if (!room) return;
     const dec = new TextDecoder();
-    const handler = (payload: Uint8Array, _p: any, _k: any, topic?: string) => {
+    const handler = (payload: Uint8Array, _p?: RemoteParticipant, _k?: DataPacket_Kind, topic?: string) => {
       if (topic && topic !== TOPIC) return;
       try {
         const m = JSON.parse(dec.decode(payload));
@@ -52,8 +52,8 @@ export default function RaiseHandButton({ isHost = false }: Props) {
         });
       } catch {}
     };
-    room.on(RoomEvent.DataReceived, handler as any);
-    return () => { room.off(RoomEvent.DataReceived, handler as any); };
+    room.on(RoomEvent.DataReceived, handler);
+    return () => { room.off(RoomEvent.DataReceived, handler); };
   }, [room]);
 
   const toggle = useCallback(async () => {

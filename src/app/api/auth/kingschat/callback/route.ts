@@ -1,3 +1,4 @@
+import { errorMessage, firstClerkError } from "@/lib/errorMessage";
 import { NextResponse } from 'next/server';
 import { clerkClient } from '@clerk/nextjs/server';
 import { isAppCallback, redirectToApp, safeRelay } from '@/lib/app-callback';
@@ -176,7 +177,7 @@ async function handle(req: Request) {
               ...(existing.publicMetadata || {}),
               kingschat: { id: kcId, username: kcUsername, linkedAt: new Date().toISOString() },
             },
-          } as any);
+          });
           user = { id: existing.id };
         } catch (e) {
           console.error('[kc-callback] auto-link failed', e);
@@ -231,7 +232,7 @@ async function handle(req: Request) {
             emailIsPlaceholder: isPlaceholder,
           },
         },
-      } as any);
+      });
 
     let effectiveEmail = email || synthesizedEmail;
     try {
@@ -262,7 +263,7 @@ async function handle(req: Request) {
           (e) => e.emailAddress?.toLowerCase() === effectiveEmail.toLowerCase(),
         );
         if (emailRec?.id) {
-          await (cc as any).emailAddresses.updateEmailAddress(emailRec.id, { verified: true });
+          await cc.emailAddresses.updateEmailAddress(emailRec.id, { verified: true });
         }
       } catch (e) {
         console.warn('[kc-callback] mark email verified failed', e);
@@ -277,7 +278,7 @@ async function handle(req: Request) {
     try {
       await cc.users.updateUser(user.id, {
         publicMetadata: { kingschat: { id: kcId, username: kcUsername } },
-      } as any);
+      });
     } catch {}
   }
 
@@ -306,14 +307,14 @@ async function handle(req: Request) {
 
   let ticket = '';
   try {
-    const res = await (cc as any).signInTokens.createSignInToken({
+    const res = await cc.signInTokens.createSignInToken({
       userId: user!.id,
       expiresInSeconds: 60,
     });
     ticket = res?.token || '';
-  } catch (e: any) {
+  } catch (e) {
     console.error('[kc-callback] signInToken failed', e);
-    const msg = (e && (e.errors?.[0]?.message || e.message)) || 'unknown';
+    const msg = (firstClerkError(e)?.message || errorMessage(e)) || 'unknown';
     return errorRedirect(req, 'ticket_failed', msg.slice(0, 200));
   }
   if (!ticket) return errorRedirect(req, 'ticket_failed');

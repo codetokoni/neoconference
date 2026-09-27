@@ -4,6 +4,7 @@
 // GET  - returns existing summary (or null) without recomputing.
 // POST - generates a fresh summary by sending transcript + chat to OpenAI.
 
+import { errorMessage } from "@/lib/errorMessage";
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
@@ -50,14 +51,17 @@ export async function POST(
     return NextResponse.json({ error: "openai_not_configured", hint: "Set OPENAI_API_KEY in env" }, { status: 503 });
   }
 
-  const chat = await chatStore.list(ev.id).catch(() => [] as any[]);
+  const chat = await chatStore.list(ev.id).catch(() => []);
   const transcripts = await transcribeStore.get(ev.id).catch(() => null);
 
   const chatLines = (Array.isArray(chat) ? chat : [])
+    // KNOWN BUG, held for the owner (2026-09-27): stored messages have name/text,
+    // not from/message, so every line reaches the model as "guest: ".
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- kept as-is until that fix is approved
     .map((m: any) => (m.from?.name || m.from?.identity || "guest") + ": " + (m.message || ""))
     .join("\n");
 
-  const transcriptText = transcripts && typeof (transcripts as any).text === "string" ? (transcripts as any).text : "";
+  const transcriptText = typeof transcripts?.text === "string" ? transcripts.text : "";
 
   let context = "EVENT: " + (ev.name || ev.slug) + "\n";
   if (ev.description) context += "DESCRIPTION: " + ev.description + "\n";
@@ -96,8 +100,8 @@ export async function POST(
     }
     const j = await r.json();
     summaryText = j?.choices?.[0]?.message?.content?.trim() || "";
-  } catch (e: any) {
-    return NextResponse.json({ error: "openai_error", detail: e?.message || "unknown" }, { status: 502 });
+  } catch (e) {
+    return NextResponse.json({ error: "openai_error", detail: errorMessage(e) || "unknown" }, { status: 502 });
   }
 
   if (!summaryText) {
@@ -105,6 +109,6 @@ export async function POST(
   }
 
   const summary = { text: summaryText, model: OPENAI_MODEL, generatedAt: Date.now() };
-  await eventStore.update(ev.id, { summary } as any);
+  await eventStore.update(ev.id, { summary });
   return NextResponse.json({ ok: true, summary });
 }

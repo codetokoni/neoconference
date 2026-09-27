@@ -12,7 +12,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRoomContext } from "@livekit/components-react";
-import { RoomEvent } from "livekit-client";
+import { RoomEvent, type RemoteParticipant, type DataPacket_Kind } from "livekit-client";
 
 const TOPIC = "neo-spotlight";
 
@@ -50,7 +50,7 @@ export default function SpotlightOverlay({ isHost = false }: Props) {
   useEffect(() => {
     if (!room) return;
     const dec = new TextDecoder();
-    const onData = (payload: Uint8Array, _participant: any, _kind: any, topic?: string) => {
+    const onData = (payload: Uint8Array, _participant?: RemoteParticipant, _kind?: DataPacket_Kind, topic?: string) => {
       if (topic !== TOPIC) return;
       try {
         const msg: Msg = JSON.parse(dec.decode(payload));
@@ -60,8 +60,8 @@ export default function SpotlightOverlay({ isHost = false }: Props) {
         setPinned(msg.identity || null);
       } catch {}
     };
-    room.on(RoomEvent.DataReceived, onData as any);
-    return () => { room.off(RoomEvent.DataReceived, onData as any); };
+    room.on(RoomEvent.DataReceived, onData);
+    return () => { room.off(RoomEvent.DataReceived, onData); };
   }, [room, pinnedAt]);
 
   const broadcast = useCallback(async (identity: string | null) => {
@@ -71,7 +71,7 @@ export default function SpotlightOverlay({ isHost = false }: Props) {
     setPinnedAt(ts);
     try {
       const payload = new TextEncoder().encode(JSON.stringify({ identity, ts } as Msg));
-      await room.localParticipant.publishData(payload, { reliable: true, topic: TOPIC } as any);
+      await room.localParticipant.publishData(payload, { reliable: true, topic: TOPIC });
     } catch (e) {
       console.error("spotlight publishData failed", e);
     }

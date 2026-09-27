@@ -5,6 +5,7 @@
 // Owner-side panel: mint shareable role-grant invite links, list outstanding
 // invites, copy URL, revoke. Backed by /api/events/[id]/invites endpoints.
 
+import { errorMessage } from "@/lib/errorMessage";
 import { useState, useEffect, useCallback } from "react";
 
 type Invite = {
@@ -68,8 +69,8 @@ export default function InvitesPanel({ eventId, initialRedemptions = [] }: Props
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || "Failed to load invites");
       setInvites(Array.isArray(j.invites) ? j.invites : []);
-    } catch (e: any) {
-      setErr(e?.message || "Failed to load");
+    } catch (e) {
+      setErr(errorMessage(e) || "Failed to load");
     } finally {
       setLoading(false);
     }
@@ -92,8 +93,8 @@ export default function InvitesPanel({ eventId, initialRedemptions = [] }: Props
       if (!r.ok || !j.ok) throw new Error(j.error || "Failed to mint invite");
       setLabel("");
       await load();
-    } catch (e: any) {
-      setErr(e?.message || "Failed to mint");
+    } catch (e) {
+      setErr(errorMessage(e) || "Failed to mint");
     } finally {
       setBusy(false);
     }
@@ -106,8 +107,8 @@ export default function InvitesPanel({ eventId, initialRedemptions = [] }: Props
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || "Failed to revoke");
       await load();
-    } catch (e: any) {
-      setErr(e?.message || "Failed to revoke");
+    } catch (e) {
+      setErr(errorMessage(e) || "Failed to revoke");
     }
   };
 

@@ -26,7 +26,7 @@ export async function PATCH(
   const check = await assertOwnerOrAdmin(ev, userId);
   if (!check.ok) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  let body: any = {};
+  let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch {}
 
   const patch: Partial<NeoEvent> = {};
@@ -46,8 +46,8 @@ export async function PATCH(
       patch.scheduledAt = undefined;
     }
   }
-  if (typeof body.visibility === "string" && VISIBILITIES.includes(body.visibility)) {
-    patch.visibility = body.visibility;
+  if (typeof body.visibility === "string" && VISIBILITIES.includes(body.visibility as EventVisibility)) {
+    patch.visibility = body.visibility as EventVisibility;
   }
   // FRS §12.2: password persisted as an scrypt hash, not plaintext. An empty
   // input clears the field (hashMeetingPassword returns undefined).

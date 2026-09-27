@@ -59,7 +59,7 @@ export default function InviteSpeakers({ eventId }: { eventId: string }) {
           <span>Role</span>
           <select
             value={role}
-            onChange={(e) => setRole(e.target.value as any)}
+            onChange={(e) => setRole(e.target.value as "speaker" | "cohost" | "viewer")}
             className="bg-slate-950/60 border border-slate-800 rounded-md px-2 py-1 text-slate-100 focus:border-cyan-400/60 focus:outline-none"
           >
             <option value="speaker">speaker</option>

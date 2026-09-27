@@ -1,5 +1,6 @@
 'use client';
 
+import { firstClerkError } from "@/lib/errorMessage";
 import { useSignUp } from '@clerk/nextjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
@@ -40,13 +41,13 @@ export default function EmailPasswordSignUp() {
         password,
         firstName: firstName || undefined,
         lastName: lastName || undefined,
-      } as any);
+      });
       await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
       setPendingVerification(true);
-    } catch (err: any) {
+    } catch (err) {
       setError(
-        err?.errors?.[0]?.longMessage ||
-          err?.errors?.[0]?.message ||
+        firstClerkError(err)?.longMessage ||
+          firstClerkError(err)?.message ||
           'Sign-up failed. Please try again.'
       );
     } finally {
@@ -67,10 +68,10 @@ export default function EmailPasswordSignUp() {
       } else {
         setError('Verification incomplete. Please try again.');
       }
-    } catch (err: any) {
+    } catch (err) {
       setError(
-        err?.errors?.[0]?.longMessage ||
-          err?.errors?.[0]?.message ||
+        firstClerkError(err)?.longMessage ||
+          firstClerkError(err)?.message ||
           'Invalid code. Please check your email.'
       );
     } finally {

@@ -110,7 +110,7 @@ export default function Whiteboard({
     async (msg: WBMessage) => {
       try {
         const payload = new TextEncoder().encode(JSON.stringify(msg));
-        await localParticipant.publishData(payload, { reliable: true } as any);
+        await localParticipant.publishData(payload, { reliable: true });
       } catch {
         // ignore
       }
@@ -122,6 +122,7 @@ export default function Whiteboard({
   useEffect(() => {
     if (!room || !open) return;
     const onData = (payload: Uint8Array, _participant?: Participant) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- a data-channel message, checked field by field below
       let msg: any;
       try {
         msg = JSON.parse(new TextDecoder().decode(payload));

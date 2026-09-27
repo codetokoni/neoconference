@@ -8,6 +8,7 @@
 // an event slug. The parent decides when to mount this; this component
 // just guards on its own props for safety.
 
+import { errorMessage } from "@/lib/errorMessage";
 import { useEffect, useState } from "react";
 
 interface WaitingEntry {
@@ -82,7 +83,7 @@ export default function WaitingRoomPanel({
   useEffect(() => {
     if (!open || !isHost || !eventSlug) return;
     let cancelled = false;
-    let timer: any = null;
+    let timer: ReturnType<typeof setInterval> | null = null;
 
     const fetchQueue = async () => {
       try {
@@ -99,8 +100,8 @@ export default function WaitingRoomPanel({
           setEntries(Array.isArray(data.entries) ? data.entries : []);
           setError(null);
         }
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Failed to load queue");
+      } catch (e) {
+        if (!cancelled) setError(errorMessage(e) || "Failed to load queue");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -150,8 +151,8 @@ export default function WaitingRoomPanel({
             : e
         )
       );
-    } catch (e: any) {
-      setError(e?.message || "Decision failed");
+    } catch (e) {
+      setError(errorMessage(e) || "Decision failed");
     } finally {
       setBusyId(null);
     }

@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errorMessage";
 import { useState } from "react";
 import type { TicketTier } from "@/types/event";
 
@@ -48,8 +49,8 @@ export default function TicketsPanel({ eventId, initial }: Props) {
       const json = await res.json();
       if (json?.event?.tickets) setTiers(json.event.tickets);
       setOk(true);
-    } catch (e: any) {
-      setErr(e?.message || "Save failed");
+    } catch (e) {
+      setErr(errorMessage(e) || "Save failed");
     } finally {
       setSaving(false);
     }
