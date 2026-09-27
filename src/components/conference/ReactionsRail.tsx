@@ -336,9 +336,10 @@ export default function ReactionsRail() {
             {/* Raise hand */}
             <button
               type="button"
-              role="menuitem"
-              aria-label={localHandRaised ? 'Lower hand' : 'Raise hand'}
-              aria-pressed={localHandRaised}
+              // An on/off item in a menu: aria-pressed is for plain buttons.
+              role="menuitemcheckbox"
+              aria-label="Raise hand"
+              aria-checked={localHandRaised}
               onClick={toggleHand}
               style={{
                 width: 24,

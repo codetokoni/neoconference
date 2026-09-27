@@ -13,6 +13,7 @@
 import { eventStore } from '@/lib/eventStore';
 import { toPublicView } from '@/types/event';
 import { notFound } from 'next/navigation';
+import Image from 'next/image';
 import TicketsList from './TicketsList';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import StartEventButton from '@/components/StartEventButton';
@@ -201,7 +202,10 @@ export default async function EventResolverPage({
 
         {/* ---------- Footer: QR + share link ---------- */}
         <footer className="mt-10 flex flex-col items-center gap-4 border-t border-white/10 pt-6 sm:flex-row sm:justify-between">
-          <img
+          {/* Our own QR endpoint already sizes the PNG; the optimizer would
+              only re-encode it. */}
+          <Image
+            unoptimized
             className="rounded-xl border border-white/10 bg-white p-1"
             src={'/api/qr/' + ev.slug + '?size=256'}
             alt="Scan to join"
