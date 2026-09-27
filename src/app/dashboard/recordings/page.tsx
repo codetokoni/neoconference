@@ -239,9 +239,9 @@ export default function RecordingsPage() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ recordingKey: key }),
       });
-      const j = (await res.json()) as { ok?: boolean; error?: string; provider?: string; job?: TranscribeJob };
+      const j = (await res.json()) as { ok?: boolean; error?: string; message?: string; provider?: string; job?: TranscribeJob };
       if (!j.ok || !j.job) {
-        throw new Error(j.error || 'Could not queue transcription.');
+        throw new Error(j.message || j.error || 'Could not queue transcription.');
       }
       const job = j.job;
       const provider = j.provider || 'stub';
@@ -374,7 +374,7 @@ export default function RecordingsPage() {
                           {state.status === 'queued' && (
                             <div className="mt-1 inline-flex items-center gap-1.5 text-[10px] text-amber-200/80">
                               <span className="h-1 w-1 rounded-full bg-amber-300 animate-pulse" />
-                              Queued · {state.provider} (stub mode — no API key configured?)
+                              Queued · {state.provider}
                             </div>
                           )}
                           {state.status === 'running' && (

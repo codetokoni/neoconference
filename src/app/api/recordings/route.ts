@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { isR2Configured, listRecordings, signGetUrl, deleteObject, renameObject } from '@/lib/r2';
 import { transcribeStore } from '@/lib/transcribeStore';
+import { asReported } from '@/lib/transcribeNotSetUp';
 import { eventStore } from '@/lib/eventStore';
 import { authorize } from '@/lib/authz';
 import {
@@ -98,7 +99,8 @@ export async function GET(req: Request) {
 
       const recordings = await Promise.all(
               videos.map(async (o) => {
-                        const job = jobsByKey.get(o.key);
+                        const stored = jobsByKey.get(o.key);
+                        const job = stored ? asReported(stored) : undefined;
                         const baseNoExt = o.key.slice(0, -4);
                         const audioMatch = audioByBase.get(baseNoExt);
                         return {
