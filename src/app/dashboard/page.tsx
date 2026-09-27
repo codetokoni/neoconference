@@ -4,12 +4,13 @@
 // with status badges, recording / transcript counts, and direct links to the
 // replay page, room, and event detail pages.
 //
-// Server component: Clerk auth() + eventStore.listByOwner.
+// Server component: Clerk auth() + eventStore.listReachableByOwner.
 
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
+import { maybeSweepMeetings } from '@/lib/meetingSweep';
 import type { NeoEvent } from '@/types/event';
 import UpgradeBanner from "@/components/UpgradeBanner";
 import EventsGrid, { type EventCardData } from './EventsGrid';
@@ -24,9 +25,15 @@ export default async function DashboardPage() {
     redirect('/sign-in?redirect_url=/dashboard');
   }
 
+  // End meetings whose room has already closed, before listing them — the
+  // same throttled, never-throwing sweep /api/events/mine runs for the app.
+  // Only the app ran it, so on the web a finished meeting stayed LIVE until
+  // someone opened the phone.
+  await maybeSweepMeetings();
+
   const [user, events] = await Promise.all([
     currentUser(),
-    eventStore.listByOwner(userId!),
+    eventStore.listReachableByOwner(userId!),
   ]);
 
   // Sort: most recently updated first.
