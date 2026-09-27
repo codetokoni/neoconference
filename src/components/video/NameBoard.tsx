@@ -62,7 +62,6 @@ export default function NameBoard({
   const [data, setData] = useState<RoomPayload | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [spot, setSpot] = useState<Participant | null>(null);
-  const [, setBusy] = useState(false);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement | null>(null);
 
@@ -121,48 +120,7 @@ export default function NameBoard({
     return () => window.removeEventListener("keydown", onKey);
   }, [spot]);
 
-  // Written, but no control calls it yet (found by lint, 2026-09-27). Kept
-  // for the operator console rather than deleted; wire it up or remove it.
-  const _feature = useCallback(
-    async (p: Participant) => {
-      setBusy(true);
-      try {
-        await fetch(`/api/video/feature?room=${encodeURIComponent(room)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            streamId: p.streamId,
-            label: p.name,
-            condition: p.meta?.condition,
-            country: p.meta?.country,
-          }),
-        });
-      } finally {
-        setBusy(false);
-      }
-      setSpot(null);
-    },
-    [room],
-  );
 
-  // Written, but no control calls it yet (found by lint, 2026-09-27). Kept
-  // for the operator console rather than deleted; wire it up or remove it.
-  const _sendToPreview = useCallback(
-    async (p: Participant) => {
-      setBusy(true);
-      try {
-        await fetch(`/api/video/preview?room=${encodeURIComponent(room)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ streamId: p.streamId, label: p.name }),
-        });
-      } finally {
-        setBusy(false);
-      }
-      setSpot(null);
-    },
-    [room],
-  );
 
   if (err) return <p className="text-sm text-red-400">{err}</p>;
   if (!data) {
