@@ -207,6 +207,11 @@ export async function applyRecurringRoles(
     userId: ownerUserId,
     emails: [],
     role: 'owner',
+    // What this actor is. assignMeetingRole reads only the rank; these were
+    // missing (undefined) and are filled in so the type is honest.
+    isPlatformAdmin: false,
+    isOwner: true,
+    reason: 'owner',
   };
   for (const item of list) {
     // `kc:<handle>` looks like a userId to assignMeetingRole and gets

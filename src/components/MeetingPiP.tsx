@@ -41,6 +41,7 @@ import {
   useRoomContext,
   useTracks,
   VideoTrack,
+  type TrackReference,
 } from '@livekit/components-react';
 import {
   RoomEvent,
@@ -454,7 +455,9 @@ function PiPContent({
       >
         {featured && isTrackReady ? (
           <VideoTrack
-            trackRef={featured}
+            // isTrackReady means featured has a publication with a track:
+            // it is a TrackReference, not a placeholder.
+            trackRef={featured as TrackReference}
             style={{
               width: '100%',
               height: '100%',

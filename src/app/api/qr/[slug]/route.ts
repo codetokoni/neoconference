@@ -61,7 +61,9 @@ export async function GET(
       color: { dark: '#0a0f1a', light: '#ffffff' },
       width: size,
     });
-    return new NextResponse(buf, {
+    // A Uint8Array view of the same bytes: Buffer is not a BodyInit to the
+    // DOM typings, though Node accepts it.
+    return new NextResponse(new Uint8Array(buf), {
       status: 200,
       headers: {
         'content-type': 'image/png',

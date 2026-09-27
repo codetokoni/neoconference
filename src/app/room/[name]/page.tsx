@@ -94,7 +94,10 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   // Fall back to using the path slug as the event slug when ?event= is missing.
   // This makes URLs like /room/<slug> (no query) still resolve owner+role correctly,
   // and lets users type a renamed URL without remembering the query string.
-  const eventSlug = searchParams?.get("event") || roomName || undefined; const [pageRoomRole, setPageRoomRole] = useState<string>("guest"); useEffect(() => { if (!eventSlug) return; let cancelled = false; fetch("/api/events/role?slug=" + encodeURIComponent(eventSlug), { cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((j) => { if (!cancelled && j && typeof j.role === "string") setPageRoomRole(j.role); }).catch(() => {}); return () => { cancelled = true; }; }, [eventSlug]);
+  // Always a string: roomName is the route's own non-empty segment. The old
+  // trailing `|| undefined` could not happen and typed every consumer as
+  // possibly-missing.
+  const eventSlug: string = searchParams?.get("event") || roomName;const [pageRoomRole, setPageRoomRole] = useState<string>("guest"); useEffect(() => { if (!eventSlug) return; let cancelled = false; fetch("/api/events/role?slug=" + encodeURIComponent(eventSlug), { cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((j) => { if (!cancelled && j && typeof j.role === "string") setPageRoomRole(j.role); }).catch(() => {}); return () => { cancelled = true; }; }, [eventSlug]);
   // Per-tab LiveKit identity suffix so the same Clerk user can join from
   // multiple tabs/browsers without being kicked for duplicate identity.
   // Stable across refresh in the same tab via sessionStorage; unique per tab.
@@ -623,7 +626,8 @@ function RoomContainer({
   token: string;
   wsUrl: string;
   roomName: string;
-  eventSlug?: string;
+  /** Always given: RoomPage falls back to roomName (see eventSlug there). */
+  eventSlug: string;
   choices: LocalUserChoices;
   onLeave: () => void;
 }) {

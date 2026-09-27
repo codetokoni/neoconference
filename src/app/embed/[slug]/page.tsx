@@ -45,8 +45,8 @@ export default async function EmbedPage({ params }: { params: Promise<{ slug: st
               src={hls!}
               controls
               playsInline
-              autoPlay={isLive}
-              muted={isLive}
+              autoPlay={Boolean(isLive)}
+              muted={Boolean(isLive)}
               className="w-full h-full bg-black"
             />
           ) : (
