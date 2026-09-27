@@ -30,15 +30,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   // caller to submit the matching plaintext. Body is optional — a body-less
   // POST from a room without a PIN keeps the historical behaviour. Platform
   // admins pass without it (endNeedsPin), and each time is logged so it can
-  // be traced.
-  if (ev.endPin && !endNeedsPin(ev, gate.actor)) {
-    console.info("[end] platform admin ended a PIN-protected meeting without its PIN", {
-      eventId: ev.id,
-      slug: ev.slug,
-      userId: gate.actor.userId,
-    });
-  }
-  if (endNeedsPin(ev, gate.actor)) {
+  // be traced — only when no correct PIN came with it, so the log is a list
+  // of real bypasses.
+  if (ev.endPin) {
     let submittedPin = "";
     try {
       const bodyText = await req.text();
@@ -49,11 +43,19 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     } catch {
       // Empty body / malformed JSON both fall through to the missing-pin path.
     }
-    if (!submittedPin || !verifyMeetingPassword(submittedPin, ev.endPin)) {
+    const pinOk = Boolean(submittedPin) && verifyMeetingPassword(submittedPin, ev.endPin);
+    if (!pinOk && endNeedsPin(ev, gate.actor)) {
       return NextResponse.json(
         { error: "invalid_pin", message: "End Meeting PIN required." },
         { status: 403 }
       );
+    }
+    if (!pinOk) {
+      console.info("[end] platform admin ended a PIN-protected meeting without its PIN", {
+        eventId: ev.id,
+        slug: ev.slug,
+        userId: gate.actor.userId,
+      });
     }
   }
   // An always-open room is emptied, not ended: everyone is disconnected
