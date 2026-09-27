@@ -25,7 +25,7 @@ export async function POST(
   const check = await assertOwnerOrAdmin(ev, userId);
   if (!check.ok) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  let body: any = {};
+  let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch {}
   const entryId = String(body.entryId || "");
   const action = body.action;
@@ -55,7 +55,7 @@ export async function PUT(
   const ev = await eventStore.byId(id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  let body: any = {};
+  let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch {}
   const name = String(body.name || "").trim().slice(0, 80);
   const email = typeof body.email === "string" ? String(body.email).trim().slice(0, 200) : undefined;

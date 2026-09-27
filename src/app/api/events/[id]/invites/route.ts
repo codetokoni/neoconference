@@ -44,7 +44,7 @@ export async function POST(
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  let body: any = {};
+  let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch {}
 
   const role = String(body?.role || "attendee");
@@ -80,7 +80,7 @@ export async function DELETE(
   if (!checkDel.ok) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
-  let body: any = {};
+  let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch {}
   const token = String(body?.token || "");
   if (!token) return NextResponse.json({ error: "missing_token" }, { status: 400 });

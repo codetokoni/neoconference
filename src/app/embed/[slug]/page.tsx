@@ -32,7 +32,7 @@ export default async function EmbedPage({ params }: { params: Promise<{ slug: st
   const ev = await eventStore.bySlug(slug);
   if (!ev || ev.visibility === "private") notFound();
 
-  const hls = pickHls(ev as any);
+  const hls = pickHls(ev);
   const isLive = ev.state === "live" && hls;
   const isReplay = (ev.state === "replay" || ev.state === "ended") && hls;
 

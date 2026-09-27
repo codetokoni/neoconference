@@ -50,6 +50,7 @@ function isHostlike(ev: NeoEvent, caller: CallerInfo): boolean {
   return role?.role === "host" || role?.role === "cohost";
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- a type guard over untrusted JSON
 function validState(x: any): x is BreakoutState {
   if (!x || typeof x !== "object") return false;
   if (typeof x.active !== "boolean") return false;

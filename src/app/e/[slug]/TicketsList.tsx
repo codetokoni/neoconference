@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errorMessage";
 import { useState } from "react";
 import type { TicketTier } from "@/types/event";
 
@@ -34,8 +35,8 @@ export default function TicketsList({ eventId, tickets }: Props) {
       const json = await res.json();
       if (!res.ok || !json?.url) throw new Error(json?.error || "Checkout failed");
       window.location.href = json.url;
-    } catch (e: any) {
-      setErr(e?.message || "Checkout failed");
+    } catch (e) {
+      setErr(errorMessage(e) || "Checkout failed");
       setBusyId(null);
     }
   }

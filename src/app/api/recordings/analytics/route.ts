@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  let body: any = {};
+  let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch {}
   const metric = typeof body.metric === "string" ? body.metric : "";
   const key = typeof body.key === "string" ? body.key : "";

@@ -6,6 +6,7 @@
 // On collision with an existing Clerk user (identifier_exists), we silently
 // auto-link by email and return success per platform policy.
 
+import { errorMessage, firstClerkError } from "@/lib/errorMessage";
 import { NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
@@ -33,10 +34,10 @@ export async function POST(
   const check = await assertOwnerOrAdmin(ev, userId);
   if (!check.ok) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  let body: any = {};
+  let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch {}
   const emailsRaw = Array.isArray(body.emails) ? body.emails : (typeof body.emails === "string" ? String(body.emails).split(/[\s,;]+/) : []);
-  const role: EventRole = ROLES.includes(body.role) ? body.role : "speaker";
+  const role: EventRole = ROLES.includes(body.role as EventRole) ? (body.role as EventRole) : "speaker";
   const preApproved = Boolean(body.preApproved);
   const sendEmail = body.sendEmail !== false;
 
@@ -72,7 +73,7 @@ export async function POST(
   const redirectUrl = origin ? origin + "/e/" + ev.slug : undefined;
 
   if (sendEmail && clerkConfigured) {
-    let cc: any = null;
+    let cc: Awaited<ReturnType<typeof clerkClient>> | null = null;
     try { cc = await clerkClient(); } catch { cc = null; }
     for (const email of emails) {
       try {
@@ -87,8 +88,8 @@ export async function POST(
         } else {
           invited.push({ email, status: "skipped", reason: "no_invitations_api" });
         }
-      } catch (err: any) {
-        const msg = (err && (err.errors?.[0]?.code || err.message)) || "unknown";
+      } catch (err) {
+        const msg = (firstClerkError(err)?.code || errorMessage(err)) || "unknown";
         // Auto-link policy: collisions on existing user are treated as linked-success.
         if (String(msg).includes("identifier_exists") || String(msg).includes("already_invited")) {
           invited.push({ email, status: "linked" });

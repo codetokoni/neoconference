@@ -5,6 +5,7 @@
 // Owner-side panel: list R2 recordings scoped to a room/event prefix, sign
 // fresh download URLs, and delete with confirm.
 
+import { errorMessage } from "@/lib/errorMessage";
 import { useEffect, useState, useCallback } from "react";
 
 type Recording = {
@@ -49,8 +50,8 @@ export default function RecordingsPanel({ prefix }: Props) {
       if (!r.ok || !j.ok) throw new Error(j.error || "Failed to load recordings");
       setConfigured(j.configured !== false);
       setItems(Array.isArray(j.recordings) ? j.recordings : []);
-    } catch (e: any) {
-      setErr(e?.message || "Failed to load");
+    } catch (e) {
+      setErr(errorMessage(e) || "Failed to load");
     } finally {
       setLoading(false);
     }
@@ -84,8 +85,8 @@ export default function RecordingsPanel({ prefix }: Props) {
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || "Failed to rename");
       await load();
-    } catch (e: any) {
-      setErr(e?.message || "Failed to rename");
+    } catch (e) {
+      setErr(errorMessage(e) || "Failed to rename");
     }
   };
 
@@ -107,8 +108,8 @@ export default function RecordingsPanel({ prefix }: Props) {
       } catch {
         window.prompt("Share link (copy manually):", url);
       }
-    } catch (e: any) {
-      window.alert("Failed to mint share link: " + (e?.message || "unknown"));
+    } catch (e) {
+      window.alert("Failed to mint share link: " + (errorMessage(e) || "unknown"));
     }
   };
 
@@ -121,8 +122,8 @@ export default function RecordingsPanel({ prefix }: Props) {
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || "Failed to delete");
       await load();
-    } catch (e: any) {
-      setErr(e?.message || "Failed to delete");
+    } catch (e) {
+      setErr(errorMessage(e) || "Failed to delete");
     } finally {
       setDeleting(null);
     }

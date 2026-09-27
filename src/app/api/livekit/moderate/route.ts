@@ -115,7 +115,7 @@ export async function POST(req: Request) {
         }),
       );
       try {
-        await (svc as any).sendData(slug, payload, 0, { destinationIdentities: [identity] });
+        await svc.sendData(slug, payload, 0, { destinationIdentities: [identity] });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         return NextResponse.json({ error: "send_failed", message: msg }, { status: 500 });

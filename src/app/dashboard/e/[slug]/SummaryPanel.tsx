@@ -5,6 +5,7 @@
 // Owner-side AI meeting summary panel. GET shows the latest stored summary;
 // POST regenerates by calling OpenAI on the server.
 
+import { errorMessage } from "@/lib/errorMessage";
 import { useEffect, useState, useCallback } from "react";
 
 type Summary = { text: string; model: string; generatedAt: number };
@@ -23,8 +24,8 @@ export default function SummaryPanel({ eventId, initial = null }: Props) {
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Failed to load summary");
       setSummary(j.summary || null);
-    } catch (e: any) {
-      setErr(e?.message || "Failed to load");
+    } catch (e) {
+      setErr(errorMessage(e) || "Failed to load");
     }
   }, [eventId]);
 
@@ -46,8 +47,8 @@ export default function SummaryPanel({ eventId, initial = null }: Props) {
         throw new Error(j.error || "Failed to generate summary");
       }
       setSummary(j.summary || null);
-    } catch (e: any) {
-      setErr(e?.message || "Failed");
+    } catch (e) {
+      setErr(errorMessage(e) || "Failed");
     } finally {
       setBusy(false);
     }

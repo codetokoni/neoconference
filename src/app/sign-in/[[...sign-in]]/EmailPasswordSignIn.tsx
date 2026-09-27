@@ -1,5 +1,6 @@
 'use client';
 
+import { firstClerkError } from "@/lib/errorMessage";
 import { useSignIn } from '@clerk/nextjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -33,7 +34,7 @@ export default function EmailPasswordSignIn() {
         const result = await signIn.create({
           strategy: 'ticket',
           ticket,
-        } as any);
+        });
 
         if (result.status === 'complete' && result.createdSessionId) {
           await setActive({ session: result.createdSessionId });
@@ -42,10 +43,10 @@ export default function EmailPasswordSignIn() {
           setError('KingsChat sign-in could not be completed. Please try again.');
           setTicketProcessing(false);
         }
-      } catch (err: any) {
+      } catch (err) {
         const msg =
-          err?.errors?.[0]?.longMessage ||
-          err?.errors?.[0]?.message ||
+          firstClerkError(err)?.longMessage ||
+          firstClerkError(err)?.message ||
           'KingsChat sign-in failed. Please try again.';
         setError(msg);
         setTicketProcessing(false);
@@ -70,10 +71,10 @@ export default function EmailPasswordSignIn() {
       } else {
         setError('Additional verification required. Please check your email.');
       }
-    } catch (err: any) {
+    } catch (err) {
       const msg =
-        err?.errors?.[0]?.longMessage ||
-        err?.errors?.[0]?.message ||
+        firstClerkError(err)?.longMessage ||
+        firstClerkError(err)?.message ||
         'Sign-in failed. Please check your credentials.';
       setError(msg);
     } finally {

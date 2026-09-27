@@ -17,7 +17,7 @@ export async function applyBackground(
   mode: BackgroundMode,
 ): Promise<void> {
   const pub = participant.getTrackPublication(Track.Source.Camera);
-  const track = pub?.track as any;
+  const track = pub?.track;
   if (!track) return;
 
   if (mode.type === 'none') {

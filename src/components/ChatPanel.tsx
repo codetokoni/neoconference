@@ -8,9 +8,10 @@
 //
 // Place inside <LiveKitRoom> tree. Hidden by default; toggle via prop.
 
+import { errorMessage } from "@/lib/errorMessage";
 import { useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from 'react';
 import { useRoomContext, useParticipants, useLocalParticipant } from '@livekit/components-react';
-import { RoomEvent } from 'livekit-client';
+import { RoomEvent, type RemoteParticipant, type DataPacket_Kind } from "livekit-client";
 import type { ChatMessage, ChatAttachment } from '@/types/event';
 
 const TOPIC = 'neo-chat';
@@ -168,7 +169,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
   useEffect(() => {
     if (!room) return;
     const dec = new TextDecoder();
-    const handler = (payload: Uint8Array, _p: any, _k: any, topic?: string) => {
+    const handler = (payload: Uint8Array, _p?: RemoteParticipant, _k?: DataPacket_Kind, topic?: string) => {
       if (topic === MOD_TOPIC) {
         try {
           const obj = JSON.parse(dec.decode(payload));
@@ -210,8 +211,8 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
         }
       } catch {}
     };
-    room.on(RoomEvent.DataReceived, handler as any);
-    return () => { room.off(RoomEvent.DataReceived, handler as any); };
+    room.on(RoomEvent.DataReceived, handler);
+    return () => { room.off(RoomEvent.DataReceived, handler); };
   }, [room]);
 
   // Typing-indicator sweep: drop typers older than 4s
@@ -413,8 +414,8 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
           await lp?.publishData(enc.encode(JSON.stringify(saved)), { reliable: true, topic: TOPIC });
         } catch {}
       }
-    } catch (e: any) {
-      setErr(e?.message || 'Send failed');
+    } catch (e) {
+      setErr(errorMessage(e) || 'Send failed');
     } finally {
       setSending(false);
     }

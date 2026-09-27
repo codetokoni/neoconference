@@ -1,3 +1,4 @@
+import { errorMessage } from "@/lib/errorMessage";
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { isR2Configured, listRecordings, signGetUrl, deleteObject, renameObject } from '@/lib/r2';
@@ -199,9 +200,9 @@ export async function DELETE(req: Request) {
     try {
           await deleteObject(key);
           return NextResponse.json({ ok: true, key });
-    } catch (e: any) {
+    } catch (e) {
           return NextResponse.json(
-            { ok: false, error: e?.message || 'delete-failed' },
+            { ok: false, error: errorMessage(e) || 'delete-failed' },
             { status: 500 }
                 );
     }
@@ -218,7 +219,7 @@ export async function PATCH(req: Request) {
     if (!isR2Configured()) {
           return NextResponse.json({ ok: false, error: 'r2-not-configured' }, { status: 503 });
     }
-    let body: any;
+    let body: Record<string, unknown> = {};
     try { body = await req.json(); } catch { return NextResponse.json({ ok: false, error: 'invalid-json' }, { status: 400 }); }
     const key = typeof body?.key === 'string' ? body.key : '';
     const newKey = typeof body?.newKey === 'string' ? body.newKey : '';
@@ -235,7 +236,7 @@ export async function PATCH(req: Request) {
     try {
           await renameObject(key, newKey);
           return NextResponse.json({ ok: true, key, newKey });
-    } catch (e: any) {
-          return NextResponse.json({ ok: false, error: e?.message || 'rename-failed' }, { status: 500 });
+    } catch (e) {
+          return NextResponse.json({ ok: false, error: errorMessage(e) || 'rename-failed' }, { status: 500 });
     }
 }

@@ -6,6 +6,7 @@
 // shows event name + role. Sign-in gate, then a single button to redeem.
 // On success, redirects to /e/<slug>.
 
+import { errorMessage } from "@/lib/errorMessage";
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
@@ -46,8 +47,8 @@ export default function InvitePage() {
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || "redeem_failed");
       router.replace(`/e/${j.eventSlug}`);
-    } catch (e: any) {
-      setErr(e?.message || "Could not accept invite");
+    } catch (e) {
+      setErr(errorMessage(e) || "Could not accept invite");
       setBusy(false);
     }
   }

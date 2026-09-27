@@ -1,5 +1,6 @@
 'use client';
 
+import { firstClerkError } from "@/lib/errorMessage";
 import { useSignIn } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -28,10 +29,10 @@ export default function ResetPasswordForm() {
         identifier: email,
       });
       setStep('reset');
-    } catch (err: any) {
+    } catch (err) {
       setError(
-        err?.errors?.[0]?.longMessage ||
-          err?.errors?.[0]?.message ||
+        firstClerkError(err)?.longMessage ||
+          firstClerkError(err)?.message ||
           'Could not send reset code. Check the email address.'
       );
     } finally {
@@ -56,10 +57,10 @@ export default function ResetPasswordForm() {
       } else {
         setError('Reset incomplete. Please try again.');
       }
-    } catch (err: any) {
+    } catch (err) {
       setError(
-        err?.errors?.[0]?.longMessage ||
-          err?.errors?.[0]?.message ||
+        firstClerkError(err)?.longMessage ||
+          firstClerkError(err)?.message ||
           'Invalid code or password.'
       );
     } finally {

@@ -1,5 +1,6 @@
 "use client";
 
+import { errorMessage } from "@/lib/errorMessage";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
@@ -154,8 +155,8 @@ export default function RoomPage({ params }: { params: { name: string } }) {
         if (cancelled) return;
         setToken(data.token);
         setWsUrl(data.wsUrl);
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Failed to fetch token");
+      } catch (e) {
+        if (!cancelled) setError(errorMessage(e) || "Failed to fetch token");
       }
     })();
     return () => {
@@ -712,7 +713,7 @@ function RoomContainer({
     let cancelled = false;
     const playChime = () => {
       try {
-        const Ctor = (window as any).AudioContext || (window as any).webkitAudioContext;
+        const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (!Ctor) return;
         if (!knockAudioCtxRef.current) knockAudioCtxRef.current = new Ctor();
         const ctx = knockAudioCtxRef.current!;
@@ -739,7 +740,7 @@ function RoomContainer({
         const data = await res.json();
         if (cancelled) return;
         const entries = Array.isArray(data.entries) ? data.entries : [];
-        const count = entries.filter((e: any) => e.status === "pending").length;
+        const count = entries.filter((e: { status?: string }) => e.status === "pending").length;
         setPendingKnockCount(count);
         if (count > prevKnockCountRef.current) playChime();
         prevKnockCountRef.current = count;
@@ -1342,7 +1343,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
             });
           }
         } else if (msg?.type === "record_request_response") {
-          const myIdentity = (room as any).localParticipant?.identity;
+          const myIdentity = room.localParticipant?.identity;
           if (msg.to && msg.to === myIdentity) {
             if (msg.ok) {
               setRecordPending(null);
@@ -1367,7 +1368,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
   // Expose record toggle to MobileControlBar so it can trigger this directly
   // instead of proxying a .click() to the (CSS-hidden) top-toolbar button.
   useEffect(() => {
-    (window as any).__ncRecordToggle = () => {
+    (window as Window & { __ncRecordToggle?: () => void }).__ncRecordToggle = () => {
       if (busy) return;
       if (egressId) {
         stop();
@@ -1376,7 +1377,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       }
     };
     return () => {
-      try { delete (window as any).__ncRecordToggle; } catch { }
+      try { delete (window as Window & { __ncRecordToggle?: () => void }).__ncRecordToggle; } catch { }
     };
   });
 
@@ -1387,7 +1388,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       const payload = new TextEncoder().encode(
         JSON.stringify({ type: "recording", active, by: me })
       );
-      await localParticipant.publishData(payload, { reliable: true } as any);
+      await localParticipant.publishData(payload, { reliable: true });
     } catch (e) {
       console.error("publishData recording failed", e);
     }
@@ -1413,13 +1414,13 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       await broadcast(true);
       setToast({ message: "Recording started" });
       setTimeout(() => setToast(null), 3000);
-    } catch (e: any) {
+    } catch (e) {
       console.error("start recording failed", e);
       // Longer visible time on failure — 5 s is too short to read a
       // real error message like "Missing env: LIVEKIT_API_KEY" or the
       // LiveKit egress-worker-unreachable text. 12 s gives the operator
       // a chance to actually see what broke.
-      setToast({ message: `Could not start recording: ${e?.message || e}` });
+      setToast({ message: `Could not start recording: ${errorMessage(e) || e}` });
       setTimeout(() => setToast(null), 12000);
     } finally {
       setBusy(false);
@@ -1439,7 +1440,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
           fromName: me,
         }),
       );
-      await localParticipant.publishData(payload, { reliable: true } as any);
+      await localParticipant.publishData(payload, { reliable: true });
       setRecordPending("asking");
       setToast({ message: "Waiting for host approval…" });
       // Auto-clear pending state after 30s if no response
@@ -1470,7 +1471,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
           ok,
         }),
       );
-      await localParticipant.publishData(payload, { reliable: true } as any);
+      await localParticipant.publishData(payload, { reliable: true });
     } catch (e) {
       console.error("respondRecord failed", e);
     } finally {
@@ -1512,9 +1513,9 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
         setToast({ message: "Recording stopped (file uploading…)" });
         setTimeout(() => setToast(null), 5000);
       }
-    } catch (e: any) {
+    } catch (e) {
       console.error("stop recording failed", e);
-      setToast({ message: `Could not stop recording: ${e?.message || e}` });
+      setToast({ message: `Could not stop recording: ${errorMessage(e) || e}` });
       setTimeout(() => setToast(null), 5000);
     } finally {
       setBusy(false);
@@ -1816,7 +1817,7 @@ function BackgroundPickerPanel({
     setBgMode(saved);
     setCustomDataUrl(getCustomBackgroundDataUrl(roomSlug));
     if (saved.type !== "none") {
-      applyBackground(localParticipant as any, saved).catch((e) =>
+      applyBackground(localParticipant, saved).catch((e) =>
         console.warn("Failed to restore background:", e),
       );
     }
@@ -1835,7 +1836,7 @@ function BackgroundPickerPanel({
     if (mode.type === "custom") setCustomDataUrl(mode.dataUrl);
     if (localParticipant) {
       try {
-        await applyBackground(localParticipant as any, mode);
+        await applyBackground(localParticipant, mode);
       } catch (e) {
         console.error("Failed to apply background:", e);
       }
