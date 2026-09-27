@@ -20,6 +20,7 @@
     "@livekit/components-styles": "^1.2.0",
     "@livekit/track-processors": "^0.7.2",
     "@vercel/kv": "^3.0.0",
+    "@vercel/oidc": "^3.8.9",
     "@vercel/speed-insights": "^1.0.12",
     "docx": "^9.7.1",
     "exceljs": "^4.4.0",

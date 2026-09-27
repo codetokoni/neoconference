@@ -2,10 +2,11 @@
 //
 // Owner-only AI meeting summary endpoint.
 // GET  - returns existing summary (or null) without recomputing.
-// POST - generates a fresh summary by sending transcript + chat to OpenAI.
+// POST - generates a fresh summary from transcript + chat (src/lib/llm.ts:
+//        Vercel AI Gateway by default, OpenAI directly if a key is set).
 
-import { errorMessage } from "@/lib/errorMessage";
 import { NextResponse } from "next/server";
+import { aiAvailable, chatCompletion } from "@/lib/llm";
 import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { assertOwnerOrAdmin } from "@/lib/roles";
@@ -17,7 +18,7 @@ import { isR2Configured } from "@/lib/r2";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const OPENAI_MODEL = process.env.OPENAI_SUMMARY_MODEL || "gpt-4o-mini";
+const SUMMARY_MODEL = process.env.OPENAI_SUMMARY_MODEL || "gpt-4o-mini";
 
 export async function GET(
   _req: Request,
@@ -47,9 +48,11 @@ export async function POST(
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "openai_not_configured", hint: "Set OPENAI_API_KEY in env" }, { status: 503 });
+  if (!aiAvailable()) {
+    return NextResponse.json(
+      { error: "ai_not_configured", hint: "Runs through Vercel AI Gateway on Vercel; elsewhere set AI_GATEWAY_API_KEY or OPENAI_API_KEY" },
+      { status: 503 }
+    );
   }
 
   const chat = await chatStore.list(ev.id).catch(() => []);
@@ -64,42 +67,26 @@ export async function POST(
     return NextResponse.json({ error: "no_content", hint: "No transcript or chat to summarize yet" }, { status: 422 });
   }
 
-  let summaryText = "";
-  try {
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + apiKey,
-      },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        messages: [
-          {
-            role: "system",
-            content: "You are a concise meeting summarizer. Given a transcript and chat, produce: (1) a 2-3 sentence overview, (2) up to 5 key decisions, (3) up to 5 action items. Output as Markdown with H3 section headers. Be terse.",
-          },
-          { role: "user", content: context },
-        ],
-        temperature: 0.3,
-        max_tokens: 800,
-      }),
-    });
-    if (!r.ok) {
-      const errBody = await r.text().catch(() => "");
-      return NextResponse.json({ error: "openai_failed", status: r.status, detail: errBody.slice(0, 400) }, { status: 502 });
+  const result = await chatCompletion({
+    model: SUMMARY_MODEL,
+    system:
+      "You are a concise meeting summarizer. Given a transcript and chat, produce: (1) a 2-3 sentence overview, (2) up to 5 key decisions, (3) up to 5 action items. Output as Markdown with H3 section headers. Be terse.",
+    user: context,
+    temperature: 0.3,
+    maxTokens: 800,
+  });
+  if (!result.ok) {
+    if (result.error === "ai_not_configured") {
+      return NextResponse.json({ error: "ai_not_configured" }, { status: 503 });
     }
-    const j = await r.json();
-    summaryText = j?.choices?.[0]?.message?.content?.trim() || "";
-  } catch (e) {
-    return NextResponse.json({ error: "openai_error", detail: errorMessage(e) || "unknown" }, { status: 502 });
+    console.warn("[summary] AI call failed", { eventId: ev.id, status: result.status, detail: result.detail });
+    return NextResponse.json({ error: "ai_failed", status: result.status, detail: result.detail }, { status: 502 });
   }
-
-  if (!summaryText) {
+  if (!result.text) {
     return NextResponse.json({ error: "empty_summary" }, { status: 502 });
   }
 
-  const summary = { text: summaryText, model: OPENAI_MODEL, generatedAt: Date.now() };
+  const summary = { text: result.text, model: result.model, generatedAt: Date.now() };
   await eventStore.update(ev.id, { summary });
   return NextResponse.json({ ok: true, summary });
 }

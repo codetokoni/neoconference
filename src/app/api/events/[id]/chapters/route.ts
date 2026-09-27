@@ -2,13 +2,14 @@
 //
 // Owner-only: derive (or re-derive) chapter markers for an event from its
 // most recent transcript artifact (event.recordings where kind=transcript).
-// Uses gpt-4o-mini when OPENAI_API_KEY is set, falls back to a local heuristic.
+// Uses gpt-4o-mini (src/lib/llm.ts) when AI is available, falls back to a
+// local heuristic.
 //
 // POST /api/events/<id>/chapters
 //   body: { mode?: "auto" | "ai" | "heuristic", durationSec?: number, text?: string }
 //   - mode "auto" (default): tries AI then falls back to heuristic.
-//   - mode "heuristic": forces local derivation, never calls OpenAI.
-//   - mode "ai": forces AI; returns 422 if OPENAI_API_KEY missing.
+//   - mode "heuristic": forces local derivation, never calls AI.
+//   - mode "ai": forces AI; returns 422 if no AI is available.
 //   - text: optional override transcript body. If omitted, the latest
 //           transcript artifact on the event is used.
 //   returns: { chapters, source }
@@ -18,6 +19,7 @@
 //   - manual override; persists exactly what the host edited.
 
 import { NextRequest, NextResponse } from 'next/server';
+import { aiAvailable } from '@/lib/llm';
 import { auth } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
 import { assertOwnerOrAdmin } from '@/lib/roles';
@@ -58,8 +60,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   let source: 'ai' | 'heuristic' = 'heuristic';
 
   if (mode === 'ai') {
-    if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ error: 'ai_unavailable', message: 'OPENAI_API_KEY not configured' }, { status: 422 });
+    if (!aiAvailable()) {
+      return NextResponse.json({ error: 'ai_unavailable', message: 'AI is not configured on this server' }, { status: 422 });
     }
     chapters = await deriveChaptersWithAI({ text, durationSec });
     source = chapters.some((c) => c.source === 'ai') ? 'ai' : 'heuristic';

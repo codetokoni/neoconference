@@ -38,8 +38,11 @@ export default function SummaryPanel({ eventId, initial = null }: Props) {
       const r = await fetch(`/api/events/${eventId}/summary`, { method: "POST" });
       const j = await r.json();
       if (!r.ok) {
-        if (j.error === "openai_not_configured") {
-          throw new Error("OpenAI is not configured. Set OPENAI_API_KEY in env.");
+        if (j.error === "ai_not_configured") {
+          throw new Error("AI summaries aren't available on this server.");
+        }
+        if (j.error === "ai_failed") {
+          throw new Error("The AI service didn't answer (" + (j.status || "no response") + "). Try again in a minute.");
         }
         if (j.error === "no_content") {
           throw new Error("Nothing to summarize yet (no transcript or chat).");

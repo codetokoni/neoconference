@@ -7,13 +7,15 @@
 //      first salient sentence of each segment as the label. Always works,
 //      even when no AI key is configured.
 //
-//   2. deriveChaptersWithAI(text, durationSec) - uses OpenAI gpt-4o-mini
-//      to produce 4-8 cinematic chapter titles + 1-sentence summaries.
-//      Falls back to heuristic when OPENAI_API_KEY is missing.
+//   2. deriveChaptersWithAI(text, durationSec) - uses gpt-4o-mini through
+//      src/lib/llm.ts to produce 4-8 cinematic chapter titles + 1-sentence
+//      summaries. Falls back to heuristic when no AI is available or the
+//      call fails.
 //
 // Both return Chapter[] in the schema defined in src/types/event.ts.
 
 import type { Chapter } from '@/types/event';
+import { aiAvailable, chatCompletion } from '@/lib/llm';
 
 /** Approximate words-per-second for English speech. Used to map word offsets
  *  back to seconds when we only have a flat transcript with no per-word timing. */
@@ -94,15 +96,14 @@ export function deriveChaptersHeuristic(input: {
 
 /**
  * AI derivation. Asks gpt-4o-mini for 4-8 cinematic chapter titles + summaries.
- * Returns heuristic chapters when OPENAI_API_KEY is missing or the call fails.
+ * Returns heuristic chapters when no AI is available or the call fails.
  */
 export async function deriveChaptersWithAI(input: {
   text: string;
   durationSec?: number;
 }): Promise<Chapter[]> {
-  const apiKey = process.env.OPENAI_API_KEY;
   const fallback = () => deriveChaptersHeuristic({ text: input.text, durationSec: input.durationSec });
-  if (!apiKey) return fallback();
+  if (!aiAvailable()) return fallback();
   const text = (input.text || '').trim();
   if (!text) return [];
 
@@ -118,25 +119,19 @@ export async function deriveChaptersWithAI(input: {
     ' Labels must be 2-6 words, punchy, and human. Summaries must be a single sentence.';
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        temperature: 0.4,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: sys },
-          { role: 'user', content: trimmed },
-        ],
-      }),
+    const res = await chatCompletion({
+      model: 'gpt-4o-mini',
+      temperature: 0.4,
+      json: true,
+      system: sys,
+      user: trimmed,
     });
-    if (!res.ok) return fallback();
-    const data = await res.json();
-    const raw = data?.choices?.[0]?.message?.content || '';
+    if (!res.ok) {
+      // eslint-disable-next-line no-console
+      console.warn('[chapters] AI call failed; using heuristic', { status: res.status, detail: res.detail });
+      return fallback();
+    }
+    const raw = res.text;
     let parsed: { chapters?: Array<{ label?: string; summary?: string; startFraction?: number }> } = {};
     try { parsed = JSON.parse(raw); } catch { return fallback(); }
     const arr = Array.isArray(parsed.chapters) ? parsed.chapters : [];
