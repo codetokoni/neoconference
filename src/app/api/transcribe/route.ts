@@ -26,7 +26,8 @@ import {
 import { eventStore } from '@/lib/eventStore';
 import { authorize } from '@/lib/authz';
 import { asReported, TRANSCRIBE_NOT_SET_UP } from '@/lib/transcribeNotSetUp';
-import type { NeoEvent, RecordingArtifact } from '@/types/event';
+import { attachTranscriptToEvent } from '@/lib/transcriptArtifact';
+import { publicOrigin } from '@/lib/publicOrigin';
 
 export const runtime = 'nodejs';
 
@@ -86,34 +87,12 @@ export async function POST(req: NextRequest) {
       recordingKey,
       eventSlug: body.eventSlug,
       language: body.language,
+      callbackUrlBase: publicOrigin(req),
     });
 
-    // If the provider returned a finished transcript and the job was tied
-    // to an event, persist the transcript onto the event so /e/<slug>/replay
-    // can render it without a separate poll.
-    if (job.status === 'done' && job.text && job.eventSlug) {
-      try {
-        const ev = await eventStore.bySlug(job.eventSlug);
-        if (ev) {
-          const artifact: RecordingArtifact = {
-            key: 'transcript:' + job.id,
-            kind: 'transcript',
-            label: job.text,
-            createdAt: job.updatedAt,
-            size: job.text.length,
-          };
-          await eventStore.update(ev.id, (prev: NeoEvent) => ({
-            ...prev,
-            recordings: [...(prev.recordings || []), artifact],
-            updatedAt: new Date().toISOString(),
-          }));
-        }
-      } catch (e) {
-        // Transcript persistence is best-effort; the job result is still returned.
-        // eslint-disable-next-line no-console
-        console.warn('[transcribe] failed to attach transcript to event', e);
-      }
-    }
+    // Finished inline (a provider without a callback): record it on the
+    // event now. Deepgram's callback does the same when it arrives.
+    await attachTranscriptToEvent(job);
 
     return NextResponse.json({
       ok: true,

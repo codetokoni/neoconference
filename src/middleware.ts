@@ -35,6 +35,9 @@ const isPublicRoute = createRouteMatcher([
   '/api/qr/(.*)',
   '/api/livekit/token(.*)',
   '/api/livekit/webhook(.*)',
+  // Deepgram posts finished transcripts here; the signed job id in the
+  // URL is the credential (src/lib/deepgramResult.ts).
+  '/api/transcribe/deepgram',
   '/api/auth/kingschat/(.*)',
   '/api/auth/neoemail/(.*)',
   '/api/events/by-domain',

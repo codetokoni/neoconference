@@ -8,19 +8,26 @@
 // - 'stub' : default, returns 'queued' forever. Useful for UI scaffolding.
 // - 'openai' : OpenAI Whisper API. 25 MB file cap.
 // - 'assemblyai' : AssemblyAI long-form. R2 URL ingest (no upload).
-// - 'deepgram' : Deepgram Nova-3 pre-recorded API. We fetch the file from
+// - 'deepgram' : Deepgram Nova-3 pre-recorded API. We stream the file from
 //                R2 ourselves via the S3 SDK (bypasses presigned-URL quirks
-//                where R2 occasionally returns SignatureDoesNotMatch) and
-//                POST the bytes to /v1/listen. Built-in summarize=v2 returns
-//                a summary in the same response.
+//                where R2 occasionally returns SignatureDoesNotMatch) to
+//                /v1/listen, and Deepgram posts the result back to
+//                /api/transcribe/deepgram. Built-in summarize=v2 returns a
+//                summary with it.
 // Future: 'livekit' - shape preserved.
 //
 // Persistence: jobs are written to transcribeStore (KV-backed) so callers
 // can poll GET /api/transcribe?id=<jobId> after submit.
 
-import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { r2Client, isR2Configured, signGetUrl } from '@/lib/r2';
 import { transcribeStore } from '@/lib/transcribeStore';
+import {
+  audioSidecarKeys,
+  callbackUrl,
+  jobFromDeepgram,
+  type DeepgramResponse,
+} from '@/lib/deepgramResult';
 
 /**
  * One diarized utterance from the provider — a stretch of speech attributed
@@ -91,6 +98,11 @@ export async function submitTranscribeJob(input: {
   recordingKey: string;
   eventSlug?: string;
   language?: string;
+  /**
+   * This deployment's public origin, for providers that post their result
+   * back (Deepgram). Without it they are waited on inline.
+   */
+  callbackUrlBase?: string;
 }): Promise<TranscribeJob> {
   const provider = getTranscribeProvider();
   const now = new Date().toISOString();
@@ -117,8 +129,10 @@ export async function submitTranscribeJob(input: {
     return finished;
   }
   if (provider === 'deepgram') {
-    const finished = await runDeepgram(baseJob);
-    await transcribeStore.put(finished);
+    const finished = await runDeepgram(baseJob, input.callbackUrlBase);
+    // 'running' was stored before the upload began. Writing it again here
+    // could land after Deepgram's callback and overwrite the transcript.
+    if (finished.status !== 'running') await transcribeStore.put(finished);
     return finished;
   }
   return baseJob;
@@ -213,93 +227,116 @@ async function runAssemblyAI(job: TranscribeJob): Promise<TranscribeJob> {
   }
 }
 
+const DEEPGRAM_PARAMS: Record<string, string> = {
+  model: 'nova-3',
+  smart_format: 'true',
+  punctuate: 'true',
+  paragraphs: 'true',
+  utterances: 'true',
+  diarize: 'true',
+  summarize: 'v2',
+};
+
 /**
  * Deepgram pre-recorded provider.
  *
- * Pulls audio bytes from R2 via the S3 SDK (sidesteps presigned-URL quirks
- * where R2 occasionally returns SignatureDoesNotMatch on fetch) and POSTs
- * them as the raw request body to /v1/listen.
+ * Reads the recording from R2 with the S3 SDK — Deepgram fetching a signed
+ * R2 URL itself failed with REMOTE_CONTENT_ERROR (727259b) — and streams it
+ * to /v1/listen, preferring the audio-only sidecar, which is all Deepgram
+ * needs and a fraction of the video.
  *
- * Body limit: this approach buffers the whole file in lambda RAM. Vercel's
- * default request memory is 1024 MB, so files up to ~500 MB are safe.
+ * With a callback base, Deepgram answers at once with a request id and
+ * posts the transcript to /api/transcribe/deepgram when it is done; the
+ * job is 'running' until then. That is the normal path. Without one (no
+ * public URL to call back, e.g. a local run) it waits for the transcript
+ * in this request, as it always did — and a long recording can outlast
+ * the function there.
  */
-async function runDeepgram(job: TranscribeJob): Promise<TranscribeJob> {
+async function runDeepgram(job: TranscribeJob, callbackUrlBase?: string): Promise<TranscribeJob> {
   const apiKey = process.env.DEEPGRAM_API_KEY;
   if (!apiKey) return { ...job, status: 'error', error: 'DEEPGRAM_API_KEY missing', updatedAt: new Date().toISOString() };
   if (!isR2Configured()) return { ...job, status: 'error', error: 'R2 not configured', updatedAt: new Date().toISOString() };
 
   try {
-    // Step 1: fetch the audio from R2 via SDK (no presigned-URL involved).
-    const bytes = await getR2Bytes(job.recordingKey);
+    const source = await openR2Source(job.recordingKey);
 
-    // Step 2: build the Deepgram URL with all our model + feature flags.
-    const params = new URLSearchParams({
-      model: 'nova-3',
-      smart_format: 'true',
-      punctuate: 'true',
-      paragraphs: 'true',
-      utterances: 'true',
-      diarize: 'true',
-      summarize: 'v2',
-    });
+    const params = new URLSearchParams(DEEPGRAM_PARAMS);
     if (job.language) params.set('language', job.language);
+    if (callbackUrlBase) params.set('callback', callbackUrl(callbackUrlBase, job.id, apiKey));
     const endpoint = 'https://api.deepgram.com/v1/listen?' + params.toString();
 
-    // Step 3: POST the audio bytes directly. Content-Type tells Deepgram the
-    // codec; mp4 covers AAC-in-MP4 which is what LiveKit egress writes.
-    const contentType = guessContentType(job.recordingKey);
-
+    const headers: Record<string, string> = {
+      Authorization: 'Token ' + apiKey,
+      // mp4 covers AAC-in-MP4, which is what egress writes for both files.
+      'Content-Type': guessContentType(source.key),
+    };
+    if (source.length) headers['Content-Length'] = String(source.length);
+    if (callbackUrlBase) {
+      // Stored before the upload: the callback may arrive before this
+      // request finishes, and must find the job running, not be undone.
+      await transcribeStore.put({ ...job, status: 'running', updatedAt: new Date().toISOString() });
+    }
+    // eslint-disable-next-line no-console
+    console.info('[transcribe] deepgram', {
+      jobId: job.id,
+      source: source.key,
+      bytes: source.length,
+      async: Boolean(callbackUrlBase),
+    });
     const res = await fetch(endpoint, {
       method: 'POST',
-      headers: { Authorization: 'Token ' + apiKey, 'Content-Type': contentType },
-      body: bytes,
-    });
+      headers,
+      body: source.body,
+      // Required by Node's fetch to send a stream as the request body.
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' });
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
       return { ...job, status: 'error', error: 'Deepgram ' + res.status + ': ' + errText.slice(0, 300), updatedAt: new Date().toISOString() };
     }
-
-    type DGAlt = { transcript?: string };
-    type DGChannel = { alternatives?: DGAlt[] };
-    type DGSummary = { short?: string; result?: string };
-    type DGUtterance = { start?: number; end?: number; speaker?: number | string; transcript?: string };
-    type DGResults = { channels?: DGChannel[]; summary?: DGSummary; utterances?: DGUtterance[] };
-    type DGResponse = { results?: DGResults; metadata?: { request_id?: string } };
-
-    const j = (await res.json()) as DGResponse;
-    const transcript = j.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? '';
-    const summary = j.results?.summary?.short || j.results?.summary?.result;
-    const externalId = j.metadata?.request_id;
-
-    // Deepgram returns start/end in seconds. Preserve to millisecond precision.
-    const utterances = j.results?.utterances || [];
-    const segments: TranscriptSegment[] = utterances
-      .filter((u) => typeof u.transcript === 'string' && u.transcript.trim().length > 0)
-      .map((u) => ({
-        startMs: Math.round((typeof u.start === 'number' ? u.start : 0) * 1000),
-        endMs: Math.round((typeof u.end === 'number' ? u.end : 0) * 1000),
-        text: (u.transcript || '').trim(),
-        speaker: typeof u.speaker === 'number' || typeof u.speaker === 'string' ? u.speaker : undefined,
-      }));
-
-    if (!transcript) {
-      return { ...job, status: 'error', externalId, error: 'Deepgram returned empty transcript (silent audio?)', updatedAt: new Date().toISOString() };
+    const body = (await res.json()) as DeepgramResponse;
+    if (callbackUrlBase) {
+      const externalId = body.request_id || body.metadata?.request_id;
+      // eslint-disable-next-line no-console
+      console.info('[transcribe] deepgram accepted', { jobId: job.id, requestId: externalId });
+      return { ...job, status: 'running', externalId, updatedAt: new Date().toISOString() };
     }
-
-    return {
-      ...job,
-      status: 'done',
-      text: transcript,
-      segments: segments.length > 0 ? segments : undefined,
-      summary: summary || undefined,
-      externalId,
-      updatedAt: new Date().toISOString(),
-    };
+    return jobFromDeepgram(job, body);
   } catch (e: unknown) {
     return { ...job, status: 'error', error: e instanceof Error ? e.message : 'Unknown Deepgram error', updatedAt: new Date().toISOString() };
   }
 }
+
+/**
+ * The recording's audio sidecar if there is one, else the recording, as a
+ * stream: nothing is held in memory, so size no longer matters here.
+ */
+async function openR2Source(
+  recordingKey: string
+): Promise<{ key: string; length?: number; body: ReadableStream<Uint8Array> }> {
+  const s3 = r2Client();
+  const Bucket = requireBucket();
+  let key = recordingKey;
+  for (const candidate of audioSidecarKeys(recordingKey)) {
+    try {
+      const head = await s3.send(new HeadObjectCommand({ Bucket, Key: candidate }));
+      if ((head.ContentLength ?? 0) > 0) {
+        key = candidate;
+        break;
+      }
+    } catch {
+      // Not there: try the next, then the recording itself.
+    }
+  }
+  const out = await s3.send(new GetObjectCommand({ Bucket, Key: key }));
+  const stream = (out.Body as { transformToWebStream?: () => ReadableStream<Uint8Array> } | undefined)
+    ?.transformToWebStream?.();
+  if (!stream) throw new Error('R2 object body missing for key ' + key);
+  return { key, length: out.ContentLength, body: stream };
+}
+
+
 
 /**
  * Fetch an object from R2 via the SDK and return its body as an ArrayBuffer.
