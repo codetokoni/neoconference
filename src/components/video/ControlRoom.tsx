@@ -45,6 +45,7 @@ function Tile({
   display = false,
   onOpen,
   onHide,
+  onRemove,
   onDragStart,
   onDrop,
 }: {
@@ -55,6 +56,8 @@ function Tile({
   display?: boolean;
   onOpen: () => void;
   onHide: () => void;
+  /** Stop their camera and free their code (the parent confirms first). */
+  onRemove: () => void;
   onDragStart: () => void;
   onDrop: () => void;
 }) {
@@ -150,6 +153,21 @@ function Tile({
           className="absolute right-0.5 top-0.5 hidden h-4 w-4 rounded-sm bg-black/60 text-[11px] leading-none text-white/80 group-hover:block focus:block"
         >
           ×
+        </button>
+      )}
+
+      {!display && (
+        <button
+          type="button"
+          aria-label={`Remove ${p.name}`}
+          title="Remove: stop their camera and free their code"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          className="absolute left-0.5 bottom-5 hidden rounded-sm bg-rose-600/80 px-1 font-mono text-[8px] uppercase tracking-[0.1em] text-white group-hover:block focus:block"
+        >
+          Remove
         </button>
       )}
 
@@ -357,24 +375,6 @@ export default function ControlRoom({
     [room, load],
   );
 
-  // Written, but no control calls it yet (found by lint, 2026-09-27). Kept
-  // for the operator console rather than deleted; wire it up or remove it.
-  const _sendToPreview = useCallback(
-    async (p: Participant) => {
-      setBusy(true);
-      try {
-        await fetch(`/api/video/preview?room=${encodeURIComponent(room)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ streamId: p.streamId, label: p.name }),
-        });
-        await loadPreview();
-      } finally {
-        setBusy(false);
-      }
-    },
-    [room, loadPreview],
-  );
 
   const clearPreview = useCallback(async () => {
     setBusy(true);
@@ -410,9 +410,9 @@ export default function ControlRoom({
     [room, load, loadPreview],
   );
 
-  // Written, but no control calls it yet (found by lint, 2026-09-27). Kept
-  // for the operator console rather than deleted; wire it up or remove it.
-  const _remove = useCallback(
+  // Stops the participant's camera and frees their code. The only place in
+  // the console that does; offered on each tile (not in display mode).
+  const remove = useCallback(
     async (p: Participant) => {
       if (!window.confirm(`Remove ${p.name}? Their camera stops and the code frees up.`)) return;
       setBusy(true);
@@ -581,6 +581,7 @@ export default function ControlRoom({
               display={display}
               onOpen={() => setSpot(p)}
               onHide={() => hide(p)}
+              onRemove={() => remove(p)}
               onDragStart={() => {
                 dragId.current = p.streamId;
               }}
