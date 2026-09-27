@@ -23,7 +23,7 @@ interface KeyMeta {
  * List the signed-in user's API keys (metadata only).
  */
 export async function GET() {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -40,7 +40,7 @@ export async function GET() {
  * Mint a new API key. Returns the raw key ONCE. Body: { name: string }
  */
 export async function POST(req: NextRequest) {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
  * Revoke a key (marks revoked; does not hard-delete audit metadata).
  */
 export async function DELETE(req: NextRequest) {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }

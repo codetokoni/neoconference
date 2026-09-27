@@ -48,7 +48,6 @@ const ACTIVITY_EVENTS: Array<keyof WindowEventMap> = [
   "scroll",
   "wheel",
   "focus",
-  "visibilitychange",
 ];
 
 export default function InactivityDetector({
@@ -119,13 +118,21 @@ export default function InactivityDetector({
   useEffect(() => {
     if (isExempt) return;
     const onActivity = () => markActivity();
+    // visibilitychange fires on document, never on window: in the window
+    // list it was never heard, so coming back to the meeting's tab did not
+    // count. Only becoming visible counts — hiding the tab is not presence.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") markActivity();
+    };
     for (const evt of ACTIVITY_EVENTS) {
       window.addEventListener(evt, onActivity, { passive: true });
     }
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       for (const evt of ACTIVITY_EVENTS) {
         window.removeEventListener(evt, onActivity);
       }
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [isExempt, markActivity]);
 

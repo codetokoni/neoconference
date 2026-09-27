@@ -469,7 +469,6 @@ export default function LiveTranslation() {
       // ignore
     }
     window.speechSynthesis.speak(utt);
-    setEverSpoke(true);
   }, [targetLang, voice]);
 
   const popover = open && typeof document !== 'undefined' ? createPortal(

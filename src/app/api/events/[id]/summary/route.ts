@@ -50,7 +50,7 @@ export async function POST(
     return NextResponse.json({ error: "openai_not_configured", hint: "Set OPENAI_API_KEY in env" }, { status: 503 });
   }
 
-  const chat = await chatStore.list(ev.id, 1000).catch(() => [] as any[]);
+  const chat = await chatStore.list(ev.id).catch(() => [] as any[]);
   const transcripts = await transcribeStore.get(ev.id).catch(() => null);
 
   const chatLines = (Array.isArray(chat) ? chat : [])
