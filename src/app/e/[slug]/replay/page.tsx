@@ -14,7 +14,10 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import ReplayShareBar from './ReplayShareBar';
 import ReplayViewBumper from './ReplayViewBumper';
-import { toPublicView, type PublicEventView } from '@/types/event';
+import { toPublicView, type NeoEvent, type PublicEventView } from '@/types/event';
+import { auth, currentUser } from '@clerk/nextjs/server';
+import { can, resolveRole } from '@/lib/permissions';
+import { isAdmin } from '@/lib/roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,10 +53,31 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
+/**
+ * Whether this viewer may read the meeting's transcript (FRS §8.7:
+ * Owner+Host). This page is public, and a transcript is the whole meeting
+ * word for word; it used to be shown to anyone who had the link.
+ */
+async function canReadTranscript(event: NeoEvent): Promise<boolean> {
+  const { userId } = await auth();
+  if (!userId) return false;
+  const u = await currentUser().catch(() => null);
+  const emails = (u?.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
+  const actor = resolveRole(event, {
+    userId,
+    emails,
+    isPlatformAdmin: emails.some((e) => isAdmin(e)),
+  });
+  return can(actor, 'transcript:read', event.permissionOverrides);
+}
+
 export default async function ReplayPage({ params }: Props) {
   const event = await eventStore.bySlug(params.slug);
   if (!event) return notFound();
-  const view = toPublicView(event);
+  const publicView = toPublicView(event);
+  const view: PublicEventView = (await canReadTranscript(event))
+    ? { ...publicView, recordings: event.recordings || [], chapters: event.chapters }
+    : publicView;
   const h = await headers();
   const proto = h.get("x-forwarded-proto") || "https";
   const host = h.get("x-forwarded-host") || h.get("host") || "neoconference.vercel.app";

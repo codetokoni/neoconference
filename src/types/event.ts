@@ -355,8 +355,12 @@ export function toPublicView(e: NeoEvent): PublicEventView {
     customDomain: e.customDomain,
     hlsUrl: e.streamlab?.hlsUrl,
     shortUrl: e.hsmoh?.shortUrl,
-    recordings: e.recordings,
-    chapters: e.chapters,
+    // Never transcripts: a transcript artifact's label is the full text of
+    // the meeting, and this view is served to anyone. Transcript access is
+    // Owner+Host (FRS §8.7, 'transcript:read'); pages that may show it
+    // check that and read the event itself. Chapters are written from the
+    // transcript, so they go with it.
+    recordings: (e.recordings || []).filter((r) => r.kind !== 'transcript'),
     tickets: (e.tickets || []).filter((t) => t.active),
   };
 }
