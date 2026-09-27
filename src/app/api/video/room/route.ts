@@ -18,8 +18,13 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Tiles per screen. 50 inbound streams is already an operator's whole budget. */
-export const PER_SCREEN = 50;
+/**
+ * Tiles per screen. 50 inbound streams is already an operator's whole budget.
+ * Not exported: a route module may export only handlers and route config,
+ * and Next's generated types reject anything else. The summary route keeps
+ * its own copy.
+ */
+const PER_SCREEN = 50;
 
 export interface RoomLayout {
   /** Stream ids in display order. Anything unlisted falls in by slot. */

@@ -466,7 +466,8 @@ function DeviceRow({
     ? { background: "rgba(220, 38, 38, 0.08)", borderColor: "rgba(220, 38, 38, 0.3)" }
     : {};
   return (
-    <div ref={rowRef} className="relative">
+    // React 19's RefObject<T | null> vs the legacy ref typings; the same object.
+    <div ref={rowRef as React.RefObject<HTMLDivElement>} className="relative">
       <div
         className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border-[0.5px] transition ${
           enabled ? "bg-white/[0.04] border-white/[0.08]" : ""

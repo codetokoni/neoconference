@@ -32,20 +32,9 @@
 import { useEffect, useRef } from 'react';
 import { useRoomContext } from '@livekit/components-react';
 
-interface WakeLockSentinel {
-  released: boolean;
-  release(): Promise<void>;
-  addEventListener(type: 'release', listener: () => void): void;
-  removeEventListener(type: 'release', listener: () => void): void;
-}
-interface WakeLockAPI {
-  request(type: 'screen'): Promise<WakeLockSentinel>;
-}
-declare global {
-  interface Navigator {
-    wakeLock?: WakeLockAPI;
-  }
-}
+// WakeLock and WakeLockSentinel come from the DOM typings. A local copy of
+// them used to live here and clashed with the real ones once the compiler
+// target moved to ES2017.
 
 export default function BackgroundContinuity({
   eventName,

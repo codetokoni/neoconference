@@ -20,6 +20,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { RoomServiceClient } from "livekit-server-sdk";
 import { eventStore } from "@/lib/eventStore";
 import { assertOwnerOrAdmin } from "@/lib/roles";
+import type { RoleAssignment } from "@/types/event";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
       // Strip any persisted role entry so the target cannot rejoin elevated.
       try {
         const idLc = identity.toLowerCase();
-        const prevRoles = (ev.roles || []) as Array<{ role: string; identifier: string; preApproved?: boolean }>;
+        const prevRoles: RoleAssignment[] = ev.roles || [];
         const nextRoles = prevRoles.filter((r) => (r.identifier || "").toLowerCase() !== idLc);
         if (nextRoles.length !== prevRoles.length) {
           await eventStore.update(ev.id, { roles: nextRoles });
