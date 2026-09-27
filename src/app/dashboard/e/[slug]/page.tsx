@@ -7,7 +7,8 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { eventStore } from "@/lib/eventStore";
-import { canEnd } from "@/lib/meetingLifecycle";
+import { canEnd, endNeedsPin } from "@/lib/meetingLifecycle";
+import { isAdmin } from "@/lib/roles";
 import { lastKnocks, stillWaiting } from "@/lib/waitingRoom";
 import EndEventButton from "./EndEventButton";
 import StartEventButton from "@/components/StartEventButton";
@@ -137,7 +138,11 @@ export default async function EventAdminPage({
               <EndEventButton
                 eventId={ev.id}
                 alwaysOpen={alwaysOpen}
-                pinRequired={Boolean(ev.endPin)}
+                pinRequired={endNeedsPin(ev, {
+                  isPlatformAdmin: (user?.emailAddresses || []).some((e) =>
+                    isAdmin(e.emailAddress.toLowerCase())
+                  ),
+                })}
               />
             ) : null}
             {/* Restart flow — POST /start now accepts state=ended and flips
