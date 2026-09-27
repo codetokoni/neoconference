@@ -9,24 +9,28 @@ import { expect, test } from "@playwright/test";
  * the check below would pass for a site-wide noindex too.
  *
  * Signed-out GETs only; nothing is claimed or created.
+ *
+ * Tagged @postdeploy: the smoke run points at production, so on the PR
+ * that adds the tag it would fail only because the change is not live
+ * yet. Run after promoting with `npm run test:postdeploy`.
  */
 
 const NOINDEX = /<meta name="robots" content="noindex/;
 
 test.describe("robots", () => {
-  test("an unclaimed short address is not indexable", async ({ request }) => {
+  test("@postdeploy an unclaimed short address is not indexable", async ({ request }) => {
     const res = await request.get("/zz-noindex-probe-" + Date.now().toString(36));
     expect(res.status()).toBe(200);
     expect(await res.text()).toMatch(NOINDEX);
   });
 
-  test("a room page is not indexable", async ({ request }) => {
+  test("@postdeploy a room page is not indexable", async ({ request }) => {
     const res = await request.get("/room/zz-noindex-probe?event=zz-noindex-probe");
     expect(res.status()).toBeLessThan(400);
     expect(await res.text()).toMatch(NOINDEX);
   });
 
-  test("the home page stays indexable", async ({ request }) => {
+  test("@postdeploy the home page stays indexable", async ({ request }) => {
     const res = await request.get("/");
     expect(res.status()).toBe(200);
     expect(await res.text()).not.toMatch(NOINDEX);
