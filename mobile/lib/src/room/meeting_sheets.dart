@@ -13,6 +13,10 @@ import 'room_controller.dart';
 /// Everything shown is read from the meeting itself. There is no host
 /// name or invitee list because /api/events/mine does not return them —
 /// the row is absent rather than blank.
+/// The link people are given to join [slug]. One place, so the details
+/// sheet and the Schedule screen never hand out different ones.
+String meetingLink(String slug) => 'https://www.neoconference.app/$slug';
+
 class MeetingDetailsSheet extends ConsumerWidget {
   const MeetingDetailsSheet({
     super.key,
@@ -23,9 +27,7 @@ class MeetingDetailsSheet extends ConsumerWidget {
   final String slug;
   final String title;
 
-  static const _origin = 'https://www.neoconference.app';
-
-  String get _link => '$_origin/$slug';
+  String get _link => meetingLink(slug);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

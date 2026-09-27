@@ -46,10 +46,14 @@ export async function POST(
   }
 
   const now = new Date().toISOString();
+  // A restart undoes the end: it no longer stands, and a stale endedBy of
+  // 'host' would keep dropping rejoiners to attendee once it ends again.
   const next = await eventStore.update(ev.id, (prev) => ({
     ...prev,
     state: "live" as const,
     startedAt: prev.startedAt || now,
+    endedAt: undefined,
+    endedBy: undefined,
     updatedAt: now,
   }));
 

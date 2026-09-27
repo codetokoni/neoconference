@@ -11,6 +11,7 @@ import '../events/create_meeting_screen.dart' show createdSlug;
 import '../events/event.dart' show apiProvider;
 import '../events/languages.dart';
 import '../meetings/meeting_board.dart';
+import '../room/meeting_sheets.dart' show meetingLink;
 
 /// The moment a date and a time of day picked on this phone refer to.
 DateTime scheduledFor(DateTime day, TimeOfDay time) =>
@@ -40,8 +41,6 @@ class ScheduleScreen extends ConsumerStatefulWidget {
 }
 
 class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
-  static const _origin = 'https://www.neoconference.app';
-
   final _title = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
@@ -234,6 +233,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       _error = null;
     });
 
+    // Read before the request: if the screen is closed while it runs, `ref`
+    // is gone, but the meeting still exists and home should still show it.
+    final reloadBoard = ref.read(reloadMeetingBoardProvider);
     try {
       final body = await ref.read(apiProvider).post('/api/events/create', {
         'name': _title.text.trim(),
@@ -247,7 +249,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       });
       final slug = createdSlug(body);
       // Upcoming on the home screen comes from the account's meetings.
-      ref.read(reloadMeetingBoardProvider)();
+      reloadBoard();
       if (!mounted) return;
       setState(() => _busy = false);
       if (slug == null) {
@@ -256,14 +258,15 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
             'upcoming meetings.');
         return;
       }
-      await _showLink('$_origin/$slug', when);
+      await _showLink(meetingLink(slug), when);
       if (mounted) Navigator.of(context).pop();
     } on ApiException catch (e) {
+      // Closed while the request ran: nothing left to show it on.
+      if (!mounted) return;
       setState(() => _busy = false);
       // 402 with a named feature means the plan, not the request, is the
       // problem — offer the way out, as Start does.
       if (e.status == 402 && e.code == 'plan_upgrade_required') {
-        if (!mounted) return;
         showModalBottomSheet<void>(
           context: context,
           isScrollControlled: true,
@@ -276,6 +279,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       }
       setState(() => _error = e.message);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _busy = false;
         _error = 'Could not schedule the meeting: $e';

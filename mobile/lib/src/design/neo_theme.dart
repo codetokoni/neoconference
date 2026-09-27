@@ -1,3 +1,6 @@
+// Cupertino for CupertinoPageTransitionsBuilder, which Flutter 3.47 no
+// longer re-exports from material.
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
 import 'tokens.dart';
