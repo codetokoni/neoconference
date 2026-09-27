@@ -5,36 +5,15 @@ import { isR2Configured, listRecordings, signGetUrl, deleteObject, renameObject 
 import { transcribeStore } from '@/lib/transcribeStore';
 import { eventStore } from '@/lib/eventStore';
 import { authorize } from '@/lib/authz';
-import { getMeetingParticipants } from '@/lib/meeting-roles';
+import {
+  isAudioKey,
+  listEventRecordingObjects,
+  stripAudioExt,
+  userPrefix,
+} from '@/lib/eventRecordings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-// Sanitize a path segment the same way egress/start/route.ts does, so the
-// user prefix we compute here matches the prefix that was used when the
-// recording was actually written.
-function sanitizeSegment(s: string): string {
-    return (s || '')
-      .replace(/[^A-Za-z0-9._-]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 80) || 'x';
-}
-
-function userPrefix(userId: string): string {
-    return 'recordings/' + sanitizeSegment(userId) + '/';
-}
-
-// LiveKit egress writes audio sidecars as "<basename>.m4a.mp4" (and older
-// runs may have produced bare "<basename>.m4a"). Treat both as audio so the
-// dashboard can pair them with their video sibling instead of listing them
-// as separate, untranscribable video rows.
-function isAudioKey(k: string): boolean {
-    return /\.m4a(?:\.mp4)?$/i.test(k);
-}
-
-function stripAudioExt(k: string): string {
-    return k.replace(/\.m4a(?:\.mp4)?$/i, '');
-}
 
 /**
  * GET /api/recordings
@@ -87,30 +66,8 @@ export async function GET(req: Request) {
               const gate = await authorize(ev, 'recording:read');
               if (!gate.ok) return gate.response;
 
-              const eventSeg = sanitizeSegment(eventSlug);
-              const candidateIds = new Set<string>();
-              if (ev.ownerUserId?.startsWith('user_')) candidateIds.add(ev.ownerUserId);
-              // Everyone in the meeting-roles hash with rank >= moderator is a
-              // plausible recorder. Skip anyone who isn't a Clerk user id
-              // (email rows can't have written R2 keys).
-              const participants = await getMeetingParticipants(ev.id, ev);
-              for (const p of participants) {
-                  if (!p.userId?.startsWith('user_')) continue;
-                  if (p.role === 'owner' || p.role === 'host' || p.role === 'moderator') {
-                        candidateIds.add(p.userId);
-                  }
-              }
-
-              const perPrefixMax = Math.max(20, Math.floor(max / Math.max(1, candidateIds.size)));
-              const collected = new Map<string, { key: string; size: number; lastModified?: string }>();
-              for (const uid of candidateIds) {
-                  const prefix = 'recordings/' + sanitizeSegment(uid) + '/' + eventSeg + '/';
-                  const items = await listRecordings(prefix, perPrefixMax);
-                  for (const o of items) {
-                        if (o.size > 0 && !collected.has(o.key)) collected.set(o.key, o);
-                  }
-              }
-              filtered = Array.from(collected.values());
+              // Shared with the meeting summary (lib/eventRecordings).
+              filtered = await listEventRecordingObjects(ev, max, eventSlug);
         } else {
               // Default mode — caller's own recordings only.
               const base = userPrefix(userId);
