@@ -1271,7 +1271,24 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
     };
   }, [room]);
 
-  const isRecording = !!egressId || !!remoteRecording || lkRecording;
+  // This tab stopped its recording and LiveKit has not yet said so: egress
+  // takes a few seconds to finish the file, and room.isRecording stays true
+  // until it has. Without this, those seconds read as a recording started
+  // elsewhere — "Being recorded from another device", button disabled.
+  const [finishing, setFinishing] = useState(false);
+  useEffect(() => {
+    if (!finishing) return;
+    if (!lkRecording) {
+      setFinishing(false);
+      return;
+    }
+    // If LiveKit's word never comes, stop waiting rather than hide a
+    // recording someone really did start.
+    const t = setTimeout(() => setFinishing(false), 60_000);
+    return () => clearTimeout(t);
+  }, [finishing, lkRecording]);
+
+  const isRecording = !!egressId || !!remoteRecording || (lkRecording && !finishing);
   /** Recording, but started somewhere else: this tab cannot stop it (the
    *  stop route needs an egress id only the starter has), and Record would
    *  start a second one. */
@@ -1506,6 +1523,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setFinishing(true);
       setEgressId(null);
       setFilepath(null);
       setAudioEgressId(null);
@@ -1700,8 +1718,8 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
           type="button"
           data-room-chrome="true"
           onClick={egressId ? stop : start}
-          disabled={busy || recordPending === "asking" || recordingElsewhere}
-          title={egressId ? "Stop recording" : recordingElsewhere ? "Being recorded from another device" : recordPending === "asking" ? "Waiting for host approval…" : "Start recording"}
+          disabled={busy || recordPending === "asking" || recordingElsewhere || finishing}
+          title={egressId ? "Stop recording" : finishing ? "Saving the recording…" : recordingElsewhere ? "Being recorded from another device" : recordPending === "asking" ? "Waiting for host approval…" : "Start recording"}
           className={
             (egressId
               ? "inline-flex items-center gap-1.5 rounded-lg border border-red-500 bg-red-600/90 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-500 active:scale-[0.98] transition"
@@ -1718,6 +1736,8 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
               <span className="inline-block h-2 w-2 bg-white" aria-hidden />
               Stop recording
             </>
+          ) : finishing ? (
+            <>Saving…</>
           ) : recordingElsewhere ? (
             <>
               <span className="inline-block h-2 w-2 rounded-full bg-red-500" aria-hidden />
