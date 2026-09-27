@@ -28,9 +28,14 @@ class MeetingView {
     this.languages = const [],
     this.waitingRoom = false,
     this.locked = false,
+    this.eventId,
   });
 
   final String title;
+
+  /// The server's id, for calls that take one (reopening a meeting). Null
+  /// for sample data and for a meeting reached only by its code.
+  final String? eventId;
 
   /// The slug. What someone types or pastes to join.
   final String code;

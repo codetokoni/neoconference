@@ -9,6 +9,7 @@ import '../meetings/meeting_board.dart';
 import '../meetings/meeting_view.dart';
 import '../meetings/when.dart';
 import 'home_screen.dart' show nowProvider;
+import 'prejoin_screen.dart';
 
 /// Whether this build can list recordings.
 ///
@@ -146,6 +147,15 @@ class _PastRow extends StatelessWidget {
     ].join(' · ');
 
     return NeoCard(
+      // Opens pre-join, which reopens a meeting that ended. It was a card
+      // you could look at and not use.
+      onTap: meeting.canJoin
+          ? () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => PreJoinScreen(meeting: meeting),
+                ),
+              )
+          : null,
       child: Row(
         children: [
           NeoAvatar(name: meeting.host ?? meeting.title, size: 42),

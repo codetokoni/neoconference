@@ -79,12 +79,16 @@ void main() {
       expect(event.name, 'Untitled meeting');
     });
 
-    test('an ended meeting is not joinable, but a personal room always is', () {
+    test('an ended meeting of your own can be reopened; an archived one cannot', () {
+      // /api/events/mine lists only the user's own meetings, and an owner
+      // can reopen one that ended ("Restart event" on the web).
       final ended = NeoEvent.fromJson(const {'slug': 'a', 'state': 'ended'});
+      final archived = NeoEvent.fromJson(const {'slug': 'c', 'state': 'archived'});
       final personal = NeoEvent.fromJson(
         const {'slug': 'b', 'state': 'ended', 'isPermanent': true},
       );
-      expect(ended.canJoin, isFalse);
+      expect(ended.canJoin, isTrue);
+      expect(archived.canJoin, isFalse);
       expect(personal.canJoin, isTrue);
     });
   });

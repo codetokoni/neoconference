@@ -6,6 +6,8 @@ import 'package:logging/logging.dart';
 
 import 'src/auth/auth_controller.dart';
 import 'src/auth/sign_in_screen.dart';
+import 'src/core/api_client.dart';
+import 'src/events/event.dart';
 import 'src/design/brand.dart';
 import 'src/design/neo_theme.dart';
 import 'src/design/themes.dart';
@@ -55,17 +57,53 @@ Future<void> _openRoom(
   required bool cameraOn,
   required bool instant,
 }) async {
+  final container = ProviderScope.containerOf(context, listen: false);
+
+  // One of your own meetings (it has an event id: it came from your list)
+  // is reopened before it is joined — the same call as "Restart event" on
+  // the web. Joining alone brings back a meeting that only emptied, but
+  // one somebody ended stays ended, with the owner in it as an attendee.
+  //
+  // Live ones too: the list can be minutes old, and a meeting shown live
+  // may have been ended since — that is how the emulator check found it.
+  // Reopening a meeting that is live does nothing. A scheduled one is left
+  // alone: joining early is a look at the room, not a start.
+  if (!instant && meeting.eventId != null && (meeting.isPast || meeting.isLive)) {
+    try {
+      await container.read(apiProvider).post('/api/events/${meeting.eventId}/start', {});
+      container.invalidate(eventsProvider);
+    } catch (e) {
+      // Shown live: it may well still be, so go in anyway.
+      if (meeting.isPast) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e is ApiException
+                  ? "Couldn't reopen this meeting: ${e.message}"
+                  : "Couldn't reopen this meeting. Check your connection and try again.",
+            ),
+          ),
+        );
+        return;
+      }
+    }
+  }
+
   await MeetingDefaults.setJoinMuted(!micOn);
   await MeetingDefaults.setJoinCameraOff(!cameraOn);
   if (!context.mounted) return;
 
-  Navigator.of(context).pushReplacement(
+  await Navigator.of(context).pushReplacement(
     MaterialPageRoute(
       builder: (_) => instant
           ? const CreateMeetingScreen()
           : RoomScreen(slug: meeting.code, title: meeting.title),
     ),
   );
+  // Back from the meeting: what it left behind (ended, still open) is not
+  // what the list last saw. Nothing else refreshes it.
+  container.invalidate(eventsProvider);
 }
 
 /// Turns on the LiveKit SDK's own logging, in debug builds only.
