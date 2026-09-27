@@ -224,7 +224,7 @@ export default function EditMetadata({
             onChange={(e) => setInactivityEnabled(e.target.checked)}
             className="accent-cyan-400"
           />
-          Show "Are you still here?" prompt to idle participants
+          Show &quot;Are you still here?&quot; prompt to idle participants
         </label>
         {inactivityEnabled && (
           <>

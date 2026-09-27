@@ -51,7 +51,7 @@ export default async function ModeratePage({
         <p className="max-w-[64ch] text-sm text-white/60">
           Live state and boards for this event. Open Camera board on the projector,
           Name board on a side monitor, Queue on your workstation. Boards deep-link
-          with ?screen= so opening one on a second display doesn't lose the others.
+          with ?screen= so opening one on a second display doesn&apos;t lose the others.
         </p>
       </header>
 

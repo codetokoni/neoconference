@@ -357,7 +357,9 @@ export default function ControlRoom({
     [room, load],
   );
 
-  const sendToPreview = useCallback(
+  // Written, but no control calls it yet (found by lint, 2026-09-27). Kept
+  // for the operator console rather than deleted; wire it up or remove it.
+  const _sendToPreview = useCallback(
     async (p: Participant) => {
       setBusy(true);
       try {
@@ -408,7 +410,9 @@ export default function ControlRoom({
     [room, load, loadPreview],
   );
 
-  const remove = useCallback(
+  // Written, but no control calls it yet (found by lint, 2026-09-27). Kept
+  // for the operator console rather than deleted; wire it up or remove it.
+  const _remove = useCallback(
     async (p: Participant) => {
       if (!window.confirm(`Remove ${p.name}? Their camera stops and the code frees up.`)) return;
       setBusy(true);

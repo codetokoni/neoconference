@@ -111,7 +111,7 @@ export default function Whiteboard({
       try {
         const payload = new TextEncoder().encode(JSON.stringify(msg));
         await localParticipant.publishData(payload, { reliable: true } as any);
-      } catch (e) {
+      } catch {
         // ignore
       }
     },

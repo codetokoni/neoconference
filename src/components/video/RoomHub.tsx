@@ -228,7 +228,7 @@ export default function RoomHub({
             Each participant gets a random 6-digit passcode (e.g.{" "}
             <span className="font-mono text-white/80">528401</span>). Numeric
             only — easy to type on a mobile keypad — and random so knowing
-            one code tells you nothing about anyone else's.
+            one code tells you nothing about anyone else&apos;s.
           </p>
         </div>
       </div>

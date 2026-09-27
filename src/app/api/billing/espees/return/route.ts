@@ -86,7 +86,7 @@ export async function GET(req: Request): Promise<Response> {
     await client.users.updateUserMetadata(record.userId, {
       publicMetadata: { ...(user.publicMetadata ?? {}), plan: record.plan, planExpiresAt },
     });
-  } catch (e) {
+  } catch {
     // Mark failed so user can retry; surface error to /pricing.
     await updatePaymentStatus(nonce, "failed");
     const msg = encodeURIComponent("clerk_update_failed");
