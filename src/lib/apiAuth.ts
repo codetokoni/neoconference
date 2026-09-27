@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createHash } from 'crypto';
 import { kv } from '@vercel/kv';
+import { getPlanForUserId } from '@/lib/plan';
 
 export type ApiPlan = 'free' | 'starter' | 'pro' | 'business' | 'enterprise';
 
@@ -37,6 +38,30 @@ const RATE_LIMITS: Record<ApiPlan, number> = {
   enterprise: 2000,
 };
 
+const PLAN_CACHE_SECONDS = 60;
+
+/**
+ * The account's plan, from the same source the website uses
+ * (getPlanForUserId: Clerk publicMetadata, admins as business), cached for
+ * a minute so a busy API client does not ask Clerk on every request.
+ */
+export async function currentPlan(userId: string): Promise<ApiPlan> {
+  const cacheKey = `apiplan:${userId}`;
+  try {
+    const cached = await kv.get<ApiPlan>(cacheKey);
+    if (cached) return cached;
+  } catch {
+    /* fall through to the source */
+  }
+  const plan = await getPlanForUserId(userId);
+  try {
+    await kv.set(cacheKey, plan, { ex: PLAN_CACHE_SECONDS });
+  } catch {
+    /* uncached is still correct */
+  }
+  return plan;
+}
+
 export function hashKey(raw: string): string {
   return createHash('sha256').update(raw).digest('hex');
 }
@@ -64,6 +89,11 @@ export async function authenticate(req: NextRequest): Promise<AuthContext> {
   if (record.revoked) {
     throw new ApiError(401, 'revoked_api_key', 'This API key has been revoked.');
   }
+  // The owner's plan as it is now, not as it was when the key was made.
+  // The stored plan came from a KV key nothing writes, so every key was
+  // 'free' — a paying customer's key capped at free limits — and it never
+  // followed an upgrade or a downgrade.
+  record.plan = await currentPlan(record.ownerUserId);
 
   try {
     record.lastUsedAt = Date.now();

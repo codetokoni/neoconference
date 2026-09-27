@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { kv } from '@vercel/kv';
 import { randomBytes, randomUUID } from 'crypto';
-import { hashKey, type ApiKeyRecord, type ApiPlan } from '@/lib/apiAuth';
+import { currentPlan, hashKey, type ApiKeyRecord, type ApiPlan } from '@/lib/apiAuth';
+
+/** Live (unrevoked) keys one account may hold at once. */
+const MAX_ACTIVE_KEYS = 10;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -53,8 +56,26 @@ export async function POST(req: NextRequest) {
   }
   const name = (body.name || 'Default key').slice(0, 60);
 
-  // Resolve the user's plan from KV (set elsewhere by billing). Default to free.
-  const plan = (await kv.get<ApiPlan>(`plan:user:${userId}`)) || 'free';
+  // A bounded number of live keys per account; revoked ones do not count.
+  const ids = (await kv.smembers(`apikeys:user:${userId}`)) as string[];
+  if (ids.length > 0) {
+    const metas = await Promise.all(ids.map((kid) => kv.get<KeyMeta>(`apikey:meta:${kid}`)));
+    const active = metas.filter((m) => m && !m.revoked).length;
+    if (active >= MAX_ACTIVE_KEYS) {
+      return NextResponse.json(
+        {
+          error: 'too_many_keys',
+          message: `You can have up to ${MAX_ACTIVE_KEYS} active keys. Revoke one to create another.`,
+        },
+        { status: 409 }
+      );
+    }
+  }
+
+  // The plan as the website sees it. Shown with the key; requests use the
+  // plan current at the time (apiAuth.authenticate), not this snapshot.
+  // It used to come from a KV key nothing writes, so it was always 'free'.
+  const plan: ApiPlan = await currentPlan(userId);
 
   const id = randomUUID();
   const raw = `nc_live_${randomBytes(24).toString('hex')}`;
