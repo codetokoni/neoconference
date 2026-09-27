@@ -63,7 +63,18 @@ export async function isCurrentUserAdmin(): Promise<boolean> {
  * Returns null if the user is not signed in.
  */
 export async function getCurrentRole(): Promise<Role | null> {
-  const { userId } = await auth();
+  // The root layout asks this on every page, including 404s for paths the
+  // middleware matcher skips (anything that looks like a file). There
+  // Clerk's auth() throws — it cannot see its middleware — and the throw
+  // turned the whole 404 into a 500: iPhones asking for
+  // /apple-touch-icon.png got a server error. Unknown is signed out, which
+  // is also the safe answer for the admin pages that gate on this.
+  let userId: string | null;
+  try {
+    ({ userId } = await auth());
+  } catch {
+    return null;
+  }
   if (!userId) return null;
 
   const client = await clerkClient();
