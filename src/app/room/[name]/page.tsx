@@ -1321,6 +1321,12 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
     return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
   })();
 
+  // The start-recording action as of the latest render. The listener below
+  // is registered once per room, and called the doStart from that moment:
+  // it checked busy/isRecording as they were then, so an approval that
+  // arrived after a recording had begun started a second one.
+  const doStartRef = useRef<() => Promise<void>>(async () => {});
+
   // Subscribe to recording state messages from other participants.
   useEffect(() => {
     if (!room) return;
@@ -1347,7 +1353,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
           if (msg.to && msg.to === myIdentity) {
             if (msg.ok) {
               setRecordPending(null);
-              doStart();
+              void doStartRef.current();
             } else {
               setRecordPending(null);
               setToast({ message: "Recording denied by host" });
@@ -1426,6 +1432,7 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       setBusy(false);
     }
   };
+  doStartRef.current = doStart;
 
   // Send a record_request to all hosts and wait for a record_request_response.
   const requestRecord = async () => {
