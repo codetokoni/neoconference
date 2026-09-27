@@ -1518,7 +1518,6 @@ class RoomController extends StateNotifier<RoomState> {
   /// next knock "admitted".
   Future<void> setWaitingRoom(bool enabled) async {
     _waitingSwitchFlips++;
-    _waitingPoller.chatOpen(enabled);
     final before = state.waitingRoomEnabled;
     // Shown at once; put back if the server says no.
     state = state.copyWith(waitingRoomEnabled: enabled);
@@ -1528,6 +1527,13 @@ class RoomController extends StateNotifier<RoomState> {
         'slug': slug,
         'enabled': enabled,
       });
+      // Counted again now it is stored: a check that set off while this
+      // was on its way read the old setting. Asking for a check before
+      // the server had it — as this first did — read "off" just after the
+      // host turned it on, put the switch back, and slowed the list to
+      // 30 s: a knock took 27 s to show on the phone.
+      _waitingSwitchFlips++;
+      _waitingPoller.chatOpen(enabled);
       state = state.copyWith(
         message: enabled
             ? 'Waiting room on. New arrivals wait for you to let them in.'
@@ -1536,6 +1542,7 @@ class RoomController extends StateNotifier<RoomState> {
                 : 'Waiting room off. Everyone waiting is being let in.',
       );
     } on ApiException catch (e) {
+      _waitingSwitchFlips++;
       state = state.copyWith(
         waitingRoomEnabled: before,
         message: e.status == 403
