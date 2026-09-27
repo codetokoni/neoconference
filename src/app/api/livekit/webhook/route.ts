@@ -19,6 +19,8 @@
 import { NextResponse } from 'next/server';
 import { WebhookReceiver } from 'livekit-server-sdk';
 import { submitTranscribeJob, isTranscribeConfigured } from '@/lib/transcribe';
+import { isAudioKey } from '@/lib/eventRecordings';
+import { publicOrigin } from '@/lib/publicOrigin';
 import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
 import { recordWebhookEvent, recordWebhookRejection } from '@/lib/webhookMetrics';
@@ -271,7 +273,10 @@ export async function POST(req: Request) {
     // Each recording produces two egress_ended events: one for the .mp4
     // video and one for the .ogg audio sidecar. Only transcribe off the
     // video file so we don't queue a duplicate Deepgram job per recording.
-    if (!filename.toLowerCase().endsWith('.mp4')) {
+    // The sidecar is named "<base>.m4a.mp4", which ends in .mp4 too, so the
+    // extension alone let it through and each recording was transcribed
+    // twice. (The video's job sends Deepgram that sidecar anyway.)
+    if (!filename.toLowerCase().endsWith('.mp4') || isAudioKey(filename)) {
       return NextResponse.json({ ok: true, skipped: 'audio_sidecar', filename });
     }
 
@@ -291,13 +296,13 @@ export async function POST(req: Request) {
       });
     }
 
-    // Kick the transcribe job. submitTranscribeJob blocks until Deepgram
-    // returns (Nova-3 is fast: <30 s for a typical meeting). LiveKit's
-    // webhook delivery timeout is 30 s; for longer recordings we'd switch
-    // to a fire-and-forget pattern with a status row in KV. For now, await.
+    // Kick the transcribe job. With a callback origin this returns once
+    // the audio is uploaded; Deepgram posts the transcript to
+    // /api/transcribe/deepgram when it is done.
     const job = await submitTranscribeJob({
       recordingKey: filename,
       eventSlug,
+      callbackUrlBase: publicOrigin(req),
     });
 
     return NextResponse.json({
