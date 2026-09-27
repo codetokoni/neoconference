@@ -19,7 +19,7 @@
 import { NextResponse } from 'next/server';
 import { WebhookReceiver } from 'livekit-server-sdk';
 import { submitTranscribeJob, isTranscribeConfigured } from '@/lib/transcribe';
-import { isAudioKey } from '@/lib/eventRecordings';
+import { isAudioKey, slugFromRecordingKey } from '@/lib/eventRecordings';
 import { publicOrigin } from '@/lib/publicOrigin';
 import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
@@ -283,9 +283,7 @@ export async function POST(req: Request) {
     // egress writes 'recordings/user_xxx/event-slug/timestamp.mp4'. We pass
     // the full key as the recordingKey. Try to extract the event slug from
     // the path so we can later attach the transcript to the event.
-    const parts = filename.split('/');
-    // parts: ['recordings', 'user_xxx', 'event-slug', 'timestamp.mp4']
-    const eventSlug = parts.length >= 4 ? parts[2] : undefined;
+    const eventSlug = slugFromRecordingKey(filename);
 
     if (!isTranscribeConfigured()) {
       // Provider is in stub mode — webhook is still 200, we just don't run.

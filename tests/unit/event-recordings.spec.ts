@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { byRecordingTime, isVideoKey } from "../../src/lib/eventRecordings";
+import { byRecordingTime, isVideoKey, slugFromRecordingKey } from "../../src/lib/eventRecordings";
 
 /**
  * Which order a meeting's transcripts reach its summary in.
@@ -24,4 +24,14 @@ test("audio sidecars are not recordings of their own", () => {
   expect(isVideoKey("recordings/u/s/2026-09-27-10-00-00.mp4")).toBe(true);
   expect(isVideoKey("recordings/u/s/2026-09-27-10-00-00.m4a.mp4")).toBe(false);
   expect(isVideoKey("recordings/u/s/2026-09-27-10-00-00.m4a")).toBe(false);
+});
+
+test("a recording's meeting is read from its key", () => {
+  expect(slugFromRecordingKey("recordings/user_3D/hsmanagers/2026-09-08-09-08-51.mp4")).toBe("hsmanagers");
+  expect(slugFromRecordingKey("recordings/user_3D/hsmanagers/2026-09-08-09-08-51.m4a.mp4")).toBe("hsmanagers");
+  // Anything not shaped like an egress key names no meeting.
+  expect(slugFromRecordingKey("recordings/user_3D/2026.mp4")).toBeUndefined();
+  expect(slugFromRecordingKey("uploads/user_3D/hsmanagers/a.mp4")).toBeUndefined();
+  expect(slugFromRecordingKey("recordings/user_3D/hsmanagers/extra/a.mp4")).toBeUndefined();
+  expect(slugFromRecordingKey("")).toBeUndefined();
 });
