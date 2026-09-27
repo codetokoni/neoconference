@@ -28,6 +28,7 @@ import { authorize } from '@/lib/authz';
 import { asReported, TRANSCRIBE_NOT_SET_UP } from '@/lib/transcribeNotSetUp';
 import { attachTranscriptToEvent } from '@/lib/transcriptArtifact';
 import { publicOrigin } from '@/lib/publicOrigin';
+import { slugFromRecordingKey } from '@/lib/eventRecordings';
 
 export const runtime = 'nodejs';
 
@@ -66,7 +67,11 @@ export async function POST(req: NextRequest) {
   // eventSlug we gate on the RBAC catalog; without one there is no event
   // context to authz against so we fall back to authenticated-only (the
   // recording key itself is scoped by userId prefix on R2).
-  const eventSlug = (body.eventSlug || '').trim();
+  //
+  // The recordings page sends only the key; the meeting is in its path.
+  // Without it the finished transcript was never recorded on the meeting,
+  // so its chapters, downloads and replay never saw it.
+  const eventSlug = (body.eventSlug || '').trim() || slugFromRecordingKey(recordingKey) || '';
   if (eventSlug) {
     const ev = await eventStore.bySlug(eventSlug);
     if (ev) {
@@ -85,7 +90,7 @@ export async function POST(req: NextRequest) {
   try {
     const job = await submitTranscribeJob({
       recordingKey,
-      eventSlug: body.eventSlug,
+      eventSlug: eventSlug || undefined,
       language: body.language,
       callbackUrlBase: publicOrigin(req),
     });

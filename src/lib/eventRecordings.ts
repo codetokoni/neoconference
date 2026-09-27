@@ -49,6 +49,19 @@ export function stripAudioExt(k: string): string {
   return k.replace(/\.m4a(?:\.mp4)?$/i, "");
 }
 
+/**
+ * The meeting slug a recording was written under, from its key:
+ * 'recordings/<recorder>/<slug>/<timestamp>.mp4'. Callers that only hold
+ * the key (the recordings page, the egress webhook) use this to tie a
+ * transcript to its meeting. The slug is the one in use when recording;
+ * eventStore.bySlug still resolves it after a rename.
+ */
+export function slugFromRecordingKey(key: string): string | undefined {
+  const parts = (key || '').split('/');
+  if (parts.length !== 4 || parts[0] !== 'recordings' || !parts[2]) return undefined;
+  return parts[2];
+}
+
 /** Whether a stored object is a meeting's video (not an audio sidecar). */
 export function isVideoKey(k: string): boolean {
   return /\.mp4$/i.test(k) && !isAudioKey(k);
