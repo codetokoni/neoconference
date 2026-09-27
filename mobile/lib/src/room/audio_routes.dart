@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:livekit_client/livekit_client.dart';
 
+import 'headset_keeper.dart';
+import 'meeting_presence.dart';
+
 /// Where the meeting's sound goes, and what it is captured with.
 ///
 /// Reads the real device list from LiveKit's [Hardware], which wraps
@@ -132,6 +135,25 @@ class AudioRoutes extends ChangeNotifier {
       debugPrint('[audio] could not select ${device.label}: $e');
       return false;
     }
+  }
+
+  /// Keeps the meeting on a Bluetooth headset (see HeadsetKeeper). One per
+  /// meeting; the room controller replaces it when a meeting starts.
+  HeadsetKeeper headsetKeeper = HeadsetKeeper();
+
+  /// Put the call on the connected Bluetooth headset — its headset link,
+  /// with its microphone — and try keeping it there again.
+  ///
+  /// "Headset or earpiece" only turns the speaker preference off, and once
+  /// the earbuds had dropped their headset link that brought nothing back:
+  /// the call stayed on their media link with the microphone on the phone.
+  Future<bool> useHeadset() async {
+    headsetKeeper.chosen();
+    // The speaker preference overrides any route; it has to be off first.
+    await setSpeaker(false);
+    final ok = await MeetingPresence.instance.useHeadset();
+    notifyListeners();
+    return ok;
   }
 
   /// The loudspeaker, or whatever else is attached.

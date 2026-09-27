@@ -12,8 +12,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../core/load_error.dart';
 import '../events/event.dart';
+import 'audio_routes.dart';
 import 'auto_rejoin.dart';
 import 'chat_poller.dart';
+import 'headset_keeper.dart';
 import 'meeting_drop.dart';
 import 'meeting_presence.dart';
 import 'phone_call_policy.dart';
@@ -376,6 +378,42 @@ class RoomController extends StateNotifier<RoomState> {
     // controller that never moved. Those have opposite owners.
     debugPrint('[neo-room] controller created for $slug');
     MeetingPresence.instance.networkReturns.addListener(_onNetworkBack);
+    // A fresh count of attempts for each meeting.
+    AudioRoutes.instance.headsetKeeper = HeadsetKeeper();
+    MeetingPresence.instance.callAudio.addListener(_onCallAudio);
+  }
+
+  /// Android moved the call's audio. Keeps a meeting on the Bluetooth
+  /// headset once it has been there (see HeadsetKeeper).
+  void _onCallAudio() {
+    if (_disposed) return;
+    final audio = MeetingPresence.instance.callAudio.value;
+    if (audio == null) return;
+    debugPrint('[neo-audio] route ${audio.route}, headset ${audio.headset}');
+    final action = AudioRoutes.instance.headsetKeeper.changed(
+      audio,
+      DateTime.now(),
+      speakerChosen: AudioRoutes.instance.speakerPreferred,
+    );
+    switch (action) {
+      case HeadsetAction.reclaim:
+        // A moment's grace: a route that flickers on its own comes back by
+        // itself, and asking into the middle of that only adds a switch.
+        Future<void>.delayed(const Duration(seconds: 2), () async {
+          if (_disposed) return;
+          if (MeetingPresence.instance.callAudio.value?.onHeadset ?? false) return;
+          final ok = await MeetingPresence.instance.useHeadset();
+          debugPrint('[neo-audio] asked for the headset back: $ok');
+        });
+      case HeadsetAction.giveUp:
+        debugPrint('[neo-audio] headset taken again at once; leaving it');
+        state = state.copyWith(
+          message: 'Another app keeps taking your earbuds for calls. '
+              'Choose them in Audio output to switch back.',
+        );
+      case HeadsetAction.none:
+        break;
+    }
   }
 
   final ApiClient api;
@@ -754,7 +792,11 @@ class RoomController extends StateNotifier<RoomState> {
     // The slug rather than the meeting's name: the controller is keyed by
     // slug and never receives the name, and on this account most meetings
     // are named after their slug anyway.
-    unawaited(MeetingPresence.instance.begin(title: slug));
+    unawaited(() async {
+      await MeetingPresence.instance.begin(title: slug);
+      // Where the audio starts out, so a later drop is recognised as one.
+      await MeetingPresence.instance.readCallAudio();
+    }());
 
     // Asked here because this is where it is needed and where the reason
     // is obvious: without BLUETOOTH_CONNECT, Android routes the call to
@@ -1661,6 +1703,7 @@ class RoomController extends StateNotifier<RoomState> {
     _reconnectWatchdog.dispose();
     _autoRejoin.stop();
     MeetingPresence.instance.networkReturns.removeListener(_onNetworkBack);
+    MeetingPresence.instance.callAudio.removeListener(_onCallAudio);
     _listener?.dispose();
     unawaited(room.disconnect().then((_) => room.dispose()));
     super.dispose();

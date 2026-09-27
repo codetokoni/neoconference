@@ -5,6 +5,7 @@ import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
 import 'audio_routes.dart';
+import 'meeting_presence.dart';
 
 /// The two routes Android actually lets an app choose between.
 ///
@@ -16,6 +17,11 @@ import 'audio_routes.dart';
 List<Widget> _speakerChoice(BuildContext context, AudioRoutes routes) {
   final p = NeoTheme.of(context);
   final speaker = routes.speakerPreferred;
+  // Android 12+ reports the call's route and names a connected headset;
+  // with one, it can be chosen by name (see AudioRoutes.useHeadset).
+  final audio = MeetingPresence.instance.callAudio.value;
+  final headset = audio?.headset;
+  final onHeadset = !speaker && (audio?.onHeadset ?? false);
 
   Widget row({
     required bool selected,
@@ -43,8 +49,25 @@ List<Widget> _speakerChoice(BuildContext context, AudioRoutes routes) {
         if (context.mounted) Navigator.pop(context);
       },
     ),
+    if (headset != null)
+      row(
+        selected: onHeadset,
+        icon: Icons.bluetooth_audio_rounded,
+        title: headset,
+        subtitle: 'Bluetooth — sound and microphone',
+        onTap: () async {
+          final ok = await routes.useHeadset();
+          if (!context.mounted) return;
+          Navigator.pop(context);
+          if (!ok) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("Couldn't switch to $headset.")),
+            );
+          }
+        },
+      ),
     row(
-      selected: !speaker,
+      selected: !speaker && !onHeadset,
       icon: Icons.headphones_rounded,
       title: 'Headset or earpiece',
       subtitle: 'Bluetooth or wired when connected, otherwise the earpiece',
@@ -53,6 +76,18 @@ List<Widget> _speakerChoice(BuildContext context, AudioRoutes routes) {
         if (context.mounted) Navigator.pop(context);
       },
     ),
+    // The case found on a phone: sound in the earbuds, microphone on the
+    // phone, and nothing on screen to say so.
+    if (headset != null && audio?.route == 'bluetooth_media' && !speaker)
+      Padding(
+        padding: const EdgeInsets.fromLTRB(NeoSpace.xl, NeoSpace.sm, NeoSpace.xl, 0),
+        child: NeoBanner(
+          icon: Icons.mic_external_off_rounded,
+          tone: NeoBannerTone.warning,
+          message: '$headset is playing sound only; the phone\'s microphone '
+              'is listening. Choose $headset above to use its microphone.',
+        ),
+      ),
     Padding(
       padding: const EdgeInsets.fromLTRB(NeoSpace.xl, NeoSpace.sm, NeoSpace.xl, 0),
       child: Text(
@@ -94,6 +129,7 @@ class _AudioOutputSheetState extends State<AudioOutputSheet> {
     // Re-read on open: earbuds connect while a meeting is running more
     // often than at any other time.
     AudioRoutes.instance.refresh();
+    MeetingPresence.instance.readCallAudio();
   }
 
   @override
@@ -101,7 +137,9 @@ class _AudioOutputSheetState extends State<AudioOutputSheet> {
     final p = NeoTheme.of(context);
 
     return AnimatedBuilder(
-      animation: AudioRoutes.instance,
+      animation: Listenable.merge(
+        [AudioRoutes.instance, MeetingPresence.instance.callAudio],
+      ),
       builder: (context, _) {
         final routes = AudioRoutes.instance;
         final outputs = routes.outputs;

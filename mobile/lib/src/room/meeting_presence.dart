@@ -3,6 +3,10 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'headset_keeper.dart';
+
+export 'headset_keeper.dart' show CallAudio;
+
 /// Keeping the meeting alive when the app is not on screen.
 ///
 /// Two things no Flutter widget can do for itself:
@@ -45,6 +49,11 @@ class MeetingPresence {
   /// rather than a flag, so two returns in a row are two signals.
   final ValueNotifier<int> networkReturns = ValueNotifier<int>(0);
 
+  /// Where the call's audio is going, reported by Android on every change
+  /// while a meeting runs (Android 12 and later; null before the first
+  /// report, and always on earlier versions).
+  final ValueNotifier<CallAudio?> callAudio = ValueNotifier<CallAudio?>(null);
+
   bool _wired = false;
   bool _pipAvailable = false;
 
@@ -65,6 +74,8 @@ class MeetingPresence {
           onPhoneCall.value = call.arguments == true;
         case 'networkAvailable':
           networkReturns.value++;
+        case 'callAudioChanged':
+          callAudio.value = CallAudio.fromMap(call.arguments);
       }
       return null;
     });
@@ -100,6 +111,7 @@ class MeetingPresence {
     inPip.value = false;
     // A call still ringing when the meeting ends belongs to no meeting.
     onPhoneCall.value = false;
+    callAudio.value = null;
   }
 
   /// Ask for the permission that routes call audio to Bluetooth.
@@ -160,6 +172,31 @@ class MeetingPresence {
       await _channel.invokeMethod<bool>('endScreenShare');
     } catch (e) {
       debugPrint('[presence] could not end screen share: $e');
+    }
+  }
+
+  /// Reads where the call's audio is going now, and updates [callAudio].
+  Future<CallAudio?> readCallAudio() async {
+    if (!supported) return null;
+    try {
+      final raw = await _channel.invokeMethod<Object?>('callAudio');
+      return callAudio.value = CallAudio.fromMap(raw);
+    } catch (e) {
+      debugPrint('[presence] could not read the call audio route: $e');
+      return null;
+    }
+  }
+
+  /// Put the call on the connected Bluetooth headset — its headset link,
+  /// which carries the microphone too. False when there is none, or
+  /// Android refused.
+  Future<bool> useHeadset() async {
+    if (!supported) return false;
+    try {
+      return await _channel.invokeMethod<bool>('useHeadset') ?? false;
+    } catch (e) {
+      debugPrint('[presence] could not use the headset: $e');
+      return false;
     }
   }
 
