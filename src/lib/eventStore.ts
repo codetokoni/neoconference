@@ -13,6 +13,7 @@
 import { kv } from '@vercel/kv';
 import type { NeoEvent } from '@/types/event';
 import { deleteAllMeetingRoles } from '@/lib/meeting-roles';
+import { withoutSupersededSlugs } from '@/lib/slugWinners';
 
 const PREFIX = 'neo:event:';
 const SLUG = 'neo:slug:';
@@ -162,6 +163,15 @@ export const eventStore = {
       ids.map((id) => kv.get<NeoEvent>(PREFIX + id))
     );
     return events.filter((x): x is NeoEvent => Boolean(x));
+  },
+
+  /**
+   * The owner's events as a list to show: without the records a race left
+   * behind whose slug now opens a different event (see slugWinners.ts).
+   */
+  async listReachableByOwner(userId: string): Promise<NeoEvent[]> {
+    const all = await this.listByOwner(userId);
+    return withoutSupersededSlugs(all, async (slug) => (await this.bySlug(slug))?.id ?? null);
   },
 
   /**

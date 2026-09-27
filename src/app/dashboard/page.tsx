@@ -4,7 +4,7 @@
 // with status badges, recording / transcript counts, and direct links to the
 // replay page, room, and event detail pages.
 //
-// Server component: Clerk auth() + eventStore.listByOwner.
+// Server component: Clerk auth() + eventStore.listReachableByOwner.
 
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -26,7 +26,7 @@ export default async function DashboardPage() {
 
   const [user, events] = await Promise.all([
     currentUser(),
-    eventStore.listByOwner(userId!),
+    eventStore.listReachableByOwner(userId!),
   ]);
 
   // Sort: most recently updated first.
