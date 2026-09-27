@@ -10,13 +10,14 @@ import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { assertOwnerOrAdmin } from "@/lib/roles";
 import { chatStore } from "@/lib/chatStore";
-import { transcribeStore } from "@/lib/transcribeStore";
+import { eventTranscripts } from "@/lib/eventRecordings";
+import { summaryContext } from "@/lib/meetingSummary";
+import { isR2Configured } from "@/lib/r2";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const OPENAI_MODEL = process.env.OPENAI_SUMMARY_MODEL || "gpt-4o-mini";
-const MAX_INPUT_CHARS = 60000;
 
 export async function GET(
   _req: Request,
@@ -52,22 +53,12 @@ export async function POST(
   }
 
   const chat = await chatStore.list(ev.id).catch(() => []);
-  const transcripts = await transcribeStore.get(ev.id).catch(() => null);
-
-  const chatLines = (Array.isArray(chat) ? chat : [])
-    // KNOWN BUG, held for the owner (2026-09-27): stored messages have name/text,
-    // not from/message, so every line reaches the model as "guest: ".
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- kept as-is until that fix is approved
-    .map((m: any) => (m.from?.name || m.from?.identity || "guest") + ": " + (m.message || ""))
-    .join("\n");
-
-  const transcriptText = typeof transcripts?.text === "string" ? transcripts.text : "";
-
-  let context = "EVENT: " + (ev.name || ev.slug) + "\n";
-  if (ev.description) context += "DESCRIPTION: " + ev.description + "\n";
-  if (transcriptText) context += "\nTRANSCRIPT:\n" + transcriptText + "\n";
-  if (chatLines) context += "\nCHAT:\n" + chatLines + "\n";
-  if (context.length > MAX_INPUT_CHARS) context = context.slice(0, MAX_INPUT_CHARS);
+  // Transcripts are indexed by recording, not by meeting; reach them through
+  // the meeting's recordings. No storage configured means no recordings.
+  const transcripts = isR2Configured()
+    ? await eventTranscripts(ev).catch(() => [])
+    : [];
+  const context = summaryContext(ev, chat, transcripts);
 
   if (context.trim().length < 50) {
     return NextResponse.json({ error: "no_content", hint: "No transcript or chat to summarize yet" }, { status: 422 });
