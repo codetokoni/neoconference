@@ -48,7 +48,7 @@ export default function DevelopersPage() {
     });
     const json = await res.json();
     if (!res.ok) {
-      setError(json.error || 'Failed to create key');
+      setError(json.message || json.error || 'Failed to create key');
       return;
     }
     setNewKey(json.data.key);

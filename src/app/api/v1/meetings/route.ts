@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { requireApiKey, ApiError } from '@/lib/apiAuth';
 import { apiSuccess, apiFailure, parseJson } from '@/lib/apiResponse';
 import { createMeeting, listMeetings } from '@/lib/ncService';
+import { checkLifetimeCap, incrementMeetingsCreated } from '@/lib/plan';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,12 +43,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // The same lifetime cap the website's create routes enforce. Without it
+    // a Free account past its meetings could keep creating rooms here.
+    const cap = await checkLifetimeCap(ctx.key.ownerUserId);
+    if (cap.blocked) {
+      throw new ApiError(
+        402,
+        'lifetime_meetings_exhausted',
+        `The ${cap.plan} plan includes ${cap.cap} meetings and all have been used. Upgrade to create more.`
+      );
+    }
     const meeting = await createMeeting({
       ownerUserId: ctx.key.ownerUserId,
       name: body.name,
       maxParticipants: requested,
       metadata: body.metadata,
     });
+    await incrementMeetingsCreated(ctx.key.ownerUserId);
 
     return apiSuccess(meeting, rate, 201);
   } catch (err) {
