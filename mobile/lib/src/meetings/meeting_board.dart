@@ -149,7 +149,14 @@ MeetingView meetingFromEvent(NeoEvent e, {required DateTime now}) {
   final latestStart = e.isLive && started != null && e.updatedAt != null && e.updatedAt!.isAfter(started)
       ? e.updatedAt
       : started;
-  final when = (ended ? e.endedAt : null) ?? latestStart ?? e.scheduledAt;
+  // When it ended or started has happened, so it is never in the future. A
+  // phone whose clock runs behind the server's said a meeting that had just
+  // ended was "in 2 min" (seen on the emulator after a cold boot). Only a
+  // scheduled time may lie ahead.
+  final happened = (ended ? e.endedAt : null) ?? latestStart;
+  final when = happened != null
+      ? (happened.isAfter(now) ? now : happened)
+      : e.scheduledAt;
   return MeetingView(
     eventId: e.id.isEmpty ? null : e.id,
     title: e.name,
