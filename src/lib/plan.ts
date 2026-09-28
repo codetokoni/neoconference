@@ -83,6 +83,22 @@ export async function getCurrentPlan(): Promise<Plan | null> {
 }
 
 /**
+ * Whether [userId] is an app operator (ADMIN_EMAILS). Their plan reads as
+ * "business" so plan limits do not get in their way; this is for limits
+ * that "business" still has, like recording hours.
+ */
+export async function isAdminUserId(userId: string): Promise<boolean> {
+    if (!userId) return false;
+    try {
+          const client = await clerkClient();
+          const user = await client.users.getUser(userId);
+          return (user.emailAddresses || []).some((e) => isAdmin(e.emailAddress.toLowerCase()));
+    } catch {
+          return false;
+    }
+}
+
+/**
  * Look up the plan for a specific userId (used when issuing tokens for a
  * meeting whose host is not the current user). Honors ADMIN_EMAILS the same
  * way getCurrentPlan does, so an admin's own rooms run without plan limits

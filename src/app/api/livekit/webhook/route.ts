@@ -23,6 +23,7 @@ import { isAudioKey, slugFromRecordingKey } from '@/lib/eventRecordings';
 import { publicOrigin } from '@/lib/publicOrigin';
 import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
+import { addRecordedSeconds, egressSeconds } from '@/lib/recordingUsage';
 import { recordWebhookEvent, recordWebhookRejection } from '@/lib/webhookMetrics';
 import {
   canEnd,
@@ -285,12 +286,33 @@ export async function POST(req: Request) {
     // the path so we can later attach the transcript to the event.
     const eventSlug = slugFromRecordingKey(filename);
 
+    // Count the recording's length against its owner's monthly hours
+    // (lib/recordingUsage). Before transcription, which may be switched
+    // off: the hours are spent either way. The slug's owner stands in for
+    // recordings started before egress/start remembered whose they were.
+    let usage: Awaited<ReturnType<typeof addRecordedSeconds>> | undefined;
+    try {
+      const fallbackOwner = eventSlug
+        ? (await eventStore.bySlug(eventSlug))?.ownerUserId
+        : undefined;
+      usage = await addRecordedSeconds(
+        egressInfo?.egressId || '',
+        egressSeconds(egressInfo as Parameters<typeof egressSeconds>[0]),
+        Date.now(),
+        fallbackOwner
+      );
+      if (!usage.counted) console.warn('[webhook] recording not counted:', usage.reason, filename);
+    } catch (err) {
+      console.warn('[webhook] recording usage failed', err);
+    }
+
     if (!isTranscribeConfigured()) {
       // Provider is in stub mode — webhook is still 200, we just don't run.
       return NextResponse.json({
         ok: true,
         skipped: 'transcribe provider not configured',
         filename,
+        usage,
       });
     }
 
@@ -309,6 +331,7 @@ export async function POST(req: Request) {
       status: job.status,
       filename,
       eventSlug,
+      usage,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

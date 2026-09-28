@@ -1891,7 +1891,12 @@ class RoomController extends StateNotifier<RoomState> {
           recordingEgressId: id,
           recordingAudioEgressId: audioId,
           recordingFilepath: filepath,
-          message: id != null ? 'Recording started.' : 'Recording did not start.',
+          // Near the plan's monthly recording hours, the server says so.
+          message: id == null
+              ? 'Recording did not start.'
+              : (body is Map && body['warning'] is String)
+                  ? 'Recording started. ${body['warning']}'
+                  : 'Recording started.',
         );
       } else {
         final stopped = await api.post('/api/livekit/egress/stop', {
