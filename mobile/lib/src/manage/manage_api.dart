@@ -76,6 +76,7 @@ class MeetingRecording {
     this.downloadUrl,
     this.transcriptStatus,
     this.transcriptError,
+    this.transcriptText,
   });
 
   final String key;
@@ -86,6 +87,10 @@ class MeetingRecording {
   /// queued | running | done | error, or null when never transcribed.
   final String? transcriptStatus;
   final String? transcriptError;
+
+  /// The words, once transcribed. The recordings route sends them with the
+  /// listing; without this the app could say "Transcribed" and show nothing.
+  final String? transcriptText;
 
   bool get transcribed => transcriptStatus == 'done';
 
@@ -105,6 +110,7 @@ class MeetingRecording {
       downloadUrl: j['downloadUrl'] as String?,
       transcriptStatus: t is Map ? t['status'] as String? : null,
       transcriptError: t is Map ? t['error'] as String? : null,
+      transcriptText: t is Map ? t['text'] as String? : null,
     );
   }
 }

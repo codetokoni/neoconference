@@ -679,6 +679,16 @@ class RecordingTile extends StatelessWidget {
                   label: Text(r.transcriptStatus == 'error' ? 'Try again' : 'Transcribe'),
                   onPressed: onTranscribe,
                 ),
+              if (r.transcribed && (r.transcriptText?.trim().isNotEmpty ?? false))
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.notes_rounded, size: 18),
+                  label: const Text('Read transcript'),
+                  onPressed: () => neoSheet(
+                    context,
+                    fullHeight: true,
+                    builder: (_) => _TranscriptSheet(text: r.transcriptText!.trim()),
+                  ),
+                ),
               if (r.downloadUrl != null)
                 OutlinedButton.icon(
                   icon: const Icon(Icons.download_rounded, size: 18),
@@ -688,6 +698,49 @@ class RecordingTile extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A recording's transcript, to read and copy. "Transcribed" with no way
+/// to see the words read as if there were none.
+class _TranscriptSheet extends StatelessWidget {
+  const _TranscriptSheet({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(NeoSpace.xl, NeoSpace.lg, NeoSpace.xl, NeoSpace.xl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text('Transcript', style: Theme.of(context).textTheme.titleLarge)),
+                TextButton.icon(
+                  icon: const Icon(Icons.copy_rounded, size: 18),
+                  label: const Text('Copy'),
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: text));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Transcript copied.')));
+                    }
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: NeoSpace.md),
+            Expanded(
+              child: SingleChildScrollView(
+                child: SelectableText(text, style: TextStyle(color: p.text, height: 1.5)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

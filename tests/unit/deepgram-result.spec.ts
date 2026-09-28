@@ -70,6 +70,12 @@ test.describe("an empty transcript says what Deepgram heard", () => {
     );
   });
 
+  test("no language it can name means no speech, not 'English, 0% sure'", () => {
+    expect(empty({ duration: 61.3 }, { detected_language: "en", language_confidence: 0 })).toBe(
+      "Deepgram heard 61 s of audio but no speech it could make out. Was the microphone on and near the speaker?"
+    );
+  });
+
   test("nothing at all is said as such", () => {
     expect(empty({ duration: 0.2 })).toContain("received no audio");
   });
