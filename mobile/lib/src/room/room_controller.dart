@@ -20,6 +20,7 @@ import 'meeting_drop.dart';
 import 'meeting_presence.dart';
 import 'phone_call_policy.dart';
 import 'reconnect_watchdog.dart';
+import 'translation_voice.dart';
 import 'weak_link.dart';
 import '../settings/meeting_defaults.dart';
 
@@ -165,6 +166,8 @@ class RoomState {
     this.translatedCaption,
     this.transcriptionsSeen = 0,
     this.translationError,
+    this.captionsOn = false,
+    this.speakTranslations = true,
     this.onPhoneCall = false,
     this.mutedByPhoneCall = false,
     this.weakLink = false,
@@ -246,6 +249,15 @@ class RoomState {
 
   /// Why a translation did not appear, when it did not.
   final String? translationError;
+
+  /// The meeting's live captions are on, as the host last announced them
+  /// ({type: 'captions', enabled} on the data channel, the web's message).
+  /// Translation has nothing to translate without them.
+  final bool captionsOn;
+
+  /// Read translations aloud, not only show them. On by default: hearing
+  /// the meeting in your language is the point.
+  final bool speakTranslations;
 
   /// A phone call is ringing or in progress on this device.
   final bool onPhoneCall;
@@ -330,6 +342,8 @@ class RoomState {
     String? translatedCaption,
     int? transcriptionsSeen,
     String? translationError,
+    bool? captionsOn,
+    bool? speakTranslations,
     bool? onPhoneCall,
     bool? mutedByPhoneCall,
     bool? weakLink,
@@ -384,6 +398,8 @@ class RoomState {
         translationError: clearTranslationError
             ? null
             : (translationError ?? this.translationError),
+        captionsOn: captionsOn ?? this.captionsOn,
+        speakTranslations: speakTranslations ?? this.speakTranslations,
         onPhoneCall: onPhoneCall ?? this.onPhoneCall,
         mutedByPhoneCall: mutedByPhoneCall ?? this.mutedByPhoneCall,
         weakLink: weakLink ?? this.weakLink,
@@ -974,7 +990,17 @@ class RoomController extends StateNotifier<RoomState> {
       })
       ..on<TrackMutedEvent>((_) => _syncLocalMedia())
       ..on<TrackUnmutedEvent>((_) => _syncLocalMedia())
-      ..on<ParticipantConnectedEvent>((_) => _bump())
+      ..on<ParticipantConnectedEvent>((e) {
+        // The captions agent joins a few seconds after it is dispatched and
+        // misses the "enabled" already sent; the web re-sends it when the
+        // agent appears, and so does this, if this device turned them on.
+        if (e.participant.kind == ParticipantKind.AGENT &&
+            _captionsRequestedHere &&
+            state.captionsOn) {
+          unawaited(_broadcastCaptions(true));
+        }
+        _bump();
+      })
       ..on<ParticipantDisconnectedEvent>((e) {
         final hands = Map<String, String>.from(state.raisedHands)
           ..remove(e.participant.identity);
@@ -1150,14 +1176,27 @@ class RoomController extends StateNotifier<RoomState> {
     if (finals.isEmpty) return;
     final text = finals.last.text.trim();
 
-    state = state.copyWith(caption: text, clearTranslatedCaption: true);
+    state = state.copyWith(
+      caption: text,
+      clearTranslatedCaption: true,
+      // Captions are arriving, so they are on, whoever switched them.
+      captionsOn: true,
+    );
 
     final target = state.translateTo;
     if (target == null) return;
-    unawaited(_translate(text, target));
+    unawaited(_translate(
+      text,
+      target,
+      speak: shouldSpeakTranslation(
+        speakOn: state.speakTranslations,
+        micOn: state.micOn,
+        fromMe: event.participant is LocalParticipant,
+      ),
+    ));
   }
 
-  Future<void> _translate(String text, String target) async {
+  Future<void> _translate(String text, String target, {bool speak = false}) async {
     try {
       final body = await api.post('/api/translate', {
         'text': text,
@@ -1170,6 +1209,7 @@ class RoomController extends StateNotifier<RoomState> {
         translatedCaption: translated,
         clearTranslationError: true,
       );
+      if (speak) _voice.speak(translated, target);
     } on ApiException catch (e) {
       if (_disposed) return;
       // 503 means the server has no DeepL key; that is a deployment fact
@@ -1187,6 +1227,9 @@ class RoomController extends StateNotifier<RoomState> {
   }
 
   /// Choose a language to translate captions into, or null to stop.
+  ///
+  /// A host choosing one turns captions on if they are off, as the web
+  /// does: there is nothing to translate without them.
   void setTranslation(String? language) {
     state = state.copyWith(
       translateTo: language,
@@ -1194,9 +1237,73 @@ class RoomController extends StateNotifier<RoomState> {
       clearTranslatedCaption: true,
       clearTranslationError: true,
     );
+    if (language == null) {
+      unawaited(_voice.stop());
+      return;
+    }
+    // The caption already on screen is shown translated, not read out:
+    // it was said before this was switched on.
     final caption = state.caption;
-    if (language != null && caption != null) {
-      unawaited(_translate(caption, language));
+    if (caption != null) unawaited(_translate(caption, language));
+    if (!state.captionsOn && state.role == 'host') unawaited(setCaptions(true));
+  }
+
+  void setSpeakTranslations(bool on) {
+    state = state.copyWith(speakTranslations: on);
+    if (!on) unawaited(_voice.stop());
+  }
+
+  /// Reads translations aloud; see [TranslationVoice].
+  late final TranslationVoice _voice = TranslationVoice(duck: _duckMeeting);
+
+  /// Turns everyone else's sound down while a translation is read, and
+  /// back up after.
+  Future<void> _duckMeeting(bool ducked) async {
+    for (final participant in room.remoteParticipants.values) {
+      for (final publication in participant.audioTrackPublications) {
+        final track = publication.track;
+        if (track == null) continue;
+        try {
+          await Helper.setVolume(ducked ? 0.15 : 1.0, track.mediaStreamTrack);
+        } catch (_) {
+          // A track that has just gone away; the next one still gets set.
+        }
+      }
+    }
+  }
+
+  /// This device switched captions on, so it re-announces them when the
+  /// captions agent arrives (it joins after the first announcement).
+  bool _captionsRequestedHere = false;
+
+  /// The host's captions switch — the web's CaptionsToggle. On: ask the
+  /// server to send the captions agent into the room, then tell everyone.
+  /// Off: tell everyone; the agent stops captioning.
+  Future<void> setCaptions(bool on) async {
+    if (on) {
+      try {
+        await api.post('/api/livekit/captions/dispatch', {
+          'room': _livekitRoom ?? slug,
+          'eventSlug': slug,
+        });
+      } on ApiException catch (e) {
+        state = state.copyWith(message: "Couldn't turn captions on: ${e.message}");
+        return;
+      }
+    }
+    _captionsRequestedHere = on;
+    state = state.copyWith(captionsOn: on);
+    await _broadcastCaptions(on);
+  }
+
+  Future<void> _broadcastCaptions(bool on) async {
+    try {
+      await room.localParticipant?.publishData(
+        utf8.encode(jsonEncode({'type': 'captions', 'enabled': on})),
+        reliable: true,
+      );
+    } catch (e) {
+      debugPrint('[captions] broadcast failed: $e');
     }
   }
 
@@ -1223,6 +1330,13 @@ class RoomController extends StateNotifier<RoomState> {
     } catch (e) {
       state = state.copyWith(lastDataError: 'decode failed: $e');
       return; // Never crash a meeting over one bad packet.
+    }
+
+    // The host's captions switch, as the web's CaptionsToggle sends it:
+    // no topic, {type: 'captions', enabled}.
+    if (payload['type'] == 'captions' && payload['enabled'] is bool) {
+      state = state.copyWith(captionsOn: payload['enabled'] as bool);
+      return;
     }
 
     switch (event.topic) {
@@ -1792,6 +1906,7 @@ class RoomController extends StateNotifier<RoomState> {
   void dispose() {
     _disposed = true;
     debugPrint('[neo-room] controller DISPOSED for $slug');
+    unawaited(_voice.dispose());
     MeetingPresence.instance.onPhoneCall.removeListener(_onPhoneCall);
     unawaited(MeetingPresence.instance.end());
     _knockTimer?.cancel();
