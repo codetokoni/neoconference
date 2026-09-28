@@ -1,0 +1,285 @@
+// src/lib/kc-signin.ts
+//
+// From a KingsChat access token to a Clerk sign-in ticket: fetch the
+// KingsChat profile, find the NeoConference account (by KingsChat id, then
+// by email) or create one, keep the KingsChat tokens for messaging later,
+// and mint a one-minute ticket the browser or the app redeems.
+//
+// Shared by the web OAuth callback (/api/auth/kingschat/callback), where
+// KingsChat posts the tokens, and the mobile route
+// (/api/auth/kingschat/mobile), where the app's KingsChat SDK handshake
+// hands us a code that is exchanged for them first. Moved here unchanged
+// from the callback route; failures return a code instead of redirecting,
+// and each caller answers in its own way.
+
+import { errorMessage, firstClerkError } from '@/lib/errorMessage';
+import { clerkClient } from '@clerk/nextjs/server';
+
+const PROFILE_URL = 'https://connect.kingsch.at/developer/api/profile';
+
+export type KcSignInResult =
+  | { ok: true; ticket: string; userId: string }
+  | { ok: false; code: string; debug?: string };
+
+function fail(code: string, debug?: string): KcSignInResult {
+  return { ok: false, code, debug };
+}
+
+export function flatten(obj: unknown, out: Record<string, string> = {}, depth = 0): Record<string, string> {
+  if (depth > 4 || obj === null || obj === undefined) return out;
+  if (Array.isArray(obj)) { obj.forEach(v => flatten(v, out, depth + 1)); return out; }
+  if (typeof obj === 'object') {
+    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+      if (v !== null && typeof v === 'object') flatten(v, out, depth + 1);
+      else if (v !== undefined && v !== null && String(v).length > 0) out[k.toLowerCase()] = String(v);
+    }
+  }
+  return out;
+}
+
+export function pick(flat: Record<string, string>, keys: string[]): string {
+  for (const k of keys) { const v = flat[k.toLowerCase()]; if (v) return v; }
+  return '';
+}
+
+export async function signInWithKcTokens(tokens: {
+  accessToken: string;
+  refreshToken?: string;
+  /** Seconds until the access token expires. */
+  expiresIn: number;
+  /**
+   * Keep the tokens for sending KingsChat messages later (default). The
+   * mobile app's tokens carry only the profile scope and come from another
+   * client id, so they could neither send nor be refreshed by the sender,
+   * and saving them would replace a web sign-in's tokens that can.
+   */
+  saveTokens?: boolean;
+}): Promise<KcSignInResult> {
+  const { accessToken, refreshToken, expiresIn, saveTokens = true } = tokens;
+
+  // Fetch profile from KingsChat
+  let profile: Record<string, unknown> = {};
+  try {
+    const r = await fetch(PROFILE_URL, {
+      headers: { Authorization: 'Bearer ' + accessToken },
+      cache: 'no-store',
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => '');
+      console.error('[kc-signin] profile fetch failed', r.status, txt.slice(0, 500));
+      return fail('profile_' + r.status, 'body=' + txt.slice(0, 200));
+    }
+    profile = await r.json();
+    console.log('[kc-signin] profile-keys=' + Object.keys(profile).join(','));
+  } catch (e) {
+    console.error('[kc-signin] profile fetch threw', e);
+    return fail('profile_fetch_failed');
+  }
+
+  // Profile may be wrapped in {user: {...}} or {profile: {...}} or flat
+  const flatProfile = flatten(profile);
+  const kcId = pick(flatProfile, [
+    'id', 'userid', 'user_id', 'kingschatid', 'kingschat_id',
+    'kcid', 'kc_id', 'sub', 'kingschatuserid', 'profileid'
+  ]);
+  const kcUsername = pick(flatProfile, ['username', 'user_name', 'handle', 'kc_username', 'name']);
+  const firstName = pick(flatProfile, ['firstname', 'first_name', 'givenname', 'given_name']);
+  const lastName  = pick(flatProfile, ['lastname', 'last_name', 'familyname', 'family_name', 'surname']);
+  const email     = pick(flatProfile, ['email', 'emailaddress', 'email_address', 'mail']);
+
+  if (!kcId) {
+    const debug = 'profile-keys=' + Object.keys(flatProfile).slice(0, 20).join(',');
+    return fail('missing_kc_user', debug);
+  }
+
+  const externalId = 'kc:' + kcId;
+  const cc = await clerkClient();
+
+  let user = null as null | { id: string };
+  try {
+    const list = await cc.users.getUserList({ externalId: [externalId], limit: 1 });
+    if (list.data && list.data.length > 0) user = list.data[0];
+  } catch {}
+
+  // Surface Clerk's full error shape (code + message + param) so a
+  // future auth failure names itself instead of "missing data". Clerk
+  // errors look like { code: 'form_param_missing', message: '...',
+  // meta: { param_name: 'email_address' } }. The URL-safe form makes
+  // the operator's debug URL directly interpretable.
+  // longMessage is included because the short one is useless on its own:
+  // a KC sign-in failed for days showing only "is invalid", while the
+  // log held "Email address must be a valid email address." all along.
+  const clerkMsg = (e: unknown): string => {
+    const anyE = e as { errors?: Array<{ code?: string; message?: string; longMessage?: string; meta?: { param_name?: string } }>; message?: string };
+    const err = anyE?.errors?.[0];
+    if (err) {
+      const parts = [err.code || 'error', err.longMessage || err.message || ''];
+      if (err.meta?.param_name) parts.push('[' + err.meta.param_name + ']');
+      return parts.filter(Boolean).join(':');
+    }
+    return anyE?.message || 'unknown';
+  };
+
+  const isInvalidEmail = (e: unknown): boolean => {
+    const err = (e as { errors?: Array<{ code?: string; meta?: { param_name?: string } }> })?.errors?.[0];
+    return err?.code === 'form_param_format_invalid' && err?.meta?.param_name === 'email_address';
+  };
+
+  if (!user && email) {
+    try {
+      const list = await cc.users.getUserList({ emailAddress: [email], limit: 1 });
+      if (list.data && list.data.length > 0) {
+        const existing = list.data[0];
+        try {
+          await cc.users.updateUser(existing.id, {
+            externalId,
+            publicMetadata: {
+              ...(existing.publicMetadata || {}),
+              kingschat: { id: kcId, username: kcUsername, linkedAt: new Date().toISOString() },
+            },
+          });
+          user = { id: existing.id };
+        } catch (e) {
+          console.error('[kc-signin] auto-link failed', e);
+          return fail('link_failed', clerkMsg(e).slice(0, 200));
+        }
+      }
+    } catch {}
+  }
+
+  if (!user) {
+    // Clerk requires at least one identifier (email, phone, or
+    // username) to create a user AND this instance additionally
+    // requires an email address on the account (that's what "form_
+    // data_missing" — surfaced after #225 — is telling us).
+    //
+    // #225 synthesized a username fallback but Clerk still rejected
+    // KC users who joined with a phone only. Synthesize an EMAIL
+    // fallback too — stable, deterministic, one placeholder per KC
+    // id — using a domain we control that will never route real
+    // mail. The email is marked verified because KC already proved
+    // account ownership (that's what the OAuth flow does); the
+    // placeholder just satisfies Clerk's schema, it is NOT a
+    // reachable communication channel.
+    //
+    // If KC did give us a real email we of course use that; the
+    // synthesis is fallback-only.
+    const safeKcId = String(kcId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24);
+    const usernameFallback = (kcUsername && kcUsername.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32)) || ('kc' + safeKcId);
+    // On a real domain we own. The first placeholder used kingschat.local,
+    // and .local is a reserved name rather than an internet domain, so
+    // Clerk refused it outright ("Email address must be a valid email
+    // address") — every KC user without an email was still locked out
+    // after the fix meant for them. The kc. subdomain has no mail
+    // records, so nothing sent here reaches anyone.
+    const synthesizedEmail = 'kc-' + safeKcId + '@kc.neoconference.app';
+
+    const createWith = (address: string, isPlaceholder: boolean) =>
+      cc.users.createUser({
+        externalId,
+        emailAddress: [address],
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
+        username: usernameFallback,
+        skipPasswordRequirement: true,
+        publicMetadata: {
+          kingschat: {
+            id: kcId,
+            username: kcUsername,
+            // Marks that the primary email is a placeholder AND
+            // preserves the fact that KC never gave us a real one,
+            // so a moderator can see it in the Clerk dashboard.
+            emailIsPlaceholder: isPlaceholder,
+          },
+        },
+      });
+
+    let effectiveEmail = email || synthesizedEmail;
+    try {
+      let created;
+      try {
+        created = await createWith(effectiveEmail, !email);
+      } catch (e) {
+        // KingsChat accounts can carry an address Clerk will not accept.
+        // That is no reason to refuse someone KC has already signed in:
+        // fall back to the placeholder, exactly as if KC had sent none.
+        if (!email || !isInvalidEmail(e)) throw e;
+        console.warn('[kc-signin] KC email rejected by Clerk; using placeholder');
+        effectiveEmail = synthesizedEmail;
+        created = await createWith(effectiveEmail, true);
+      }
+      user = { id: created.id };
+
+      // Mark the primary email verified. KingsChat already proved
+      // ownership (real email) OR it's a placeholder that satisfies
+      // schema (synthesized email) — either way Clerk demanding a
+      // verification code before letting the user in is friction
+      // with no security value. Only touchable via the
+      // emailAddresses resource — createUser doesn't take a
+      // verified flag.
+      try {
+        const fresh = await cc.users.getUser(created.id);
+        const emailRec = fresh.emailAddresses?.find(
+          (e) => e.emailAddress?.toLowerCase() === effectiveEmail.toLowerCase(),
+        );
+        if (emailRec?.id) {
+          await cc.emailAddresses.updateEmailAddress(emailRec.id, { verified: true });
+        }
+      } catch (e) {
+        console.warn('[kc-signin] mark email verified failed', e);
+      }
+    } catch (e) {
+      // Which kind of address was tried, never the address itself.
+      const emailSource = effectiveEmail === synthesizedEmail ? 'placeholder' : 'kingschat';
+      console.error('[kc-signin] createUser failed email=' + emailSource, e);
+      return fail('create_failed', clerkMsg(e).slice(0, 200));
+    }
+  } else {
+    try {
+      await cc.users.updateUser(user.id, {
+        publicMetadata: { kingschat: { id: kcId, username: kcUsername } },
+      });
+    } catch {}
+  }
+
+  // Persist the KC OAuth tokens so we can push messages to this user
+  // later on (Recurring Roles "Send via KingsChat" — see
+  // /api/kc/send). Stored in KV keyed by Clerk userId; NOT in
+  // publicMetadata because those are exposed client-side and access
+  // tokens have no business being reachable from the browser.
+  //
+  // Also register the handle -> Clerk userId index so the sender can
+  // resolve a KC handle without scanning every Clerk user. Both
+  // writes are best-effort — a KV blip does not block the sign-in.
+  try {
+    const { saveKcTokens, indexKcHandle } = await import('@/lib/kc-tokens');
+    if (saveTokens) {
+      await saveKcTokens(user!.id, {
+        accessToken,
+        refreshToken: refreshToken || undefined,
+        expiresAt: Date.now() + expiresIn * 1000,
+      });
+    }
+    if (kcUsername) {
+      await indexKcHandle(kcUsername, user!.id);
+    }
+  } catch (persistErr) {
+    console.warn('[kc-signin] saveKcTokens/indexKcHandle failed', persistErr);
+  }
+
+  let ticket = '';
+  try {
+    const res = await cc.signInTokens.createSignInToken({
+      userId: user!.id,
+      expiresInSeconds: 60,
+    });
+    ticket = res?.token || '';
+  } catch (e) {
+    console.error('[kc-signin] signInToken failed', e);
+    const msg = (firstClerkError(e)?.message || errorMessage(e)) || 'unknown';
+    return fail('ticket_failed', msg.slice(0, 200));
+  }
+  if (!ticket) return fail('ticket_failed');
+
+  return { ok: true, ticket, userId: user!.id };
+}

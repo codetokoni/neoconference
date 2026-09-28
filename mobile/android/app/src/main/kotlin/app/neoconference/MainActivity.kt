@@ -57,6 +57,8 @@ class MainActivity : FlutterActivity() {
         )
     }
 
+    private val kingsChat = KingsChatLogin()
+
     private companion object {
         const val BLUETOOTH_REQUEST = 8801
         const val PHONE_REQUEST = 8802
@@ -71,6 +73,20 @@ class MainActivity : FlutterActivity() {
         )
         channel = methods
         network.start()
+
+        // KingsChat login through the installed KingsChat app. See
+        // KingsChatLogin for why this is not the KingsLogin library.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.neoconference/kingschat")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "authorize" -> kingsChat.authorize(
+                        this,
+                        call.argument<List<String>>("scopes") ?: listOf("profile"),
+                        result,
+                    )
+                    else -> result.notImplemented()
+                }
+            }
 
         methods.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -170,6 +186,13 @@ class MainActivity : FlutterActivity() {
             PHONE_REQUEST
         )
         return false
+    }
+
+    @Deprecated("FlutterActivity still routes activity results through here")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        if (kingsChat.onActivityResult(requestCode, resultCode, data)) return
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onRequestPermissionsResult(
