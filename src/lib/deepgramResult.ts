@@ -96,6 +96,12 @@ export function emptyTranscriptMessage(body: DeepgramResponse): string {
     return 'Deepgram received no audio (' + seconds.toFixed(1) + ' s): the recording may be empty.';
   }
   let heard = typeof seconds === 'number' ? 'Deepgram heard ' + Math.round(seconds) + ' s of audio' : 'Deepgram heard the audio';
+  // Under 30% it is not naming a language, it is failing to find speech:
+  // a real near-silent minute came back "English, 0% sure".
+  if (typeof channel?.language_confidence === 'number' && channel.language_confidence < 0.3) {
+    heard += ' but no speech it could make out. Was the microphone on and near the speaker?';
+    return warnings.length > 0 ? heard + ' Deepgram said: ' + warnings.join('; ') : heard;
+  }
   if (channel?.detected_language) {
     heard += ' (language detected: ' + languageName(channel.detected_language);
     if (typeof channel.language_confidence === 'number') {

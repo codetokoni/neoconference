@@ -62,7 +62,7 @@ void main() {
                 'key': key,
                 'size': 5 * 1024 * 1024,
                 'lastModified': '2026-09-27T21:00:00.000Z',
-                'transcript': {'status': 'done'},
+                'transcript': {'status': 'done', 'text': 'Can you hear me? Yes. Okay.'},
               },
             ],
           });
@@ -152,6 +152,18 @@ void main() {
     final invite = sent.singleWhere((r) => r.url.path == '/api/events/evt_1/invite-kc');
     expect(jsonDecode(invite.body), {'handle': 'ada', 'role': 'moderator', 'sendMessage': true});
     expect(find.textContaining('No KingsChat message was sent'), findsOneWidget);
+  });
+
+  testWidgets('a transcribed recording can be read', (tester) async {
+    // It said "Transcribed" and showed no words: the owner took that for
+    // no transcript at all.
+    tall(tester);
+    await tester.pumpWidget(app(const ManageMeetingScreen(slug: 'testneo')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Read transcript'));
+    await tester.pumpAndSettle();
+    expect(find.text('Can you hear me? Yes. Okay.'), findsOneWidget);
   });
 
   testWidgets('delete sends nothing until the address is typed back', (tester) async {
