@@ -159,17 +159,22 @@ class NeoAvatar extends StatelessWidget {
     final trimmed = name.trim();
     final initial = trimmed.isEmpty ? '?' : trimmed[0].toUpperCase();
     final colors = _palette[trimmed.hashCode.abs() % _palette.length];
+    // Coat of Many: one colour each, not a blend of two.
+    final own = NeoTheme.of(context).spectrumFor(trimmed);
 
     return Container(
       height: size,
       width: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: colors,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: own,
+        gradient: own != null
+            ? null
+            : LinearGradient(
+                colors: colors,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
       ),
       child: Center(
         child: Text(

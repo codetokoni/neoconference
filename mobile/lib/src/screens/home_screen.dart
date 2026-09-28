@@ -405,6 +405,7 @@ class _QuickActions extends StatelessWidget {
             icon: Icons.add_link_rounded,
             label: 'Join',
             filled: true,
+            spectrumIndex: 2,
             onTap: () => neoSheet(context, builder: (_) => const JoinSheet()),
           ),
         ),
@@ -413,6 +414,7 @@ class _QuickActions extends StatelessWidget {
           child: _Action(
             icon: Icons.videocam_rounded,
             label: 'Start',
+            spectrumIndex: 3,
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => const PreJoinScreen(instant: true),
@@ -425,6 +427,7 @@ class _QuickActions extends StatelessWidget {
           child: _Action(
             icon: Icons.calendar_month_rounded,
             label: 'Schedule',
+            spectrumIndex: 5,
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const ScheduleScreen()),
             ),
@@ -440,6 +443,7 @@ class _Action extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    required this.spectrumIndex,
     this.filled = false,
   });
 
@@ -448,13 +452,19 @@ class _Action extends StatelessWidget {
   final VoidCallback onTap;
   final bool filled;
 
+  /// Which colour this button wears in a theme of many (Coat of Many),
+  /// where each button is filled with a colour of its own.
+  final int spectrumIndex;
+
   @override
   Widget build(BuildContext context) {
     final p = NeoTheme.of(context);
+    final own = p.spectrumAt(spectrumIndex);
+    final filled = this.filled || own != null;
     final fg = filled ? p.onPrimary : p.text;
 
     return Material(
-      color: filled ? p.primary : p.surfaceAlt,
+      color: own ?? (filled ? p.primary : p.surfaceAlt),
       borderRadius: BorderRadius.circular(NeoRadius.lg),
       child: InkWell(
         onTap: onTap,
@@ -503,6 +513,8 @@ class _MeetingRow extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final starts = meeting.startsAt;
     final invited = meeting.knownParticipants;
+    final own = p.spectrumFor(meeting.code);
+    final tileFg = own != null ? p.onPrimary : (past ? p.textMuted : p.primary);
 
     // A permanent room has a last-used time, not a start time. Printing
     // "6 days ago" under a room that is open right now reads as though it
@@ -533,22 +545,21 @@ class _MeetingRow extends StatelessWidget {
             width: 44,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: p.surfaceHigh,
+              // Coat of Many: each meeting in a colour of its own.
+              color: own ?? p.surfaceHigh,
               borderRadius: BorderRadius.circular(NeoRadius.md),
             ),
             child: starts != null && !meeting.recurring
                 ? Text(
                     neoClock(starts),
-                    style: text.labelMedium?.copyWith(
-                      color: past ? p.textMuted : p.primary,
-                    ),
+                    style: text.labelMedium?.copyWith(color: tileFg),
                   )
                 : Icon(
                     meeting.recurring
                         ? Icons.meeting_room_rounded
                         : Icons.event_rounded,
                     size: 20,
-                    color: past ? p.textMuted : p.primary,
+                    color: tileFg,
                   ),
           ),
           const SizedBox(width: NeoSpace.md),

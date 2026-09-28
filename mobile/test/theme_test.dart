@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neoconference/src/design/brand.dart';
+import 'package:neoconference/src/design/components.dart';
 import 'package:neoconference/src/design/neo_theme.dart';
 import 'package:neoconference/src/design/themes.dart';
 import 'package:neoconference/src/design/tokens.dart';
@@ -26,21 +27,45 @@ void main() {
   };
 
   group('Coat of Many', () {
-    test('is every colour: a spectrum, and a gradient from it', () {
+    test('is every colour, each one on its own', () {
       final spectrum = NeoPalette.coatOfMany.spectrum!;
       expect(spectrum.length, greaterThanOrEqualTo(7));
       expect(spectrum.toSet().length, spectrum.length, reason: 'no colour twice');
-      expect(NeoPalette.coatOfMany.spectrumGradient, isNotNull);
       // Wraps rather than running off the end.
       expect(NeoPalette.coatOfMany.spectrumAt(spectrum.length), spectrum.first);
+    });
+
+    test('a meeting keeps its own colour wherever it is shown', () {
+      const p = NeoPalette.coatOfMany;
+      expect(p.spectrumFor('host-control'), p.spectrumFor('host-control'));
+      expect(p.spectrum, contains(p.spectrumFor('host-control')));
+      // Different meetings are not all one colour.
+      final seen = {for (final code in ['a', 'b', 'c', 'd', 'e']) p.spectrumFor(code)};
+      expect(seen.length, greaterThan(1));
     });
 
     test('every other theme keeps its single primary', () {
       for (final entry in palettes.entries.where((e) => e.key != 'coatOfMany')) {
         expect(entry.value.spectrum, isNull, reason: entry.key);
-        expect(entry.value.spectrumGradient, isNull, reason: entry.key);
         expect(entry.value.spectrumAt(0), isNull, reason: entry.key);
+        expect(entry.value.spectrumFor('x'), isNull, reason: entry.key);
       }
+    });
+
+    testWidgets('the logo and avatars wear one colour each, never a blend', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: NeoTheme(
+          palette: NeoPalette.coatOfMany,
+          child: const Column(children: [NeoLogo(), NeoAvatar(name: 'Host control')]),
+        ),
+      ));
+      final gradients = tester
+          .widgetList<Container>(find.byType(Container))
+          .map((c) => c.decoration)
+          .whereType<BoxDecoration>()
+          .where((d) => d.gradient != null);
+      expect(gradients, isEmpty);
+      expect(find.byType(ShaderMask), findsNothing, reason: 'the wordmark is one colour');
     });
 
     test('can be picked', () {
