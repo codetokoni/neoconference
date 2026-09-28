@@ -8,6 +8,7 @@ import '../design/tokens.dart';
 import '../meetings/meeting_board.dart';
 import '../meetings/meeting_view.dart';
 import '../meetings/when.dart';
+import '../manage/manage_screen.dart';
 import 'home_screen.dart' show nowProvider;
 import 'prejoin_screen.dart';
 
@@ -184,6 +185,7 @@ class _PastRow extends StatelessWidget {
           ),
           if (meeting.hasRecording)
             Icon(Icons.play_circle_fill_rounded, color: p.primary),
+          ManageMeetingButton(meeting: meeting),
         ],
       ),
     );

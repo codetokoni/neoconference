@@ -59,6 +59,25 @@ class ApiClient {
     return _decode(res, 'POST $path');
   }
 
+  Future<dynamic> patch(String path, [Object? body]) => _withBody('PATCH', path, body);
+
+  Future<dynamic> delete(String path, [Object? body]) => _withBody('DELETE', path, body);
+
+  Future<dynamic> _withBody(String method, String path, Object? body) async {
+    final clock = Stopwatch()..start();
+    final headers = await _headers();
+    final tokenMs = clock.elapsedMilliseconds;
+    final request = http.Request(method, Uri.parse('${Config.site}$path'))
+      ..headers.addAll({
+        ...headers,
+        if (body != null) 'content-type': 'application/json',
+      });
+    if (body != null) request.body = jsonEncode(body);
+    final res = await http.Response.fromStream(await _http.send(request));
+    _time('$method $path', tokenMs, clock.elapsedMilliseconds, res.statusCode);
+    return _decode(res, '$method $path');
+  }
+
   /// Logs a slow request, split into getting the session token and the
   /// request itself — they fail for different reasons and live on
   /// different servers (Clerk and neoconference.app).

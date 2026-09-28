@@ -8,6 +8,7 @@ import '../design/tokens.dart';
 import '../meetings/meeting_board.dart';
 import '../meetings/meeting_view.dart';
 import '../meetings/when.dart';
+import '../manage/manage_screen.dart';
 import 'join_sheet.dart';
 import 'prejoin_screen.dart';
 import 'schedule_screen.dart';
@@ -599,6 +600,7 @@ class _MeetingRow extends StatelessWidget {
             NeoPill('Live', color: p.primary, dot: true)
           else if (meeting.canJoin)
             Icon(Icons.chevron_right_rounded, color: p.textFaint),
+          ManageMeetingButton(meeting: meeting),
         ],
       ),
     );
