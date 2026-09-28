@@ -99,22 +99,25 @@ export default async function Home() {
       {/* Showcase strip */}
       <section className="relative mx-auto max-w-7xl px-6 pt-6 pb-12">
         <div className="grid gap-5 sm:grid-cols-3">
+          {/* Each card says only what the product does today, in words a
+              visitor uses. Recording is plan-gated (planLimits.recording),
+              so the card says so. */}
           <ShowcaseCard
-            badge="Replay"
-            title="Cinematic event replays"
-            desc="Auto-published HLS, transcripts and chapter markers at /e/<slug>/replay."
+            badge="Record"
+            title="Recordings, transcripts and summaries"
+            desc="Record the meeting, then get a written transcript and an AI summary of what was said. Recording is on Pro and above."
             href="/dashboard"
           />
           <ShowcaseCard
-            badge="Live"
-            title="Multistream to anywhere"
-            desc="One Go-Live button: LiveKit + StreamLab Cloud + RTMP simulcast."
+            badge="Host"
+            title="You stay in control"
+            desc="Let people in from the waiting room, add hosts and cohosts by their KingsChat handle, and mute or remove anyone."
             href="/dashboard/new"
           />
           <ShowcaseCard
-            badge="Smart"
-            title="QR + dynamic shortlinks"
-            desc="Print-once QR codes with HSMOH-backed waiting / live / replay routing."
+            badge="Share"
+            title="One link, a QR code and the app"
+            desc="Every meeting gets a short link and a QR code to print or share. On Android, the link opens straight in the NeoConference app."
             href="/dashboard/new"
           />
         </div>
