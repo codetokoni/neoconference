@@ -63,7 +63,7 @@ class LandingScreen extends ConsumerWidget {
                 lines: [
                   '100 participants',
                   '120 minutes per meeting',
-                  'No recording, no translation',
+                  'No recording',
                 ],
               ),
               const _PriceCard(
@@ -75,7 +75,7 @@ class LandingScreen extends ConsumerWidget {
                   '200 participants',
                   'No time limit',
                   'Recording and breakouts',
-                  'Live translation',
+                  "Choose a meeting's translation languages",
                 ],
               ),
               const _PriceCard(
@@ -84,9 +84,13 @@ class LandingScreen extends ConsumerWidget {
                 annual: 300,
                 lines: [
                   '500 participants',
-                  'Recording, breakouts, branding',
-                  'Live translation',
+                  'Recording and breakouts',
+                  "Choose a meeting's translation languages",
                 ],
+              ),
+              const _Note(
+                'Live translation — hearing speakers in your language — is on '
+                'every plan, Free included.',
               ),
               const _Note(
                 'Enterprise, including livestreaming, is arranged directly — '
@@ -158,8 +162,8 @@ class _CurrentPlanCard extends StatelessWidget {
             _Limit(plan.minutesLabel, true),
             _Limit('Recording', plan.recording),
             _Limit('Breakout rooms', plan.breakouts),
-            _Limit('Live translation', plan.translation),
-            _Limit('Custom branding', plan.branding),
+            _Limit('Live translation', true),
+            _Limit("Choose a meeting's translation languages", plan.translation),
             _Limit('Livestreaming', plan.livestream),
           ],
         ),

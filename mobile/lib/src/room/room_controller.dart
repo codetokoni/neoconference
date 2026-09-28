@@ -19,6 +19,7 @@ import 'headset_keeper.dart';
 import 'meeting_drop.dart';
 import 'meeting_presence.dart';
 import 'phone_call_policy.dart';
+import 'plan_limit.dart';
 import 'reconnect_watchdog.dart';
 import 'translation_voice.dart';
 import 'weak_link.dart';
@@ -177,6 +178,7 @@ class RoomState {
     this.endPinRequired = false,
     this.roomRecording = false,
     this.isOwner = false,
+    this.recordingAllowed = true,
   });
 
   final JoinPhase phase;
@@ -292,6 +294,11 @@ class RoomState {
   /// the device that started the recording.
   final bool roomRecording;
 
+  /// Whether the meeting owner's plan includes recording (Pro and above).
+  /// Record is not offered otherwise; the server refuses it anyway. True
+  /// until the plan is known, so an older token hides nothing it shouldn't.
+  final bool recordingAllowed;
+
   /// This person owns the meeting. Only the owner may make someone a host
   /// (FRS §1.1), as on the web.
   final bool isOwner;
@@ -353,6 +360,7 @@ class RoomState {
     bool? endPinRequired,
     bool? roomRecording,
     bool? isOwner,
+    bool? recordingAllowed,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
@@ -409,6 +417,7 @@ class RoomState {
         endPinRequired: endPinRequired ?? this.endPinRequired,
         roomRecording: roomRecording ?? this.roomRecording,
         isOwner: isOwner ?? this.isOwner,
+        recordingAllowed: recordingAllowed ?? this.recordingAllowed,
       );
 }
 
@@ -500,6 +509,27 @@ class RoomController extends StateNotifier<RoomState> {
   bool _disposed = false;
 
   late final _reconnectWatchdog = ReconnectWatchdog(onGiveUp: _giveUpReconnecting);
+
+  late final _timeLimit = MeetingTimeLimit(
+    onWarn: (left) {
+      if (_disposed) return;
+      state = state.copyWith(
+        message: 'This meeting ends in $left minute${left == 1 ? '' : 's'}: '
+            "the owner's plan limits how long it runs.",
+      );
+    },
+    onEnd: (minutes) => unawaited(_endForTimeLimit(minutes)),
+  );
+
+  /// The owner's plan ran out of minutes: leave, and say why rather than
+  /// "you were disconnected".
+  Future<void> _endForTimeLimit(int minutes) async {
+    if (_disposed) return;
+    debugPrint('[neo-room] plan time limit reached ($minutes min)');
+    await leave();
+    if (_disposed) return;
+    _onDropped(timeLimitDrop(minutes));
+  }
 
   late final _autoRejoin = AutoRejoin(
     attempt: _rejoinAttempt,
@@ -833,6 +863,15 @@ class RoomController extends StateNotifier<RoomState> {
       link: RoomLink.live,
       clearMessage: true,
     );
+
+    // The owner's plan, from this device's own token: whether Record is
+    // offered, and how long the meeting may run (Free 60 minutes, Starter
+    // 120), counted from joining as the web counts it.
+    final limits = MeetingPlanLimits.fromMetadata(room.localParticipant?.metadata);
+    if (limits != null) {
+      state = state.copyWith(recordingAllowed: limits.recording);
+      _timeLimit.start(limits.meetingMinutes);
+    }
 
     // The foreground service starts here rather than at join, because
     // Android 14 only allows a microphone-type service to be started while
@@ -1912,6 +1951,9 @@ class RoomController extends StateNotifier<RoomState> {
     // a meeting" notification never outlives the meeting. Ending it twice
     // is harmless; leaving it running is a lie in the status bar.
     _autoRejoin.stop();
+    // Leaving ends the sitting; joining again counts from the start, as
+    // the web's countdown does.
+    _timeLimit.cancel();
     await MeetingPresence.instance.end();
     await room.disconnect();
   }
@@ -1925,6 +1967,7 @@ class RoomController extends StateNotifier<RoomState> {
     unawaited(MeetingPresence.instance.end());
     _knockTimer?.cancel();
     _hostTimer?.cancel();
+    _timeLimit.cancel();
     _chatPoller.stop();
     _waitingPoller.stop();
     _lifecycle?.dispose();

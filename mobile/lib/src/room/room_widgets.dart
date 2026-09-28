@@ -336,6 +336,48 @@ class WaitingRoomSheet extends ConsumerWidget {
   }
 }
 
+/// Record, Stop, or why neither is offered.
+///
+/// Recording is on Pro and above (the meeting owner's plan). On another
+/// plan it is not offered — the server refuses it anyway — and the host is
+/// told why, unless a recording is already running, which is always shown.
+class HostRecordControl extends StatelessWidget {
+  const HostRecordControl({super.key, required this.state, required this.onToggle});
+
+  final RoomState state;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = NeoTheme.of(context);
+    if (!state.recordingAllowed && !state.isRecording) {
+      return Text(
+        "Recording is on the Pro plan and above, and this meeting's owner "
+        'is not on one.',
+        style: TextStyle(color: palette.textMuted, fontSize: 12),
+      );
+    }
+    // A recording started on another device cannot be stopped from here
+    // (the stop route needs its egress id), and offering Record would
+    // start a second one. Shown, not offered.
+    return OutlinedButton.icon(
+      onPressed: state.isRecording && !state.recordingHere ? null : onToggle,
+      icon: Icon(
+        state.isRecording ? Icons.stop_circle_outlined : Icons.fiber_manual_record,
+        size: 18,
+        color: state.isRecording ? palette.danger : null,
+      ),
+      label: Text(
+        !state.isRecording
+            ? 'Record'
+            : state.recordingHere
+                ? 'Stop'
+                : 'Recording',
+      ),
+    );
+  }
+}
+
 /// Mute, remove, record — the things only a host or co-host may do.
 ///
 /// Every one of these is a request to the server, which checks the role
@@ -374,28 +416,9 @@ class HostControlsSheet extends ConsumerWidget {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    // A recording started on another device cannot be stopped
-                    // from here (the stop route needs its egress id), and
-                    // offering Record would start a second one. Shown, not
-                    // offered.
-                    child: OutlinedButton.icon(
-                      onPressed: state.isRecording && !state.recordingHere
-                          ? null
-                          : controller.toggleRecording,
-                      icon: Icon(
-                        state.isRecording
-                            ? Icons.stop_circle_outlined
-                            : Icons.fiber_manual_record,
-                        size: 18,
-                        color: state.isRecording ? palette.danger : null,
-                      ),
-                      label: Text(
-                        !state.isRecording
-                            ? 'Record'
-                            : state.recordingHere
-                                ? 'Stop'
-                                : 'Recording',
-                      ),
+                    child: HostRecordControl(
+                      state: state,
+                      onToggle: controller.toggleRecording,
                     ),
                   ),
                 ),
