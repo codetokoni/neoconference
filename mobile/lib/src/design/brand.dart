@@ -25,7 +25,7 @@ class NeoLogoMark extends StatelessWidget {
       height: size,
       width: size,
       decoration: BoxDecoration(
-        gradient: NeoPalette.markGradient,
+        gradient: NeoTheme.of(context).spectrumGradient ?? NeoPalette.markGradient,
         borderRadius: BorderRadius.circular(size * 0.3),
         border: Border.all(color: Colors.white.withValues(alpha: 0.30)),
         boxShadow: glow && dark
@@ -105,7 +105,7 @@ class NeoWordmark extends StatelessWidget {
         // website paints the second half of the wordmark.
         ShaderMask(
           shaderCallback: (bounds) =>
-              NeoPalette.wordmarkGradient.createShader(bounds),
+              (palette.spectrumGradient ?? NeoPalette.wordmarkGradient).createShader(bounds),
           blendMode: BlendMode.srcIn,
           child: Text(style: style.copyWith(color: Colors.white), 'Conference'),
         ),

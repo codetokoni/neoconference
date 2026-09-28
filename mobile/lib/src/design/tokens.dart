@@ -29,6 +29,7 @@ class NeoPalette {
     required this.warning,
     required this.scrim,
     required this.brightness,
+    this.spectrum,
   });
 
   final Color bg;
@@ -50,7 +51,64 @@ class NeoPalette {
   final Color scrim;
   final Brightness brightness;
 
+  /// A run of colours for a theme that is all of them (Coat of Many): the
+  /// logo, the band above the tab bar, the tabs and each meeting control
+  /// take one each. Null for every other theme, which keeps one primary.
+  final List<Color>? spectrum;
+
   bool get isDark => brightness == Brightness.dark;
+
+  /// The spectrum as a gradient, or null when the theme has none.
+  LinearGradient? get spectrumGradient {
+    final colors = spectrum;
+    if (colors == null || colors.length < 2) return null;
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: colors,
+    );
+  }
+
+  /// The spectrum colour for the [index]th item, wrapping, or null.
+  Color? spectrumAt(int index) {
+    final colors = spectrum;
+    if (colors == null || colors.isEmpty) return null;
+    return colors[index % colors.length];
+  }
+
+  /// Coat of Many: every colour, on a deep ground they all read against.
+  /// Named for Joseph's coat. Text stays near-white; colour is carried by
+  /// the spectrum rather than by the words.
+  static const coatOfMany = NeoPalette(
+    bg: Color(0xFF09070F),
+    surface: Color(0xFF120E1C),
+    surfaceAlt: Color(0xFF1A1428),
+    surfaceHigh: Color(0xFF261D3A),
+    border: Color(0x33F9A8D4),
+    borderStrong: Color(0x66FDE68A),
+    text: Color(0xFFFFFBF2),
+    textMuted: Color(0xBFF3E8FF),
+    textFaint: Color(0x80F3E8FF),
+    primary: Color(0xFFFBBF24),
+    onPrimary: Color(0xFF1A1206),
+    accent: Color(0xFFF472B6),
+    info: Color(0xFF60A5FA),
+    danger: Color(0xFFF87171),
+    success: Color(0xFF4ADE80),
+    warning: Color(0xFFFB923C),
+    scrim: Color(0xCC09070F),
+    brightness: Brightness.dark,
+    spectrum: [
+      Color(0xFFF87171), // red
+      Color(0xFFFB923C), // orange
+      Color(0xFFFACC15), // yellow
+      Color(0xFF4ADE80), // green
+      Color(0xFF22D3EE), // cyan
+      Color(0xFF60A5FA), // blue
+      Color(0xFFA78BFA), // indigo
+      Color(0xFFF472B6), // violet
+    ],
+  );
 
   /// The website's palette, verbatim from globals.css.
   static const dark = NeoPalette(

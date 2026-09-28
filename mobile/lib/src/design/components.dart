@@ -203,7 +203,12 @@ class NeoControlButton extends StatelessWidget {
     this.enabled = true,
     this.onMenu,
     this.menuLabel,
+    this.tint,
   });
+
+  /// This button's own colour, for a theme of every colour (Coat of Many).
+  /// Null keeps the theme's primary.
+  final Color? tint;
 
   final IconData icon;
   final String label;
@@ -232,7 +237,10 @@ class NeoControlButton extends StatelessWidget {
       bg = p.danger;
     } else if (active) {
       fg = p.onPrimary;
-      bg = p.primary;
+      bg = tint ?? p.primary;
+    } else if (tint != null) {
+      fg = tint!;
+      bg = tint!.withValues(alpha: 0.2);
     } else {
       fg = p.text;
       bg = p.surfaceHigh;

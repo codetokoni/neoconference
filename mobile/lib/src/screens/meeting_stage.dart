@@ -689,6 +689,7 @@ class _Controls extends StatelessWidget {
             child: NeoControlButton(
               icon: room.micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
               label: room.micOn ? 'Mute' : 'Unmute',
+              tint: p.spectrumAt(3),
               active: room.micOn,
               onPressed: onMic,
               onMenu: onMicMenu,
@@ -701,6 +702,7 @@ class _Controls extends StatelessWidget {
                   ? Icons.videocam_rounded
                   : Icons.videocam_off_rounded,
               label: room.cameraOn ? 'Stop' : 'Video',
+              tint: p.spectrumAt(5),
               active: room.cameraOn,
               onPressed: onCamera,
               onMenu: onCameraMenu,
@@ -711,6 +713,7 @@ class _Controls extends StatelessWidget {
             child: NeoControlButton(
               icon: Icons.chat_bubble_rounded,
               label: 'Chat',
+              tint: p.spectrumAt(6),
               badge: room.unreadChat,
               enabled: onChat != null,
               onPressed: onChat ?? () {},
@@ -720,6 +723,7 @@ class _Controls extends StatelessWidget {
             child: NeoControlButton(
               icon: Icons.more_horiz_rounded,
               label: 'More',
+              tint: p.spectrumAt(2),
               active: room.handRaised || room.screenSharing,
               onPressed: onMore,
             ),

@@ -22,7 +22,33 @@ void main() {
     'amethyst': NeoPalette.amethyst,
     'carbon': NeoPalette.carbon,
     'sandstone': NeoPalette.sandstone,
+    'coatOfMany': NeoPalette.coatOfMany,
   };
+
+  group('Coat of Many', () {
+    test('is every colour: a spectrum, and a gradient from it', () {
+      final spectrum = NeoPalette.coatOfMany.spectrum!;
+      expect(spectrum.length, greaterThanOrEqualTo(7));
+      expect(spectrum.toSet().length, spectrum.length, reason: 'no colour twice');
+      expect(NeoPalette.coatOfMany.spectrumGradient, isNotNull);
+      // Wraps rather than running off the end.
+      expect(NeoPalette.coatOfMany.spectrumAt(spectrum.length), spectrum.first);
+    });
+
+    test('every other theme keeps its single primary', () {
+      for (final entry in palettes.entries.where((e) => e.key != 'coatOfMany')) {
+        expect(entry.value.spectrum, isNull, reason: entry.key);
+        expect(entry.value.spectrumGradient, isNull, reason: entry.key);
+        expect(entry.value.spectrumAt(0), isNull, reason: entry.key);
+      }
+    });
+
+    test('can be picked', () {
+      final option = neoThemeOption(NeoThemeChoice.coatOfMany);
+      expect(option.name, 'Coat of Many');
+      expect(option.palette, NeoPalette.coatOfMany);
+    });
+  });
 
   group('every palette themes the shared surfaces', () {
     for (final entry in palettes.entries) {
