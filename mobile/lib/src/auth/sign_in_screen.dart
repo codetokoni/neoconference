@@ -110,7 +110,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                           ? null
                           : () => ref
                               .read(authProvider.notifier)
-                              .signInWithProvider('kingschat'),
+                              .signInWithKingsChat(),
                     ),
                     const SizedBox(height: 12),
                     _ProviderButton(

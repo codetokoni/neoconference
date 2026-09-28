@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -220,6 +223,72 @@ class AuthController extends StateNotifier<AuthState> {
       );
     }
     // Otherwise the deep-link listener takes it from here.
+  }
+
+  static const _kingsChat = MethodChannel('app.neoconference/kingschat');
+
+  /// KingsChat login through the installed KingsChat app, as KingsChat's
+  /// mobile docs describe it: KingsChat authorises this app and returns a
+  /// one-time code, the server exchanges it and answers with the same
+  /// Clerk ticket the browser flow ends in.
+  ///
+  /// Falls back to the browser sign-in when KingsChat is not installed, is
+  /// too old to sign apps in, or this platform has no native side (iOS).
+  Future<void> signInWithKingsChat() async {
+    state = state.copyWith(busy: true, clearError: true);
+    Map<String, dynamic>? result;
+    try {
+      result = await _kingsChat.invokeMapMethod<String, dynamic>(
+        'authorize',
+        // The scope the app is registered for on the KingsChat console.
+        {'scopes': const ['profile']},
+      );
+    } on MissingPluginException {
+      result = null;
+    } on PlatformException {
+      result = null;
+    }
+
+    final status = result?['status'];
+    if (result == null || status == 'not_installed' || status == 'not_supported') {
+      return signInWithProvider('kingschat');
+    }
+    if (status == 'cancelled') {
+      state = state.copyWith(busy: false);
+      return;
+    }
+    final code = result['code'];
+    if (status != 'ok' || code is! String) {
+      state = state.copyWith(
+        busy: false,
+        error: (result['message'] as String?) ?? 'KingsChat sign-in did not complete.',
+      );
+      return;
+    }
+
+    try {
+      final response = await http.post(
+        Uri.parse('${Config.site}/api/auth/kingschat/mobile'),
+        headers: const {'content-type': 'application/json'},
+        body: jsonEncode({'code': code}),
+      );
+      final body = response.body.isEmpty ? null : jsonDecode(response.body);
+      final ticket = body is Map ? body['ticket'] : null;
+      if (response.statusCode != 200 || ticket is! String) {
+        final reason = body is Map ? body['error'] : null;
+        state = state.copyWith(
+          busy: false,
+          error: 'KingsChat sign-in did not complete (${reason ?? response.statusCode}). Please try again.',
+        );
+        return;
+      }
+      await _completeWithTicket(ticket);
+    } catch (_) {
+      state = state.copyWith(
+        busy: false,
+        error: 'Could not reach NeoConference to finish signing in. Check your connection.',
+      );
+    }
   }
 
   Future<void> _completeWithTicket(String ticket) async {

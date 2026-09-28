@@ -109,6 +109,13 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- KingsChat login (developers.kingschat.online/docs/mobile): the
+             client id of the Android application registered on the
+             KingsChat console for this package and signing certificate. -->
+        <meta-data
+            android:name="com.kingschat.sdk.ApplicationId"
+            android:value="0dcd6e74-a404-4372-b399-dc2193679135" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -125,5 +132,9 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
         </intent>
+        <!-- KingsChat login asks the installed KingsChat app to authorise
+             us. Without this, Android 11+ hides the app from us and the
+             sign-in looks as though KingsChat were not installed. -->
+        <package android:name="com.joinkingschat.android"/>
     </queries>
 </manifest>
