@@ -3,7 +3,13 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { authorize } from "@/lib/authz";
-import { getPlanForUserId, getPlanLimits } from "@/lib/plan";
+import { getPlanForUserId, getPlanLimits, isAdminUserId } from "@/lib/plan";
+import {
+  recordedSeconds,
+  recordingAllowance,
+  rememberEgressOwner,
+  usageMonth,
+} from "@/lib/recordingUsage";
 import {
   EgressClient,
   EncodedFileType,
@@ -69,6 +75,31 @@ export async function POST(req: Request) {
           plan: ownerPlan,
           message:
             "Recording is on the Pro plan and above. The meeting's owner can upgrade at neoconference.app/pricing.",
+        },
+        { status: 402 }
+      );
+    }
+
+    // Recording hours per month (Pro 10, Business 50), counted against the
+    // owner when each recording finishes (lib/recordingUsage). Operators are
+    // exempt, as they are from the plan's other limits.
+    const owner = ev.ownerUserId || "";
+    const exempt = owner ? await isAdminUserId(owner) : false;
+    const allowance = exempt
+      ? ({ allowed: true } as const)
+      : recordingAllowance(
+          getPlanLimits(ownerPlan).recordingHoursPerMonth,
+          await recordedSeconds(owner, usageMonth(Date.now())),
+          ownerPlan.charAt(0).toUpperCase() + ownerPlan.slice(1),
+          Date.now()
+        );
+    if (!allowance.allowed) {
+      return NextResponse.json(
+        {
+          error: "recording_hours_used",
+          feature: "recording",
+          plan: ownerPlan,
+          message: allowance.message,
         },
         { status: 402 }
       );
@@ -158,12 +189,18 @@ export async function POST(req: Request) {
       );
     }
 
+    // The video egress is the one whose length counts (the audio sidecar
+    // runs alongside it and is not counted twice).
+    if (owner && !exempt) await rememberEgressOwner(info.egressId, owner);
+
     return NextResponse.json({
       egressId: info.egressId,
       filepath,
       audioEgressId,
       audioFilepath: audioFilepathOut,
       startedAt: Date.now(),
+      // Near the monthly cap: said when the recording starts.
+      ...("warning" in allowance && allowance.warning ? { warning: allowance.warning } : {}),
     });
   } catch (e) {
     console.error("egress/start failed", e);

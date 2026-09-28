@@ -1408,8 +1408,11 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
         by: localParticipant.name || localParticipant.identity || "You",
       });
       await broadcast(true);
-      setToast({ message: "Recording started" });
-      setTimeout(() => setToast(null), 3000);
+      // Near the plan's monthly recording hours, the server says so here;
+      // left up long enough to read.
+      const warning = typeof data.warning === "string" ? data.warning : null;
+      setToast({ message: warning ? `Recording started. ${warning}` : "Recording started" });
+      setTimeout(() => setToast(null), warning ? 10000 : 3000);
     } catch (e) {
       console.error("start recording failed", e);
       // Longer visible time on failure — 5 s is too short to read a

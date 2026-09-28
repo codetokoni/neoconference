@@ -27,6 +27,7 @@ import {
   type Plan,
 } from "@/lib/plan";
 import { listUserPayments, type PaymentRecord } from "@/lib/paymentsStore";
+import { recordedSeconds, usageMonth } from "@/lib/recordingUsage";
 
 export const metadata: Metadata = {
   title: "Billing — NeoConference",
@@ -96,6 +97,13 @@ export default async function BillingPage() {
 
   const payments = await listUserPayments(userId!, 50);
 
+  // This month's recording, counted against this account as a meeting
+  // owner (lib/recordingUsage). Operators have no cap.
+  const recordingUsedSeconds =
+    limits.recording && limits.recordingHoursPerMonth > 0 && !viewerIsAdmin
+      ? await recordedSeconds(userId!, usageMonth(Date.now()))
+      : null;
+
   return (
     <div className="mx-auto max-w-4xl px-4 sm:px-6 py-10">
       <header className="mb-8">
@@ -119,6 +127,8 @@ export default async function BillingPage() {
         planExpiresAt={planExpiresAt}
         remainingDays={remainingDays}
         limits={limits}
+        recordingUsedSeconds={recordingUsedSeconds}
+        uncapped={viewerIsAdmin}
       />
 
       <section className="mt-10">
@@ -144,11 +154,17 @@ function PlanCard({
   planExpiresAt,
   remainingDays,
   limits,
+  recordingUsedSeconds,
+  uncapped,
 }: {
   plan: Plan;
   planExpiresAt: number | null;
   remainingDays: number | null;
   limits: ReturnType<typeof getPlanLimits>;
+  /** Recorded this month; null where there is no cap to count against. */
+  recordingUsedSeconds: number | null;
+  /** Operators: no recording cap. */
+  uncapped: boolean;
 }) {
   const isFree = plan === "free";
   const isEnterprise = plan === "enterprise";
@@ -217,11 +233,16 @@ function PlanCard({
         <LimitStat
           label="Recording"
           value={
-            limits.recording
-              ? limits.recordingHoursPerMonth === 0
+            !limits.recording
+              ? "Not included"
+              : limits.recordingHoursPerMonth === 0 || uncapped
                 ? "Unlimited"
-                : limits.recordingHoursPerMonth + " hrs/mo"
-              : "Not included"
+                : recordingUsedSeconds !== null
+                  ? (recordingUsedSeconds / 3600).toFixed(1) +
+                    " of " +
+                    limits.recordingHoursPerMonth +
+                    " hrs used this month"
+                  : limits.recordingHoursPerMonth + " hrs/mo"
           }
         />
         <LimitStat label="Breakouts" value={limits.breakouts ? "Included" : "Not included"} />

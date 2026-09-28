@@ -67,7 +67,10 @@ export default function PricingPage() {
             Cancel within 14 days of your first paid charge for a full refund, no questions asked.
           </Faq>
           <Faq q="Do recording hours roll over?">
-            No — recording hours reset each billing cycle.
+            No. Recording hours are counted per calendar month (UTC) against the meeting&apos;s
+            owner, and reset on the 1st. Your billing page shows how many you have used. From 80%
+            you are told when you start a recording; at the limit, a recording already running
+            finishes, and new ones wait for the next month.
           </Faq>
         </div>
 
