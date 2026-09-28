@@ -46,18 +46,34 @@ class IncomingMeetingLinks {
   final pending = ValueNotifier<String?>(null);
 
   StreamSubscription<Uri>? _sub;
+  String? _lastSlug;
+  DateTime? _lastAt;
 
+  /// Needs the Flutter binding (main calls ensureInitialized first): the
+  /// first build called this before it, the platform channel threw, and a
+  /// tapped link opened the app on Home instead of its meeting.
   void start() {
     if (_sub != null) return;
     final links = AppLinks();
-    // uriLinkStream also delivers the link the app was launched with.
-    _sub = links.uriLinkStream.listen((uri) {
-      final slug = meetingSlugFromLink(uri);
-      if (slug != null) {
-        debugPrint('[links] meeting link for $slug');
-        pending.value = slug;
-      }
-    }, onError: (Object e) => debugPrint('[links] $e'));
+    _sub = links.uriLinkStream.listen(_receive, onError: (Object e) => debugPrint('[links] $e'));
+    // The link the app was launched with. The stream usually delivers it
+    // too; _receive drops the second copy.
+    unawaited(links.getInitialLink().then((uri) {
+      if (uri != null) _receive(uri);
+    }).catchError((Object e) => debugPrint('[links] initial: $e')));
+  }
+
+  void _receive(Uri uri) {
+    final slug = meetingSlugFromLink(uri);
+    if (slug == null) return;
+    final now = DateTime.now();
+    if (slug == _lastSlug && _lastAt != null && now.difference(_lastAt!) < const Duration(seconds: 5)) {
+      return;
+    }
+    _lastSlug = slug;
+    _lastAt = now;
+    debugPrint('[links] meeting link for $slug');
+    pending.value = slug;
   }
 
   /// Takes the waiting slug, so it is opened once.

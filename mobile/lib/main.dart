@@ -26,7 +26,9 @@ import 'src/settings/settings_screen.dart';
 
 void main() {
   _enableLiveKitLogsInDebug();
-  // Before the first frame, so the link that launched the app is caught.
+  // Before the first frame, so the link that launched the app is caught —
+  // and after the binding, which the platform channel needs.
+  WidgetsFlutterBinding.ensureInitialized();
   IncomingMeetingLinks.instance.start();
   runApp(
     ProviderScope(
