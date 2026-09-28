@@ -48,7 +48,7 @@ export default async function Home() {
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-cyan-100/50">
               <a href="#live-translation" className="flex items-center gap-2 text-cyan-200/80 hover:text-cyan-100"><span className="text-cyan-300">✓</span> Live translation</a>
               <div className="flex items-center gap-2"><span className="text-cyan-300">✓</span> No downloads</div>
-              <div className="flex items-center gap-2"><span className="text-cyan-300">✓</span> End-to-end encrypted</div>
+              <div className="flex items-center gap-2"><span className="text-cyan-300">✓</span> Encrypted in transit</div>
               <div className="hidden sm:flex items-center gap-2"><span className="text-cyan-300">✓</span> HD recording</div>
             </div>
           </div>
