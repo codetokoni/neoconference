@@ -116,7 +116,12 @@ IconData audioRouteIcon(AudioRouteKind kind) => switch (kind) {
 /// three: a phone with two pairs of earbuds paired shows both, and one
 /// with nothing attached shows what it has rather than inventing options.
 class AudioOutputSheet extends StatefulWidget {
-  const AudioOutputSheet({super.key});
+  const AudioOutputSheet({super.key, this.title = 'Audio output'});
+
+  /// "Microphone and speaker" when opened from the microphone's ▾: on
+  /// Android the two are chosen together, and a heading that only says
+  /// "output" reads as the wrong list.
+  final String title;
 
   @override
   State<AudioOutputSheet> createState() => _AudioOutputSheetState();
@@ -158,10 +163,27 @@ class _AudioOutputSheetState extends State<AudioOutputSheet> {
                   NeoSpace.md,
                 ),
                 child: Text(
-                  'Audio output',
+                  widget.title,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
+              if (widget.title != 'Audio output')
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    NeoSpace.xl,
+                    0,
+                    NeoSpace.xl,
+                    NeoSpace.md,
+                  ),
+                  child: Text(
+                    'On a phone the microphone goes with where you hear '
+                    'the meeting: pick your headset or earbuds and they are '
+                    'used for both.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: NeoTheme.of(context).textMuted,
+                        ),
+                  ),
+                ),
 
               if (routes.error != null)
                 Padding(

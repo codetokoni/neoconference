@@ -302,6 +302,9 @@ export async function GET(req: NextRequest) {
       canPublishData: true,
     });
     let participantRole: string = "guest";
+    // The owner is "host" on the wire like any host; this says which host
+    // owns the meeting, so other people's screens can label them Owner.
+    let participantIsOwner = false;
     try {
       if (eventSlug) {
         const { eventStore: __esRole, adoptOrphanRoom: __adoptRoom } = await import("@/lib/eventStore");
@@ -345,6 +348,7 @@ export async function GET(req: NextRequest) {
             const isAdminCallerRole = emailsRole.some((e) => isAdmin(e));
             if (isAdminCallerRole || __evRole.ownerUserId === userId) {
               participantRole = "host";
+              participantIsOwner = __evRole.ownerUserId === userId;
             } else {
               // Prefer the Redis membership hash — assignments made via
               // /api/events/[id]/roles land there and are the current source
@@ -412,7 +416,12 @@ export async function GET(req: NextRequest) {
     // NOT gated on this — see comment there for why.
     const metadataPlan: Plan = hostPlan ?? "free";
     const metadataLimits = planLimits ?? getPlanLimits(metadataPlan);
-    at.metadata = JSON.stringify({ planLimits: metadataLimits, hostPlan: metadataPlan, role: participantRole });
+    at.metadata = JSON.stringify({
+      planLimits: metadataLimits,
+      hostPlan: metadataPlan,
+      role: participantRole,
+      ...(participantIsOwner ? { owner: true } : {}),
+    });
 
     const token = await at.toJwt();
     return NextResponse.json({ token, wsUrl });

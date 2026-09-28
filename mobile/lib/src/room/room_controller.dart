@@ -89,6 +89,27 @@ class ChatLine {
       );
 }
 
+Map<String, dynamic>? _metadata(String? metadata) {
+  if (metadata == null || metadata.isEmpty) return null;
+  try {
+    final decoded = jsonDecode(metadata);
+    return decoded is Map<String, dynamic> ? decoded : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/// A participant's role in the meeting, from the metadata the token route
+/// writes and the roles route rewrites: 'host', 'cohost', 'attendee',
+/// 'guest'. Null when it says nothing, e.g. an agent.
+String? participantRole(String? metadata) {
+  final role = _metadata(metadata)?['role'];
+  return role is String && role.isNotEmpty ? role : null;
+}
+
+/// Whether the metadata marks the meeting's owner.
+bool participantIsOwner(String? metadata) => _metadata(metadata)?['owner'] == true;
+
 /// What to tell a host when the waiting list changes from [before] to
 /// [after], or null when nobody new is waiting.
 ///
@@ -152,6 +173,7 @@ class RoomState {
     this.callEndedMuted = false,
     this.endPinRequired = false,
     this.roomRecording = false,
+    this.isOwner = false,
   });
 
   final JoinPhase phase;
@@ -258,7 +280,15 @@ class RoomState {
   /// the device that started the recording.
   final bool roomRecording;
 
+  /// This person owns the meeting. Only the owner may make someone a host
+  /// (FRS §1.1), as on the web.
+  final bool isOwner;
+
   bool get canManage => role == 'host' || role == 'cohost';
+
+  /// Mute, camera off, roles and remove: host rank on the server, as the
+  /// web's tile menu has it. A moderator is not offered what would 403.
+  bool get canModerateOthers => role == 'host';
   /// Whether the meeting is being recorded, as far as anyone can tell.
   ///
   /// Used to be only [recordingEgressId], which is set on the device that
@@ -308,6 +338,7 @@ class RoomState {
     bool? callEndedMuted,
     bool? endPinRequired,
     bool? roomRecording,
+    bool? isOwner,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
@@ -361,6 +392,7 @@ class RoomState {
         callEndedMuted: callEndedMuted ?? this.callEndedMuted,
         endPinRequired: endPinRequired ?? this.endPinRequired,
         roomRecording: roomRecording ?? this.roomRecording,
+        isOwner: isOwner ?? this.isOwner,
       );
 }
 
@@ -579,7 +611,10 @@ class RoomController extends StateNotifier<RoomState> {
       if (body is! Map) return;
       final role = body['role'] as String?;
       if (role != null) state = state.copyWith(role: role);
-      state = state.copyWith(endPinRequired: body['endPinRequired'] == true);
+      state = state.copyWith(
+        endPinRequired: body['endPinRequired'] == true,
+        isOwner: body['isOwner'] == true,
+      );
       final room = body['livekitRoom'] as String?;
       if (room != null && room.isNotEmpty) _livekitRoom = room;
     } on ApiException {
@@ -949,7 +984,20 @@ class RoomController extends StateNotifier<RoomState> {
       ..on<TrackUnsubscribedEvent>((_) => _bump())
       ..on<TrackPublishedEvent>((_) => _bump())
       ..on<TrackUnpublishedEvent>((_) => _bump())
-      ..on<ActiveSpeakersChangedEvent>((_) => _bump());
+      ..on<ActiveSpeakersChangedEvent>((_) => _bump())
+      // A role changed mid-meeting: the server rewrites the participant's
+      // metadata (POST /api/events/<id>/roles). Redraws the badges, and when
+      // it is this device, what it may do.
+      ..on<ParticipantMetadataUpdatedEvent>((e) {
+        if (e.participant is LocalParticipant) {
+          final role = participantRole(e.participant.metadata);
+          if (role != null && role != state.role) {
+            state = state.copyWith(role: role);
+            return;
+          }
+        }
+        _bump();
+      });
   }
 
   /// The reconnect has taken too long to be coming back. Treated as a
@@ -1503,15 +1551,68 @@ class RoomController extends StateNotifier<RoomState> {
     }
   }
 
-  Future<void> muteEveryone() async {
+  /// Mutes everyone but [except] (this device when null) — the web tile
+  /// menu's "Mute everyone else" spares the person it was opened on.
+  Future<void> muteEveryone({String? except}) async {
     try {
       await api.post('/api/livekit/muteAll', {
         'roomName': slug,
-        'exceptIdentity': room.localParticipant?.identity,
+        'exceptIdentity': except ?? room.localParticipant?.identity,
       });
       state = state.copyWith(message: 'Everyone else muted.');
     } on ApiException catch (e) {
       state = state.copyWith(message: e.message);
+    }
+  }
+
+  /// Makes someone a host, a moderator, or back into a participant — the
+  /// same route as the web's tile menu. The server checks who may, and
+  /// rewrites their metadata so every tile shows the change.
+  Future<bool> assignRole(String identity, String role) async {
+    try {
+      await api.post('/api/events/${Uri.encodeComponent(slug)}/roles', {
+        // LiveKit may append "#…" to an identity; the role is stored by the
+        // account id before it, as ParticipantsPanel does on the web.
+        'userId': identity.split('#').first,
+        'role': role,
+      });
+      state = state.copyWith(
+        message: switch (role) {
+          'host' => 'Made host.',
+          'moderator' => 'Made moderator.',
+          _ => 'Now a participant.',
+        },
+      );
+      return true;
+    } on ApiException catch (e) {
+      state = state.copyWith(message: e.message);
+      return false;
+    }
+  }
+
+  /// The cameras this device has, as LiveKit lists them.
+  List<MediaDevice> get cameras => AudioRoutes.instance.cameras;
+
+  /// The camera in use, or the one the next "Video" will open.
+  String? get cameraDeviceId {
+    final track = room.localParticipant?.videoTrackPublications
+        .where((p) => p.source == TrackSource.camera)
+        .firstOrNull
+        ?.track;
+    final options = track is LocalVideoTrack ? track.currentOptions : null;
+    if (options is CameraCaptureOptions && options.deviceId != null) {
+      return options.deviceId;
+    }
+    return room.roomOptions.defaultCameraCaptureOptions.deviceId;
+  }
+
+  /// Uses [device] now if the camera is on, and for the next time it is.
+  Future<void> selectCamera(MediaDevice device) async {
+    try {
+      await room.setVideoInputDevice(device);
+      _bump();
+    } catch (e) {
+      state = state.copyWith(message: "Couldn't switch camera: $e");
     }
   }
 

@@ -15,6 +15,7 @@ import 'audio_routes.dart';
 import 'audio_sheets.dart';
 import 'meeting_sheets.dart';
 import 'meeting_presence.dart';
+import 'person_sheets.dart';
 import 'room_controller.dart';
 import 'room_widgets.dart';
 
@@ -392,6 +393,27 @@ class _InMeetingState extends State<_InMeeting> {
                       builder: (_) => const AudioOutputSheet(),
                     )
                 : null,
+            // On Android the microphone follows the sound: choosing the
+            // headset, the earbuds or the phone chooses both. So the ▾ on
+            // the microphone opens the same list as Audio output.
+            openMicPicker: AudioRoutes.instance.canRoute
+                ? () => neoSheet(
+                      context,
+                      builder: (_) => const AudioOutputSheet(
+                        title: 'Microphone and speaker',
+                      ),
+                    )
+                : null,
+            openCameraPicker: () => neoSheet(
+              context,
+              builder: (_) => CameraSheet(slug: widget.slug),
+            ),
+            openPersonMenu: state.canModerateOthers
+                ? (person) => neoSheet(
+                      context,
+                      builder: (_) => PersonActionsSheet(slug: widget.slug, person: person),
+                    )
+                : null,
             audioOutputLabel: switch (AudioRoutes.instance.selectedOutput) {
               final device? => AudioRoutes.label(device),
               null => null,
@@ -516,6 +538,11 @@ class _InMeetingState extends State<_InMeeting> {
       handRaised: state.raisedHands.containsKey(participant.identity),
       sharing: screen != null,
       isMe: isMe,
+      // This device knows its own role from the role lookup (and the owner
+      // flag, which only the lookup gives it); everyone else's is in their
+      // LiveKit metadata, kept current by the server.
+      role: isMe ? state.role : participantRole(participant.metadata),
+      owner: isMe ? state.isOwner : participantIsOwner(participant.metadata),
     );
   }
 
