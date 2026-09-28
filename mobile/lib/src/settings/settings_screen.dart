@@ -204,9 +204,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
     if (out != true || !mounted) return;
-    // Pop first: signing out swaps the root over to the sign-in screen, and
-    // leaving Settings on top of that shows a signed-out person their plan.
-    Navigator.of(context).pop();
+    // Close anything opened on top first: signing out swaps the root over to
+    // the sign-in screen, and a screen left above it would show a
+    // signed-out person their plan. Back to the root and no further —
+    // Settings is the Profile tab, on the root itself, and the plain pop()
+    // this used to be removed the root: the navigator was left empty and
+    // signing out showed a black screen instead of the sign-in page.
+    Navigator.of(context).popUntil((route) => route.isFirst);
     await ref.read(authProvider.notifier).signOut();
   }
 
