@@ -21,11 +21,14 @@ class NeoLogoMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
+    // Coat of Many gives the mark one colour of its own, not a blend.
+    final solid = NeoTheme.of(context).spectrumAt(2);
     return Container(
       height: size,
       width: size,
       decoration: BoxDecoration(
-        gradient: NeoTheme.of(context).spectrumGradient ?? NeoPalette.markGradient,
+        color: solid,
+        gradient: solid == null ? NeoPalette.markGradient : null,
         borderRadius: BorderRadius.circular(size * 0.3),
         border: Border.all(color: Colors.white.withValues(alpha: 0.30)),
         boxShadow: glow && dark
@@ -103,12 +106,14 @@ class NeoWordmark extends StatelessWidget {
         Text('Neo', style: style.copyWith(color: palette.text)),
         // ShaderMask reproduces background-clip:text, which is how the
         // website paints the second half of the wordmark.
-        ShaderMask(
-          shaderCallback: (bounds) =>
-              (palette.spectrumGradient ?? NeoPalette.wordmarkGradient).createShader(bounds),
-          blendMode: BlendMode.srcIn,
-          child: Text(style: style.copyWith(color: Colors.white), 'Conference'),
-        ),
+        if (palette.spectrumAt(7) case final solid?)
+          Text('Conference', style: style.copyWith(color: solid))
+        else
+          ShaderMask(
+            shaderCallback: (bounds) => NeoPalette.wordmarkGradient.createShader(bounds),
+            blendMode: BlendMode.srcIn,
+            child: Text(style: style.copyWith(color: Colors.white), 'Conference'),
+          ),
       ],
     );
   }

@@ -51,23 +51,20 @@ class NeoPalette {
   final Color scrim;
   final Brightness brightness;
 
-  /// A run of colours for a theme that is all of them (Coat of Many): the
-  /// logo, the band above the tab bar, the tabs and each meeting control
-  /// take one each. Null for every other theme, which keeps one primary.
+  /// A run of colours for a theme that is all of them (Coat of Many). Each
+  /// thing takes one colour of its own — a tab, a button, a meeting card, a
+  /// meeting control. They are never blended into one rainbow: the owner
+  /// asked for each colour picked and used, not all of them put together.
+  /// Null for every other theme, which keeps one primary.
   final List<Color>? spectrum;
 
   bool get isDark => brightness == Brightness.dark;
 
-  /// The spectrum as a gradient, or null when the theme has none.
-  LinearGradient? get spectrumGradient {
-    final colors = spectrum;
-    if (colors == null || colors.length < 2) return null;
-    return LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: colors,
-    );
-  }
+  /// The spectrum colour that belongs to [key] — a meeting's code — so a
+  /// meeting wears the same colour on Home, in History and on its Manage
+  /// page. Null when the theme has no spectrum.
+  Color? spectrumFor(String key) =>
+      spectrumAt(key.codeUnits.fold<int>(0, (sum, c) => sum + c));
 
   /// The spectrum colour for the [index]th item, wrapping, or null.
   Color? spectrumAt(int index) {

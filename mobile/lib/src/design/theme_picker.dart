@@ -143,17 +143,26 @@ class _ThemeSwatch extends StatelessWidget {
                         width: 34,
                         decoration: BoxDecoration(
                           color: preview.primary,
-                          gradient: preview.spectrumGradient,
                           borderRadius: BorderRadius.circular(5),
                         ),
                       ),
                     ),
-                    if (preview.spectrumGradient case final rainbow?)
+                    // Its colours side by side, each on its own.
+                    if (preview.spectrum case final colors?)
                       Positioned(
-                        left: 0,
-                        right: 0,
-                        top: 0,
-                        child: Container(height: 4, decoration: BoxDecoration(gradient: rainbow)),
+                        left: 48,
+                        bottom: 15,
+                        child: Row(
+                          children: [
+                            for (final c in colors.take(4))
+                              Container(
+                                width: 8,
+                                height: 8,
+                                margin: const EdgeInsets.only(right: 2),
+                                decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+                              ),
+                          ],
+                        ),
                       ),
                     if (selected)
                       Positioned(

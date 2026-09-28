@@ -60,9 +60,6 @@ class _AppShellState extends State<AppShell> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // A theme of every colour (Coat of Many) wears it along the bar.
-          if (p.spectrumGradient case final rainbow?)
-            Container(height: 4, decoration: BoxDecoration(gradient: rainbow)),
           NavigationBar(
             selectedIndex: index,
             onDestinationSelected: (i) => setState(() => _index = i),
