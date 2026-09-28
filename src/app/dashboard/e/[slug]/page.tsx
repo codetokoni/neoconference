@@ -10,6 +10,7 @@ import { eventStore } from "@/lib/eventStore";
 import { canEnd, endNeedsPin } from "@/lib/meetingLifecycle";
 import { isAdmin } from "@/lib/roles";
 import { lastKnocks, stillWaiting } from "@/lib/waitingRoom";
+import { getMeetingParticipants } from "@/lib/meeting-roles";
 import EndEventButton from "./EndEventButton";
 import StartEventButton from "@/components/StartEventButton";
 import DeleteEventButton from "./DeleteEventButton";
@@ -85,6 +86,14 @@ export default async function EventAdminPage({
 
   const recordings = ev.recordings || [];
   const transcripts = recordings.filter((r) => r.kind === "transcript");
+  // Roles given by KingsChat handle (and through the roles route) live in
+  // the meeting-roles hash, not in ev.roles, which holds only email
+  // invites. With nothing but handles assigned, the empty-state line below
+  // said "No roles assigned yet. Anyone with the link joins as a viewer"
+  // under a list of hosts and cohosts who do skip the waiting room.
+  const assignedElsewhere = (await getMeetingParticipants(ev.id, ev)).filter(
+    (p) => p.role !== "owner"
+  ).length;
   const videos = recordings.filter((r) => r.kind !== "transcript");
   const liveOrWaiting = ev.state === "live" || ev.state === "waiting";
   // An always-open room is never over. It showed "Ended 24/9" beside LIVE —
@@ -296,9 +305,11 @@ export default async function EventAdminPage({
             <InviteByKingsChat eventId={ev.id} eventSlug={ev.slug} />
           </div>
           {(ev.roles || []).length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-800 bg-slate-900/20 p-6 text-sm text-slate-500">
-              No roles assigned yet. Anyone with the link joins as a viewer.
-            </div>
+            assignedElsewhere === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-800 bg-slate-900/20 p-6 text-sm text-slate-500">
+                No roles assigned yet. Anyone with the link joins as a viewer.
+              </div>
+            ) : null
           ) : (
             <ul className="grid gap-2">
               {(ev.roles || []).map((r, i) => (
