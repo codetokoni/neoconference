@@ -96,6 +96,7 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: NeoSpace.xl),
               NeoSection(
                 title: 'Live now',
                 child: !events.hasValue
