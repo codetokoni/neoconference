@@ -141,9 +141,9 @@ export async function POST(req: NextRequest) {
           feature: 'translation',
           plan: ownerPlan,
           message:
-            'Live translation is available on the Pro plan and above. ' +
-            'Upgrade at /dashboard/billing, or create the meeting without ' +
-            'languages.',
+            "Choosing a meeting's translation languages is on the Pro plan " +
+            'and above. Upgrade at /dashboard/billing, or create the meeting ' +
+            'without languages — everyone can still use live translation in it.',
         },
         { status: 402 }
       );

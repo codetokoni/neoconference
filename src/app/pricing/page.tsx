@@ -2,7 +2,7 @@ import PricingTiers from "@/components/PricingTiers";
 
 export const metadata = {
   title: "Pricing — NeoConference",
-  description: "Simple, host-based pricing. Free forever for casual calls. Five plans from Starter to Enterprise — choose the participant cap, recording, and branding that fit you.",
+  description: "Simple, host-based pricing. Free forever for casual calls. Plans from Starter to Enterprise — choose the meeting length, participant cap and recording that fit you.",
 };
 
 export default function PricingPage() {
@@ -29,7 +29,8 @@ export default function PricingPage() {
             <span className="neo-gradient-text neo-text-glow">scales with you.</span>
           </h1>
           <p className="mt-6 text-lg text-cyan-100/70">
-            Free forever for quick chats. Upgrade for longer meetings, bigger rooms, recording, and branding.
+            Free forever for quick chats. Upgrade for longer meetings, bigger rooms and recording.
+            Live translation is on every plan.
           </p>
           <p className="mt-2 text-xs text-cyan-100/50">
             Billing is per host. Guests join free.
@@ -55,8 +56,9 @@ export default function PricingPage() {
           <Faq q="Do existing paid users get the new participant limits?">
             Yes. The new caps (Starter 100 / Pro 200 / Business 500) apply to every paid user on their next session — nothing to do, no migration needed.
           </Faq>
-          <Faq q="Can I cancel anytime?">
-            Yes. Cancel from your dashboard and you keep your plan until the end of the billing period.
+          <Faq q="Do plans renew automatically?">
+            No. You pay for a month or a year at a time. When it ends, your account goes back to Free
+            unless you pay again, so there is nothing to cancel.
           </Faq>
           <Faq q="What payment methods do you accept?">
             All paid plans are billed in Espees through the eSPees payment network.
@@ -65,7 +67,7 @@ export default function PricingPage() {
             Cancel within 14 days of your first paid charge for a full refund, no questions asked.
           </Faq>
           <Faq q="Do recording hours roll over?">
-            No — recording hours reset each billing cycle. We will warn you before you hit your cap.
+            No — recording hours reset each billing cycle.
           </Faq>
         </div>
 

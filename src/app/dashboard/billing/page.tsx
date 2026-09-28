@@ -154,9 +154,12 @@ function PlanCard({
   const isEnterprise = plan === "enterprise";
   const ctaLabel = isFree ? "Choose a plan" : "Change plan";
 
+  // Plans are paid a month or a year at a time and do not renew by
+  // themselves (the eSPees return route sets planExpiresAt once), so this
+  // is when the plan ends, not when it renews.
   const renewalLabel = (() => {
-    if (isFree) return "No expiry";
-    if (!planExpiresAt) return "No expiry (permanent)";
+    if (isFree) return "No end date";
+    if (!planExpiresAt) return "No end date (permanent)";
     return formatDate(planExpiresAt);
   })();
 
@@ -179,7 +182,7 @@ function PlanCard({
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-zinc-400">
             <span>
-              <span className="text-zinc-500">Renews:</span> {renewalLabel}
+              <span className="text-zinc-500">Ends:</span> {renewalLabel}
             </span>
             {remainingLabel && (
               <span

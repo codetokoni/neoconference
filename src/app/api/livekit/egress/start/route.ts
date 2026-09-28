@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { authorize } from "@/lib/authz";
+import { getPlanForUserId, getPlanLimits } from "@/lib/plan";
 import {
   EgressClient,
   EncodedFileType,
@@ -52,6 +53,26 @@ export async function POST(req: Request) {
     }
     const gate = await authorize(ev, "recording:start");
     if (!gate.ok) return gate.response;
+
+    // Recording is a paid feature (planLimits.recording: Pro and above),
+    // and billing is per host: the meeting owner's plan decides, as it does
+    // for the participant cap in the token route. The UI hides Record on
+    // other plans, but only this refuses it — the app, or anyone calling
+    // the route, used to record on Free. No owner reads as Free, the same
+    // fallback the token route puts in the room's metadata.
+    const ownerPlan = ev.ownerUserId ? await getPlanForUserId(ev.ownerUserId) : "free";
+    if (!getPlanLimits(ownerPlan).recording) {
+      return NextResponse.json(
+        {
+          error: "plan_upgrade_required",
+          feature: "recording",
+          plan: ownerPlan,
+          message:
+            "Recording is on the Pro plan and above. The meeting's owner can upgrade at neoconference.app/pricing.",
+        },
+        { status: 402 }
+      );
+    }
 
     const apiKey = requiredEnv("LIVEKIT_API_KEY");
     const apiSecret = requiredEnv("LIVEKIT_API_SECRET");
