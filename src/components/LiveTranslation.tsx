@@ -40,7 +40,12 @@ import {
 } from 'livekit-client';
 import { CAPTION_LOCALES } from '@/lib/locales';
 
-const STORAGE_KEY = 'neo:translation:target';
+// The chosen language belongs to one meeting, in one tab. It used to live
+// under a single localStorage key, so a language picked in one conference
+// was still switched on in the next one. Now it is sessionStorage per room:
+// a reload keeps it, another meeting (or a new tab) starts at Off.
+const LEGACY_STORAGE_KEY = 'neo:translation:target';
+const storageKey = (roomName: string) => 'neo:translation:target:' + roomName;
 const DUCK_STORAGE_KEY = 'neo:translation:duckLevel';
 /** Default room-audio volume while the browser is speaking a
  *  translation. 0.15 puts the original speaker at background level
@@ -170,8 +175,10 @@ export default function LiveTranslation() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      const v = window.localStorage.getItem(STORAGE_KEY);
-      if (v) setTargetLangState(v);
+      // The old everywhere-at-once choice is dropped, not carried over.
+      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+      const v = room?.name ? window.sessionStorage.getItem(storageKey(room.name)) : null;
+      setTargetLangState(v || 'off');
       const d = window.localStorage.getItem(DUCK_STORAGE_KEY);
       if (d != null) {
         const n = Number(d);
@@ -180,7 +187,7 @@ export default function LiveTranslation() {
     } catch {
       // ignore
     }
-  }, []);
+  }, [room?.name]);
   const updateDuckLevel = useCallback((v: number) => {
     const clamped = Math.min(1, Math.max(0, v));
     setDuckLevel(clamped);
@@ -193,7 +200,7 @@ export default function LiveTranslation() {
   const setTargetLang = useCallback((next: string) => {
     setTargetLangState(next);
     try {
-      window.localStorage.setItem(STORAGE_KEY, next);
+      if (room?.name) window.sessionStorage.setItem(storageKey(room.name), next);
     } catch {
       // ignore
     }
@@ -236,7 +243,7 @@ export default function LiveTranslation() {
         }
       });
     }
-  }, []);
+  }, [room?.name]);
 
   // Warn once if TTS is unavailable — no user-facing error, just a
   // console note so support can diagnose "why doesn't translation work".
