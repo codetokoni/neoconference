@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * MobileMoreMenu — phone-only "More" overflow.
@@ -19,29 +20,35 @@ import { useEffect, useRef, useState } from "react";
 export default function MobileMoreMenu() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<MoreEntry[]>([]);
-  const btnRef = useRef<HTMLButtonElement | null>(null);
-  const mountedRef = useRef(false);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
 
-  // Move our "More" button into the LiveKit ControlBar so it sits inline
-  // with mic/cam/leave.
+  // Put our "More" button in the LiveKit ControlBar so it sits inline with
+  // mic/cam/leave. The button is portalled into a slot element this
+  // component creates and owns; only the slot is ever moved. Moving the
+  // button itself (it used to be appendChild'ed into the bar) took it out
+  // from under the room container React thought it was in, so the next
+  // node React mounted in front of it — the "You're now a Participant"
+  // toast — failed with "insertBefore … not a child of this node" and
+  // blanked the meeting page.
   useEffect(() => {
-    if (mountedRef.current) return;
-    const btn = btnRef.current;
-    if (!btn) return;
-    const tryMount = () => {
+    const el = document.createElement("span");
+    el.className = "nc-mobile-more-slot";
+    el.style.display = "contents";
+    const place = () => {
       const bar = document.querySelector(".lk-control-bar");
-      if (bar && btn.parentElement !== bar) {
-        bar.appendChild(btn);
-        mountedRef.current = true;
-        return true;
+      if (bar && el.parentElement !== bar) {
+        bar.appendChild(el);
+        setSlot(el);
       }
-      return false;
     };
-    if (tryMount()) return;
-    const id = window.setInterval(() => {
-      if (tryMount()) window.clearInterval(id);
-    }, 300);
-    return () => window.clearInterval(id);
+    place();
+    // Keep checking: the control bar is replaced when LiveKit's layout
+    // remounts, and the slot should follow it.
+    const id = window.setInterval(place, 1000);
+    return () => {
+      window.clearInterval(id);
+      el.remove();
+    };
   }, []);
 
   // Scan the toolbar(s) and build the menu list when opening.
@@ -97,21 +104,23 @@ export default function MobileMoreMenu() {
 
   return (
     <>
-      <button
-        ref={btnRef}
-        type="button"
-        className="lk-button nc-mobile-more-btn"
-        aria-label="More options"
-        aria-expanded={open}
-        onClick={handleToggle}
-        style={{ display: "none" }}
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <circle cx="5" cy="12" r="1.5" />
-          <circle cx="12" cy="12" r="1.5" />
-          <circle cx="19" cy="12" r="1.5" />
-        </svg>
-      </button>
+      {slot && createPortal(
+        <button
+          type="button"
+          className="lk-button nc-mobile-more-btn"
+          aria-label="More options"
+          aria-expanded={open}
+          onClick={handleToggle}
+          style={{ display: "none" }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="5" cy="12" r="1.5" />
+            <circle cx="12" cy="12" r="1.5" />
+            <circle cx="19" cy="12" r="1.5" />
+          </svg>
+        </button>,
+        slot,
+      )}
       {open && (
         <>
           <div
