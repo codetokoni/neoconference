@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/load_error.dart';
 import '../auth/auth_controller.dart';
 import '../billing/plan.dart';
 import '../billing/upgrade.dart';
@@ -79,7 +80,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             error: (e, _) => _Tile(
               title: 'Could not load your plan',
-              subtitle: '$e',
+              subtitle: describeLoadError(e),
               danger: true,
             ),
             data: (info) => _Tile(

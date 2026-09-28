@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/load_error.dart';
 import '../billing/upgrade.dart';
 import '../core/api_client.dart';
 import '../design/brand.dart';
@@ -109,7 +110,7 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
     } catch (e) {
       setState(() {
         _busy = false;
-        _error = 'Could not create the meeting: $e';
+        _error = 'Could not create the meeting. ${describeActionError(e)}';
       });
     }
   }

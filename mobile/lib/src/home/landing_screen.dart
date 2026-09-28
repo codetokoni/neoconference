@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/load_error.dart';
 import '../billing/plan.dart';
 import '../billing/upgrade.dart';
 import '../design/brand.dart';
@@ -44,7 +45,7 @@ class LandingScreen extends ConsumerWidget {
                   child: Center(child: CircularProgressIndicator()),
                 ),
                 error: (e, _) => _Note(
-                  'Could not load your plan. $e',
+                  'Could not load your plan. ${describeLoadError(e)}',
                   danger: true,
                 ),
                 data: (p) => _CurrentPlanCard(
