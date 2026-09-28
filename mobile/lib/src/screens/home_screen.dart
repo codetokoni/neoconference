@@ -303,9 +303,12 @@ class _NextUp extends StatelessWidget {
               const Spacer(),
               if (meeting.recurring)
                 Icon(Icons.repeat_rounded, size: 16, color: p.textMuted),
+              // The meeting just scheduled lands here, and is the one most
+              // likely to need a new time or a host added.
+              ManageMeetingButton(meeting: meeting),
             ],
           ),
-          const SizedBox(height: NeoSpace.md),
+          const SizedBox(height: NeoSpace.sm),
           Text(meeting.title, style: text.titleLarge),
           if (detail.isNotEmpty) ...[
             const SizedBox(height: NeoSpace.xs + 2),
