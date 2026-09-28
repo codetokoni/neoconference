@@ -19,6 +19,7 @@ void main() {
     DateTime? scheduledAt,
     DateTime? startedAt,
     DateTime? endedAt,
+    DateTime? updatedAt,
     bool permanent = false,
   }) =>
       NeoEvent(
@@ -32,6 +33,7 @@ void main() {
         scheduledAt: scheduledAt,
         startedAt: startedAt,
         endedAt: endedAt,
+        updatedAt: updatedAt,
       );
 
   test('a meeting whose time has passed is not upcoming', () {
@@ -188,5 +190,28 @@ void main() {
     // The id travels with it, so the app can ask the server to reopen it.
     expect(board.recent.first.eventId, 'reopened');
     expect(board.recent.first.canJoin, isTrue);
+  });
+
+  test("a meeting reopened today is today's, not a stale open room", () {
+    // startedAt keeps the first start through a reopen; updatedAt moves.
+    final board = boardFromEvents([
+      event(
+        slug: 'reopened-live',
+        state: 'live',
+        startedAt: now.subtract(const Duration(days: 1, hours: 2)),
+        updatedAt: now.subtract(const Duration(minutes: 10)),
+      ),
+      event(
+        slug: 'forgotten-live',
+        state: 'live',
+        startedAt: now.subtract(const Duration(days: 60)),
+        updatedAt: now.subtract(const Duration(days: 60)),
+      ),
+    ], now: now);
+
+    expect(board.openRooms.map((m) => m.code), ['forgotten-live']);
+    expect(board.upcoming.map((m) => m.code), contains('reopened-live'));
+    final reopened = board.upcoming.firstWhere((m) => m.code == 'reopened-live');
+    expect(reopened.startsAt, now.subtract(const Duration(minutes: 10)));
   });
 }

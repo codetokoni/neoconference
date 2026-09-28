@@ -5,6 +5,7 @@ import {
   clearedForNewSession,
   gateStatus,
   refusalHolds,
+  startsNewWait,
   stillWaiting,
 } from "../../src/lib/waitingRoom";
 import type { RoleAssignment, WaitingRoomEntry } from "../../src/types/event";
@@ -165,5 +166,31 @@ test.describe("someone who walked away", () => {
   test("a few missed knocks on a slow link are not leaving", () => {
     const slow = new Map([["waiting", now - (KNOCK_GONE_MS - 1)]]);
     expect(stillWaiting([entry("waiting", "pending")], slow, now)).toHaveLength(1);
+  });
+});
+
+test.describe("a knock after leaving is a new wait", () => {
+  const now = 1_790_000_000_000;
+  const pending: WaitingRoomEntry = {
+    id: "user_phone",
+    name: "hsitss",
+    requestedAt: now - 60 * 60 * 1000,
+    status: "pending",
+  };
+
+  test("someone who stopped knocking and is back starts a new wait", () => {
+    // Their last knock was long ago, or has expired from the store.
+    expect(startsNewWait(pending, now - 60 * 60 * 1000, now)).toBe(true);
+    expect(startsNewWait(pending, undefined, now)).toBe(true);
+  });
+
+  test("a knock within the window is the same wait", () => {
+    expect(startsNewWait(pending, now - 5_000, now)).toBe(false);
+    expect(startsNewWait(pending, now - KNOCK_GONE_MS + 1, now)).toBe(false);
+  });
+
+  test("only a pending entry is restarted", () => {
+    expect(startsNewWait({ ...pending, status: "admitted" }, undefined, now)).toBe(false);
+    expect(startsNewWait({ ...pending, status: "denied" }, undefined, now)).toBe(false);
   });
 });

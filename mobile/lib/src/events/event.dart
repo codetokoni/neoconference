@@ -21,6 +21,7 @@ class NeoEvent {
     this.scheduledAt,
     this.startedAt,
     this.endedAt,
+    this.updatedAt,
   });
 
   final String id;
@@ -38,6 +39,11 @@ class NeoEvent {
   /// When it last finished. startedAt is the first start and is kept when a
   /// meeting is reopened, so a past meeting is dated by this instead.
   final DateTime? endedAt;
+
+  /// The last change to the meeting — reopening it is one. startedAt keeps
+  /// the first start through every reopen, so this is how a meeting that
+  /// was reopened today is known to be today's.
+  final DateTime? updatedAt;
 
   bool get isLive => state == 'live' || state == 'waiting';
 
@@ -63,6 +69,7 @@ class NeoEvent {
         scheduledAt: _date(json['scheduledAt']),
         startedAt: _date(json['startedAt']),
         endedAt: _date(json['endedAt']),
+        updatedAt: _date(json['updatedAt']),
       );
 }
 
