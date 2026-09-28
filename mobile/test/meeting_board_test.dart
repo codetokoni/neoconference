@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:neoconference/src/events/event.dart';
 import 'package:neoconference/src/meetings/meeting_board.dart';
 import 'package:neoconference/src/meetings/meeting_view.dart';
+import 'package:neoconference/src/meetings/when.dart';
 
 /// Sorting the dashboard.
 ///
@@ -213,5 +214,32 @@ void main() {
     expect(board.upcoming.map((m) => m.code), contains('reopened-live'));
     final reopened = board.upcoming.firstWhere((m) => m.code == 'reopened-live');
     expect(reopened.startsAt, now.subtract(const Duration(minutes: 10)));
+  });
+
+  group('a phone whose clock runs behind the server', () {
+    // Seen on the emulator after a cold boot, two minutes slow: a meeting
+    // ended a moment ago sat under Recent as "in 2 min".
+    final ahead = now.add(const Duration(minutes: 2));
+
+    test('never shows a meeting that ended as in the future', () {
+      final m = meetingFromEvent(
+        event(slug: 'just-ended', state: 'ended', startedAt: now.subtract(const Duration(hours: 1)), endedAt: ahead),
+        now: now,
+      );
+      expect(m.startsAt, now);
+      expect(neoWhen(m.startsAt!, now: now), isNot(startsWith('in ')));
+      expect(m.status, MeetingStatus.ended);
+    });
+
+    test('nor a meeting that just started', () {
+      final m = meetingFromEvent(event(slug: 'just-live', state: 'live', startedAt: ahead), now: now);
+      expect(m.startsAt, now);
+    });
+
+    test('but a scheduled time still lies ahead', () {
+      final m = meetingFromEvent(event(slug: 'later', state: 'scheduled', scheduledAt: ahead), now: now);
+      expect(m.startsAt, ahead);
+      expect(neoWhen(m.startsAt!, now: now), 'in 2 min');
+    });
   });
 }
