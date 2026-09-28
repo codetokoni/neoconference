@@ -78,6 +78,21 @@
 
                  The server only ever redirects to this one exact URL; see
                  src/lib/app-callback.ts. -->
+            <!-- Meeting links open in the app for anyone who has it: the
+                 meeting page (/e/<slug>) and the room (/room/<room>). The
+                 same assetlinks.json verifies them. Short links
+                 (/<slug>) cannot be claimed without claiming every page
+                 on the site; the web offers "Open in the app" on those.
+                 pathAdvancedPattern (Android 12+) keeps /e/<slug>/replay,
+                 a page to watch, in the browser. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="www.neoconference.app"/>
+                <data android:pathAdvancedPattern="/e/[^/]+"/>
+                <data android:pathAdvancedPattern="/room/[^/]+"/>
+            </intent-filter>
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
