@@ -1006,7 +1006,12 @@ class RoomController extends StateNotifier<RoomState> {
           ..remove(e.participant.identity);
         state = state.copyWith(raisedHands: hands);
       })
-      ..on<TrackSubscribedEvent>((_) => _bump())
+      ..on<TrackSubscribedEvent>((_) {
+        // Someone who starts speaking after a language was chosen is kept
+        // low like everyone else.
+        if (originalVolume < 1.0) unawaited(_applyOriginalVolume());
+        _bump();
+      })
       ..on<TrackUnsubscribedEvent>((_) => _bump())
       ..on<TrackPublishedEvent>((_) => _bump())
       ..on<TrackUnpublishedEvent>((_) => _bump())
@@ -1237,6 +1242,7 @@ class RoomController extends StateNotifier<RoomState> {
       clearTranslatedCaption: true,
       clearTranslationError: true,
     );
+    unawaited(_applyOriginalVolume());
     if (language == null) {
       unawaited(_voice.stop());
       return;
@@ -1250,21 +1256,29 @@ class RoomController extends StateNotifier<RoomState> {
 
   void setSpeakTranslations(bool on) {
     state = state.copyWith(speakTranslations: on);
+    unawaited(_applyOriginalVolume());
     if (!on) unawaited(_voice.stop());
   }
 
   /// Reads translations aloud; see [TranslationVoice].
-  late final TranslationVoice _voice = TranslationVoice(duck: _duckMeeting);
+  late final TranslationVoice _voice = TranslationVoice(duck: (_) => _applyOriginalVolume());
 
-  /// Turns everyone else's sound down while a translation is read, and
-  /// back up after.
-  Future<void> _duckMeeting(bool ducked) async {
+  /// How loud the meeting's own voices play: kept low (10%) the whole time
+  /// a spoken translation is on, not only while a sentence is being read.
+  /// Choosing a language is choosing to hear the meeting in it; ducking
+  /// only during speech left the original at full volume between
+  /// sentences, and the owner, set to Spanish, heard English.
+  double get originalVolume =>
+      state.translateTo != null && state.speakTranslations ? 0.1 : 1.0;
+
+  Future<void> _applyOriginalVolume() async {
+    final volume = originalVolume;
     for (final participant in room.remoteParticipants.values) {
       for (final publication in participant.audioTrackPublications) {
         final track = publication.track;
         if (track == null) continue;
         try {
-          await Helper.setVolume(ducked ? 0.15 : 1.0, track.mediaStreamTrack);
+          await Helper.setVolume(volume, track.mediaStreamTrack);
         } catch (_) {
           // A track that has just gone away; the next one still gets set.
         }

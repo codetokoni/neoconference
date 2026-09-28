@@ -59,6 +59,11 @@ class MainActivity : FlutterActivity() {
 
     private val kingsChat = KingsChatLogin()
 
+    /** Live translation read aloud on the call's audio path; see MeetingVoice. */
+    private var voiceEngine: MeetingVoice? = null
+    private val voice: MeetingVoice
+        get() = voiceEngine ?: MeetingVoice(this).also { voiceEngine = it }
+
     private companion object {
         const val BLUETOOTH_REQUEST = 8801
         const val PHONE_REQUEST = 8802
@@ -76,6 +81,22 @@ class MainActivity : FlutterActivity() {
 
         // KingsChat login through the installed KingsChat app. See
         // KingsChatLogin for why this is not the KingsLogin library.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.neoconference/voice")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "speak" -> voice.speak(
+                        call.argument<String>("text") ?: "",
+                        call.argument<String>("language") ?: "en-US",
+                        result,
+                    )
+                    "stop" -> {
+                        voice.stop()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.neoconference/kingschat")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -213,6 +234,7 @@ class MainActivity : FlutterActivity() {
         phoneCalls.stop()
         callAudio.stop()
         network.stop()
+        voiceEngine?.shutdown()
         super.onDestroy()
     }
 
