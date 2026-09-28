@@ -261,7 +261,10 @@ async function runDeepgram(job: TranscribeJob, callbackUrlBase?: string): Promis
     const source = await openR2Source(job.recordingKey);
 
     const params = new URLSearchParams(DEEPGRAM_PARAMS);
+    // No language named: let Deepgram detect it. Unset, it assumed English,
+    // and a meeting in another language came back with no words at all.
     if (job.language) params.set('language', job.language);
+    else params.set('detect_language', 'true');
     if (callbackUrlBase) params.set('callback', callbackUrl(callbackUrlBase, job.id, apiKey));
     const endpoint = 'https://api.deepgram.com/v1/listen?' + params.toString();
 

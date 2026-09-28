@@ -15,13 +15,14 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import type { TranscribeJob, TranscriptSegment } from '@/lib/transcribe';
 
 type DGAlt = { transcript?: string };
-type DGChannel = { alternatives?: DGAlt[] };
+type DGChannel = { alternatives?: DGAlt[]; detected_language?: string; language_confidence?: number };
 type DGSummary = { short?: string; result?: string };
 type DGUtterance = { start?: number; end?: number; speaker?: number | string; transcript?: string };
 type DGResults = { channels?: DGChannel[]; summary?: DGSummary; utterances?: DGUtterance[] };
+type DGWarning = { parameter?: string; type?: string; message?: string };
 export type DeepgramResponse = {
   results?: DGResults;
-  metadata?: { request_id?: string };
+  metadata?: { request_id?: string; duration?: number; warnings?: DGWarning[] };
   request_id?: string;
   err_code?: string;
   err_msg?: string;
@@ -61,7 +62,7 @@ export function jobFromDeepgram(
       ...job,
       status: 'error',
       externalId,
-      error: 'Deepgram returned empty transcript (silent audio?)',
+      error: emptyTranscriptMessage(body),
       updatedAt: now,
     };
   }
@@ -75,6 +76,43 @@ export function jobFromDeepgram(
     error: undefined,
     updatedAt: now,
   };
+}
+
+/**
+ * Why a transcript came back empty, from what Deepgram says it heard.
+ *
+ * It used to say "silent audio?" every time. A recording of someone
+ * speaking was not silent — 12 seconds of speech at a normal level — and
+ * that guess sent the search the wrong way. Deepgram reports how long the
+ * audio was, which language it detected and any warnings; say those.
+ */
+export function emptyTranscriptMessage(body: DeepgramResponse): string {
+  const seconds = body.metadata?.duration;
+  const channel = body.results?.channels?.[0];
+  const warnings = (body.metadata?.warnings || [])
+    .map((w) => w.message || w.type)
+    .filter((m): m is string => Boolean(m));
+  if (typeof seconds === 'number' && seconds < 1) {
+    return 'Deepgram received no audio (' + seconds.toFixed(1) + ' s): the recording may be empty.';
+  }
+  let heard = typeof seconds === 'number' ? 'Deepgram heard ' + Math.round(seconds) + ' s of audio' : 'Deepgram heard the audio';
+  if (channel?.detected_language) {
+    heard += ' (language detected: ' + languageName(channel.detected_language);
+    if (typeof channel.language_confidence === 'number') {
+      heard += ', ' + Math.round(channel.language_confidence * 100) + '% sure';
+    }
+    heard += ')';
+  }
+  heard += ' but found no words in it.';
+  return warnings.length > 0 ? heard + ' Deepgram said: ' + warnings.join('; ') : heard;
+}
+
+function languageName(code: string): string {
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) || code;
+  } catch {
+    return code;
+  }
 }
 
 export function callbackSignature(jobId: string, secret: string): string {

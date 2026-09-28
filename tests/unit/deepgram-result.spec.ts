@@ -45,10 +45,43 @@ test.describe("a Deepgram result", () => {
     expect(r.error).toBe("Deepgram: Could not fetch");
   });
 
-  test("silence is an error, not an empty transcript", () => {
+  test("no words is an error, not an empty transcript", () => {
     const r = jobFromDeepgram(job, { results: { channels: [{ alternatives: [{ transcript: "" }] }] } }, at);
     expect(r.status).toBe("error");
-    expect(r.error).toContain("empty transcript");
+    expect(r.error).toContain("found no words");
+  });
+});
+
+/**
+ * Why a transcript came back empty. It said "silent audio?" every time; a
+ * real recording that said so held 12 seconds of speech at a normal level.
+ */
+test.describe("an empty transcript says what Deepgram heard", () => {
+  const empty = (metadata: object, channel: object = {}) =>
+    jobFromDeepgram(
+      job,
+      { metadata, results: { channels: [{ alternatives: [{ transcript: "" }], ...channel }] } },
+      at
+    ).error;
+
+  test("how long the audio was, and the language it detected", () => {
+    expect(empty({ duration: 15.2 }, { detected_language: "fr", language_confidence: 0.83 })).toBe(
+      "Deepgram heard 15 s of audio (language detected: French, 83% sure) but found no words in it."
+    );
+  });
+
+  test("nothing at all is said as such", () => {
+    expect(empty({ duration: 0.2 })).toContain("received no audio");
+  });
+
+  test("Deepgram's own warnings are passed on", () => {
+    expect(
+      empty({ duration: 15, warnings: [{ parameter: "summarize", type: "unsupported_language", message: "Summarization is only supported for English" }] })
+    ).toContain("Deepgram said: Summarization is only supported for English");
+  });
+
+  test("without details it still does not guess 'silent'", () => {
+    expect(empty({})).toBe("Deepgram heard the audio but found no words in it.");
   });
 });
 
