@@ -14,6 +14,7 @@ import 'src/design/themes.dart';
 import 'src/design/tokens.dart';
 import 'src/events/create_meeting_screen.dart';
 import 'src/meetings/meeting_board.dart';
+import 'src/meetings/meeting_links.dart';
 import 'src/meetings/meeting_view.dart';
 import 'src/room/room_screen.dart';
 import 'src/screens/app_shell.dart';
@@ -25,6 +26,8 @@ import 'src/settings/settings_screen.dart';
 
 void main() {
   _enableLiveKitLogsInDebug();
+  // Before the first frame, so the link that launched the app is caught.
+  IncomingMeetingLinks.instance.start();
   runApp(
     ProviderScope(
       // The designed screens read their data from providers so that one set
@@ -210,7 +213,10 @@ class _Root extends ConsumerWidget {
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    return auth.signedIn ? AppShell(tabs: _tabs) : const SignInScreen();
+    // A meeting link waits through sign-in and opens once someone is in.
+    return auth.signedIn
+        ? MeetingLinkOpener(child: AppShell(tabs: _tabs))
+        : const SignInScreen();
   }
 
   /// Three destinations, not the showcase's four.

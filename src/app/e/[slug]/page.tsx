@@ -14,6 +14,7 @@ import { eventStore } from '@/lib/eventStore';
 import { toPublicView } from '@/types/event';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
+import OpenInAppButton from '@/components/OpenInAppButton';
 import TicketsList from './TicketsList';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import StartEventButton from '@/components/StartEventButton';
@@ -61,6 +62,8 @@ export default async function EventResolverPage({
   return (
     <main className="min-h-[calc(100vh-64px)] w-full bg-[radial-gradient(ellipse_at_top,_rgba(34,211,238,0.08),_transparent_55%),radial-gradient(ellipse_at_bottom,_rgba(168,85,247,0.06),_transparent_60%)] px-4 py-10 md:py-16">
       <div className="mx-auto w-full max-w-2xl rounded-3xl border border-white/10 bg-[#0b1020]/80 p-6 sm:p-10 backdrop-blur-xl shadow-[0_0_80px_-30px_rgba(34,211,238,0.45)]">
+
+        <OpenInAppButton slug={ev.slug} />
 
         {/* ---------- Header ---------- */}
         <header className="flex flex-col items-start gap-3">

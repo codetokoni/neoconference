@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Check, ChevronDown, Mic, MicOff, Pencil, Video, VideoOff, X } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import OpenInAppButton from "@/components/OpenInAppButton";
 
 export type RoomEntryValues = {
   username: string;
@@ -289,6 +290,7 @@ export function RoomNameEntry({
           </div>
           {/* Right: Controls panel */}
           <form onSubmit={submit} className="w-full rounded-3xl border border-cyan-400/20 bg-zinc-950/60 backdrop-blur-xl shadow-[0_0_60px_rgba(34,211,238,0.15)] p-6 md:p-8">
+            <OpenInAppButton slug={eventSlug || roomName} />
             <div className="flex items-start justify-between gap-3 mb-6">
               <div className="min-w-0 relative">
                 <div className="text-[10px] uppercase tracking-[0.35em] text-cyan-400/80">You’re joining</div>

@@ -6,6 +6,7 @@ import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
 import '../events/languages.dart';
+import '../meetings/meeting_links.dart';
 import 'room_controller.dart';
 
 /// What this meeting is, and the link to hand someone.
@@ -15,7 +16,10 @@ import 'room_controller.dart';
 /// the row is absent rather than blank.
 /// The link people are given to join [slug]. One place, so the details
 /// sheet and the Schedule screen never hand out different ones.
-String meetingLink(String slug) => 'https://www.neoconference.app/$slug';
+/// The link to share for a meeting. Its page (`/e/<slug>`) rather than the
+/// short `/<slug>`: Android opens `/e/` links straight in this app for anyone
+/// who has it, and every browser shows the meeting page for anyone else.
+String meetingLink(String slug) => meetingShareLink(slug);
 
 class MeetingDetailsSheet extends ConsumerWidget {
   const MeetingDetailsSheet({
