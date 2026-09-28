@@ -68,6 +68,9 @@ void main() {
           });
         }
         if (path == '/api/events/evt_1/summary') return json({'summary': null});
+        if (path == '/api/events/evt_1/invite-kc') {
+          return json({'ok': true, 'assigned': true, 'sent': false, 'sendReason': 'recipient_never_signed_in'});
+        }
         if (path == '/api/events/delete') return json({'ok': true});
         if (path == '/api/events/mine') return json({'events': []});
         return json({'error': 'not_found'}, 404);
@@ -134,6 +137,23 @@ void main() {
     expect(jsonDecode(revoke.body), {'handle': 'pastorchris'});
   });
 
+  testWidgets('adding a cohost says the KingsChat message did not go', (tester) async {
+    tall(tester);
+    await tester.pumpWidget(app(const ManageMeetingScreen(slug: 'testneo')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Add'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '@ada');
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final invite = sent.singleWhere((r) => r.url.path == '/api/events/evt_1/invite-kc');
+    expect(jsonDecode(invite.body), {'handle': 'ada', 'role': 'moderator', 'sendMessage': true});
+    expect(find.textContaining('No KingsChat message was sent'), findsOneWidget);
+  });
+
   testWidgets('delete sends nothing until the address is typed back', (tester) async {
     tall(tester);
     await tester.pumpWidget(app(const ManageMeetingScreen(slug: 'testneo')));
@@ -177,6 +197,15 @@ void main() {
     expect(const MeetingRecording(key: 'elsewhere.mp4', size: 1).slug, isNull);
   });
 
+  test('an invite says whether the KingsChat message went', () {
+    expect(inviteOutcome('ada', 'host', asked: false, sent: false), '@ada is now a host.');
+    expect(inviteOutcome('ada', 'moderator', asked: true, sent: true), '@ada is now a cohost, and was told on KingsChat.');
+    expect(
+      inviteOutcome('ada', 'moderator', asked: true, sent: false, reason: 'recipient_never_signed_in'),
+      contains('No KingsChat message was sent'),
+    );
+  });
+
   test('refusals read as sentences', () {
     expect(
       manageErrorMessage(const ApiException(status: 403, message: 'forbidden', body: {'error': 'forbidden'})),
@@ -185,6 +214,15 @@ void main() {
     expect(
       manageErrorMessage(const ApiException(status: 400, message: 'pin_too_short', body: {'error': 'pin_too_short'})),
       'The PIN needs at least 4 digits.',
+    );
+    // A 5xx with a known reason is named, not "having trouble".
+    expect(
+      manageErrorMessage(const ApiException(status: 503, message: 'ai_not_configured', body: {'error': 'ai_not_configured'})),
+      'AI summaries are not set up on this server.',
+    );
+    expect(
+      manageErrorMessage(const ApiException(status: 502, message: 'ai_failed', body: {'error': 'ai_failed'})),
+      'The AI could not write a summary just now. Try again.',
     );
   });
 }
