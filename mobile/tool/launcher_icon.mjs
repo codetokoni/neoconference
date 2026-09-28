@@ -30,6 +30,9 @@ const GRADIENT = `
   </linearGradient>`;
 
 // The mark, in the source image's pixels. Its centre is (90.25, 90.5).
+// Also drawn by src/components/NeoMark.tsx (the website header) and
+// NeoLogoMark in mobile/lib/src/design/brand.dart; change all three together.
+//
 // The N is one outline — two strokes and the diagonal between them, with
 // rounded outer corners. Pieces laid side by side leave hairline seams.
 // Its diagonal edges run at a slope of 0.95.

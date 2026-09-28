@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 
 import 'tokens.dart';
 
-/// The NeoConference mark, drawn from the website's own vector.
+/// The NeoConference mark: a navy "N" whose right stroke is teal above the
+/// diagonal, with a camera lens beside it, on the app icon's gradient tile.
 ///
-/// The path below is copied verbatim from the inline SVG in
-/// src/app/layout.tsx — the camera glyph sitting in the header tile — so
-/// the app shows the real logo rather than a video-camera icon that merely
-/// resembles it. Scaled from its 24×24 viewBox.
+/// The same shapes as the app icon (mobile/tool/launcher_icon.mjs), the
+/// favicon and the website header (src/components/NeoMark.tsx), so the
+/// logo inside the app matches the one on the home screen. Change all
+/// three together.
 class NeoLogoMark extends StatelessWidget {
   const NeoLogoMark({super.key, this.size = 32, this.glow = true});
 
@@ -41,9 +42,10 @@ class NeoLogoMark extends StatelessWidget {
             : null,
       ),
       child: Center(
+        // The mark is half the tile's width, as on the icon.
         child: SizedBox(
-          height: size * 0.5,
           width: size * 0.5,
+          height: size * 0.5 * _MarkPainter.height / _MarkPainter.width,
           child: CustomPaint(painter: _MarkPainter()),
         ),
       ),
@@ -51,32 +53,76 @@ class NeoLogoMark extends StatelessWidget {
   }
 }
 
+/// Draws the mark in the coordinates of the 180px favicon it was measured
+/// from (see launcher_icon.mjs), scaled to the size it is given.
 class _MarkPainter extends CustomPainter {
-  // text-slate-900 on the website's tile.
-  static const _fill = Color(0xFF0F172A);
+  static const _navy = Color(0xFF01183A);
+  static const _teal = Color(0xFF0C7AAA);
+
+  // The mark's bounds in those coordinates.
+  static const left = 56.0;
+  static const top = 68.0;
+  static const width = 68.5;
+  static const height = 45.0;
+
+  static const _r = Radius.circular(5);
+
+  /// The N: both strokes and the diagonal as one outline, so no seam
+  /// shows where they meet.
+  static final Path _n = Path()
+    ..moveTo(61, 68)
+    ..lineTo(74.5, 68)
+    ..lineTo(85.5, 78.45)
+    ..lineTo(85.5, 68)
+    ..lineTo(98, 68)
+    ..arcToPoint(const Offset(103, 73), radius: _r)
+    ..lineTo(103, 108)
+    ..arcToPoint(const Offset(98, 113), radius: _r)
+    ..lineTo(88, 113)
+    ..lineTo(74.5, 100)
+    ..lineTo(74.5, 108)
+    ..arcToPoint(const Offset(69.5, 113), radius: _r)
+    ..lineTo(61, 113)
+    ..arcToPoint(const Offset(56, 108), radius: _r)
+    ..lineTo(56, 73)
+    ..arcToPoint(const Offset(61, 68), radius: _r)
+    ..close();
+
+  /// The right stroke above the diagonal, which is teal.
+  static final Path _upperRight = Path()
+    ..moveTo(85.5, 60)
+    ..lineTo(110, 60)
+    ..lineTo(110, 101.7)
+    ..lineTo(85.5, 78.45)
+    ..close();
+
+  static final Path _lens = Path()
+    ..moveTo(108.5, 81.5)
+    ..lineTo(122.5, 74.5)
+    ..lineTo(122.5, 106.5)
+    ..lineTo(108.5, 99.5)
+    ..close();
 
   @override
   void paint(Canvas canvas, Size size) {
-    final path = Path()
-      // Body: M3 7.5 A2.5 2.5 0 0 1 5.5 5 h7 A2.5 2.5 0 0 1 15 7.5 v9
-      //       A2.5 2.5 0 0 1 12.5 19 h-7 A2.5 2.5 0 0 1 3 16.5 v-9 Z
-      ..addRRect(
-        RRect.fromLTRBR(3, 5, 15, 19, const Radius.circular(2.5)),
-      )
-      // Lens: the wedge to the right of the body.
-      ..moveTo(17, 8.7)
-      ..lineTo(20.3, 6.7)
-      ..cubicTo(21.0, 6.3, 21.8, 6.8, 21.8, 7.56)
-      ..lineTo(21.8, 16.44)
-      ..cubicTo(21.8, 17.2, 21.0, 17.7, 20.3, 17.3)
-      ..lineTo(17, 15.3)
-      ..close();
-
-    // The viewBox is 24×24; scale to whatever we were given.
-    final scale = size.width / 24.0;
     canvas.save();
-    canvas.scale(scale);
-    canvas.drawPath(path, Paint()..color = _fill);
+    canvas.scale(size.width / width);
+    canvas.translate(-left, -top);
+    canvas.drawPath(_n, Paint()..color = _navy);
+    canvas.save();
+    canvas.clipPath(_n);
+    canvas.drawPath(_upperRight, Paint()..color = _teal);
+    canvas.restore();
+    // Filled and stroked with round joins: the lens's rounded corners.
+    canvas.drawPath(_lens, Paint()..color = _navy);
+    canvas.drawPath(
+      _lens,
+      Paint()
+        ..color = _navy
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..strokeJoin = StrokeJoin.round,
+    );
     canvas.restore();
   }
 

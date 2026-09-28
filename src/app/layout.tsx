@@ -5,6 +5,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import Link from "next/link";
 import { getCurrentRole } from "@/lib/roles";
 import HeaderNav from "@/components/HeaderNav";
+import NeoMark from "@/components/NeoMark";
 import SessionBootstrap from "@/components/SessionBootstrap";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
@@ -30,11 +31,10 @@ export default async function RootLayout({
           <header className="sticky top-0 z-40 backdrop-blur-xl bg-[rgba(4,8,16,0.55)] border-b border-white/5">
             <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex items-center justify-between">
               <Link href="/" className="group inline-flex items-center gap-2.5">
-                <span className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-300 via-cyan-400 to-blue-500 shadow-[0_0_24px_rgba(34,211,238,0.55)]">
+                {/* The app icon's tile: its gradient, the mark half its width. */}
+                <span className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#A5FBF9_0%,#56D2FB_50%,#1F66FB_100%)] shadow-[0_0_24px_rgba(34,211,238,0.55)]">
                   <span className="absolute inset-0 rounded-xl ring-1 ring-white/30" />
-                  <svg viewBox="0 0 24 24" className="h-4 w-4 text-slate-900" fill="currentColor" aria-hidden>
-                    <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h7A2.5 2.5 0 0 1 15 7.5v9A2.5 2.5 0 0 1 12.5 19h-7A2.5 2.5 0 0 1 3 16.5v-9Zm14 1.2 3.3-2a1 1 0 0 1 1.5.86v8.88a1 1 0 0 1-1.5.86L17 15.3V8.7Z" />
-                  </svg>
+                  <NeoMark className="w-4" />
                 </span>
                 <span className="font-semibold tracking-tight text-cyan-100 text-[17px]">
                   Neo<span className="neo-gradient-text">Conference</span>

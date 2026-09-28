@@ -257,12 +257,12 @@ class NeoPalette {
     stops: [0.0, 0.35, 0.65, 1.0],
   );
 
-  /// The logo tile gradient, from the header mark's Tailwind classes
-  /// (from-cyan-300 via-cyan-400 to-blue-500).
+  /// The logo tile gradient: the app icon's (mobile/tool/launcher_icon.mjs),
+  /// which the website header also uses.
   static const markGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF67E8F9), Color(0xFF22D3EE), Color(0xFF3B82F6)],
+    colors: [Color(0xFFA5FBF9), Color(0xFF56D2FB), Color(0xFF1F66FB)],
   );
 }
 
