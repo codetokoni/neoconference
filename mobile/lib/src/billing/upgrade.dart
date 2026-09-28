@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/load_error.dart';
 import '../core/api_client.dart';
 import '../core/config.dart';
 import '../design/brand.dart';
@@ -91,7 +92,7 @@ class _UpgradeSheetState extends ConsumerState<UpgradeSheet> {
     } catch (e) {
       setState(() {
         _busy = false;
-        _error = 'Could not start the payment: $e';
+        _error = 'Could not start the payment. ${describeActionError(e)}';
       });
     }
   }

@@ -558,7 +558,7 @@ class RoomController extends StateNotifier<RoomState> {
       } else {
         state = state.copyWith(
           phase: JoinPhase.failed,
-          message: 'Could not join: $e',
+          message: 'Could not join. ${describeActionError(e)}',
         );
       }
     }
@@ -790,7 +790,7 @@ class RoomController extends StateNotifier<RoomState> {
         // join() does.
         state = state.copyWith(
           phase: JoinPhase.failed,
-          message: 'Could not join: $e',
+          message: 'Could not join. ${describeActionError(e)}',
         );
       }
     } finally {
@@ -1227,7 +1227,7 @@ class RoomController extends StateNotifier<RoomState> {
       );
     } catch (e) {
       if (_disposed) return;
-      state = state.copyWith(translationError: '$e');
+      state = state.copyWith(translationError: describeActionError(e));
     }
   }
 
@@ -1547,7 +1547,7 @@ class RoomController extends StateNotifier<RoomState> {
         chatError: 'Not sent (HTTP ${e.status}): ${e.message}',
       );
     } catch (e) {
-      state = state.copyWith(chatError: 'Not sent: $e');
+      state = state.copyWith(chatError: 'Not sent. ${describeActionError(e)}');
     }
   }
 
@@ -1622,7 +1622,7 @@ class RoomController extends StateNotifier<RoomState> {
             '(HTTP ${e.status}${e.code.isEmpty ? '' : ', ${e.code}'}).',
       );
     } catch (e) {
-      state = state.copyWith(chatError: 'Could not load earlier messages: $e');
+      state = state.copyWith(chatError: 'Could not load earlier messages. ${describeActionError(e)}');
     }
   }
 
