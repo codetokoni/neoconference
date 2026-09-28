@@ -35,3 +35,31 @@ const meetingLanguages = <MeetingLanguage>[
   MeetingLanguage('tr', 'Turkish', 'Türkçe'),
   MeetingLanguage('pl', 'Polish', 'Polski'),
 ];
+
+/// Languages live translation can put a meeting into: the server's DeepL
+/// targets (src/app/api/translate). Hindi and Arabic are meeting languages
+/// DeepL cannot translate into, and offering them only ever produced
+/// "target not supported".
+final translationLanguages = <MeetingLanguage>[
+  for (final language in meetingLanguages)
+    if (language.code != 'hi' && language.code != 'ar') language,
+];
+
+/// The text-to-speech locale a translation is spoken in.
+String speechLocale(String code) =>
+    const {
+      'en': 'en-US',
+      'es': 'es-ES',
+      'fr': 'fr-FR',
+      'de': 'de-DE',
+      'pt': 'pt-PT',
+      'it': 'it-IT',
+      'nl': 'nl-NL',
+      'ja': 'ja-JP',
+      'ko': 'ko-KR',
+      'zh': 'zh-CN',
+      'ru': 'ru-RU',
+      'tr': 'tr-TR',
+      'pl': 'pl-PL',
+    }[code] ??
+    code;

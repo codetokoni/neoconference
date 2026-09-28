@@ -173,11 +173,42 @@ class TranslationSheet extends ConsumerWidget {
                   Text('Live translation', style: text.titleLarge),
                   const SizedBox(height: NeoSpace.xs),
                   Text(
-                    'Captions come from the meeting. This chooses the '
-                    'language they are shown in.',
+                    'Hear the meeting in your language. What people say is '
+                    'captioned, translated, and read aloud to you.',
                     style: text.bodySmall?.copyWith(color: p.textMuted),
                   ),
                 ],
+              ),
+            ),
+
+            // Captions are the source of every translation. A host can
+            // switch them on here, as with CC on the web; anyone else is
+            // told why nothing is happening while they are off.
+            if (state.role == 'host')
+              SwitchListTile(
+                value: state.captionsOn,
+                onChanged: controller.setCaptions,
+                title: const Text('Live captions'),
+                subtitle: const Text('Needed for translation. Turns them on for everyone.'),
+              )
+            else if (!state.captionsOn)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(NeoSpace.xl, 0, NeoSpace.xl, NeoSpace.sm),
+                child: NeoBanner(
+                  icon: Icons.closed_caption_off_rounded,
+                  tone: NeoBannerTone.info,
+                  message: 'Captions are off in this meeting. Ask the host to '
+                      'turn on live captions — translation starts as soon as they do.',
+                ),
+              ),
+            SwitchListTile(
+              value: state.speakTranslations,
+              onChanged: controller.setSpeakTranslations,
+              title: const Text('Read translations aloud'),
+              subtitle: Text(
+                state.micOn
+                    ? 'Paused while your microphone is on, so it is not picked up.'
+                    : 'Off shows the translation as text only.',
               ),
             ),
 
@@ -227,7 +258,7 @@ class TranslationSheet extends ConsumerWidget {
                     title: const Text('Off'),
                     subtitle: const Text('Show captions as spoken'),
                   ),
-                  for (final language in meetingLanguages)
+                  for (final language in translationLanguages)
                     RadioListTile<String?>(
                       value: language.code,
                       groupValue: state.translateTo,
