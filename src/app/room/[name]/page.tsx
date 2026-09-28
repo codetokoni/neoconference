@@ -1244,14 +1244,6 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
     url?: string;
   } | null>(null);
 
-  // Recording approval state: when a non-host clicks Record, they wait on host's response.
-  const [recordPending, setRecordPending] = useState<"asking" | null>(null);
-  // When a non-host requests recording, hosts see this approval prompt.
-  const [recordApproval, setRecordApproval] = useState<{
-    fromIdentity: string;
-    fromName: string;
-  } | null>(null);
-
   // LiveKit's own word on whether the room is being recorded, whoever
   // started it. The data message above only arrives from another web
   // client, and only to clients already in the room when it was sent: a
@@ -1342,12 +1334,6 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
     return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
   })();
 
-  // The start-recording action as of the latest render. The listener below
-  // is registered once per room, and called the doStart from that moment:
-  // it checked busy/isRecording as they were then, so an approval that
-  // arrived after a recording had begun started a second one.
-  const doStartRef = useRef<() => Promise<void>>(async () => {});
-
   // Subscribe to recording state messages from other participants.
   useEffect(() => {
     if (!room) return;
@@ -1361,25 +1347,6 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
             });
           } else {
             setRemoteRecording(null);
-          }
-        } else if (msg?.type === "record_request") {
-          if (roomRole === "host" || roomRole === "cohost") {
-            setRecordApproval({
-              fromIdentity: String(msg.from || participant?.identity || ""),
-              fromName: String(msg.fromName || participant?.name || participant?.identity || "Someone"),
-            });
-          }
-        } else if (msg?.type === "record_request_response") {
-          const myIdentity = room.localParticipant?.identity;
-          if (msg.to && msg.to === myIdentity) {
-            if (msg.ok) {
-              setRecordPending(null);
-              void doStartRef.current();
-            } else {
-              setRecordPending(null);
-              setToast({ message: "Recording denied by host" });
-              setTimeout(() => setToast(null), 4000);
-            }
           }
         }
       } catch {
@@ -1453,68 +1420,12 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       setBusy(false);
     }
   };
-  doStartRef.current = doStart;
 
-  // Send a record_request to all hosts and wait for a record_request_response.
-  const requestRecord = async () => {
-    if (busy || isRecording) return;
-    try {
-      const me =
-        localParticipant.name || localParticipant.identity || "Someone";
-      const payload = new TextEncoder().encode(
-        JSON.stringify({
-          type: "record_request",
-          from: localParticipant.identity,
-          fromName: me,
-        }),
-      );
-      await localParticipant.publishData(payload, { reliable: true });
-      setRecordPending("asking");
-      setToast({ message: "Waiting for host approval…" });
-      // Auto-clear pending state after 30s if no response
-      setTimeout(() => {
-        setRecordPending((p) => {
-          if (p === "asking") {
-            setToast({ message: "No response from host" });
-            setTimeout(() => setToast(null), 4000);
-            return null;
-          }
-          return p;
-        });
-      }, 30000);
-    } catch (e) {
-      console.error("requestRecord failed", e);
-    }
-  };
-
-  // Host/cohost decision: respond Allow / Deny to a pending record_request.
-  const respondRecord = async (ok: boolean) => {
-    const target = recordApproval;
-    if (!target) return;
-    try {
-      const payload = new TextEncoder().encode(
-        JSON.stringify({
-          type: "record_request_response",
-          to: target.fromIdentity,
-          ok,
-        }),
-      );
-      await localParticipant.publishData(payload, { reliable: true });
-    } catch (e) {
-      console.error("respondRecord failed", e);
-    } finally {
-      setRecordApproval(null);
-    }
-  };
-
-  // Public start(): hosts and cohosts start immediately; everyone else has to ask.
-  const start = async () => {
-    if (roomRole === "host" || roomRole === "cohost") {
-      await doStart();
-    } else {
-      await requestRecord();
-    }
-  };
+  // Recording is the host's alone (FRS §2): the Record button is only
+  // drawn for roomRole === 'host'. A guest "ask to record" flow used to live
+  // here, but nothing ever showed it a button; the owner chose to keep
+  // recording host-only (2026-09-28), so it was removed rather than wired up.
+  const start = doStart;
 
   const stop = async () => {
     if (busy || !egressId) return;
@@ -1669,50 +1580,6 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
         />
       )}
 
-      {/* Recording approval modal (host/cohost view) */}
-      {recordApproval && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 9998,
-            display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
-          }}
-        >
-          <div
-            style={{
-              width: "100%", maxWidth: 360, background: "#111", color: "#fff",
-              borderRadius: 14, padding: 16, boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-            }}
-          >
-            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
-              {recordApproval.fromName} wants to record this meeting
-            </div>
-            <div style={{ fontSize: 13, color: "#bbb", marginBottom: 16 }}>
-              Allow to start recording. Deny to block this request.
-            </div>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                onClick={() => respondRecord(false)}
-                style={{
-                  padding: "10px 14px", borderRadius: 10,
-                  border: "1px solid rgba(255,255,255,0.18)", background: "transparent",
-                  color: "#fff", fontWeight: 600, cursor: "pointer",
-                }}
-              >Deny</button>
-              <button
-                type="button"
-                onClick={() => respondRecord(true)}
-                style={{
-                  padding: "10px 14px", borderRadius: 10, border: "none",
-                  background: "#22c55e", color: "#0a0a0a", fontWeight: 700, cursor: "pointer",
-                }}
-              >Allow</button>
-            </div>
-          </div>
-        </div>
-      )}
       {/* Record button — sits in the room toolbar cluster 4 alongside Go Live.
           FRS §2: gated to owner+host only (roomRole === 'host' after the
           wire-format collapse in toLegacyRole). Moderators (cohost) still
@@ -1722,8 +1589,8 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
           type="button"
           data-room-chrome="true"
           onClick={egressId ? stop : start}
-          disabled={busy || recordPending === "asking" || recordingElsewhere || finishing}
-          title={egressId ? "Stop recording" : finishing ? "Saving the recording…" : recordingElsewhere ? "Being recorded from another device" : recordPending === "asking" ? "Waiting for host approval…" : "Start recording"}
+          disabled={busy || recordingElsewhere || finishing}
+          title={egressId ? "Stop recording" : finishing ? "Saving the recording…" : recordingElsewhere ? "Being recorded from another device" : "Start recording"}
           className={
             (egressId
               ? "inline-flex items-center gap-1.5 rounded-lg border border-red-500 bg-red-600/90 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-500 active:scale-[0.98] transition"
@@ -1733,8 +1600,6 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
         >
           {busy ? (
             "…"
-          ) : recordPending === "asking" ? (
-            <>⏳ Waiting…</>
           ) : egressId ? (
             <>
               <span className="inline-block h-2 w-2 bg-white" aria-hidden />
