@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_tts/flutter_tts.dart';
+import 'package:flutter/services.dart';
 
 import '../events/languages.dart';
 
@@ -22,34 +22,27 @@ bool shouldSpeakTranslation({
 /// language — what the web does with speechSynthesis, so a phone hears the
 /// meeting in its language rather than only reading it.
 ///
+/// The speaking is Android's own text-to-speech on the call's audio path
+/// (MeetingVoice.kt): at the call's volume and on its route. The first
+/// version used the media stream, and on a phone whose media volume was at
+/// 0 the translation showed and was never heard.
+///
 /// While it speaks, [duck] turns the meeting's own sound down (to 15%, as
-/// on the web) so the translation is heard over the speaker; it is turned
-/// back up once nothing is left to say.
+/// on the web) so the translation is heard over it; it is turned back up
+/// once nothing is left to say.
 class TranslationVoice {
-  TranslationVoice({required this.duck});
+  TranslationVoice({required this.duck, MethodChannel? channel})
+      : _channel = channel ?? const MethodChannel('app.neoconference/voice');
 
   final Future<void> Function(bool ducked) duck;
+  final MethodChannel _channel;
 
-  FlutterTts? _tts;
-  String? _language;
   Future<void> _chain = Future.value();
   int _queued = 0;
   bool _disposed = false;
 
-  /// How many have been spoken, for the sheet's status and for logs.
+  /// How many have been spoken, for logs.
   int spoken = 0;
-
-  Future<FlutterTts> _engine() async {
-    final existing = _tts;
-    if (existing != null) return existing;
-    final tts = FlutterTts();
-    // Each utterance is awaited in turn, so a burst of captions is read in
-    // order instead of cutting one another off.
-    await tts.awaitSpeakCompletion(true);
-    await tts.setSpeechRate(0.5);
-    _tts = tts;
-    return tts;
-  }
 
   /// Queues [text] to be read in [languageCode].
   void speak(String text, String languageCode) {
@@ -63,16 +56,20 @@ class TranslationVoice {
   Future<void> _say(String text, String languageCode) async {
     try {
       if (_disposed) return;
-      final tts = await _engine();
-      if (_language != languageCode) {
-        final result = await tts.setLanguage(speechLocale(languageCode));
-        _language = languageCode;
-        debugPrint('[translation-voice] language ${speechLocale(languageCode)} -> $result');
-      }
       if (_queued == 1) await duck(true);
-      await tts.speak(text);
-      spoken++;
-      debugPrint('[translation-voice] spoke ${text.length} chars in $languageCode (#$spoken)');
+      final result = await _channel.invokeMapMethod<String, dynamic>('speak', {
+        'text': text,
+        'language': speechLocale(languageCode),
+      });
+      final status = result?['status'];
+      if (status == 'done') {
+        spoken++;
+        debugPrint('[translation-voice] spoke ${text.length} chars in $languageCode (#$spoken)');
+      } else {
+        debugPrint('[translation-voice] $status: ${result?['message']}');
+      }
+    } on MissingPluginException {
+      // No native side (a test, or a platform without it): text only.
     } finally {
       _queued--;
       if (_queued == 0 && !_disposed) await duck(false);
@@ -83,12 +80,20 @@ class TranslationVoice {
   Future<void> stop() async {
     _queued = 0;
     _chain = Future.value();
-    await _tts?.stop();
+    try {
+      await _channel.invokeMethod('stop');
+    } on MissingPluginException {
+      // Nothing was speaking.
+    }
     await duck(false);
   }
 
   Future<void> dispose() async {
     _disposed = true;
-    await _tts?.stop();
+    try {
+      await _channel.invokeMethod('stop');
+    } on MissingPluginException {
+      // Nothing was speaking.
+    }
   }
 }

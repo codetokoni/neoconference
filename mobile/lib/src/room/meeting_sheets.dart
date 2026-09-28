@@ -208,7 +208,8 @@ class TranslationSheet extends ConsumerWidget {
               subtitle: Text(
                 state.micOn
                     ? 'Paused while your microphone is on, so it is not picked up.'
-                    : 'Off shows the translation as text only.',
+                    : 'The original voices are kept low so you hear your language. '
+                        'Off shows text only.',
               ),
             ),
 
