@@ -21,6 +21,7 @@ import "@livekit/components-styles";
 import "./initials-overlay.css";
 import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
 import MobileMoreMenu from "@/components/MobileMoreMenu";
+import ConferenceErrorBoundary from "@/components/ConferenceErrorBoundary";
 import { RoomNameEntry } from "@/components/RoomNameEntry";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import RoomIdleController from "@/components/RoomIdleController";
@@ -876,6 +877,8 @@ function RoomContainer({
         video={choices.videoDeviceId ? { deviceId: { ideal: choices.videoDeviceId } } : true}
         onDisconnected={onLeave}
       >
+        {/* Inside LiveKitRoom so a UI failure remounts the UI, not the call. */}
+        <ConferenceErrorBoundary>
         <HiddenVideosProvider slug={eventSlug}>
         <RoleMetadataListener onRoleChange={setRoomRole} />
         <TileRoleBadges ownerUserId={ownerUserId} />
@@ -1093,6 +1096,7 @@ function RoomContainer({
           roomSlug={roomName}
         />
         </HiddenVideosProvider>
+        </ConferenceErrorBoundary>
       </LiveKitRoom>
     </div>
   );
