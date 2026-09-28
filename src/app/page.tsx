@@ -192,11 +192,11 @@ export default async function Home() {
         </div>
         <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <Feature title="Instant rooms" desc="Spin up a secure room in one click. Share a link, your guests just join — no installs." icon={<IconBolt />} />
-          <Feature title="Studio-grade audio" desc="Adaptive bitrate, echo cancellation and noise suppression keep voices crystal clear." icon={<IconWave />} />
-          <Feature title="HD recording" desc="One-tap record. Files land in secure cloud storage with download anywhere." icon={<IconRec />} />
+          <Feature title="Clear audio" desc="Echo cancellation and noise suppression keep voices clear, and video adjusts to each person's connection." icon={<IconWave />} />
+          <Feature title="HD recording" desc="One tap to record. Files are kept in secure cloud storage to download any time. On Pro and above." icon={<IconRec />} />
           <Feature title="Live participants" desc="Real-time roster with active speaker highlighting and presence dots." icon={<IconUsers />} />
-          <Feature title="Mobile-first" desc="A native-app feel on phone and tablet. Buttery 60fps animations, smart layouts." icon={<IconPhone />} />
-          <Feature title="Cinematic UI" desc="Neon cyan glassmorphism, floating cards, and motion that feels alive." icon={<IconSpark />} />
+          <Feature title="On your phone" desc="Works in any phone browser, and the NeoConference app for Android opens meeting links straight in the app." icon={<IconPhone />} />
+          <Feature title="Sign in with KingsChat" desc="Use your KingsChat account to sign in, and add hosts and cohosts by their KingsChat handle." icon={<IconSpark />} />
         </div>
       </section>
 
