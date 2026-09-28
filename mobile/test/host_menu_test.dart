@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:neoconference/src/design/brand.dart';
+import 'package:neoconference/src/design/components.dart';
+import 'package:neoconference/src/design/tokens.dart';
 import 'package:neoconference/src/meetings/room_view.dart';
 import 'package:neoconference/src/room/room_controller.dart';
 import 'package:neoconference/src/screens/meeting_stage.dart';
@@ -112,5 +115,41 @@ void main() {
       expect(mic, 1);
       expect(camera, 1);
     });
+  });
+
+  testWidgets('Coat of Many gives each meeting control its own colour', (tester) async {
+    Future<List<Color?>> tints(NeoPalette palette) async {
+      await tester.pumpWidget(MaterialApp(
+        home: NeoTheme(
+          palette: palette,
+          child: Scaffold(
+            body: MeetingStage(
+              room: const RoomView(
+                title: 'Test',
+                people: [PersonView(id: 'me', name: 'Me', isMe: true)],
+                link: RoomLinkState.live,
+                elapsed: Duration(minutes: 1),
+              ),
+              actions: RoomActions(
+                toggleMic: () async {},
+                toggleCamera: () async {},
+                toggleHand: () async {},
+                leave: () async {},
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pump();
+      return tester.widgetList<NeoControlButton>(find.byType(NeoControlButton)).map((b) => b.tint).toList();
+    }
+
+    final coat = await tints(NeoPalette.coatOfMany);
+    final colours = coat.whereType<Color>().toList();
+    expect(colours.length, 4, reason: 'mic, video, chat, more — not Leave');
+    expect(colours.toSet().length, 4, reason: 'four different colours');
+
+    final midnight = await tints(NeoPalette.dark);
+    expect(midnight.whereType<Color>(), isEmpty, reason: 'other themes keep their primary');
   });
 }

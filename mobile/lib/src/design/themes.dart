@@ -13,7 +13,9 @@ import 'tokens.dart';
 /// `--neo-purple`, and Carbon spends colour only where it carries meaning.
 /// A theme that abandons the brand is a different product wearing its
 /// name.
-enum NeoThemeChoice { system, midnight, daylight, ocean, amethyst, carbon, sandstone }
+/// Coat of Many is the exception to that: asked for by the owner, a theme
+/// of every colour. It still keeps the dark ground and near-white text.
+enum NeoThemeChoice { system, midnight, daylight, ocean, amethyst, carbon, sandstone, coatOfMany }
 
 @immutable
 class NeoThemeOption {
@@ -74,6 +76,12 @@ const neoThemeOptions = <NeoThemeOption>[
     name: 'Sandstone',
     description: 'Warm light, easier than white',
     palette: NeoPalette.sandstone,
+  ),
+  NeoThemeOption(
+    choice: NeoThemeChoice.coatOfMany,
+    name: 'Coat of Many',
+    description: 'Every colour, on a deep ground',
+    palette: NeoPalette.coatOfMany,
   ),
 ];
 
