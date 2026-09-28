@@ -1398,7 +1398,9 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
         body: JSON.stringify({ room: roomName }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      // The server's sentence where it gave one (a plan refusal says what
+      // to do); its code otherwise.
+      if (!res.ok) throw new Error(data?.message || data?.error || `HTTP ${res.status}`);
       setEgressId(data.egressId);
       setFilepath(data.filepath);
       setAudioEgressId(data.audioEgressId ?? null);
