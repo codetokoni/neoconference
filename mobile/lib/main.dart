@@ -13,6 +13,7 @@ import 'src/design/neo_theme.dart';
 import 'src/design/themes.dart';
 import 'src/design/tokens.dart';
 import 'src/events/create_meeting_screen.dart';
+import 'src/manage/dashboard_screen.dart';
 import 'src/meetings/meeting_board.dart';
 import 'src/meetings/meeting_links.dart';
 import 'src/meetings/meeting_view.dart';
@@ -221,7 +222,7 @@ class _Root extends ConsumerWidget {
         : const SignInScreen();
   }
 
-  /// Three destinations, not the showcase's four.
+  /// Four destinations: Dashboard is the web's /dashboard, in brief.
   ///
   /// Alerts is missing on purpose: nothing serves notifications to the app
   /// yet, and a tab that can only ever be empty is worse than no tab. It
@@ -232,6 +233,12 @@ class _Root extends ConsumerWidget {
       selectedIcon: Icons.home_rounded,
       label: 'Home',
       screen: HomeScreen(),
+    ),
+    NeoTab(
+      icon: Icons.space_dashboard_outlined,
+      selectedIcon: Icons.space_dashboard_rounded,
+      label: 'Dashboard',
+      screen: DashboardScreen(),
     ),
     NeoTab(
       icon: Icons.history_outlined,

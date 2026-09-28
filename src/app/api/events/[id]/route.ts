@@ -14,6 +14,45 @@ export const dynamic = "force-dynamic";
 
 const VISIBILITIES: ReadonlyArray<EventVisibility> = ["public", "unlisted", "private"];
 
+/**
+ * GET: the meeting as its owner manages it — for the app's Manage page,
+ * which has no server component to read the event with. Owner or admin,
+ * like PATCH. Takes the id or the slug. Never the PIN or password
+ * themselves: only whether one is set.
+ */
+export async function GET(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const { id } = await ctx.params;
+  const ev = (await eventStore.byId(id)) ?? (await eventStore.bySlug(id));
+  if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const check = await assertOwnerOrAdmin(ev, userId);
+  if (!check.ok) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  return NextResponse.json({
+    ok: true,
+    event: {
+      id: ev.id,
+      slug: ev.slug,
+      name: ev.name,
+      description: ev.description ?? null,
+      state: ev.state,
+      visibility: ev.visibility,
+      scheduledAt: ev.scheduledAt ?? null,
+      startedAt: ev.startedAt ?? null,
+      endedAt: ev.endedAt ?? null,
+      updatedAt: ev.updatedAt,
+      waitingRoomEnabled: Boolean(ev.waitingRoomEnabled),
+      isLocked: Boolean(ev.isLocked),
+      isPermanent: Boolean(ev.isPermanent),
+      endPinSet: Boolean(ev.endPin),
+      hasPassword: Boolean(ev.password),
+    },
+  });
+}
+
 export async function PATCH(
   req: Request,
   ctx: { params: Promise<{ id: string }> }
