@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../design/brand.dart';
 import '../design/components.dart';
@@ -65,8 +66,8 @@ class _MeetingStageState extends State<MeetingStage> {
             child: room.people.isEmpty
                 ? const _Alone()
                 : _layout == RoomLayout.speaker
-                    ? _SpeakerView(room: room)
-                    : _GridView(room: room),
+                    ? _SpeakerView(room: room, onPerson: widget.actions.openPersonMenu)
+                    : _GridView(room: room, onPerson: widget.actions.openPersonMenu),
           ),
         ),
         AnimatedPositioned(
@@ -103,6 +104,8 @@ class _MeetingStageState extends State<MeetingStage> {
                 room: room,
                 onMic: widget.actions.toggleMic,
                 onCamera: widget.actions.toggleCamera,
+                onMicMenu: widget.actions.openMicPicker,
+                onCameraMenu: widget.actions.openCameraPicker,
                 onChat: widget.actions.openChat,
                 onMore: _openMore,
                 onLeave: widget.actions.leave,
@@ -436,8 +439,9 @@ class _Header extends StatelessWidget {
 }
 
 class _SpeakerView extends StatelessWidget {
-  const _SpeakerView({required this.room});
+  const _SpeakerView({required this.room, this.onPerson});
   final RoomView room;
+  final void Function(PersonView person)? onPerson;
 
   @override
   Widget build(BuildContext context) {
@@ -450,7 +454,7 @@ class _SpeakerView extends StatelessWidget {
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(NeoSpace.md),
-            child: ParticipantTile(person: focus, large: true),
+            child: ParticipantTile(person: focus, large: true, onLongPress: onPerson),
           ),
         ),
         if (others.isNotEmpty) ...[
@@ -463,7 +467,7 @@ class _SpeakerView extends StatelessWidget {
               separatorBuilder: (_, _) => const SizedBox(width: NeoSpace.sm),
               itemBuilder: (context, i) => SizedBox(
                 width: 128,
-                child: ParticipantTile(person: others[i]),
+                child: ParticipantTile(person: others[i], onLongPress: onPerson),
               ),
             ),
           ),
@@ -475,8 +479,9 @@ class _SpeakerView extends StatelessWidget {
 }
 
 class _GridView extends StatelessWidget {
-  const _GridView({required this.room});
+  const _GridView({required this.room, this.onPerson});
   final RoomView room;
+  final void Function(PersonView person)? onPerson;
 
   @override
   Widget build(BuildContext context) {
@@ -485,7 +490,7 @@ class _GridView extends StatelessWidget {
     if (people.length == 1) {
       return Padding(
         padding: const EdgeInsets.all(NeoSpace.md),
-        child: ParticipantTile(person: people.first, large: true),
+        child: ParticipantTile(person: people.first, large: true, onLongPress: onPerson),
       );
     }
 
@@ -498,7 +503,7 @@ class _GridView extends StatelessWidget {
         crossAxisSpacing: NeoSpace.sm,
       ),
       itemCount: people.length,
-      itemBuilder: (context, i) => ParticipantTile(person: people[i]),
+      itemBuilder: (context, i) => ParticipantTile(person: people[i], onLongPress: onPerson),
     );
   }
 }
@@ -510,17 +515,24 @@ class ParticipantTile extends StatelessWidget {
     super.key,
     required this.person,
     this.large = false,
+    this.onLongPress,
   });
 
   final PersonView person;
   final bool large;
 
+  /// Hold a tile for that person's host actions — the web's tile menu.
+  /// Never for this device's own tile: its controls are the bar below.
+  final void Function(PersonView person)? onLongPress;
+
   @override
   Widget build(BuildContext context) {
     final p = NeoTheme.of(context);
     final video = person.video;
+    final hold = onLongPress;
+    final roleLabel = person.roleLabel;
 
-    return Container(
+    final tile = Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: p.surfaceAlt,
@@ -539,11 +551,21 @@ class ParticipantTile extends StatelessWidget {
           else
             Center(child: NeoAvatar(name: person.name, size: large ? 96 : 44)),
 
-          if (person.sharing)
+          if (person.sharing || roleLabel != null)
             Positioned(
               top: NeoSpace.sm,
               left: NeoSpace.sm,
-              child: NeoPill('Sharing', color: p.info),
+              right: NeoSpace.xxl,
+              child: Wrap(
+                spacing: NeoSpace.xs,
+                runSpacing: NeoSpace.xs,
+                children: [
+                  // Who runs the meeting, on their tile, as on the web.
+                  if (roleLabel != null)
+                    NeoPill(roleLabel, color: person.owner || person.role == 'host' ? p.primary : p.accent),
+                  if (person.sharing) NeoPill('Sharing', color: p.info),
+                ],
+              ),
             ),
           if (person.handRaised)
             const Positioned(
@@ -584,6 +606,15 @@ class ParticipantTile extends StatelessWidget {
         ],
       ),
     );
+
+    if (hold == null || person.isMe) return tile;
+    return GestureDetector(
+      onLongPress: () {
+        HapticFeedback.mediumImpact();
+        hold(person);
+      },
+      child: tile,
+    );
   }
 }
 
@@ -618,11 +649,15 @@ class _Controls extends StatelessWidget {
     required this.onMore,
     required this.onLeave,
     this.onChat,
+    this.onMicMenu,
+    this.onCameraMenu,
   });
 
   final RoomView room;
   final Future<void> Function() onMic;
   final Future<void> Function() onCamera;
+  final VoidCallback? onMicMenu;
+  final VoidCallback? onCameraMenu;
   final VoidCallback onMore;
   final Future<void> Function() onLeave;
   final VoidCallback? onChat;
@@ -656,6 +691,8 @@ class _Controls extends StatelessWidget {
               label: room.micOn ? 'Mute' : 'Unmute',
               active: room.micOn,
               onPressed: onMic,
+              onMenu: onMicMenu,
+              menuLabel: 'Choose microphone and speaker',
             ),
           ),
           Expanded(
@@ -666,6 +703,8 @@ class _Controls extends StatelessWidget {
               label: room.cameraOn ? 'Stop' : 'Video',
               active: room.cameraOn,
               onPressed: onCamera,
+              onMenu: onCameraMenu,
+              menuLabel: 'Choose camera',
             ),
           ),
           Expanded(

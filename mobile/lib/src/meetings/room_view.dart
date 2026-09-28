@@ -27,6 +27,8 @@ class PersonView {
     this.handRaised = false,
     this.sharing = false,
     this.isMe = false,
+    this.role,
+    this.owner = false,
   });
 
   final String id;
@@ -38,7 +40,26 @@ class PersonView {
   final bool sharing;
   final bool isMe;
 
+  /// Their role in this meeting as LiveKit carries it in their metadata:
+  /// 'host' (the owner is one too), 'cohost' (a moderator), 'attendee',
+  /// 'guest'. The server updates it live when someone is promoted.
+  final String? role;
+
+  /// The meeting's owner, which the role alone does not say.
+  final bool owner;
+
   bool get cameraOn => video != null;
+
+  /// Host or moderator: someone the Demote action applies to.
+  bool get elevated => owner || role == 'host' || role == 'cohost';
+
+  /// What their tile says about them, or null for an ordinary participant.
+  String? get roleLabel {
+    if (owner) return 'Owner';
+    if (role == 'host') return 'Host';
+    if (role == 'cohost') return 'Moderator';
+    return null;
+  }
 }
 
 /// The meeting, as the screen sees it.
@@ -146,6 +167,9 @@ class RoomActions {
     this.openParticipants,
     this.openHostControls,
     this.openWaitingRoom,
+    this.openPersonMenu,
+    this.openCameraPicker,
+    this.openMicPicker,
   });
 
   final Future<void> Function() toggleMic;
@@ -185,4 +209,13 @@ class RoomActions {
   final VoidCallback? openParticipants;
   final VoidCallback? openHostControls;
   final VoidCallback? openWaitingRoom;
+
+  /// Host actions for one person (mute, camera off, roles, remove), opened
+  /// by a long press on their tile. Null for anyone who may not manage.
+  final void Function(PersonView person)? openPersonMenu;
+
+  /// Which camera, and which microphone-and-speaker, to use: the ▾ beside
+  /// those buttons on the web.
+  final VoidCallback? openCameraPicker;
+  final VoidCallback? openMicPicker;
 }

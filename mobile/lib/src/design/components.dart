@@ -201,6 +201,8 @@ class NeoControlButton extends StatelessWidget {
     this.danger = false,
     this.badge = 0,
     this.enabled = true,
+    this.onMenu,
+    this.menuLabel,
   });
 
   final IconData icon;
@@ -210,6 +212,12 @@ class NeoControlButton extends StatelessWidget {
   final bool danger;
   final int badge;
   final bool enabled;
+
+  /// A second, smaller target on the button's corner — the ▾ beside
+  /// Microphone and Camera on the web — for choosing which device. A long
+  /// press on the button opens it too.
+  final VoidCallback? onMenu;
+  final String? menuLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -236,6 +244,7 @@ class NeoControlButton extends StatelessWidget {
       label: label,
       child: InkWell(
         onTap: enabled ? onPressed : null,
+        onLongPress: enabled ? onMenu : null,
         borderRadius: BorderRadius.circular(NeoRadius.lg),
         child: Padding(
           padding: const EdgeInsets.symmetric(
@@ -245,13 +254,50 @@ class NeoControlButton extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              AnimatedContainer(
-                duration: NeoMotion.fast,
-                curve: NeoMotion.curve,
-                height: 48,
-                width: 48,
-                decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-                child: Icon(icon, color: fg, size: 22),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  AnimatedContainer(
+                    duration: NeoMotion.fast,
+                    curve: NeoMotion.curve,
+                    height: 48,
+                    width: 48,
+                    decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
+                    child: Icon(icon, color: fg, size: 22),
+                  ),
+                  if (onMenu != null)
+                    Positioned(
+                      right: -10,
+                      bottom: -8,
+                      child: Semantics(
+                        button: true,
+                        label: menuLabel ?? 'Choose device',
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: enabled ? onMenu : null,
+                          // 32pt of target around a 20pt dot: small to the
+                          // eye, not to the thumb.
+                          child: Padding(
+                            padding: const EdgeInsets.all(6),
+                            child: Container(
+                              height: 20,
+                              width: 20,
+                              decoration: BoxDecoration(
+                                color: p.surfaceHigh,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: p.bg, width: 1.5),
+                              ),
+                              child: Icon(
+                                Icons.expand_more_rounded,
+                                size: 16,
+                                color: p.text,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: NeoSpace.xs + 2),
               // No fixed width: the caller decides how much room this gets,
