@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import HomeHeroCTAs from "./HomeHeroCTAs";
 import HomeFinalCTAs from "./HomeFinalCTAs";
+import { CAPTION_LOCALES } from "@/lib/locales";
 
 export default async function Home() {
   const { userId } = await auth();
@@ -44,7 +45,8 @@ export default async function Home() {
               <HomeHeroCTAs signedIn={signedIn} />
             </div>
 
-            <div className="mt-8 flex items-center gap-6 text-xs text-cyan-100/50">
+            <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-cyan-100/50">
+              <a href="#live-translation" className="flex items-center gap-2 text-cyan-200/80 hover:text-cyan-100"><span className="text-cyan-300">✓</span> Live translation</a>
               <div className="flex items-center gap-2"><span className="text-cyan-300">✓</span> No downloads</div>
               <div className="flex items-center gap-2"><span className="text-cyan-300">✓</span> End-to-end encrypted</div>
               <div className="hidden sm:flex items-center gap-2"><span className="text-cyan-300">✓</span> HD recording</div>
@@ -115,6 +117,67 @@ export default async function Home() {
             desc="Print-once QR codes with HSMOH-backed waiting / live / replay routing."
             href="/dashboard/new"
           />
+        </div>
+      </section>
+
+      {/* Live translation */}
+      <section id="live-translation" className="relative mx-auto max-w-7xl px-6 py-16 scroll-mt-20">
+        <div className="relative neo-card neo-border-glow p-8 sm:p-12 overflow-hidden">
+          <div aria-hidden className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-cyan-400/20 blur-3xl -z-10" />
+          <div className="grid lg:grid-cols-12 gap-10 items-center">
+            <div className="lg:col-span-7">
+              <div className="inline-flex items-center gap-2 rounded-full neo-glass px-3 py-1 text-xs text-cyan-200/90">
+                <IconTranslate /> Live translation
+              </div>
+              <h2 className="mt-5 text-3xl sm:text-4xl font-semibold text-white tracking-tight">
+                Hear every speaker <span className="neo-gradient-text">in your own language.</span>
+              </h2>
+              <p className="mt-4 text-cyan-100/70 leading-relaxed max-w-xl">
+                Pick your language and NeoConference speaks each speaker&apos;s words to you in it while
+                they talk. The original voice keeps playing quietly underneath, so you still hear the
+                speaker and the room. Everyone chooses their own language — one meeting, many languages.
+              </p>
+              <ol className="mt-7 space-y-3 text-sm text-cyan-100/75">
+                <Step n={1}>The host turns on <strong className="text-white">Captions</strong> in the meeting.</Step>
+                <Step n={2}>Pick your language under <strong className="text-white">Translate</strong> — in the app, <strong className="text-white">Live translation</strong> in the More menu.</Step>
+                <Step n={3}>Listen. The translation is spoken aloud; in the NeoConference app it is shown on screen too.</Step>
+              </ol>
+              <p className="mt-6 text-xs text-cyan-100/45">
+                Works in the browser and in the NeoConference app for Android.
+              </p>
+            </div>
+
+            <div className="lg:col-span-5">
+              <div className="rounded-2xl bg-[#06101e] border border-white/5 p-4 space-y-3">
+                <div className="neo-glass rounded-xl p-3">
+                  <div className="text-[11px] text-cyan-200/70">Aria · speaking English</div>
+                  <div className="mt-1 text-sm text-white/90">&ldquo;Welcome, everyone. Let&apos;s begin.&rdquo;</div>
+                </div>
+                <div className="rounded-xl p-3 border border-cyan-300/30 bg-cyan-400/10">
+                  <div className="text-[11px] text-cyan-200 flex items-center gap-1.5">
+                    <IconSpeaker /> You hear · Español
+                  </div>
+                  <div className="mt-1 text-sm text-white">&ldquo;Bienvenidos a todos. Comencemos.&rdquo;</div>
+                </div>
+                <div className="rounded-xl p-3 border border-white/10 bg-white/[0.03]">
+                  <div className="text-[11px] text-cyan-200/70 flex items-center gap-1.5">
+                    <IconSpeaker /> Someone else hears · Français
+                  </div>
+                  <div className="mt-1 text-sm text-white/85">&ldquo;Bienvenue à tous. Commençons.&rdquo;</div>
+                </div>
+              </div>
+              <div className="mt-5">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/45">
+                  {TRANSLATION_LANGUAGES.length} languages
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {TRANSLATION_LANGUAGES.map((l) => (
+                    <span key={l} className="rounded-full neo-glass px-2.5 py-0.5 text-xs text-cyan-100/80">{l}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -202,6 +265,26 @@ function Feature({ title, desc, icon }: { title: string; desc: string; icon: Rea
   );
 }
 
+/**
+ * What live translation can speak, by each language's own name. The same
+ * list the room's Translate picker offers: the caption locales DeepL can
+ * translate into (src/components/LiveTranslation.tsx drops Hindi and Arabic).
+ */
+const TRANSLATION_LANGUAGES = CAPTION_LOCALES
+  .filter((l) => l.code !== "auto" && l.code !== "hi" && l.code !== "ar")
+  .map((l) => l.native);
+
+function Step({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <li className="flex items-start gap-3">
+      <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cyan-400/15 border border-cyan-300/30 text-xs text-cyan-200">{n}</span>
+      <span>{children}</span>
+    </li>
+  );
+}
+
+function IconTranslate(){return(<svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>);}
+function IconSpeaker(){return(<svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg>);}
 function IconBolt(){return(<svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>);}
 function IconWave(){return(<svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 12h2m4 0h2m4 0h2m4 0h2"/><path d="M5 8v8m4-12v16m4-13v10m4-7v4"/></svg>);}
 function IconRec(){return(<svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/></svg>);}
