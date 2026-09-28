@@ -19,7 +19,7 @@ import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { isAdmin } from "@/lib/roles";
-import { lastKnocks, noteKnock, refusalHolds, stillWaiting } from "@/lib/waitingRoom";
+import { lastKnocks, noteKnock, refusalHolds, startsNewWait, stillWaiting } from "@/lib/waitingRoom";
 import type { NeoEvent, WaitingRoomEntry } from "@/types/event";
 
 export const runtime = "nodejs";
@@ -181,7 +181,20 @@ async function knock(ev: NeoEvent, caller: CallerInfo) {
   // A refusal answers for a minute, then a knock is a new request — it used
   // to answer every knock forever (see lib/waitingRoom).
   if (existing && (existing.status !== "denied" || refusalHolds(existing, now))) {
-    if (existing.status === "pending") await markKnock(ev.id, caller.userId, now);
+    if (existing.status === "pending") {
+      // Back after leaving: the host sees when they arrived this time.
+      const last = await lastKnocks(ev.id, [caller.userId]).catch(() => new Map<string, number>());
+      if (startsNewWait(existing, last.get(caller.userId), now)) {
+        await eventStore.update(ev.id, (prev) => ({
+          ...prev,
+          waitingRoom: (prev.waitingRoom || []).map((e) =>
+            e.id === caller.userId && e.status === "pending" ? { ...e, requestedAt: now } : e
+          ),
+          updatedAt: new Date().toISOString(),
+        }));
+      }
+      await markKnock(ev.id, caller.userId, now);
+    }
     return NextResponse.json({ status: existing.status, entryId: existing.id });
   }
 

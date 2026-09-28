@@ -142,7 +142,14 @@ MeetingView meetingFromEvent(NeoEvent e, {required DateTime now}) {
   // first start through every reopen, so a meeting used an hour ago read
   // "3 days ago" and sorted below older ones.
   final ended = e.state == 'ended' || e.state == 'archived' || e.state == 'replay';
-  final when = (ended ? e.endedAt : null) ?? e.startedAt ?? e.scheduledAt;
+  // A live meeting is dated by its latest start: reopening refreshes
+  // updatedAt but not startedAt, and a meeting reopened today sat under
+  // "Still open" as "Yesterday".
+  final started = e.startedAt;
+  final latestStart = e.isLive && started != null && e.updatedAt != null && e.updatedAt!.isAfter(started)
+      ? e.updatedAt
+      : started;
+  final when = (ended ? e.endedAt : null) ?? latestStart ?? e.scheduledAt;
   return MeetingView(
     eventId: e.id.isEmpty ? null : e.id,
     title: e.name,

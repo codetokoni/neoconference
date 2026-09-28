@@ -85,6 +85,21 @@ export function stillWaiting(
   });
 }
 
+/**
+ * Whether a knock on a pending entry starts a new wait: the person had
+ * stopped knocking (they left) and is back. Their entry was kept, so
+ * without this they reappeared with the time of their first knock — a
+ * phone that knocked an hour earlier was listed "1h ago" when it had
+ * arrived a moment before. A knock within the window is the same wait.
+ */
+export function startsNewWait(
+  entry: WaitingRoomEntry,
+  lastKnockAt: number | undefined,
+  now: number
+): boolean {
+  return entry.status === "pending" && (lastKnockAt === undefined || now - lastKnockAt >= KNOCK_GONE_MS);
+}
+
 /** How long a refusal answers further knocks before a knock is new again. */
 export const REFUSAL_HOLDS_MS = 60_000;
 
