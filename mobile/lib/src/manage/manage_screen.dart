@@ -108,11 +108,18 @@ class _ManageMeetingScreenState extends ConsumerState<ManageMeetingScreen> {
   }
 
   /// Runs a change, says how it went, and reloads what it touched.
-  Future<void> _change(Future<void> Function() action, String done, {bool reload = true}) async {
+  /// [said], when given, words the toast from what the action returned —
+  /// for a change whose outcome is more than "done".
+  Future<void> _change<T>(
+    Future<T> Function() action,
+    String done, {
+    bool reload = true,
+    String Function(T result)? said,
+  }) async {
     setState(() => _busy = true);
     try {
-      await action();
-      _toast(done);
+      final result = await action();
+      _toast(said?.call(result) ?? done);
       // The meetings lists show names, times and the waiting room.
       ref.invalidate(eventsProvider);
       if (reload) await _load();
@@ -472,7 +479,8 @@ class _ManageMeetingScreenState extends ConsumerState<ManageMeetingScreen> {
     if (ok != true || h.isEmpty) return;
     await _change(
       () => _api.addHandleRole(m.id, h, role, message: message),
-      '@$h is now ${role == 'host' ? 'a host' : 'a cohost'}.',
+      '',
+      said: (r) => inviteOutcome(h, role, asked: message, sent: r.sent, reason: r.reason),
     );
   }
 
@@ -744,20 +752,45 @@ class ManageMeetingButton extends StatelessWidget {
   }
 }
 
+/// What adding a host or cohost did. The role is always given; the
+/// KingsChat message often is not — someone who has never signed in here
+/// with KingsChat cannot be messaged — and saying "done" then would leave
+/// the host waiting for a person who was never told.
+String inviteOutcome(String handle, String role, {required bool asked, required bool sent, String? reason}) {
+  final given = '@$handle is now ${role == 'host' ? 'a host' : 'a cohost'}';
+  if (!asked) return '$given.';
+  if (sent) return '$given, and was told on KingsChat.';
+  final why = switch (reason) {
+    'recipient_never_signed_in' => "they haven't signed in to NeoConference with KingsChat yet",
+    'sender_not_linked' => 'your KingsChat is not linked — sign in with KingsChat once',
+    _ => 'KingsChat did not accept it',
+  };
+  return '$given. No KingsChat message was sent: $why. Send them the link yourself.';
+}
+
 /// A refusal in words. The routes answer with codes the web maps to text;
 /// these are the ones the Manage page can meet.
+///
+/// A known code is named before the status is looked at: the summary and
+/// transcription routes answer "not set up" and "the AI failed" with 5xx,
+/// and those deserve their own words, not "NeoConference is having trouble".
 String manageErrorMessage(Object e) {
+  final known = e is ApiException
+      ? switch (e.code) {
+          'forbidden' => "Only the meeting's owner can change this.",
+          'not_found' => 'That meeting no longer exists.',
+          'pin_too_short' => 'The PIN needs at least 4 digits.',
+          'invalid_name' => 'Give the meeting a name up to 200 characters.',
+          'invalid_scheduledAt' => 'That date and time could not be read.',
+          'invalid_role' || 'missing_handle' || 'missing_fields' => 'Enter a KingsChat handle and pick Host or Cohost.',
+          'ai_not_configured' => 'AI summaries are not set up on this server.',
+          'no_content' => 'There is nothing to summarise yet — no transcript or chat.',
+          'ai_failed' || 'empty_summary' => 'The AI could not write a summary just now. Try again.',
+          'transcribe_not_configured' => 'Transcription is not set up on this server.',
+          _ => null,
+        }
+      : null;
+  if (known != null) return known;
   if (e is! ApiException || e.status == 401 || e.status >= 500) return describeLoadError(e);
-  return switch (e.code) {
-    'forbidden' => "Only the meeting's owner can change this.",
-    'not_found' => 'That meeting no longer exists.',
-    'pin_too_short' => 'The PIN needs at least 4 digits.',
-    'invalid_name' => 'Give the meeting a name up to 200 characters.',
-    'invalid_scheduledAt' => 'That date and time could not be read.',
-    'invalid_role' || 'missing_handle' || 'missing_fields' => 'Enter a KingsChat handle and pick Host or Cohost.',
-    'ai_not_configured' => 'AI summaries are not set up on this server.',
-    'no_content' || 'empty_summary' => 'There is nothing to summarise yet — no transcript or chat.',
-    'transcribe_not_configured' => 'Transcription is not set up on this server.',
-    _ => e.message,
-  };
+  return e.message;
 }

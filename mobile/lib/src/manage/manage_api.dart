@@ -144,12 +144,23 @@ class ManageApi {
 
   /// Gives a KingsChat handle a role (host or moderator), sending them a
   /// KingsChat message when [message] and they have linked KingsChat.
-  Future<void> addHandleRole(String id, String handle, String role, {bool message = true}) async {
-    await api.post('/api/events/${Uri.encodeComponent(id)}/invite-kc', {
+  /// Says whether the message went, and if not, the server's reason
+  /// (`recipient_never_signed_in`, `sender_not_linked`, `send_failed`).
+  Future<({bool sent, String? reason})> addHandleRole(
+    String id,
+    String handle,
+    String role, {
+    bool message = true,
+  }) async {
+    final body = await api.post('/api/events/${Uri.encodeComponent(id)}/invite-kc', {
       'handle': handle,
       'role': role,
       'sendMessage': message,
     });
+    return (
+      sent: body is Map && body['sent'] == true,
+      reason: body is Map ? body['sendReason'] as String? : null,
+    );
   }
 
   Future<void> revokeHandleRole(String id, String handle) async {
