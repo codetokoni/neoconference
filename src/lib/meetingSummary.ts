@@ -42,3 +42,46 @@ export function summaryContext(
     ? context.slice(0, MAX_SUMMARY_INPUT_CHARS)
     : context;
 }
+
+/**
+ * What the AI is told when it writes a meeting summary.
+ *
+ * It used to be asked for an overview, "up to 5 key decisions" and "up to
+ * 5 action items" in Markdown. Given thirteen words ("Can you hear me?
+ * Yes. Okay. Alright…") it reported "Agreed to move forward with the
+ * meeting agenda" — there was no agenda. Asked for decisions, it found
+ * some. And the Markdown showed as "### Overview" on the phone and the
+ * web, which print the text as it is.
+ */
+export const SUMMARY_INSTRUCTIONS = [
+  "You summarise a meeting from its transcript and chat.",
+  "Report only what was actually said. Never infer, assume or invent decisions, action items, agendas or outcomes.",
+  "Write plain text, no Markdown: no #, no *, no **.",
+  "Use three short sections, each a heading on its own line: Overview, Decisions, Action items.",
+  "Overview: one to three sentences on what was discussed.",
+  "Decisions and Action items: one per line starting with '• ', only if someone clearly stated one; otherwise write 'None recorded.'",
+  "If there is too little to summarise, say so in one sentence under Overview and write 'None recorded.' for the rest.",
+].join(" ");
+
+/**
+ * A summary as plain text, whatever the model sent: Markdown headings
+ * become plain lines, list markers become bullets, emphasis is dropped.
+ * The screens print summaries as they are, so "### Overview" or "**x**"
+ * would show as typed.
+ */
+export function plainSummary(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        .replace(/^\s{0,3}#{1,6}\s+/, "")
+        .replace(/^(\s*)[-*+]\s+/, "$1• ")
+        .replace(/\*\*(.+?)\*\*/g, "$1")
+        .replace(/__(.+?)__/g, "$1")
+        .replace(/(^|[^*])\*(?!\s)([^*]+?)\*/g, "$1$2")
+        .trimEnd()
+    )
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}

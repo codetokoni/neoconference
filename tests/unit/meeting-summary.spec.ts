@@ -1,10 +1,55 @@
 import { test, expect } from "@playwright/test";
 import {
   MAX_SUMMARY_INPUT_CHARS,
+  SUMMARY_INSTRUCTIONS,
   chatForSummary,
+  plainSummary,
   summaryContext,
 } from "../../src/lib/meetingSummary";
 import type { ChatMessage } from "../../src/types/event";
+
+/**
+ * A summary of thirteen words came back as "### Overview … ### Key
+ * Decisions 1. Agreed to move forward with the meeting agenda". The
+ * screens print the text as it is, and there had been no agenda.
+ */
+test.describe("a summary as the screens show it", () => {
+  test("Markdown becomes plain text: headings, bullets, emphasis", () => {
+    const md = [
+      "### Overview",
+      "The meeting began with **participants** confirming audio.",
+      "",
+      "",
+      "",
+      "### Key Decisions",
+      "- Confirmed audio",
+      "* Moved on",
+      "1. Numbered stays numbered",
+    ].join("\n");
+    expect(plainSummary(md)).toBe(
+      [
+        "Overview",
+        "The meeting began with participants confirming audio.",
+        "",
+        "Key Decisions",
+        "• Confirmed audio",
+        "• Moved on",
+        "1. Numbered stays numbered",
+      ].join("\n")
+    );
+  });
+
+  test("plain text is left as it is", () => {
+    const plain = "Overview\nWe tested the audio.\n\nDecisions\nNone recorded.";
+    expect(plainSummary(plain)).toBe(plain);
+  });
+
+  test("the AI is told not to invent decisions, and not to use Markdown", () => {
+    expect(SUMMARY_INSTRUCTIONS).toContain("Never infer, assume or invent decisions");
+    expect(SUMMARY_INSTRUCTIONS).toContain("None recorded.");
+    expect(SUMMARY_INSTRUCTIONS).toContain("no Markdown");
+  });
+});
 
 /**
  * What an AI meeting summary is written from.

@@ -12,7 +12,7 @@ import { eventStore } from "@/lib/eventStore";
 import { assertOwnerOrAdmin } from "@/lib/roles";
 import { chatStore } from "@/lib/chatStore";
 import { eventTranscripts } from "@/lib/eventRecordings";
-import { summaryContext } from "@/lib/meetingSummary";
+import { SUMMARY_INSTRUCTIONS, plainSummary, summaryContext } from "@/lib/meetingSummary";
 import { isR2Configured } from "@/lib/r2";
 
 export const runtime = "nodejs";
@@ -69,8 +69,7 @@ export async function POST(
 
   const result = await chatCompletion({
     model: SUMMARY_MODEL,
-    system:
-      "You are a concise meeting summarizer. Given a transcript and chat, produce: (1) a 2-3 sentence overview, (2) up to 5 key decisions, (3) up to 5 action items. Output as Markdown with H3 section headers. Be terse.",
+    system: SUMMARY_INSTRUCTIONS,
     user: context,
     temperature: 0.3,
     maxTokens: 800,
@@ -86,7 +85,7 @@ export async function POST(
     return NextResponse.json({ error: "empty_summary" }, { status: 502 });
   }
 
-  const summary = { text: result.text, model: result.model, generatedAt: Date.now() };
+  const summary = { text: plainSummary(result.text), model: result.model, generatedAt: Date.now() };
   await eventStore.update(ev.id, { summary });
   return NextResponse.json({ ok: true, summary });
 }
