@@ -28,6 +28,9 @@ const isPublicRoute = createRouteMatcher([
   '/room/(.*)',
   '/explore',
   '/pricing',
+  // Help & support: the app's sign-in screen opens it for people who
+  // cannot sign in, so it must not ask them to sign in first.
+  '/support',
   '/e/(.*)',
   '/embed/(.*)',
   '/share/(.*)',
