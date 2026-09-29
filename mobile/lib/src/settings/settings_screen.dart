@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../onboarding/onboarding.dart';
 import '../core/load_error.dart';
 import '../auth/auth_controller.dart';
 import '../billing/plan.dart';
@@ -150,6 +151,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _Tile(
             title: 'NeoConference',
             subtitle: _build.isEmpty ? 'neoconference.app' : _build,
+          ),
+          // The introduction shown before first sign-in, again.
+          _Tile(
+            title: 'Take the tour',
+            subtitle: 'What NeoConference does, including live translation',
+            trailing: Icon(Icons.chevron_right_rounded, size: 20, color: p.textMuted),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (tourContext) => OnboardingScreen(
+                doneLabel: 'Done',
+                onDone: () => Navigator.of(tourContext).pop(),
+              ),
+            )),
           ),
           _Tile(
             title: 'Open neoconference.app',

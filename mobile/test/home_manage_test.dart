@@ -15,7 +15,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// the meeting most likely to need a new time or a host could not be
 /// managed from the phone at all.
 void main() {
-  final now = DateTime(2026, 9, 28, 15, 0);
+  // The real clock: the board decides what is upcoming by DateTime.now(),
+  // so a fixed date here made the meeting "past" a day later and the test
+  // failed on the calendar, not the code.
+  final now = DateTime.now();
 
   testWidgets('the Next up card opens its meeting\'s Manage page', (tester) async {
     SharedPreferences.setMockInitialValues({});

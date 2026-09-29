@@ -17,6 +17,7 @@ import 'src/manage/dashboard_screen.dart';
 import 'src/meetings/meeting_board.dart';
 import 'src/meetings/meeting_links.dart';
 import 'src/meetings/meeting_view.dart';
+import 'src/onboarding/onboarding.dart';
 import 'src/room/room_screen.dart';
 import 'src/screens/app_shell.dart';
 import 'src/screens/history_screen.dart';
@@ -217,9 +218,10 @@ class _Root extends ConsumerWidget {
       );
     }
     // A meeting link waits through sign-in and opens once someone is in.
+    // Signed out, the first launch shows what the app is before sign-in.
     return auth.signedIn
         ? MeetingLinkOpener(child: AppShell(tabs: _tabs))
-        : const SignInScreen();
+        : const SignedOutEntry(signIn: SignInScreen());
   }
 
   /// Four destinations: Dashboard is the web's /dashboard, in brief.
