@@ -162,6 +162,7 @@ class RoomActions {
     this.openTranslation,
     this.translationLabel,
     this.openDetails,
+    this.invite,
     this.dismissCallEnded,
     this.openChat,
     this.openParticipants,
@@ -201,6 +202,9 @@ class RoomActions {
 
   /// Open the meeting's details.
   final VoidCallback? openDetails;
+
+  /// Share the meeting's link through the phone's share menu.
+  final VoidCallback? invite;
 
   /// Put away the call-ended reminder.
   final VoidCallback? dismissCallEnded;

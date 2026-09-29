@@ -117,6 +117,42 @@ void main() {
     });
   });
 
+  testWidgets('Invite people: in the meeting header and in More', (tester) async {
+    // Asked for: a share (or invite) button inside the meeting. It was
+    // three taps away, under More > Meeting details.
+    var invited = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: MeetingStage(
+          room: const RoomView(
+            title: 'Test',
+            people: [PersonView(id: 'me', name: 'Me', isMe: true)],
+            link: RoomLinkState.live,
+            elapsed: Duration(minutes: 1),
+          ),
+          actions: RoomActions(
+            toggleMic: () async {},
+            toggleCamera: () async {},
+            toggleHand: () async {},
+            leave: () async {},
+            invite: () => invited++,
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Invite people'));
+    await tester.pump();
+    expect(invited, 1);
+
+    await tester.tap(find.text('More'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Invite people'));
+    await tester.pumpAndSettle();
+    expect(invited, 2);
+  });
+
   testWidgets('Coat of Many gives each meeting control its own colour', (tester) async {
     Future<List<Color?>> tints(NeoPalette palette) async {
       await tester.pumpWidget(MaterialApp(
