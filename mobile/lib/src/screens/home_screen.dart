@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/load_error.dart';
+import '../core/support.dart';
 import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
@@ -39,6 +40,15 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: p.bg,
+      // The support chat, where people look for it — the website shows the
+      // same bubble bottom right. Only under Profile, nobody found it.
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'support',
+        onPressed: openSupport,
+        tooltip: 'Chat with the NeoConference team',
+        icon: const Icon(Icons.support_agent_rounded),
+        label: const Text('Help'),
+      ),
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
@@ -53,7 +63,8 @@ class HomeScreen extends ConsumerWidget {
               NeoSpace.xl,
               NeoSpace.md,
               NeoSpace.xl,
-              NeoSpace.huge,
+              // Room under the last card for the Help button.
+              NeoSpace.huge + 72,
             ),
             children: [
               _Greeting(name: name, now: now),
