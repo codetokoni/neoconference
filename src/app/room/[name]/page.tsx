@@ -54,6 +54,7 @@ import InactivityDetector from "@/components/InactivityDetector";
 import InactivityToggleButton from "@/components/InactivityToggleButton";
 import SpeakerBadge from "@/components/SpeakerBadge"; import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel"; import ManageParticipantsPanel from "@/components/ParticipantsPanel"; import TileRoleBadges from "@/components/TileRoleBadges"; import WaitingRoomPanel from "@/components/WaitingRoomPanel"; import BreakoutsPanel from "@/components/BreakoutsPanel";
 import PlanGateOverlay from "@/components/PlanGateOverlay";
+import { useNoSupportWidget } from "@/components/SupportWidget";
 import {
   Users,
   MessageSquare,
@@ -82,6 +83,8 @@ const TOOLBAR_BTN_CLASS =
 type TokenResponse = { token: string; wsUrl: string };
 
 export default function RoomPage({ params }: { params: { name: string } }) {
+  // No support chat bubble over the meeting's own controls.
+  useNoSupportWidget();
   const router = useRouter();
   const { isLoaded, isSignedIn, user } = useUser();
   const [token, setToken] = useState<string | null>(null);

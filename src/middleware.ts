@@ -28,6 +28,9 @@ const isPublicRoute = createRouteMatcher([
   '/room/(.*)',
   '/explore',
   '/pricing',
+  // Help & support: the app's sign-in screen opens it for people who
+  // cannot sign in, so it must not ask them to sign in first.
+  '/support',
   '/e/(.*)',
   '/embed/(.*)',
   '/share/(.*)',
@@ -143,7 +146,7 @@ async function resolveDomain(host: string, origin: string): Promise<string | nul
 
 const RESERVED_SHORT_URL_SLUGS = new Set([
   'admin', 'api', 'dashboard', 'docs', 'e', 'embed', 'explore', 'fonts',
-  'i', 'pricing', 'room', 'share', 'video',
+  'i', 'pricing', 'room', 'share', 'support', 'video',
   'sign-in', 'sign-up', 'sign-out',
   '_next', '_vercel',
 ]);
