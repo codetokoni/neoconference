@@ -13,8 +13,9 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "NeoConference — Premium HD video meetings",
-  description: "Cinematic, real-time video conferencing with crystal-clear audio, recording, and zero friction.",
+  title: "NeoConference — Video meetings with live translation",
+  description:
+    "Video meetings where everyone hears each speaker in their own language, translated live. On the web and in the Android app.",
 };
 
 export const dynamic = "force-dynamic";
