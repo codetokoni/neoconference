@@ -10,6 +10,8 @@ import 'package:neoconference/src/events/event.dart';
 import 'package:neoconference/src/manage/dashboard_screen.dart';
 import 'package:neoconference/src/manage/manage_api.dart';
 import 'package:neoconference/src/manage/manage_screen.dart';
+import 'package:neoconference/src/meetings/meeting_share.dart';
+import 'package:share_plus/share_plus.dart';
 
 /// The phone's Manage page and Dashboard, against a fake of the same
 /// routes the web dashboard calls. What matters is what reaches the server:
@@ -152,6 +154,24 @@ void main() {
     final invite = sent.singleWhere((r) => r.url.path == '/api/events/evt_1/invite-kc');
     expect(jsonDecode(invite.body), {'handle': 'ada', 'role': 'moderator', 'sendMessage': true});
     expect(find.textContaining('No KingsChat message was sent'), findsOneWidget);
+  });
+
+  testWidgets('Share opens the share menu with the invite', (tester) async {
+    final shared = <ShareParams>[];
+    final real = shareSheet;
+    shareSheet = (p) async => shared.add(p);
+    addTearDown(() => shareSheet = real);
+
+    tall(tester);
+    await tester.pumpWidget(app(const ManageMeetingScreen(slug: 'testneo')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Share').first);
+    await tester.pumpAndSettle();
+
+    expect(shared, hasLength(1));
+    expect(shared.single.text, contains('Join "Testneo" on NeoConference'));
+    expect(shared.single.text, contains('https://www.neoconference.app/e/testneo'));
+    expect(shared.single.subject, 'Testneo');
   });
 
   testWidgets('a transcribed recording can be read', (tester) async {

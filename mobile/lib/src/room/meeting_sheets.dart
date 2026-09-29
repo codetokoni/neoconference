@@ -7,6 +7,7 @@ import '../design/components.dart';
 import '../design/tokens.dart';
 import '../events/languages.dart';
 import '../meetings/meeting_links.dart';
+import '../meetings/meeting_share.dart';
 import 'room_controller.dart';
 
 /// What this meeting is, and the link to hand someone.
@@ -87,6 +88,10 @@ class MeetingDetailsSheet extends ConsumerWidget {
               const SizedBox(height: NeoSpace.md),
               Row(
                 children: [
+                  // Inviting someone mid-meeting: the phone's share menu,
+                  // straight to WhatsApp or KingsChat.
+                  Expanded(child: ShareMeetingButton(title: title, slug: slug, filled: true)),
+                  const SizedBox(width: NeoSpace.sm),
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
