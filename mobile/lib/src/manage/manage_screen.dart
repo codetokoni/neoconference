@@ -12,6 +12,7 @@ import '../design/components.dart';
 import '../design/tokens.dart';
 import '../events/event.dart';
 import '../meetings/meeting_links.dart';
+import '../meetings/meeting_share.dart';
 import '../meetings/meeting_view.dart';
 import '../screens/prejoin_screen.dart';
 import 'manage_api.dart';
@@ -208,6 +209,7 @@ class _ManageMeetingScreenState extends ConsumerState<ManageMeetingScreen> {
               spacing: NeoSpace.sm,
               runSpacing: NeoSpace.sm,
               children: [
+                ShareMeetingButton(title: m.name, slug: m.slug, when: _upcomingTime(m)),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.copy_rounded, size: 18),
                   label: const Text('Copy link'),
@@ -219,7 +221,10 @@ class _ManageMeetingScreenState extends ConsumerState<ManageMeetingScreen> {
                 OutlinedButton.icon(
                   icon: const Icon(Icons.qr_code_rounded, size: 18),
                   label: const Text('QR code'),
-                  onPressed: () => neoSheet(context, builder: (_) => _QrSheet(slug: m.slug)),
+                  onPressed: () => neoSheet(
+                    context,
+                    builder: (_) => _QrSheet(slug: m.slug, title: m.name, when: _upcomingTime(m)),
+                  ),
                 ),
                 FilledButton.icon(
                   icon: const Icon(Icons.videocam_rounded, size: 18),
@@ -244,6 +249,13 @@ class _ManageMeetingScreenState extends ConsumerState<ManageMeetingScreen> {
         ),
       ),
     );
+  }
+
+  /// When to tell people it starts: only a scheduled time still ahead.
+  DateTime? _upcomingTime(ManagedMeeting m) {
+    final at = m.scheduledAt;
+    if (m.isPermanent || m.isLive || m.state != 'scheduled' || at == null) return null;
+    return at.isAfter(DateTime.now()) ? at : null;
   }
 
   String _stateLabel(ManagedMeeting m) {
@@ -748,8 +760,10 @@ class _TranscriptSheet extends StatelessWidget {
 
 /// The meeting's QR code, from the same endpoint the web page shows.
 class _QrSheet extends StatelessWidget {
-  const _QrSheet({required this.slug});
+  const _QrSheet({required this.slug, required this.title, this.when});
   final String slug;
+  final String title;
+  final DateTime? when;
 
   @override
   Widget build(BuildContext context) {
@@ -778,6 +792,8 @@ class _QrSheet extends StatelessWidget {
             ),
             const SizedBox(height: NeoSpace.md),
             Text(meetingShareLink(slug), style: TextStyle(color: p.textMuted)),
+            const SizedBox(height: NeoSpace.md),
+            ShareMeetingButton(title: title, slug: slug, when: when),
           ],
         ),
       ),

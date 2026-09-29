@@ -12,6 +12,7 @@ import '../events/create_meeting_screen.dart' show createdSlug;
 import '../events/event.dart' show apiProvider;
 import '../events/languages.dart';
 import '../meetings/meeting_board.dart';
+import '../meetings/meeting_share.dart';
 import '../room/meeting_sheets.dart' show meetingLink;
 
 /// The moment a date and a time of day picked on this phone refer to.
@@ -259,7 +260,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
             'upcoming meetings.');
         return;
       }
-      await _showLink(meetingLink(slug), when);
+      await _showLink(slug, _title.text.trim(), when);
       if (mounted) Navigator.of(context).pop();
     } on ApiException catch (e) {
       // Closed while the request ran: nothing left to show it on.
@@ -288,7 +289,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     }
   }
 
-  Future<void> _showLink(String link, DateTime when) {
+  Future<void> _showLink(String slug, String title, DateTime when) {
+    final link = meetingLink(slug);
     final text = Theme.of(context).textTheme;
     return showDialog<void>(
       context: context,
@@ -318,10 +320,12 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
             },
             child: const Text('Copy link'),
           ),
-          FilledButton(
+          TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Done'),
           ),
+          // The next thing to do with a meeting just scheduled: send it.
+          ShareMeetingButton(title: title, slug: slug, when: when, filled: true),
         ],
       ),
     );
