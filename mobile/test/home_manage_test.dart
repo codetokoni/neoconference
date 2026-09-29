@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:neoconference/src/core/api_client.dart';
 import 'package:neoconference/src/events/event.dart';
+import 'package:neoconference/src/home/live_translation_bar.dart';
 import 'package:neoconference/src/manage/manage_screen.dart';
 import 'package:neoconference/src/meetings/meeting_board.dart';
 import 'package:neoconference/src/screens/home_screen.dart';
@@ -52,6 +53,8 @@ void main() {
     expect(find.text('Next up'), findsOneWidget);
     // The support chat is on Home, where it is looked for.
     expect(find.widgetWithText(FloatingActionButton, 'Help'), findsOneWidget);
+    // Live translation, fixed at the top of Home.
+    expect(find.byType(LiveTranslationBar), findsOneWidget);
     await tester.tap(find.byTooltip('Manage meeting'));
     await tester.pumpAndSettle();
 

@@ -27,18 +27,19 @@ export default async function Home() {
                 <span className="absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75 animate-ping" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-300" />
               </span>
-              Live · Real-time HD video for everyone
+              Live translation · {TRANSLATION_LANGUAGES.length} languages
             </div>
 
             <h1 className="mt-6 text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05]">
-              <span className="text-white/90">Meetings reimagined.</span>
+              <span className="text-white/90">One meeting.</span>
               <br />
-              <span className="neo-gradient-text neo-text-glow">Cinematic. Instant. Yours.</span>
+              <span className="neo-gradient-text neo-text-glow">Every language.</span>
             </h1>
 
             <p className="mt-6 max-w-xl text-lg text-cyan-100/70 leading-relaxed">
-              NeoConference is a next-generation video platform built for crystal-clear conversations,
-              effortless joining, and a beautifully immersive room experience — on any device.
+              NeoConference translates your meetings live. Everyone picks their own language and
+              hears each speaker in it, spoken aloud as they talk, with the original voice quietly
+              underneath. On the web and in the Android app.
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center">

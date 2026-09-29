@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/load_error.dart';
 import '../core/support.dart';
+import '../home/live_translation_bar.dart';
 import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
@@ -51,7 +52,11 @@ class HomeScreen extends ConsumerWidget {
       ),
       body: SafeArea(
         bottom: false,
-        child: RefreshIndicator(
+        child: Column(
+          children: [
+            // Fixed above the list: what NeoConference is for.
+            const LiveTranslationBar(),
+            Expanded(child: RefreshIndicator(
           onRefresh: () {
             ref.read(reloadMeetingBoardProvider)();
             return ref.read(meetingBoardProvider.future);
@@ -86,6 +91,8 @@ class HomeScreen extends ConsumerWidget {
               ),
             ],
           ),
+        )),
+          ],
         ),
       ),
     );
