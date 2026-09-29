@@ -96,8 +96,7 @@ const introPages = <IntroPage>[
     icon: Icons.translate_rounded,
     title: 'Hear every speaker in your language',
     body: 'Live translation speaks each speaker\'s words to you in the language '
-        'you choose, with the original voice quietly underneath. 13 languages, '
-        'on every plan.',
+        'you choose, with the original voice quietly underneath. On every plan.',
     spectrumIndex: 4,
   ),
   IntroPage(

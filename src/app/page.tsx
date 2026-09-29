@@ -172,7 +172,7 @@ export default async function Home() {
               </div>
               <div className="mt-5">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/45">
-                  {TRANSLATION_LANGUAGES.length} languages
+                  Languages
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {TRANSLATION_LANGUAGES.map((l) => (
