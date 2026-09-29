@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/support.dart';
 import '../design/brand.dart';
 import 'auth_controller.dart';
 
@@ -131,6 +132,13 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                         color: NeoTheme.of(context).textMuted,
                         fontSize: 13,
                       ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Trouble signing in is when someone most needs a person.
+                    TextButton.icon(
+                      onPressed: openSupport,
+                      icon: const Icon(Icons.support_agent_rounded, size: 18),
+                      label: const Text('Need help? Chat with us'),
                     ),
                   ],
                 ),

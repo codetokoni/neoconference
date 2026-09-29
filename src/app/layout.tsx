@@ -6,6 +6,7 @@ import Link from "next/link";
 import { getCurrentRole } from "@/lib/roles";
 import HeaderNav from "@/components/HeaderNav";
 import NeoMark from "@/components/NeoMark";
+import SupportWidget from "@/components/SupportWidget";
 import SessionBootstrap from "@/components/SessionBootstrap";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
@@ -47,6 +48,7 @@ export default async function RootLayout({
 
           <main className="min-h-[calc(100vh-65px)]">{children}</main>
           <SessionBootstrap />
+          <SupportWidget />
           <SpeedInsights />
         </body>
       </html>
