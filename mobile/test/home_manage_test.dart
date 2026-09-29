@@ -50,6 +50,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Next up'), findsOneWidget);
+    // The support chat is on Home, where it is looked for.
+    expect(find.widgetWithText(FloatingActionButton, 'Help'), findsOneWidget);
     await tester.tap(find.byTooltip('Manage meeting'));
     await tester.pumpAndSettle();
 
