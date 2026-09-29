@@ -54,6 +54,8 @@ void main() {
 
     expect(find.byType(PreJoinScreen), findsOneWidget);
     expect(find.text('Reopen and join'), findsOneWidget);
+    // The link can be sent from here, before joining.
+    expect(find.widgetWithText(OutlinedButton, 'Invite people'), findsOneWidget);
 
     await tester.tap(find.text('Reopen and join'));
     await tester.pumpAndSettle();

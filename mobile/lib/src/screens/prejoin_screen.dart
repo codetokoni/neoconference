@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
+import '../meetings/meeting_share.dart';
 import '../meetings/meeting_view.dart';
 import '../room/audio_routes.dart';
 import '../room/audio_sheets.dart';
@@ -200,6 +201,23 @@ class _PreJoinScreenState extends ConsumerState<PreJoinScreen> {
                       style: text.bodySmall?.copyWith(color: p.textMuted),
                     ),
                   ],
+                  // Send the link while getting ready. Not for an instant
+                  // meeting: it has no link until it has been started.
+                  if (_invite case final m?) ...[
+                    const SizedBox(height: NeoSpace.sm),
+                    OutlinedButton.icon(
+                      onPressed: () => shareMeeting(
+                        m.title,
+                        m.code,
+                        when: m.status == MeetingStatus.scheduled ||
+                                m.status == MeetingStatus.startingSoon
+                            ? m.startsAt
+                            : null,
+                      ),
+                      icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                      label: const Text('Invite people'),
+                    ),
+                  ],
                   const SizedBox(height: NeoSpace.md),
                 ],
               ),
@@ -227,6 +245,13 @@ class _PreJoinScreenState extends ConsumerState<PreJoinScreen> {
     // A real meeting is usually named after its code, and printing the
     // code under a title that already is the code says nothing twice.
     return m.code == m.title ? null : m.code;
+  }
+
+  /// The meeting whose link can be shared from here, if any.
+  MeetingView? get _invite {
+    final m = widget.meeting;
+    if (widget.instant || m == null || m.code.trim().isEmpty) return null;
+    return m;
   }
 
   /// An ended meeting of the user's own: joining it reopens it first (the
