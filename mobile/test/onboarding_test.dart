@@ -40,7 +40,7 @@ void main() {
     await tester.tap(find.text('Next'));
     await tester.pumpAndSettle();
     expect(find.text('Hear every speaker in your language'), findsOneWidget);
-    expect(find.textContaining('13 languages'), findsOneWidget);
+    expect(find.textContaining('original voice quietly underneath'), findsOneWidget);
   });
 
   testWidgets('Skip goes straight to sign-in', (tester) async {

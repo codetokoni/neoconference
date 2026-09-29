@@ -276,17 +276,8 @@ export default function RoomPage({ params }: { params: { name: string } }) {
 
     return (
       <div className="min-h-[calc(100vh-65px)] flex flex-col items-center justify-center p-4 gap-4">
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-gray-600">Room:</span>
-          <strong>{roomName}</strong>
-          <button
-            type="button"
-            onClick={copyLink}
-            className="ml-2 px-2 py-1 text-xs border rounded hover:bg-gray-50"
-          >
-            {copied ? "Link copied!" : "Invite people"}
-          </button>
-        </div>
+        {/* The room's name and its Invite button are in RoomNameEntry;
+            a second copy above it showed two "Invite people" buttons. */}
         <div data-lk-theme="default" className="w-full max-w-xl">
           <RoomNameEntry roomName={roomName} defaultName={defaultUsername} onSubmit={(values) => setChoices(values as LocalUserChoices)} onCopyLink={copyLink} copied={copied} isHost={pageRoomRole === "host"} eventSlug={eventSlug} />
         </div>
