@@ -42,7 +42,7 @@ class LiveTranslationBar extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Hear every speaker in your language · ${translationLanguages.length} languages',
+                        'Hear every speaker in your language',
                         style: TextStyle(color: p.textMuted, fontSize: 12),
                       ),
                     ],

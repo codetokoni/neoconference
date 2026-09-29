@@ -27,7 +27,7 @@ export default async function Home() {
                 <span className="absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75 animate-ping" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-300" />
               </span>
-              Live translation · {TRANSLATION_LANGUAGES.length} languages
+              Live translation for every meeting
             </div>
 
             <h1 className="mt-6 text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05]">
