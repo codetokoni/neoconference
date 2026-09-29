@@ -10,6 +10,7 @@ import '../design/components.dart';
 import '../design/tokens.dart';
 import '../events/languages.dart';
 import '../meetings/room_view.dart';
+import '../meetings/meeting_share.dart';
 import '../screens/meeting_stage.dart';
 import 'audio_routes.dart';
 import 'audio_sheets.dart';
@@ -439,6 +440,7 @@ class _InMeetingState extends State<_InMeeting> {
                 title: widget.title,
               ),
             ),
+            invite: () => shareMeeting(widget.title, widget.slug),
             openChat: () => _openChat(context, controller, state),
             openParticipants: () => _openParticipants(context, controller),
             openHostControls: state.canManage

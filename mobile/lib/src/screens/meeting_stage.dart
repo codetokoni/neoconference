@@ -86,6 +86,7 @@ class _MeetingStageState extends State<MeetingStage> {
             }),
             onParticipants: widget.actions.openParticipants,
             onWaitingRoom: widget.actions.openWaitingRoom,
+            onInvite: widget.actions.invite,
           ),
         ),
         AnimatedPositioned(
@@ -174,6 +175,16 @@ class _MeetingStageState extends State<MeetingStage> {
                 actions.toggleHand();
               },
             ),
+            if (actions.invite != null)
+              ListTile(
+                leading: const Icon(Icons.person_add_alt_1_rounded),
+                title: const Text('Invite people'),
+                subtitle: const Text('Share the meeting link: WhatsApp, KingsChat, SMS…'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  actions.invite!();
+                },
+              ),
             if (actions.react != null)
               ListTile(
                 leading: const Icon(Icons.add_reaction_outlined),
@@ -329,6 +340,7 @@ class _Header extends StatelessWidget {
     required this.onToggleLayout,
     this.onParticipants,
     this.onWaitingRoom,
+    this.onInvite,
   });
 
   final RoomView room;
@@ -336,6 +348,9 @@ class _Header extends StatelessWidget {
   final VoidCallback onToggleLayout;
   final VoidCallback? onParticipants;
   final VoidCallback? onWaitingRoom;
+
+  /// Share the meeting's link: one tap from the meeting itself.
+  final VoidCallback? onInvite;
 
   @override
   Widget build(BuildContext context) {
@@ -409,6 +424,12 @@ class _Header extends StatelessWidget {
                 onPressed: onWaitingRoom,
                 icon: Icon(Icons.door_front_door_outlined, color: p.text),
               ),
+            ),
+          if (onInvite != null)
+            IconButton(
+              tooltip: 'Invite people',
+              onPressed: onInvite,
+              icon: Icon(Icons.person_add_alt_1_rounded, color: p.text),
             ),
           if (room.people.length > 1)
             IconButton(

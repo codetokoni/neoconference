@@ -865,6 +865,25 @@ function RoomContainer({
     }
   };
 
+  // Invite people from inside the meeting: the phone's share menu where
+  // the browser has one (WhatsApp, KingsChat, SMS…), a copied link where
+  // it has not (most desktops).
+  const invite = async () => {
+    const url = eventSlug
+      ? window.location.origin + "/" + encodeURIComponent(eventSlug)
+      : window.location.href;
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title: "NeoConference meeting", text: "Join my meeting on NeoConference:", url });
+        return;
+      } catch (e) {
+        // Closed the share menu: nothing to do. Anything else: copy instead.
+        if (e instanceof DOMException && e.name === "AbortError") return;
+      }
+    }
+    await copyLink();
+  };
+
   return (
     <div
       ref={containerRef}
@@ -1023,12 +1042,12 @@ function RoomContainer({
             type="button"
             data-room-chrome="true"
             data-in-more="true"
-            onClick={copyLink}
+            onClick={invite}
             className={TOOLBAR_BTN_CLASS}
-            title="Copy room link"
+            title="Invite people: share the meeting link"
           >
             <LinkIcon size={16} aria-hidden />
-            {copied ? "Link copied!" : "Copy link"}
+            {copied ? "Link copied!" : "Invite"}
           </button>
           <button
             type="button"
