@@ -55,6 +55,7 @@ import InactivityToggleButton from "@/components/InactivityToggleButton";
 import SpeakerBadge from "@/components/SpeakerBadge"; import Whiteboard from "@/components/Whiteboard"; import PollsPanel from "@/components/PollsPanel"; import ManageParticipantsPanel from "@/components/ParticipantsPanel"; import TileRoleBadges from "@/components/TileRoleBadges"; import WaitingRoomPanel from "@/components/WaitingRoomPanel"; import BreakoutsPanel from "@/components/BreakoutsPanel";
 import PlanGateOverlay from "@/components/PlanGateOverlay";
 import { useNoSupportWidget } from "@/components/SupportWidget";
+import { meetingInviteUrl, shareOrCopyInvite } from "@/lib/shareInvite";
 import {
   Users,
   MessageSquare,
@@ -223,19 +224,14 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     return () => { cancelled = true; clearInterval(id); };
   }, [eventSlug, waitForHost]);
 
+  // Invite from the screen before joining: the share menu on a phone, a
+  // copied link elsewhere (lib/shareInvite). The short URL when the slug
+  // is known; the current location for orphan rooms.
   const copyLink = async () => {
-    try {
-      // Prefer the short URL when we know the event slug — it's what we
-      // want people to share. Falls back to the current location for
-      // orphan rooms with no slug.
-      const shortUrl = eventSlug
-        ? window.location.origin + "/" + encodeURIComponent(eventSlug)
-        : window.location.href;
-      await navigator.clipboard.writeText(shortUrl);
+    const outcome = await shareOrCopyInvite(meetingInviteUrl(eventSlug));
+    if (outcome === "copied") {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // ignore
     }
   };
 
@@ -288,7 +284,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
             onClick={copyLink}
             className="ml-2 px-2 py-1 text-xs border rounded hover:bg-gray-50"
           >
-            {copied ? "Copied!" : "Copy link"}
+            {copied ? "Link copied!" : "Invite people"}
           </button>
         </div>
         <div data-lk-theme="default" className="w-full max-w-xl">
@@ -850,38 +846,16 @@ function RoomContainer({
     }
   };
 
-  const copyLink = async () => {
-    try {
-      // Same short-URL preference as the pre-join copyLink above —
-      // want people to share `origin/<slug>`, not the current /room path.
-      const shortUrl = eventSlug
-        ? window.location.origin + "/" + encodeURIComponent(eventSlug)
-        : window.location.href;
-      await navigator.clipboard.writeText(shortUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // ignore
-    }
-  };
 
   // Invite people from inside the meeting: the phone's share menu where
   // the browser has one (WhatsApp, KingsChat, SMS…), a copied link where
   // it has not (most desktops).
   const invite = async () => {
-    const url = eventSlug
-      ? window.location.origin + "/" + encodeURIComponent(eventSlug)
-      : window.location.href;
-    if (typeof navigator.share === "function") {
-      try {
-        await navigator.share({ title: "NeoConference meeting", text: "Join my meeting on NeoConference:", url });
-        return;
-      } catch (e) {
-        // Closed the share menu: nothing to do. Anything else: copy instead.
-        if (e instanceof DOMException && e.name === "AbortError") return;
-      }
+    const outcome = await shareOrCopyInvite(meetingInviteUrl(eventSlug));
+    if (outcome === "copied") {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
     }
-    await copyLink();
   };
 
   return (

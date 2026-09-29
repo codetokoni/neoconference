@@ -320,7 +320,7 @@ export function RoomNameEntry({
                 </AnimatePresence>
               </div>
               <button type="button" onClick={onCopyLink} className="shrink-0 text-[11px] px-3 py-1.5 rounded-full border border-cyan-400/40 text-cyan-300 hover:bg-cyan-400/10 transition">
-                {copied ? "Copied!" : "Copy link"}
+                {copied ? "Link copied!" : "Invite people"}
               </button>
             </div>
 
