@@ -4,8 +4,10 @@
 // may watch, as the owner decided. Egress writes them to R2 under
 // recordings/<recorder>/<slug>/<yyyy-mm-dd-hh-mm-ss>.mp4, one video and one
 // audio sidecar each; the page gets the videos, newest first, each with a
-// signed address good for six hours. The stored key names the recorder's
-// account id, so it is not sent to the page — only the time and size.
+// signed address good for six hours. The page gets each recording's time,
+// size and address. The address is R2's own, so it carries the stored key,
+// which includes the recorder's account id — an opaque Clerk id, not a
+// name or email; the same address the dashboard's Download uses.
 
 import type { NeoEvent } from "@/types/event";
 import { isVideoKey, listEventRecordingObjects } from "@/lib/eventRecordings";
@@ -15,7 +17,7 @@ export type ReplayVideo = {
   /** When it was recorded (from the key), or null when the key is odd. */
   recordedAt: string | null;
   sizeBytes: number;
-  /** A signed address; expires, so the page is rendered per request. */
+  /** A signed R2 address (key included); expires, so the page renders per request. */
   url: string;
 };
 
