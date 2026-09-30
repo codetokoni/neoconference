@@ -18,7 +18,7 @@ import { toPublicView, type NeoEvent, type PublicEventView } from '@/types/event
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { can, resolveRole } from '@/lib/permissions';
 import { isAdmin } from '@/lib/roles';
-import { eventReplayVideos, sizeLabel, type ReplayVideo } from '@/lib/replayRecordings';
+import { eventReplayVideos, replayOpen, sizeLabel, type ReplayVideo } from '@/lib/replayRecordings';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,9 +76,24 @@ export default async function ReplayPage({ params }: Props) {
   const event = await eventStore.bySlug(params.slug);
   if (!event) return notFound();
   const publicView = toPublicView(event);
-  const view: PublicEventView = (await canReadTranscript(event))
+  const isHost = await canReadTranscript(event);
+  const view: PublicEventView = isHost
     ? { ...publicView, recordings: event.recordings || [], chapters: event.chapters }
     : publicView;
+  // Replay switched off by the owner: the hosts still see the recordings
+  // (told it is off); everyone else sees that there is nothing to watch.
+  const replayOff = !replayOpen(event);
+  if (replayOff && !isHost) {
+    return (
+      <ReplayView
+        view={{ ...publicView, recordings: [], chapters: undefined }}
+        replayUrl=""
+        replayShareTitle=""
+        recordedVideos={[]}
+        notice="The host has not made a replay of this meeting available."
+      />
+    );
+  }
   const h = await headers();
   const proto = h.get("x-forwarded-proto") || "https";
   const host = h.get("x-forwarded-host") || h.get("host") || "neoconference.vercel.app";
@@ -87,7 +102,15 @@ export default async function ReplayPage({ params }: Props) {
   // The meeting's recordings, for anyone with the link (the owner's call).
   const recordedVideos = await eventReplayVideos(event).catch(() => []);
 
-  return <ReplayView view={view} replayUrl={replayUrl} replayShareTitle={replayShareTitle} recordedVideos={recordedVideos} />;
+  return (
+    <ReplayView
+      view={view}
+      replayUrl={replayUrl}
+      replayShareTitle={replayShareTitle}
+      recordedVideos={recordedVideos}
+      notice={replayOff ? "Replay is switched off for this meeting: only its hosts can see these recordings. Turn it on from the meeting's Manage page." : undefined}
+    />
+  );
 }
 
 function ReplayView({
@@ -95,11 +118,13 @@ function ReplayView({
   replayUrl,
   replayShareTitle,
   recordedVideos,
+  notice,
 }: {
   view: PublicEventView;
   replayUrl: string;
   replayShareTitle: string;
   recordedVideos: ReplayVideo[];
+  notice?: string;
 }) {
   const recordings = view.recordings || [];
   const transcripts = recordings.filter((r) => r.kind === 'transcript');
@@ -127,8 +152,12 @@ function ReplayView({
           <p className="mt-4 max-w-2xl text-white/70 text-sm sm:text-base whitespace-pre-line">{view.description}</p>
         )}
 
+        {notice && (
+          <p className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">{notice}</p>
+        )}
+
         <div className="mt-4">
-          <ReplayShareBar url={replayUrl} title={replayShareTitle} />
+          {replayUrl && <ReplayShareBar url={replayUrl} title={replayShareTitle} />}
           {(() => { const first = videos[0] || audios[0] || transcripts[0]; return first ? <ReplayViewBumper recordingKey={first.key} /> : null; })()}
         </div>
 

@@ -1,5 +1,11 @@
 import { test, expect } from "@playwright/test";
-import { recordedAtFromKey, replayVideoKeys, sizeLabel } from "../../src/lib/replayRecordings";
+import { recordedAtFromKey, replayOpen, replayVideoKeys, sizeLabel } from "../../src/lib/replayRecordings";
+
+test("replay is open unless the owner switched it off", () => {
+  expect(replayOpen({})).toBe(true);
+  expect(replayOpen({ replayEnabled: true })).toBe(true);
+  expect(replayOpen({ replayEnabled: false })).toBe(false);
+});
 
 /**
  * The replay page shows a meeting's recordings to anyone with the link:

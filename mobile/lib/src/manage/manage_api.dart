@@ -19,6 +19,7 @@ class ManagedMeeting {
     required this.waitingRoomEnabled,
     required this.isPermanent,
     required this.endPinSet,
+    this.replayEnabled = true,
     this.description,
     this.scheduledAt,
     this.startedAt,
@@ -32,6 +33,9 @@ class ManagedMeeting {
   final bool waitingRoomEnabled;
   final bool isPermanent;
   final bool endPinSet;
+
+  /// Recordings on the public replay page, for anyone with the link.
+  final bool replayEnabled;
   final String? description;
   final DateTime? scheduledAt;
   final DateTime? startedAt;
@@ -47,6 +51,7 @@ class ManagedMeeting {
         waitingRoomEnabled: j['waitingRoomEnabled'] == true,
         isPermanent: j['isPermanent'] == true,
         endPinSet: j['endPinSet'] == true,
+        replayEnabled: j['replayEnabled'] != false,
         description: j['description'] as String?,
         scheduledAt: _date(j['scheduledAt']),
         startedAt: _date(j['startedAt']),
@@ -127,11 +132,12 @@ class ManageApi {
 
   /// Rename, reschedule, or set or clear the End PIN (an empty [endPin]
   /// clears it). Only what is passed changes.
-  Future<void> update(String id, {String? name, DateTime? scheduledAt, String? endPin}) async {
+  Future<void> update(String id, {String? name, DateTime? scheduledAt, String? endPin, bool? replayEnabled}) async {
     await api.patch('/api/events/${Uri.encodeComponent(id)}', {
       'name': ?name,
       if (scheduledAt != null) 'scheduledAt': scheduledAt.toUtc().toIso8601String(),
       'endPin': ?endPin,
+      'replayEnabled': ?replayEnabled,
     });
   }
 

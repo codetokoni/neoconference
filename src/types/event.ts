@@ -269,6 +269,13 @@ export interface NeoEvent {
   /** LiveKit room name (must match the route /room/<name>). */
   livekitRoom: string;
 
+  /**
+   * Whether the meeting's recordings play on its public replay page for
+   * anyone with the link. Unset means yes (the owner's default); false
+   * keeps them to the meeting's hosts.
+   */
+  replayEnabled?: boolean;
+
   /** StreamLab Cloud binding (optional, only set when Go-Live used). */
   streamlab?: StreamLabBinding;
 

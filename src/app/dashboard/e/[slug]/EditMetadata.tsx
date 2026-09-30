@@ -24,6 +24,8 @@ export default function EditMetadata({
     scheduledAt?: string;
     visibility: Visibility;
     waitingRoomEnabled: boolean;
+    /** Recordings on the public replay page for anyone with the link. */
+    replayEnabled: boolean;
     endPinIsSet?: boolean;
     inactivity?: InactivityInitial | null;
   };
@@ -36,6 +38,7 @@ export default function EditMetadata({
   const [scheduledAt, setScheduledAt] = useState(toLocalInput(initial.scheduledAt));
   const [visibility, setVisibility] = useState<Visibility>(initial.visibility);
   const [waitingRoomEnabled, setWaitingRoomEnabled] = useState(initial.waitingRoomEnabled);
+  const [replayEnabled, setReplayEnabled] = useState(initial.replayEnabled);
   const [endPin, setEndPin] = useState("");
   const [clearEndPin, setClearEndPin] = useState(false);
   const [inactivityEnabled, setInactivityEnabled] = useState<boolean>(initial.inactivity?.enabled ?? true);
@@ -67,6 +70,7 @@ export default function EditMetadata({
         description,
         visibility,
         waitingRoomEnabled,
+        replayEnabled,
       };
       if (scheduledAt) {
         const d = new Date(scheduledAt);
@@ -182,6 +186,15 @@ export default function EditMetadata({
             className="accent-cyan-400"
           />
           Waiting room
+        </label>
+        <label className="flex items-center gap-2 text-sm text-slate-300 mt-2" title="When on, anyone with the link can watch this meeting's recordings on its replay page. Off keeps them to the hosts.">
+          <input
+            type="checkbox"
+            checked={replayEnabled}
+            onChange={(e) => setReplayEnabled(e.target.checked)}
+            className="accent-cyan-400"
+          />
+          Public replay
         </label>
       </div>
       <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 space-y-2">

@@ -350,6 +350,22 @@ class _ManageMeetingScreenState extends ConsumerState<ManageMeetingScreen> {
                 style: TextStyle(color: p.textMuted),
               ),
             ),
+            SwitchListTile(
+              value: m.replayEnabled,
+              onChanged: _busy
+                  ? null
+                  : (on) => _change(
+                        () => _api.update(m.id, replayEnabled: on),
+                        on ? 'Public replay on.' : 'Public replay off.',
+                      ),
+              title: const Text('Public replay'),
+              subtitle: Text(
+                m.replayEnabled
+                    ? 'Anyone with the link can watch this meeting\'s recordings on its replay page.'
+                    : 'Only hosts can see the recordings.',
+                style: TextStyle(color: p.textMuted),
+              ),
+            ),
             ListTile(
               leading: const Icon(Icons.pin_rounded),
               title: const Text('End Meeting PIN'),

@@ -21,7 +21,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import StartEventButton from '@/components/StartEventButton';
 import { getMeetingRole, getMeetingRoleByEmail } from '@/lib/meeting-roles';
 import { RANK } from '@/lib/permissions';
-import { eventReplayVideos } from '@/lib/replayRecordings';
+import { eventReplayVideos, replayOpen } from '@/lib/replayRecordings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,7 +59,7 @@ export default async function EventResolverPage({
   }
   const v = toPublicView(ev);
   // Recordings anyone with the link may watch, on the replay page.
-  const recordingCount = (await eventReplayVideos(ev).catch(() => [])).length;
+  const recordingCount = replayOpen(ev) ? (await eventReplayVideos(ev).catch(() => [])).length : 0;
 
   const statePill = stateMeta(v.state);
 
