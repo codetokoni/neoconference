@@ -25,18 +25,29 @@ import '../events/event.dart';
 /// a web checkout breaks Play's payments policy and would need Play Billing
 /// instead.
 class UpgradeSheet extends ConsumerStatefulWidget {
-  const UpgradeSheet({super.key, required this.reason, this.currentPlan});
+  const UpgradeSheet({
+    super.key,
+    required this.reason,
+    this.currentPlan,
+    this.initialPlan,
+  });
 
   /// What the person was trying to do when they ran into the plan.
   final String reason;
   final String? currentPlan;
+
+  /// The plan the sheet opens on: the one whose card was tapped, so the
+  /// person is not asked to pick again. Pro when unset or not for sale.
+  final String? initialPlan;
 
   @override
   ConsumerState<UpgradeSheet> createState() => _UpgradeSheetState();
 }
 
 class _UpgradeSheetState extends ConsumerState<UpgradeSheet> {
-  String _plan = 'pro';
+  late String _plan = _espees.containsKey(widget.initialPlan)
+      ? widget.initialPlan!
+      : 'pro';
   String _cycle = 'monthly';
   bool _busy = false;
   String? _error;
