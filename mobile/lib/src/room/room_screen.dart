@@ -500,6 +500,7 @@ class _InMeetingState extends State<_InMeeting> {
       screenSharing: state.screenSharing,
       handRaised: state.handRaised,
       recording: state.isRecording,
+      liveOn: state.liveOnLine,
       canManage: state.canManage,
       unreadChat: state.unreadChat,
       waitingCount: state.canManage ? state.waitingRoom.length : 0,

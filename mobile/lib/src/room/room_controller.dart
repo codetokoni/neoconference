@@ -19,6 +19,7 @@ import 'headset_keeper.dart';
 import 'meeting_drop.dart';
 import 'meeting_presence.dart';
 import 'phone_call_policy.dart';
+import 'live_stream.dart';
 import 'plan_limit.dart';
 import 'reconnect_watchdog.dart';
 import 'translation_voice.dart';
@@ -179,6 +180,9 @@ class RoomState {
     this.roomRecording = false,
     this.isOwner = false,
     this.recordingAllowed = true,
+    this.streamingAllowed = true,
+    this.liveStream,
+    this.liveOn,
   });
 
   final JoinPhase phase;
@@ -299,6 +303,20 @@ class RoomState {
   /// until the plan is known, so an older token hides nothing it shouldn't.
   final bool recordingAllowed;
 
+  /// Whether the owner's plan includes Go Live (Enterprise). True until
+  /// the plan is known; the server refuses it anyway.
+  final bool streamingAllowed;
+
+  /// The livestream this host is running, as the server last reported it.
+  final LiveStreamView? liveStream;
+
+  /// "Live on YouTube", told by whichever host started it — this device's
+  /// own stream, or another's data packet. Null when not streaming.
+  final String? liveOn;
+
+  /// What the header says about streaming, from either source.
+  String? get liveOnLine => liveStream?.liveOn ?? liveOn;
+
   /// This person owns the meeting. Only the owner may make someone a host
   /// (FRS §1.1), as on the web.
   final bool isOwner;
@@ -361,6 +379,11 @@ class RoomState {
     bool? roomRecording,
     bool? isOwner,
     bool? recordingAllowed,
+    bool? streamingAllowed,
+    LiveStreamView? liveStream,
+    bool clearLiveStream = false,
+    String? liveOn,
+    bool clearLiveOn = false,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
@@ -418,6 +441,9 @@ class RoomState {
         roomRecording: roomRecording ?? this.roomRecording,
         isOwner: isOwner ?? this.isOwner,
         recordingAllowed: recordingAllowed ?? this.recordingAllowed,
+        streamingAllowed: streamingAllowed ?? this.streamingAllowed,
+        liveStream: clearLiveStream ? null : (liveStream ?? this.liveStream),
+        liveOn: clearLiveOn ? null : (liveOn ?? this.liveOn),
       );
 }
 
@@ -869,7 +895,9 @@ class RoomController extends StateNotifier<RoomState> {
     // 120), counted from joining as the web counts it.
     final limits = MeetingPlanLimits.fromMetadata(room.localParticipant?.metadata);
     if (limits != null) {
-      state = state.copyWith(recordingAllowed: limits.recording);
+      state = state.copyWith(recordingAllowed: limits.recording, streamingAllowed: limits.livestream);
+      // A host rejoining a meeting that is already going out sees it so.
+      if (state.canManage) unawaited(refreshStream());
       _timeLimit.start(limits.meetingMinutes);
     }
 
@@ -1391,6 +1419,18 @@ class RoomController extends StateNotifier<RoomState> {
       state = state.copyWith(captionsOn: payload['enabled'] as bool);
       return;
     }
+    // A host went live (or stopped), as the web's Go Live sends it:
+    // {type: 'golive', active, by, on: ['YouTube']}.
+    if (payload['type'] == 'golive') {
+      if (payload['active'] == true) {
+        final on = (payload['on'] as List? ?? const []).whereType<String>().toList();
+        final line = liveOnText(on);
+        state = state.copyWith(liveOn: line, message: '${payload['by'] ?? 'A host'} started streaming: $line.');
+      } else {
+        state = state.copyWith(clearLiveOn: true, message: 'The livestream has stopped.');
+      }
+      return;
+    }
 
     switch (event.topic) {
       case Topics.chat:
@@ -1878,6 +1918,66 @@ class RoomController extends StateNotifier<RoomState> {
       state = state.copyWith(message: e.message);
     }
   }
+
+  // ---- Go Live ------------------------------------------------------------
+
+  /// What the server says about this meeting's stream, if any.
+  Future<void> refreshStream() async {
+    try {
+      final body = await api.get('/api/livekit/egress/stream', {'room': slug});
+      final view = body is Map<String, dynamic> ? LiveStreamView.fromJson(body) : null;
+      if (_disposed) return;
+      state = view == null ? state.copyWith(clearLiveStream: true) : state.copyWith(liveStream: view);
+    } catch (e) {
+      debugPrint('[neo-live] status failed: $e');
+    }
+  }
+
+  /// Sends the meeting live to [destinations]. Their keys leave this
+  /// device here and are kept nowhere. Returns what went wrong, or null.
+  Future<String?> startStream(List<StreamDestinationInput> destinations) async {
+    for (final d in destinations) {
+      final problem = destinationProblem(d);
+      if (problem != null) return problem;
+    }
+    try {
+      await api.post('/api/livekit/egress/stream', {
+        'room': slug,
+        'destinations': [for (final d in destinations) d.toJson()],
+      });
+      await refreshStream();
+      final on = [for (final d in destinations) d.label.trim().isEmpty ? platformLabel(d.platform) : d.label.trim()];
+      unawaited(_tellGoLive(active: true, on: on));
+      state = state.copyWith(message: '${liveOnText(on)}.');
+      return null;
+    } on ApiException catch (e) {
+      debugPrint('[neo-live] start refused: ${e.status} ${e.message}');
+      return e.message;
+    } catch (e) {
+      return describeActionError(e);
+    }
+  }
+
+  Future<String?> stopStream() async {
+    try {
+      await api.delete('/api/livekit/egress/stream', {'room': slug});
+      state = state.copyWith(clearLiveStream: true, message: 'Streaming stopped.');
+      unawaited(_tellGoLive(active: false, on: const []));
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (e) {
+      return describeActionError(e);
+    }
+  }
+
+  /// Tells everyone in the meeting, as the web's Go Live does, so their
+  /// headers say "Live on YouTube".
+  Future<void> _tellGoLive({required bool active, required List<String> on}) => _publish(
+        '',
+        {'type': 'golive', 'active': active, 'by': room.localParticipant?.name ?? 'A host', 'on': on},
+        reliable: true,
+      );
 
   Future<void> toggleRecording() async {
     try {

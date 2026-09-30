@@ -66,7 +66,7 @@ export async function getCurrentPlan(): Promise<Plan | null> {
   // Permanent admins (ADMIN_EMAILS) get the highest plan tier so the in-room
   // countdown widget and participant cap don't apply to app operators. Not
   // persisted — env var stays authoritative.
-  if (emails.some((e) => isAdmin(e))) return "business";
+  if (emails.some((e) => isAdmin(e))) return "enterprise";
 
   const existing = readPlanFromMetadata(user.publicMetadata);
     if (existing !== "free") return existing;
@@ -112,7 +112,7 @@ export async function getPlanForUserId(userId: string): Promise<Plan> {
           const explicit = readPlanFromMetadata(user.publicMetadata);
           if (explicit !== "free") return explicit;
           const emails = (user.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
-          if (emails.some((e) => isAdmin(e))) return "business";
+          if (emails.some((e) => isAdmin(e))) return "enterprise";
           return explicit;
     } catch {
           return "free";

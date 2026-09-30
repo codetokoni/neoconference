@@ -3,6 +3,8 @@
 // Single source of truth for the entire ecosystem:
 //   LiveKit room <-> StreamLab stream <-> HSMOH shortlink <-> QR code <-> replay.
 
+import type { LiveStreamState } from '@/lib/livestream';
+
 export type EventRole = 'host' | 'cohost' | 'speaker' | 'viewer' | 'ticket-holder';
 
 export type EventState =
@@ -270,6 +272,13 @@ export interface NeoEvent {
   /** StreamLab Cloud binding (optional, only set when Go-Live used). */
   streamlab?: StreamLabBinding;
 
+  /**
+   * The meeting's own video going out over RTMP (src/lib/livestream.ts),
+   * while it runs. Platforms and names only; the stream keys were handed
+   * to LiveKit at start and are kept nowhere.
+   */
+  livestream?: LiveStreamState;
+
   /** HSMOH shortlink binding (optional, falls back to /e/<slug>). */
   hsmoh?: HsmohBinding;
 
@@ -332,6 +341,8 @@ export interface PublicEventView {
   waitForHost?: boolean;
   customDomain?: string;
   hlsUrl?: string;
+  /** Where the meeting is being streamed right now, by name: "YouTube". */
+  liveOn?: string[];
   shortUrl?: string;
   recordings: RecordingArtifact[];
   chapters?: Chapter[];
@@ -354,6 +365,7 @@ export function toPublicView(e: NeoEvent): PublicEventView {
     waitForHost: e.waitForHost !== false,
     customDomain: e.customDomain,
     hlsUrl: e.streamlab?.hlsUrl,
+    liveOn: e.livestream?.destinations.map((d) => d.label),
     shortUrl: e.hsmoh?.shortUrl,
     // Never transcripts: a transcript artifact's label is the full text of
     // the meeting, and this view is served to anyone. Transcript access is
@@ -416,7 +428,7 @@ export function toAdminView(e: NeoEvent): AdminEventView {
     hasRecording: (e.recordings || []).length > 0,
     recordingCount: (e.recordings || []).length,
     isPaid: (e.tickets || []).length > 0,
-    isStreaming: Boolean(e.streamlab?.hlsUrl),
+    isStreaming: Boolean(e.streamlab?.hlsUrl || e.livestream),
     hasShortlink: Boolean(e.hsmoh?.shortUrl) && !e.hsmoh?.fallback,
   };
 }

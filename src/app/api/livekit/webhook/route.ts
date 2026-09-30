@@ -71,6 +71,7 @@ export async function POST(req: Request) {
       roomId?: string;
       roomName?: string;
       status?: number | string;
+      error?: string;
       file?: { filename?: string; location?: string };
       fileResults?: Array<{ filename?: string; location?: string }>;
     };
@@ -261,9 +262,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, ignored: event?.event || 'unknown' });
     }
 
+    const egressInfo = event.egressInfo;
+
+    // A livestream that ended — stopped, the room closed, or every
+    // destination failed — must stop being "live on YouTube" on the event.
+    if (egressInfo?.egressId && egressInfo.roomName) {
+      const ev = await eventStore.bySlug(egressInfo.roomName);
+      if (ev?.livestream?.egressId === egressInfo.egressId) {
+        await eventStore.update(ev.id, (prev) => ({ ...prev, livestream: undefined, updatedAt: new Date().toISOString() }));
+        return NextResponse.json({ ok: true, livestream: 'ended', egressId: egressInfo.egressId, error: egressInfo.error || undefined });
+      }
+    }
+
     // Extract the R2 key that egress wrote to. LiveKit gives us either a
     // single file or an array depending on egress type.
-    const egressInfo = event.egressInfo;
     const fileFromInfo = egressInfo?.file?.filename;
     const fileFromResults = egressInfo?.fileResults?.[0]?.filename;
     const filename = fileFromInfo || fileFromResults || '';
