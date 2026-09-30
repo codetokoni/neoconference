@@ -5,6 +5,7 @@ import '../core/load_error.dart';
 import '../billing/plan.dart';
 import '../billing/upgrade.dart';
 import '../design/brand.dart';
+import '../design/tokens.dart';
 
 /// Where the app opens: what it does, what it costs, and the way in.
 ///
@@ -56,37 +57,44 @@ class LandingScreen extends ConsumerWidget {
               const SizedBox(height: 28),
 
               const _SectionLabel('Plans'),
-              const _PriceCard(
+              // Each card is the way to buy that plan. The Upgrade button
+              // above is the other way in, but it is hidden on Enterprise
+              // and scrolled off screen by here, so a card that only
+              // described its plan left people tapping it and paying nothing.
+              _PriceCard(
                 name: 'Starter',
                 monthly: 10,
                 annual: 100,
-                lines: [
+                lines: const [
                   '100 participants',
                   '120 minutes per meeting',
                   'No recording',
                 ],
+                onChoose: () => _openUpgrade(context, plan.asData?.value, 'starter'),
               ),
-              const _PriceCard(
+              _PriceCard(
                 name: 'Pro',
                 monthly: 20,
                 annual: 200,
                 highlight: true,
-                lines: [
+                lines: const [
                   '200 participants',
                   'No time limit',
                   'Recording and breakouts',
                   "Choose a meeting's translation languages",
                 ],
+                onChoose: () => _openUpgrade(context, plan.asData?.value, 'pro'),
               ),
-              const _PriceCard(
+              _PriceCard(
                 name: 'Business',
                 monthly: 30,
                 annual: 300,
-                lines: [
+                lines: const [
                   '500 participants',
                   'Recording and breakouts',
                   "Choose a meeting's translation languages",
                 ],
+                onChoose: () => _openUpgrade(context, plan.asData?.value, 'business'),
               ),
               const _Note(
                 'Live translation — hearing speakers in your language — is on '
@@ -109,17 +117,22 @@ class LandingScreen extends ConsumerWidget {
     );
   }
 
-  void _openUpgrade(BuildContext context, PlanInfo plan) {
+  /// [plan] is null while the person's own plan is still loading or failed
+  /// to load; that must not stop them paying.
+  void _openUpgrade(BuildContext context, PlanInfo? plan, [String? chosen]) {
     // Colour and shape come from bottomSheetTheme, so that a chosen theme
     // reaches the sheet as well as the screen behind it.
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (_) => UpgradeSheet(
-        reason: plan.isFree
-            ? 'You are on the Free plan.'
-            : 'You are on the ${plan.plan} plan.',
-        currentPlan: plan.plan,
+        reason: plan == null
+            ? 'Choose a plan.'
+            : plan.isFree
+                ? 'You are on the Free plan.'
+                : 'You are on the ${plan.plan} plan.',
+        currentPlan: plan?.plan,
+        initialPlan: chosen,
       ),
     );
   }
@@ -211,6 +224,7 @@ class _PriceCard extends StatelessWidget {
     required this.monthly,
     required this.annual,
     required this.lines,
+    required this.onChoose,
     this.highlight = false,
   });
 
@@ -220,12 +234,14 @@ class _PriceCard extends StatelessWidget {
   final List<String> lines;
   final bool highlight;
 
+  /// Starts paying for this plan.
+  final VoidCallback onChoose;
+
   @override
   Widget build(BuildContext context) {
     final p = NeoTheme.of(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: p.surfaceAlt,
         borderRadius: BorderRadius.circular(16),
@@ -234,7 +250,19 @@ class _PriceCard extends StatelessWidget {
           width: highlight ? 1.5 : 1,
         ),
       ),
-      child: Column(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onChoose,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: _body(p),
+        ),
+      ),
+    );
+  }
+
+  Widget _body(NeoPalette p) {
+    return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -273,9 +301,21 @@ class _PriceCard extends StatelessWidget {
                 style: TextStyle(color: p.textMuted, fontSize: 12),
               ),
             ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: highlight
+                ? FilledButton(
+                    onPressed: onChoose,
+                    child: Text('Choose $name'),
+                  )
+                : OutlinedButton(
+                    onPressed: onChoose,
+                    child: Text('Choose $name'),
+                  ),
+          ),
         ],
-      ),
-    );
+      );
   }
 }
 
