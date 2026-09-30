@@ -45,6 +45,14 @@ const isPublicRoute = createRouteMatcher([
   '/api/auth/neoemail/(.*)',
   '/api/events/by-domain',
   '/api/stripe/webhook',
+  // Where eSPees sends the buyer after a payment, or a cancelled one. A
+  // purchase started in the mobile app opens the checkout in the phone's
+  // browser, which has no web session, so behind auth.protect() both
+  // landed on /sign-in: the plan was never granted and the app never heard
+  // back. Each is keyed by the nonce minted at checkout; neither reads the
+  // session.
+  '/api/billing/espees/return',
+  '/api/billing/espees/fail',
   '/api/events/(.*)/checkout',
   '/api/invites/(.*)',
   '/api/cron/(.*)',
