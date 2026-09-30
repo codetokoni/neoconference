@@ -14,11 +14,14 @@ import 'meeting_drop.dart';
 /// owner's plan, never the joiner's.
 @immutable
 class MeetingPlanLimits {
-  const MeetingPlanLimits({required this.meetingMinutes, required this.recording});
+  const MeetingPlanLimits({required this.meetingMinutes, required this.recording, this.livestream = false});
 
   /// 0 means no limit, as in planLimits.ts.
   final int meetingMinutes;
   final bool recording;
+
+  /// Go Live to YouTube, Facebook, Twitch or RTMP: Enterprise.
+  final bool livestream;
 
   /// Null when the metadata says nothing about the plan (an older token);
   /// the server still enforces recording either way.
@@ -32,6 +35,7 @@ class MeetingPlanLimits {
       return MeetingPlanLimits(
         meetingMinutes: minutes is num && minutes > 0 ? minutes.toInt() : 0,
         recording: limits['recording'] == true,
+        livestream: limits['livestream'] == true,
       );
     } catch (_) {
       return null;

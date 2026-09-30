@@ -1,31 +1,37 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+// src/components/GoLiveButton.tsx
+//
+// Go Live: stream the meeting itself to YouTube, Facebook, Twitch or an
+// RTMP address (src/lib/livestream.ts, /api/livekit/egress/stream). The
+// host pastes a stream key, presses Start, and LiveKit sends the meeting's
+// composed video and audio there. No OBS.
+//
+// It used to hand the host StreamLab RTMP credentials to point OBS at —
+// the meeting itself was never sent, and production had no StreamLab key.
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Radio, X } from 'lucide-react';
+import { Radio, X, Plus, Trash2 } from 'lucide-react';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
 import { RoomEvent, type Participant } from 'livekit-client';
+import {
+  STREAM_PLATFORMS,
+  destinationProblem,
+  liveOnText,
+  type StreamDestination,
+  type StreamDestinationInput,
+  type StreamPlatform,
+} from '@/lib/livestream';
 
-type Stream = {
-  id: string;
-  rtmpUrl?: string;
-  streamKey?: string;
-  hlsUrl?: string;
-  playbackId?: string;
-};
+type DestinationView = StreamDestination & { status: 'connecting' | 'live' | 'ended' | 'failed'; error?: string };
+type StreamStatus =
+  | { live: false }
+  | { live: true; egressId: string; startedAt: string; egress: string; error?: string; destinations: DestinationView[] };
 
-type Resp = { ok: boolean; stream?: Stream; error?: string; hostPlan?: string; message?: string };
+const INPUT_CLASS =
+  'w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/35 focus:border-cyan-400/60 focus:outline-none';
 
-/**
- * GoLiveButton
- *
- * Floating in-room control. On click, calls /api/golive to provision a
- * StreamLab broadcast and reveals RTMP credentials + HLS URL in a glass
- * card so the host can route OBS/encoder to the broadcast.
- *
- * If the room was launched from a NeoEvent, pass eventSlug so the broadcast
- * is persisted to KV and the event auto-flips to LIVE on first ingest.
- */
 export default function GoLiveButton({
   roomName,
   eventSlug,
@@ -35,78 +41,74 @@ export default function GoLiveButton({
   eventSlug?: string;
   roomRole?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [stream, setStream] = useState<Stream | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
-
-  // FRS §2: multi-destination fan-out. StreamLab's addDestination primitive
-  // is wired via /api/golive/destination; UI state lives here.
-  const [destPlatform, setDestPlatform] = useState<'rtmp' | 'youtube' | 'facebook' | 'twitch'>('rtmp');
-  const [destUrl, setDestUrl] = useState('');
-  const [destKey, setDestKey] = useState('');
-  const [destLabel, setDestLabel] = useState('');
-  const [destBusy, setDestBusy] = useState(false);
-  const [addedDests, setAddedDests] = useState<Array<{ platform: string; label?: string }>>([]);
-
-  // Receive-side: another host started/stopped a broadcast for this room.
-  const [remoteBroadcast, setRemoteBroadcast] = useState<{ by: string } | null>(null);
-  const [showStartFlash, setShowStartFlash] = useState(false);
-  const wasBroadcastingRef = useRef(false);
-
+  // The event's slug is what the stream route wants; the room name is the
+  // slug for every meeting that owns its room.
+  const slug = eventSlug || roomName;
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
+  const isHost = roomRole === 'host' || roomRole === 'cohost';
 
-  const isHost = roomRole === 'host';
-  const isBroadcasting = !!stream || !!remoteBroadcast;
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState<StreamStatus>({ live: false });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<StreamDestinationInput[]>([{ platform: 'youtube', key: '', label: '' }]);
+  // What others were told: "Live on YouTube", from the host's data packet.
+  const [remote, setRemote] = useState<{ by: string; on: string[] } | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
-  // Livestream is Enterprise-only (see /lib/plan.ts). The plan gate
-  // is enforced server-side too, but reading it from the participant
-  // metadata lets us show the correct button state up-front instead
-  // of only after a failed POST. Token route stamps this JSON:
-  // { role, hostPlan, planLimits: { livestream, recording, ... } }.
-  const [planAllowsLivestream, setPlanAllowsLivestream] = useState<boolean | null>(null);
-  const [hostPlan, setHostPlan] = useState<string | null>(null);
+  // Livestream is a plan feature (Enterprise). The server refuses without
+  // it; reading the token's planLimits shows the lock before a failed POST.
+  const [planAllows, setPlanAllows] = useState<boolean>(true);
   useEffect(() => {
-    const raw = localParticipant?.metadata;
-    if (!raw) return;
     try {
-      const md = JSON.parse(raw) as { hostPlan?: string; planLimits?: { livestream?: boolean } };
-      if (typeof md.hostPlan === 'string') setHostPlan(md.hostPlan);
-      if (typeof md.planLimits?.livestream === 'boolean') {
-        setPlanAllowsLivestream(md.planLimits.livestream);
-      } else {
-        // Older tokens issued before the livestream flag existed lack
-        // this field. Default to allowed so we don't lock existing
-        // enterprise customers out during the deploy window; the
-        // server gate still refuses if the plan actually doesnt
-        // qualify.
-        setPlanAllowsLivestream(true);
-      }
+      const md = JSON.parse(localParticipant?.metadata || '{}') as { planLimits?: { livestream?: boolean } };
+      if (typeof md.planLimits?.livestream === 'boolean') setPlanAllows(md.planLimits.livestream);
     } catch {
-      // Malformed metadata — fall back to permissive.
-      setPlanAllowsLivestream(true);
+      // Malformed metadata: leave it to the server.
     }
   }, [localParticipant?.metadata]);
 
-  // Subscribe to golive state messages from other participants.
+  const refresh = useCallback(async () => {
+    try {
+      const r = await fetch('/api/livekit/egress/stream?room=' + encodeURIComponent(slug));
+      if (!r.ok) return;
+      const j = (await r.json()) as StreamStatus & { ok: boolean };
+      setStatus(j.live ? j : { live: false });
+    } catch {
+      // Left as it was; the next poll will say.
+    }
+  }, [slug]);
+
+  // Known on arrival (a reload mid-stream), and kept fresh while live or
+  // while the panel is open.
+  useEffect(() => {
+    if (!isHost) return;
+    void refresh();
+  }, [isHost, refresh]);
+  useEffect(() => {
+    if (!isHost || !(status.live || open)) return;
+    const id = window.setInterval(() => void refresh(), 5000);
+    return () => window.clearInterval(id);
+  }, [isHost, status.live, open, refresh]);
+
+  // Everyone else hears about it on the data channel, as with recording.
   useEffect(() => {
     if (!room) return;
     const onData = (payload: Uint8Array, participant?: Participant) => {
       try {
-        const msg = JSON.parse(new TextDecoder().decode(payload));
-        if (msg?.type === 'golive') {
-          if (msg.active) {
-            setRemoteBroadcast({
-              by: msg.by || participant?.name || participant?.identity || 'Someone',
-            });
-          } else {
-            setRemoteBroadcast(null);
-          }
-        }
+        const msg = JSON.parse(new TextDecoder().decode(payload)) as {
+          type?: string;
+          active?: boolean;
+          by?: string;
+          on?: string[];
+        };
+        if (msg?.type !== 'golive') return;
+        setRemote(
+          msg.active ? { by: msg.by || participant?.name || participant?.identity || 'A host', on: msg.on || [] } : null
+        );
       } catch {
-        // ignore non-JSON
+        // Not JSON: not ours.
       }
     };
     room.on(RoomEvent.DataReceived, onData);
@@ -115,25 +117,13 @@ export default function GoLiveButton({
     };
   }, [room]);
 
-  // Brief "Live started" flash for non-hosts on the false→true edge.
-  useEffect(() => {
-    const was = wasBroadcastingRef.current;
-    wasBroadcastingRef.current = isBroadcasting;
-    if (!isHost && isBroadcasting && !was) {
-      setShowStartFlash(true);
-      const t = setTimeout(() => setShowStartFlash(false), 2500);
-      return () => clearTimeout(t);
-    }
-  }, [isBroadcasting, isHost]);
-
-  const broadcastState = useCallback(
-    async (active: boolean) => {
+  const tell = useCallback(
+    async (active: boolean, on: string[]) => {
       try {
-        const me = localParticipant?.name || localParticipant?.identity || 'Someone';
-        const payload = new TextEncoder().encode(
-          JSON.stringify({ type: 'golive', active, by: me })
-        );
-        await localParticipant.publishData(payload, { reliable: true });
+        const by = localParticipant?.name || localParticipant?.identity || 'A host';
+        await localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ type: 'golive', active, by, on })), {
+          reliable: true,
+        });
       } catch (e) {
         console.error('publishData golive failed', e);
       }
@@ -141,160 +131,80 @@ export default function GoLiveButton({
     [localParticipant]
   );
 
-  // Close panel on Escape key
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
-
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  // Reset scroll to top when modal opens or stream content changes
-  useEffect(() => {
-    if (open && cardRef.current) {
-      cardRef.current.scrollTop = 0;
-    }
-  }, [open, stream]);
-
-  async function start() {
-    setLoading(true);
+  const start = async () => {
     setError(null);
+    const problems = pending.map(destinationProblem).filter(Boolean);
+    if (problems.length) {
+      setError(problems[0]);
+      return;
+    }
+    setBusy(true);
     try {
-      const res = await fetch('/api/golive', {
+      const r = await fetch('/api/livekit/egress/stream', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ roomName, title: roomName, eventSlug }),
+        body: JSON.stringify({ room: slug, destinations: pending }),
       });
-      const j: Resp = await res.json();
-      if (!j.ok || !j.stream) {
-        // plan_upgrade_required gets the friendly server-supplied
-        // message so the operator learns exactly what to do (upgrade
-        // the OWNER's plan, not their own).
-        const friendly = j.error === 'plan_upgrade_required' && j.message
-          ? j.message
-          : j.error === 'plan_upgrade_required'
-            ? 'Livestreaming is available on the Enterprise plan only.'
-            : (j.error || 'Could not start broadcast.');
-        setError(friendly);
-        if (j.error === 'plan_upgrade_required') {
-          // Reflect what the server told us so the button flips to
-          // the locked state even if the metadata cache said allowed.
-          setPlanAllowsLivestream(false);
-          if (j.hostPlan) setHostPlan(j.hostPlan);
-        }
-      } else {
-        setStream(j.stream);
-        broadcastState(true);
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; message?: string; error?: string; destinations?: StreamDestination[] };
+      if (!r.ok || !j.ok) {
+        setError(j.message || j.error || `HTTP ${r.status}`);
+        return;
       }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Network error');
+      // The keys have gone to LiveKit; nothing here should keep them.
+      setPending([{ platform: 'youtube', key: '', label: '' }]);
+      await refresh();
+      await tell(true, (j.destinations || []).map((d) => d.label));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  }
+  };
 
-  function copy(text: string, label: string) {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(label);
-      setTimeout(() => setCopied(null), 1500);
-    });
-  }
+  const stop = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/livekit/egress/stream', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ room: slug }),
+      });
+      if (!r.ok) {
+        const j = (await r.json().catch(() => ({}))) as { message?: string; error?: string };
+        setError(j.message || j.error || `HTTP ${r.status}`);
+        return;
+      }
+      setStatus({ live: false });
+      await tell(false, []);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const liveLine = useMemo(() => {
+    if (status.live) return liveOnText(status.destinations);
+    if (remote) return liveOnText(remote.on.map((label) => ({ platform: 'rtmp' as const, label })));
+    return null;
+  }, [status, remote]);
+
+  const update = (i: number, patch: Partial<StreamDestinationInput>) =>
+    setPending((list) => list.map((d, j) => (j === i ? { ...d, ...patch } : d)));
 
   return (
     <>
-      {/* Host: persistent LIVE pill (offset below REC so both can co-exist). */}
-      {isHost && isBroadcasting && (
-        <div
+      {/* Everyone: a quiet notice that the meeting is being broadcast. */}
+      {!isHost && liveLine && (
+        <span
           data-room-chrome="true"
-          style={{
-            position: 'absolute',
-            top: 40,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 11,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '4px 10px',
-            borderRadius: 999,
-            background: 'rgba(244, 63, 94, 0.95)',
-            color: '#fff',
-            fontSize: 12,
-            fontWeight: 700,
-            letterSpacing: 0.5,
-            boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-          }}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-200"
+          title={remote ? `Started by ${remote.by}` : undefined}
         >
-          <Radio size={12} aria-hidden />
-          LIVE
-          {remoteBroadcast?.by && !stream ? (
-            <span style={{ fontWeight: 400, opacity: 0.9 }}>· {remoteBroadcast.by}</span>
-          ) : null}
-        </div>
+          <Radio size={14} aria-hidden className="animate-pulse" />
+          {liveLine}
+        </span>
       )}
 
-      {/* Non-host: brief "Live started" flash on the false→true edge. */}
-      {!isHost && isBroadcasting && (
-        <div
-          data-room-chrome="true"
-          role="status"
-          aria-live="polite"
-          style={{
-            position: 'absolute',
-            top: 80,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 11,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '6px 14px',
-            borderRadius: 999,
-            background: 'rgba(17,17,24,0.85)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            border: '1px solid rgba(244,63,94,0.4)',
-            color: 'rgb(253,164,175)',
-            fontSize: 12,
-            fontWeight: 600,
-            letterSpacing: 0.3,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
-            pointerEvents: 'none',
-            opacity: showStartFlash ? 1 : 0,
-            transition: showStartFlash ? 'opacity 200ms ease-out' : 'opacity 300ms ease-in',
-          }}
-        >
-          <Radio size={12} aria-hidden />
-          Broadcast started
-        </div>
-      )}
-
-      {/* Non-host: persistent discreet rose dot for continuous notice. */}
-      {!isHost && isBroadcasting && (
-        <div
-          data-room-chrome="true"
-          aria-label="Broadcast in progress"
-          title="Broadcast in progress"
-          style={{
-            position: 'absolute',
-            top: 14,
-            left: 14,
-            zIndex: 11,
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            background: '#f43f5e',
-            boxShadow: '0 0 6px rgba(244,63,94,0.7)',
-            pointerEvents: 'none',
-          }}
-        />
-      )}
-
-      {/* Sender UI — owner+host only per FRS §2. */}
       {isHost && (
         <button
           type="button"
@@ -302,253 +212,181 @@ export default function GoLiveButton({
           onClick={() => setOpen((v) => !v)}
           className={
             'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition active:scale-[0.98] ' +
-            (stream
+            (status.live
               ? 'border-red-500 bg-red-600 text-white hover:bg-red-500'
-              : planAllowsLivestream === false
-                ? 'border-white/20 bg-transparent text-white/50 hover:bg-white/5'
-                : 'border-red-500 bg-transparent text-red-400 hover:bg-red-500/10')
+              : planAllows
+                ? 'border-red-500 bg-transparent text-red-400 hover:bg-red-500/10'
+                : 'border-white/20 bg-transparent text-white/50 hover:bg-white/5')
           }
           title={
-            planAllowsLivestream === false
-              ? 'Livestream — Enterprise plan only' + (hostPlan ? ` (owner: ${hostPlan})` : '')
-              : 'Provision RTMP livestream for this room'
+            status.live
+              ? liveLine || 'Live'
+              : planAllows
+                ? 'Stream this meeting to YouTube, Facebook, Twitch or RTMP'
+                : 'Livestreaming is on the Enterprise plan'
           }
         >
-          <Radio size={16} aria-hidden className={stream ? 'animate-pulse' : ''} />
-          {stream
-            ? 'LIVE'
-            : planAllowsLivestream === false
-              ? 'Go Live 🔒'
-              : 'Go Live'}
+          <Radio size={16} aria-hidden className={status.live ? 'animate-pulse' : ''} />
+          {status.live ? 'LIVE' : planAllows ? 'Go Live' : 'Go Live 🔒'}
         </button>
       )}
 
-      {isHost && open && typeof document !== 'undefined' && createPortal(
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            ref={cardRef}
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="golive-title"
-            className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1020]/95 p-6 md:p-8 backdrop-blur-xl shadow-[0_0_80px_-20px_rgba(34,211,238,0.45)]"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex h-2 w-2 rounded-full bg-rose-400 shadow-[0_0_12px_2px_rgba(244,63,94,0.8)] animate-pulse" />
-                <h3 id="golive-title" className="text-lg font-semibold text-white">Livestream this room</h3>
-              </div>
-              <button
-              type="button"
-              onClick={() => setOpen(false)}
-              aria-label="Close dialog"
-              className="rounded-full p-1.5 text-white/50 hover:text-white hover:bg-white/10 transition"
+      {isHost &&
+        open &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)}>
+            <div
+              ref={cardRef}
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="golive-title"
+              className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1020]/95 p-6 md:p-8 backdrop-blur-xl shadow-[0_0_80px_-20px_rgba(34,211,238,0.45)]"
             >
-              <X size={18} aria-hidden />
-            </button>
-            </div>
-
-            {eventSlug && (
-              <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-cyan-200">
-                <span className="h-1 w-1 rounded-full bg-cyan-300" />
-                Linked to event · {eventSlug}
-              </div>
-            )}
-
-            {!stream && (
-              <>
-                <p className="mt-3 text-sm text-white/60">
-                  Provision an RTMP ingest + HLS playback for <span className="text-cyan-200">{roomName}</span>. Point OBS or your encoder at the credentials below — viewers can watch the HLS link from anywhere.
-                </p>
-                {error && (
-                  <div className="mt-4 rounded-xl border border-red-400/30 bg-red-500/10 p-3 text-xs text-red-200">{error}</div>
-                )}
-                <button
-                  onClick={start}
-                  disabled={loading}
-                  className="mt-5 w-full rounded-2xl bg-gradient-to-r from-rose-500 to-fuchsia-500 px-5 py-3 text-sm font-semibold text-white shadow-[0_0_30px_-10px_rgba(244,63,94,0.8)] transition hover:brightness-110 disabled:opacity-60"
-                >
-                  {loading ? 'Provisioning…' : 'Start broadcast'}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={
+                      'inline-flex h-2 w-2 rounded-full ' +
+                      (status.live ? 'bg-rose-400 shadow-[0_0_12px_2px_rgba(244,63,94,0.8)] animate-pulse' : 'bg-white/30')
+                    }
+                  />
+                  <h3 id="golive-title" className="text-lg font-semibold text-white">
+                    {status.live ? liveLine : 'Go live'}
+                  </h3>
+                </div>
+                <button type="button" onClick={() => setOpen(false)} className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white" aria-label="Close">
+                  <X size={18} aria-hidden />
                 </button>
-              </>
-            )}
+              </div>
 
-            {stream && (
-              <div className="mt-5 space-y-3">
-                {stream.rtmpUrl && (
-                  <Field label="RTMP ingest" value={stream.rtmpUrl} onCopy={() => copy(stream.rtmpUrl!, 'rtmp')} copied={copied === 'rtmp'} mono />
-                )}
-                {stream.streamKey && (
-                  <Field label="Stream key" value={stream.streamKey} onCopy={() => copy(stream.streamKey!, 'key')} copied={copied === 'key'} mono secret />
-                )}
-                {stream.hlsUrl && (
-                  <Field label="HLS playback (share with viewers)" value={stream.hlsUrl} onCopy={() => copy(stream.hlsUrl!, 'hls')} copied={copied === 'hls'} mono />
-                )}
-                <p className="text-[11px] text-white/45 leading-relaxed pt-2">
-                  Open OBS → Settings → Stream. Service: <span className="text-white/70">Custom</span>. Server: paste RTMP ingest. Stream key: paste stream key. Hit &quot;Start streaming&quot;.
+              {!planAllows && !status.live && (
+                <p className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
+                  Livestreaming is on the Enterprise plan. The meeting&apos;s owner can arrange it at{' '}
+                  <a href="/pricing" className="underline">
+                    neoconference.app/pricing
+                  </a>
+                  .
                 </p>
+              )}
 
-                {/* FRS §2 destination selection — fan the same broadcast out
-                    to YouTube Live, Facebook Live, Twitch, or a custom RTMP
-                    endpoint alongside the primary StreamLab ingest. */}
-                <div className="mt-3 rounded-xl border border-white/10 bg-black/40 p-3 space-y-2">
-                  <div className="text-[10px] uppercase tracking-[0.22em] text-white/45">Fan out to another destination</div>
-                  <select
-                    value={destPlatform}
-                    onChange={(e) => setDestPlatform(e.target.value as 'rtmp' | 'youtube' | 'facebook' | 'twitch')}
-                    className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 text-xs text-white/85 focus:outline-none focus:border-cyan-400/50"
-                  >
-                    <option value="rtmp">Custom RTMP</option>
-                    <option value="youtube">YouTube Live</option>
-                    <option value="facebook">Facebook Live</option>
-                    <option value="twitch">Twitch</option>
-                  </select>
-                  {destPlatform === 'rtmp' && (
-                    <input
-                      value={destUrl}
-                      onChange={(e) => setDestUrl(e.target.value)}
-                      placeholder="rtmp://ingest.example.com/live"
-                      className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-mono text-white/85 focus:outline-none focus:border-cyan-400/50"
-                    />
-                  )}
-                  <input
-                    value={destKey}
-                    onChange={(e) => setDestKey(e.target.value)}
-                    type="password"
-                    autoComplete="off"
-                    placeholder={destPlatform === 'rtmp' ? 'Stream key' : 'Stream key (from destination provider)'}
-                    className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 text-xs font-mono text-white/85 focus:outline-none focus:border-cyan-400/50"
-                  />
-                  <input
-                    value={destLabel}
-                    onChange={(e) => setDestLabel(e.target.value)}
-                    placeholder="Label (optional)"
-                    className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-1.5 text-xs text-white/85 focus:outline-none focus:border-cyan-400/50"
-                  />
+              {status.live ? (
+                <div className="mt-5 space-y-3">
+                  <p className="text-sm text-white/70">
+                    The meeting&apos;s video and audio are being sent live. Everyone in the meeting has been told.
+                  </p>
+                  <ul className="space-y-2">
+                    {status.destinations.map((d, i) => (
+                      <li key={i} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm">
+                        <span className="text-white">{d.label}</span>
+                        <span
+                          className={
+                            d.status === 'live'
+                              ? 'text-emerald-300'
+                              : d.status === 'failed'
+                                ? 'text-rose-300'
+                                : d.status === 'ended'
+                                  ? 'text-white/50'
+                                  : 'text-amber-200'
+                          }
+                          title={d.error}
+                        >
+                          {d.status === 'live' ? 'Live' : d.status === 'failed' ? 'Failed' + (d.error ? ': ' + d.error : '') : d.status === 'ended' ? 'Ended' : 'Connecting…'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {status.error && <p className="text-sm text-rose-300">{status.error}</p>}
                   <button
                     type="button"
-                    disabled={destBusy || (destPlatform === 'rtmp' && (!destUrl.trim() || !destKey.trim())) || (destPlatform !== 'rtmp' && !destKey.trim())}
-                    onClick={async () => {
-                      setDestBusy(true);
-                      setError(null);
-                      try {
-                        const res = await fetch('/api/golive/destination', {
-                          method: 'POST',
-                          headers: { 'content-type': 'application/json' },
-                          body: JSON.stringify({
-                            eventSlug: eventSlug || roomName,
-                            destination: {
-                              platform: destPlatform,
-                              rtmp_url: destUrl.trim() || undefined,
-                              stream_key: destKey.trim() || undefined,
-                              label: destLabel.trim() || undefined,
-                            },
-                          }),
-                        });
-                        const j = await res.json().catch(() => ({}));
-                        if (!j.ok) {
-                          setError(j.error || 'Could not add destination.');
-                          return;
-                        }
-                        setAddedDests((prev) => [...prev, { platform: destPlatform, label: destLabel.trim() || undefined }]);
-                        setDestUrl('');
-                        setDestKey('');
-                        setDestLabel('');
-                      } catch (e: unknown) {
-                        setError(e instanceof Error ? e.message : 'Network error');
-                      } finally {
-                        setDestBusy(false);
-                      }
-                    }}
-                    className="w-full rounded-lg bg-cyan-500/20 border border-cyan-400/40 px-3 py-1.5 text-xs font-medium text-cyan-100 hover:bg-cyan-500/30 transition disabled:opacity-60"
+                    onClick={stop}
+                    disabled={busy}
+                    className="w-full rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
                   >
-                    {destBusy ? 'Adding…' : 'Add destination'}
+                    {busy ? 'Stopping…' : 'Stop streaming'}
                   </button>
-                  {addedDests.length > 0 && (
-                    <ul className="pt-1 space-y-0.5">
-                      {addedDests.map((d, i) => (
-                        <li key={i} className="text-[11px] text-emerald-300/85">
-                          + {d.label ? `${d.label} · ` : ''}{d.platform}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
                 </div>
-
-              <button
-                type="button"
-                disabled={loading}
-                onClick={async () => {
-                  setLoading(true);
-                  setError(null);
-                  try {
-                    const res = await fetch('/api/golive/stop', {
-                      method: 'POST',
-                      headers: { 'content-type': 'application/json' },
-                      body: JSON.stringify({ eventSlug: eventSlug || roomName, roomName }),
-                    });
-                    const j = await res.json().catch(() => ({}));
-                    if (!j.ok) {
-                      setError(j.error || 'Could not end broadcast.');
-                      return;
-                    }
-                    setStream(null);
-                    setOpen(false);
-                    broadcastState(false);
-                  } catch (e: unknown) {
-                    setError(e instanceof Error ? e.message : 'Network error');
-                  } finally {
-                    setLoading(false);
-                  }
-                }}
-                className="mt-3 w-full rounded-2xl border border-red-500/40 bg-red-500/10 px-5 py-3 text-sm font-semibold text-red-200 hover:bg-red-500/20 transition disabled:opacity-60"
-              >
-                {loading ? 'Ending…' : 'End broadcast'}
-              </button>
-              </div>
-            )}
-          </div>
-        </div>,
-        document.body
-      )}
-    </>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onCopy,
-  copied,
-  mono,
-  secret,
-}: {
-  label: string;
-  value: string;
-  onCopy: () => void;
-  copied: boolean;
-  mono?: boolean;
-  secret?: boolean;
-}) {
-  const [reveal, setReveal] = useState(false);
-  const display = secret && !reveal ? '\u2022'.repeat(Math.min(value.length, 28)) : value;
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-[0.22em] text-white/45 mb-1">{label}</div>
-      <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2">
-        <code className={(mono ? 'font-mono ' : '') + 'flex-1 truncate text-xs text-white/85'}>{display}</code>
-        {secret && (
-          <button onClick={() => setReveal((v) => !v)} className="text-[10px] text-white/50 hover:text-white/80 transition px-2">
-            {reveal ? 'Hide' : 'Show'}
-          </button>
+              ) : (
+                <div className="mt-5 space-y-4">
+                  <p className="text-sm text-white/70">
+                    Send this meeting live to YouTube, Facebook, Twitch or any RTMP address. Paste the stream key from the
+                    platform; NeoConference does the rest, no other software needed.
+                  </p>
+                  {pending.map((d, i) => {
+                    const platform = STREAM_PLATFORMS.find((p) => p.id === d.platform) ?? STREAM_PLATFORMS[0];
+                    return (
+                      <div key={i} className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-3">
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={d.platform}
+                            onChange={(e) => update(i, { platform: e.target.value as StreamPlatform })}
+                            className={INPUT_CLASS + ' bg-[#0b1020]'}
+                            aria-label="Platform"
+                          >
+                            {STREAM_PLATFORMS.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.label}
+                              </option>
+                            ))}
+                          </select>
+                          {pending.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setPending((list) => list.filter((_, j) => j !== i))}
+                              className="rounded-lg p-2 text-white/50 hover:bg-white/10 hover:text-white"
+                              aria-label="Remove destination"
+                            >
+                              <Trash2 size={16} aria-hidden />
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="password"
+                          autoComplete="off"
+                          value={d.key}
+                          onChange={(e) => update(i, { key: e.target.value })}
+                          placeholder={d.platform === 'rtmp' ? 'rtmp://…' : 'Stream key'}
+                          className={INPUT_CLASS}
+                          aria-label={d.platform === 'rtmp' ? 'RTMP address' : 'Stream key'}
+                        />
+                        <p className="text-[11px] text-white/45">{platform.keyHint}. Kept only for this stream.</p>
+                        <input
+                          type="text"
+                          value={d.label || ''}
+                          onChange={(e) => update(i, { label: e.target.value })}
+                          placeholder={`Name shown to everyone (optional), e.g. "${platform.label} channel"`}
+                          className={INPUT_CLASS}
+                          maxLength={40}
+                          aria-label="Name"
+                        />
+                      </div>
+                    );
+                  })}
+                  {pending.length < 4 && (
+                    <button
+                      type="button"
+                      onClick={() => setPending((list) => [...list, { platform: 'facebook', key: '', label: '' }])}
+                      className="inline-flex items-center gap-1.5 text-sm text-cyan-300 hover:text-cyan-100"
+                    >
+                      <Plus size={14} aria-hidden /> Add another destination
+                    </button>
+                  )}
+                  {error && <p className="text-sm text-rose-300">{error}</p>}
+                  <button
+                    type="button"
+                    onClick={start}
+                    disabled={busy || !planAllows}
+                    className="w-full rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
+                  >
+                    {busy ? 'Starting…' : 'Start streaming'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>,
+          document.body
         )}
-        <button onClick={onCopy} className="text-[10px] text-cyan-200/80 hover:text-cyan-100 transition px-2">
-          {copied ? 'Copied' : 'Copy'}
-        </button>
-      </div>
-    </div>
+    </>
   );
 }

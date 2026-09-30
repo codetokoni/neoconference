@@ -75,6 +75,7 @@ class RoomView {
     this.screenSharing = false,
     this.handRaised = false,
     this.recording = false,
+    this.liveOn,
     this.canManage = false,
     this.unreadChat = 0,
     this.waitingCount = 0,
@@ -94,6 +95,9 @@ class RoomView {
   final bool screenSharing;
   final bool handRaised;
   final bool recording;
+
+  /// "Live on YouTube": the meeting is being streamed out. Null when not.
+  final String? liveOn;
 
   /// Whether the server would accept a moderation request from this
   /// person. Showing the controls is a convenience; the server checks the

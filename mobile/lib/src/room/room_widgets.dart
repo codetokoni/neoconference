@@ -8,6 +8,7 @@ import 'package:livekit_client/livekit_client.dart';
 import '../design/brand.dart';
 import '../design/components.dart';
 import '../meetings/room_view.dart';
+import 'go_live_sheet.dart';
 import 'room_controller.dart';
 
 /// Reactions drifting up the screen, then gone.
@@ -423,6 +424,13 @@ class HostControlsSheet extends ConsumerWidget {
                   ),
                 ),
               ],
+            ),
+            GoLiveControl(
+              allowed: state.streamingAllowed,
+              stream: state.liveStream,
+              onStart: controller.startStream,
+              onStop: controller.stopStream,
+              onRefresh: controller.refreshStream,
             ),
             // Not offered until the server has said which way it is set.
             if (state.waitingRoomEnabled != null)
