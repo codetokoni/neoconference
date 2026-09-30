@@ -123,7 +123,22 @@ void main() {
     final op = sent.lastWhere((r) => r.url.path == '/api/waiting-room');
     expect(jsonDecode(op.body), {'op': 'set', 'slug': 'testneo', 'enabled': true});
     // Reloaded from the server, not assumed.
-    expect(tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value, isTrue);
+    expect(tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Waiting room')).value, isTrue);
+  });
+
+  testWidgets('the Public replay switch sends replayEnabled', (tester) async {
+    tall(tester);
+    await tester.pumpWidget(app(const ManageMeetingScreen(slug: 'testneo')));
+    await tester.pumpAndSettle();
+
+    // On by default: the meeting's recordings are for anyone with the link.
+    final tile = find.widgetWithText(SwitchListTile, 'Public replay');
+    expect(tester.widget<SwitchListTile>(tile).value, isTrue);
+    await tester.tap(tile);
+    await tester.pumpAndSettle();
+
+    final patch = sent.lastWhere((r) => r.method == 'PATCH' && r.url.path == '/api/events/evt_1');
+    expect(jsonDecode(patch.body), {'replayEnabled': false});
   });
 
   testWidgets('revoke names the handle', (tester) async {

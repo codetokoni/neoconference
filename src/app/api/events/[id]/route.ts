@@ -45,6 +45,7 @@ export async function GET(
       endedAt: ev.endedAt ?? null,
       updatedAt: ev.updatedAt,
       waitingRoomEnabled: Boolean(ev.waitingRoomEnabled),
+      replayEnabled: ev.replayEnabled !== false,
       isLocked: Boolean(ev.isLocked),
       isPermanent: Boolean(ev.isPermanent),
       endPinSet: Boolean(ev.endPin),
@@ -101,6 +102,8 @@ export async function PATCH(
     patch.endPin = hashMeetingPassword(rawPin);
   }
   if (typeof body.waitingRoomEnabled === "boolean") patch.waitingRoomEnabled = body.waitingRoomEnabled;
+  // Public replay: on by default; false keeps recordings to the hosts.
+  if (typeof body.replayEnabled === "boolean") patch.replayEnabled = body.replayEnabled;
 
   // FRS §11 inactivity config: whole object PATCH-able. Individual fields
   // are validated so the client can't stash arbitrary data; unset means the

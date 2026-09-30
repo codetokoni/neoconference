@@ -21,6 +21,14 @@ export type ReplayVideo = {
   url: string;
 };
 
+/**
+ * Whether the recordings are for anyone with the link. On unless the
+ * owner switched the meeting's replay off; hosts still see them.
+ */
+export function replayOpen(ev: Pick<NeoEvent, "replayEnabled">): boolean {
+  return ev.replayEnabled !== false;
+}
+
 /** Six hours: a replay left open through a service must still seek. */
 export const REPLAY_URL_SECONDS = 6 * 60 * 60;
 
