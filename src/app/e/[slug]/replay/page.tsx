@@ -115,7 +115,7 @@ function ReplayView({
 
       <div className="relative mx-auto max-w-5xl px-4 sm:px-6 py-10 md:py-16">
         <div className="mb-6 sm:mb-8 flex items-center justify-between gap-4">
-          <Link href="/" className="text-sm text-white/60 hover:text-white transition">â NeoConference</Link>
+          <Link href="/" className="text-sm text-white/60 hover:text-white transition">← NeoConference</Link>
           <span className="text-[10px] sm:text-xs uppercase tracking-[0.3em] text-cyan-300/70">Replay</span>
         </div>
 
@@ -134,7 +134,7 @@ function ReplayView({
 
         <div className="mt-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-white/45">
           {view.endedAt && <span>Ended {new Date(view.endedAt).toLocaleString()}</span>}
-          {view.startedAt && view.endedAt && <span>Â·</span>}
+          {view.startedAt && view.endedAt && <span>·</span>}
           {view.startedAt && <span>Started {new Date(view.startedAt).toLocaleString()}</span>}
         </div>
 
@@ -143,7 +143,7 @@ function ReplayView({
           <section className="mt-8 sm:mt-10 rounded-3xl border border-white/10 bg-black/60 backdrop-blur-xl overflow-hidden shadow-[0_0_60px_-20px_rgba(34,211,238,0.4)]">
             <div className="px-4 sm:px-5 py-3 border-b border-white/5 flex items-center gap-2">
               <span className="inline-flex h-1.5 w-1.5 rounded-full bg-cyan-300" />
-              <span className="text-[11px] uppercase tracking-[0.22em] text-white/50">Live replay Â· HLS</span>
+              <span className="text-[11px] uppercase tracking-[0.22em] text-white/50">Live replay · HLS</span>
             </div>
             <video
               src={view.hlsUrl}
@@ -208,7 +208,7 @@ function ReplayView({
                   <div className="min-w-0">
                     <div className="font-mono text-white/85 truncate" title={rec.key}>{rec.label || rec.key}</div>
                     <div className="text-[10px] text-white/40 mt-0.5 uppercase tracking-[0.18em]">
-                      {rec.kind} Â· {new Date(rec.createdAt).toLocaleString()}
+                      {rec.kind} · {new Date(rec.createdAt).toLocaleString()}
                     </div>
                   </div>
                   {/* Replay artifacts only persist the key, not signed URLs - reader can find via dashboard. */}
@@ -235,7 +235,7 @@ function ReplayView({
                 const s = c.startSec % 60;
                 const pad = (n: number) => (n < 10 ? '0' + n : '' + n);
                 const ts = h > 0 ? h + ':' + pad(m) + ':' + pad(s) : m + ':' + pad(s);
-                const sourceLabel = c.source === 'ai' ? 'AI Â· gpt-4o-mini' : c.source === 'manual' ? 'Host edit' : 'Auto Â· heuristic';
+                const sourceLabel = c.source === 'ai' ? 'AI · gpt-4o-mini' : c.source === 'manual' ? 'Host edit' : 'Auto · heuristic';
                 return (
                   <li key={c.id || ('ch-' + i)}>
                     <a
@@ -284,7 +284,7 @@ function ReplayView({
                     <span className="text-[11px] text-white/40 hidden group-open:inline">Hide</span>
                   </summary>
                   <pre className="mt-3 text-xs text-white/75 whitespace-pre-wrap break-words leading-relaxed">{t.label || ''}</pre>
-                  <div className="mt-2 text-[10px] text-white/30">{t.kind} Â· {new Date(t.createdAt).toLocaleString()}</div>
+                  <div className="mt-2 text-[10px] text-white/30">{t.kind} · {new Date(t.createdAt).toLocaleString()}</div>
                 </details>
               ))}
             </div>
@@ -294,14 +294,14 @@ function ReplayView({
         {/* Empty state */}
         {!view.hlsUrl && recordedVideos.length === 0 && videos.length === 0 && audios.length === 0 && transcripts.length === 0 && (
           <div className="mt-10 rounded-3xl border border-white/10 bg-white/[0.03] p-10 text-center text-white/55">
-            <div className="text-4xl mb-3 opacity-40">Â·Â·Â·</div>
+            <div className="text-4xl mb-3 opacity-40">···</div>
             <div>No recording of this meeting yet.</div>
             <div className="text-[11px] text-white/35 mt-1">When a host records the meeting, it appears here.</div>
           </div>
         )}
 
         <div className="mt-10 text-center text-[11px] text-white/30 uppercase tracking-[0.22em]">
-          Replay Â· NeoConference
+          Replay · NeoConference
         </div>
       </div>
     </main>
