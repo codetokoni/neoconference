@@ -2,12 +2,12 @@
 //
 // The "Are you still in the meeting?" prompt (FRS §11), as a meeting has
 // it when its host never touched the setting. One place for the defaults:
-// the room and the dashboard used to keep their own copies, and they
-// disagreed on the one that matters — the room removed an idle person by
-// default while the dashboard showed hosts "Auto-remove" off. In seven
-// days that put 130 people out of their meetings for sitting still: a
-// listener on a phone, hearing the translation, touches nothing for five
-// minutes and is gone.
+// the room, the dashboard and the in-room toggle used to keep their own
+// copies, and they disagreed on the one that matters — the room removed
+// an idle person by default while the dashboard showed hosts "Auto-remove"
+// off. In seven days that put 130 people out of their meetings for
+// sitting still: a listener on a phone, hearing the translation, touches
+// nothing for five minutes and is gone.
 
 export type InactivityConfig = {
   enabled?: boolean;
@@ -21,8 +21,12 @@ export type InactivityConfig = {
 };
 
 export const INACTIVITY_DEFAULTS: Required<InactivityConfig> = {
-  enabled: true,
-  warningMs: 5 * 60 * 1000,
+  // Off until a host sets it up on the meeting's Edit page (or the in-room
+  // toggle). A meeting nobody configured asks nothing of its listeners.
+  enabled: false,
+  // When a host does switch it on: twenty minutes, not five. Someone
+  // hearing a talk in their language may not touch the screen for a while.
+  warningMs: 20 * 60 * 1000,
   responseMs: 60 * 1000,
   // Sitting still is not leaving. A host who wants idle people out says so
   // on the meeting's Edit page; nobody is removed on a default.

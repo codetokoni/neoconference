@@ -10,6 +10,7 @@
 
 import { useState } from 'react';
 import { TimerReset, TimerOff } from 'lucide-react';
+import { resolveInactivityConfig } from '@/lib/inactivity';
 
 const TOOLBAR_BTN_CLASS =
   'inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-white/10 hover:border-white/25 active:scale-[0.98] transition disabled:opacity-60 disabled:cursor-not-allowed';
@@ -40,9 +41,9 @@ export default function InactivityToggleButton({
   const isHost = roomRole === 'host' || roomRole === 'cohost';
   if (!isHost) return null;
 
-  // The client-side default is ON (see InactivityDetector), so an
-  // unset config reads as enabled.
-  const enabled = config?.enabled ?? true;
+  // The same default the room applies (lib/inactivity.ts): off until a host
+  // sets it up, so the button reads the way the room behaves.
+  const enabled = resolveInactivityConfig(config).enabled;
   const canSave = !busy && Boolean(eventId);
 
   async function toggle() {
