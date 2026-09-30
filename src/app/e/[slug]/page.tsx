@@ -14,12 +14,14 @@ import { eventStore } from '@/lib/eventStore';
 import { toPublicView } from '@/types/event';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
+import Link from 'next/link';
 import OpenInAppButton from '@/components/OpenInAppButton';
 import TicketsList from './TicketsList';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import StartEventButton from '@/components/StartEventButton';
 import { getMeetingRole, getMeetingRoleByEmail } from '@/lib/meeting-roles';
 import { RANK } from '@/lib/permissions';
+import { eventReplayVideos } from '@/lib/replayRecordings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -56,6 +58,8 @@ export default async function EventResolverPage({
     if (best && RANK[best] >= RANK.host) canStart = true;
   }
   const v = toPublicView(ev);
+  // Recordings anyone with the link may watch, on the replay page.
+  const recordingCount = (await eventReplayVideos(ev).catch(() => [])).length;
 
   const statePill = stateMeta(v.state);
 
@@ -184,6 +188,22 @@ export default async function EventResolverPage({
                 <li key={r.key}>{r.label ?? r.kind}</li>
               ))}
             </ul>
+          </section>
+        ) : null}
+
+        {/* ---------- Recording ---------- */}
+        {recordingCount > 0 ? (
+          <section className="mt-7 rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.06] p-5">
+            <h2 className="text-sm font-semibold text-white/85 uppercase tracking-[0.18em]">Recording</h2>
+            <p className="mt-2 text-sm text-white/70">
+              {recordingCount === 1 ? 'This meeting was recorded.' : `This meeting has ${recordingCount} recordings.`}
+            </p>
+            <Link
+              href={`/e/${encodeURIComponent(ev.slug)}/replay`}
+              className="mt-3 inline-flex items-center gap-2 rounded-xl bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-cyan-300"
+            >
+              Watch the recording →
+            </Link>
           </section>
         ) : null}
 

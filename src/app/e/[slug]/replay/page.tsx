@@ -18,6 +18,7 @@ import { toPublicView, type NeoEvent, type PublicEventView } from '@/types/event
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { can, resolveRole } from '@/lib/permissions';
 import { isAdmin } from '@/lib/roles';
+import { eventReplayVideos, sizeLabel, type ReplayVideo } from '@/lib/replayRecordings';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,11 +84,23 @@ export default async function ReplayPage({ params }: Props) {
   const host = h.get("x-forwarded-host") || h.get("host") || "neoconference.vercel.app";
   const replayUrl = `${proto}://${host}/e/${view.slug}/replay`;
   const replayShareTitle = (view.name || view.slug) + " replay";
+  // The meeting's recordings, for anyone with the link (the owner's call).
+  const recordedVideos = await eventReplayVideos(event).catch(() => []);
 
-  return <ReplayView view={view} replayUrl={replayUrl} replayShareTitle={replayShareTitle} />;
+  return <ReplayView view={view} replayUrl={replayUrl} replayShareTitle={replayShareTitle} recordedVideos={recordedVideos} />;
 }
 
-function ReplayView({ view, replayUrl, replayShareTitle }: { view: PublicEventView; replayUrl: string; replayShareTitle: string }) {
+function ReplayView({
+  view,
+  replayUrl,
+  replayShareTitle,
+  recordedVideos,
+}: {
+  view: PublicEventView;
+  replayUrl: string;
+  replayShareTitle: string;
+  recordedVideos: ReplayVideo[];
+}) {
   const recordings = view.recordings || [];
   const transcripts = recordings.filter((r) => r.kind === 'transcript');
   const videos = recordings.filter((r) => r.kind === 'mp4' || r.kind === 'hls');
@@ -140,6 +153,48 @@ function ReplayView({ view, replayUrl, replayShareTitle }: { view: PublicEventVi
               id="replay-video"
               className="w-full aspect-video bg-black"
             />
+          </section>
+        )}
+
+        {/* The meeting's recordings: the newest as the player, the rest
+            below it. The player carries the id the chapters seek. */}
+        {recordedVideos.length > 0 && (
+          <section className="mt-8 sm:mt-10 rounded-3xl border border-white/10 bg-black/60 backdrop-blur-xl overflow-hidden shadow-[0_0_60px_-20px_rgba(34,211,238,0.4)]">
+            <div className="px-4 sm:px-5 py-3 border-b border-white/5 flex items-center gap-2">
+              <span className="inline-flex h-1.5 w-1.5 rounded-full bg-cyan-300" />
+              <span className="text-[11px] uppercase tracking-[0.22em] text-white/50">
+                Recording{recordedVideos[0].recordedAt ? " · " + new Date(recordedVideos[0].recordedAt).toLocaleString() : ""}
+              </span>
+              <a href={recordedVideos[0].url} download className="ml-auto text-[11px] text-cyan-300/80 hover:text-cyan-100">
+                Download ({sizeLabel(recordedVideos[0].sizeBytes)})
+              </a>
+            </div>
+            <video
+              src={recordedVideos[0].url}
+              controls
+              playsInline
+              preload="metadata"
+              data-replay-player="1"
+              id={view.hlsUrl ? undefined : "replay-video"}
+              className="w-full aspect-video bg-black"
+            />
+            {recordedVideos.length > 1 && (
+              <ul className="divide-y divide-white/5">
+                {recordedVideos.slice(1).map((v, i) => (
+                  <li key={i} className="px-4 sm:px-5 py-3">
+                    <div className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-white/75">
+                        {v.recordedAt ? new Date(v.recordedAt).toLocaleString() : "Earlier recording"}
+                      </span>
+                      <a href={v.url} download className="shrink-0 text-[11px] text-cyan-300/80 hover:text-cyan-100">
+                        Download ({sizeLabel(v.sizeBytes)})
+                      </a>
+                    </div>
+                    <video src={v.url} controls playsInline preload="metadata" className="mt-2 w-full aspect-video rounded-lg bg-black" />
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         )}
 
@@ -237,11 +292,11 @@ function ReplayView({ view, replayUrl, replayShareTitle }: { view: PublicEventVi
         )}
 
         {/* Empty state */}
-        {!view.hlsUrl && videos.length === 0 && audios.length === 0 && transcripts.length === 0 && (
+        {!view.hlsUrl && recordedVideos.length === 0 && videos.length === 0 && audios.length === 0 && transcripts.length === 0 && (
           <div className="mt-10 rounded-3xl border border-white/10 bg-white/[0.03] p-10 text-center text-white/55">
             <div className="text-4xl mb-3 opacity-40">Â·Â·Â·</div>
-            <div>No replay artifacts yet for this event.</div>
-            <div className="text-[11px] text-white/35 mt-1">Recording links and transcripts will appear here once processed.</div>
+            <div>No recording of this meeting yet.</div>
+            <div className="text-[11px] text-white/35 mt-1">When a host records the meeting, it appears here.</div>
           </div>
         )}
 
