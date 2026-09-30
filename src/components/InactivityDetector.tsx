@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRoomContext } from "@livekit/components-react";
 import { RoomEvent, type Participant, type TrackPublication } from "livekit-client";
+import { resolveInactivityConfig, type InactivityConfig } from "@/lib/inactivity";
 
 /**
  * InactivityDetector
@@ -28,17 +29,9 @@ import { RoomEvent, type Participant, type TrackPublication } from "livekit-clie
  * FRS §11 also asks that admins be exempt — done via the roomRole prop.
  */
 
-const DEFAULT_IDLE_THRESHOLD_MS = 5 * 60 * 1000;   // 5 minutes -> show prompt
-const DEFAULT_RESPONSE_WINDOW_MS = 60 * 1000;      // 60 seconds to respond
 const POLL_INTERVAL_MS = 15 * 1000;                // recheck every 15s
 
-export interface InactivityConfig {
-  enabled?: boolean;
-  warningMs?: number;
-  responseMs?: number;
-  autoRemove?: boolean;
-  exemptAdmins?: boolean;
-}
+export type { InactivityConfig };
 
 const ACTIVITY_EVENTS: Array<keyof WindowEventMap> = [
   "mousemove",
@@ -65,20 +58,10 @@ export default function InactivityDetector({
   config?: InactivityConfig | null;
 }) {
   const room = useRoomContext();
-  const resolved = useMemo(() => ({
-    enabled: config?.enabled ?? true,
-    warningMs: config?.warningMs ?? DEFAULT_IDLE_THRESHOLD_MS,
-    responseMs: config?.responseMs ?? DEFAULT_RESPONSE_WINDOW_MS,
-    // Default true so the "Are you still here?" prompt has teeth — an
-    // ignored prompt actually removes the participant from the room.
-    // Without this the timer was cosmetic: nothing happened whether
-    // the operator clicked or not, which is exactly what the FRS §11
-    // idle-cleanup requirement was trying to prevent. Per-event
-    // config can still opt out (autoRemove: false) if a host wants
-    // to keep drifters seated for some reason.
-    autoRemove: config?.autoRemove ?? true,
-    exemptAdmins: config?.exemptAdmins ?? true,
-  }), [config]);
+  // Defaults live in lib/inactivity.ts, shared with the dashboard's Edit
+  // page, so what a host is shown is what the room does. Removal is opt-in
+  // there: an unanswered prompt only closes unless the host asked for more.
+  const resolved = useMemo(() => resolveInactivityConfig(config), [config]);
 
   const [promptOpen, setPromptOpen] = useState(false);
   const [responseCountdown, setResponseCountdown] = useState<number>(

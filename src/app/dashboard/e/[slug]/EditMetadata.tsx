@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { resolveInactivityConfig } from "@/lib/inactivity";
 
 type Visibility = "public" | "unlisted" | "private";
 
@@ -41,15 +42,18 @@ export default function EditMetadata({
   const [replayEnabled, setReplayEnabled] = useState(initial.replayEnabled);
   const [endPin, setEndPin] = useState("");
   const [clearEndPin, setClearEndPin] = useState(false);
-  const [inactivityEnabled, setInactivityEnabled] = useState<boolean>(initial.inactivity?.enabled ?? true);
+  // The same defaults the room applies when nothing was saved, so the form
+  // shows what will happen.
+  const inactivity = resolveInactivityConfig(initial.inactivity);
+  const [inactivityEnabled, setInactivityEnabled] = useState<boolean>(inactivity.enabled);
   const [inactivityWarningMin, setInactivityWarningMin] = useState<string>(
-    String(Math.max(1, Math.round((initial.inactivity?.warningMs ?? 300_000) / 60_000))),
+    String(Math.max(1, Math.round(inactivity.warningMs / 60_000))),
   );
   const [inactivityResponseSec, setInactivityResponseSec] = useState<string>(
-    String(Math.max(10, Math.round((initial.inactivity?.responseMs ?? 60_000) / 1000))),
+    String(Math.max(10, Math.round(inactivity.responseMs / 1000))),
   );
-  const [inactivityAutoRemove, setInactivityAutoRemove] = useState<boolean>(initial.inactivity?.autoRemove ?? false);
-  const [inactivityExemptAdmins, setInactivityExemptAdmins] = useState<boolean>(initial.inactivity?.exemptAdmins ?? true);
+  const [inactivityAutoRemove, setInactivityAutoRemove] = useState<boolean>(inactivity.autoRemove);
+  const [inactivityExemptAdmins, setInactivityExemptAdmins] = useState<boolean>(inactivity.exemptAdmins);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
