@@ -256,35 +256,87 @@ class TranslationSheet extends ConsumerWidget {
               ),
 
             Expanded(
-              child: ListView(
-                children: [
-                  RadioListTile<String?>(
-                    value: null,
-                    groupValue: state.translateTo,
-                    onChanged: (_) {
-                      controller.setTranslation(null);
-                      Navigator.pop(context);
-                    },
-                    title: const Text('Off'),
-                    subtitle: const Text('Show captions as spoken'),
-                  ),
-                  for (final language in translationLanguages)
-                    RadioListTile<String?>(
-                      value: language.code,
-                      groupValue: state.translateTo,
-                      onChanged: (value) {
-                        controller.setTranslation(value);
-                        Navigator.pop(context);
-                      },
-                      title: Text(language.label),
-                      subtitle: Text(language.native),
-                    ),
-                ],
+              child: TranslationLanguageList(
+                selected: state.translateTo,
+                onPick: (code) {
+                  controller.setTranslation(code);
+                  Navigator.pop(context);
+                },
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The languages a listener can pick, with a search: there are a hundred
+/// and more of them, and scrolling for Kiswahili past Afrikaans is not a
+/// way to find it. [onPick] gets null for Off.
+class TranslationLanguageList extends StatefulWidget {
+  const TranslationLanguageList({super.key, required this.selected, required this.onPick});
+
+  final String? selected;
+  final void Function(String? code) onPick;
+
+  @override
+  State<TranslationLanguageList> createState() => _TranslationLanguageListState();
+}
+
+class _TranslationLanguageListState extends State<TranslationLanguageList> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
+    final shown = [for (final l in translationLanguages) if (l.matches(_query)) l];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(NeoSpace.xl, 0, NeoSpace.xl, NeoSpace.sm),
+          child: TextField(
+            onChanged: (v) => setState(() => _query = v),
+            textInputAction: TextInputAction.search,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search_rounded),
+              hintText: 'Search languages',
+              isDense: true,
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            children: [
+              if (_query.trim().isEmpty)
+                RadioListTile<String?>(
+                  value: null,
+                  groupValue: widget.selected,
+                  onChanged: (_) => widget.onPick(null),
+                  title: const Text('Off'),
+                  subtitle: const Text('Show captions as spoken'),
+                ),
+              if (shown.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(NeoSpace.xl),
+                  child: Text(
+                    'No language matches "${_query.trim()}".',
+                    style: TextStyle(color: p.textMuted),
+                  ),
+                ),
+              for (final language in shown)
+                RadioListTile<String?>(
+                  value: language.code,
+                  groupValue: widget.selected,
+                  onChanged: (_) => widget.onPick(language.code),
+                  title: Text(language.label),
+                  subtitle: Text(language.native),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

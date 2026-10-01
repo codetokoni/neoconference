@@ -10,9 +10,9 @@
 // leaves the server. Called per-final-caption by the LiveTranslation
 // client component (see src/components/LiveTranslation.tsx).
 //
-// Language codes come from src/lib/locales.ts (BCP-47 short tags —
-// "en", "es", "fr" etc). DeepL wants uppercase target codes and a
-// handful of remapping cases (e.g. "en" -> "EN-US"). See toDeeplCode().
+// Language codes come from src/lib/translationLanguages.ts (lower-case
+// short tags — "en", "sw", "pt-br"). DeepL wants its own target codes
+// ("EN-US", "SW", "PT-BR"). See toDeeplCode().
 //
 // No streaming — DeepL returns fast enough on short caption strings
 // (~150-400ms) and streaming would add complexity without user-
@@ -20,35 +20,16 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { deeplTarget } from "@/lib/translationLanguages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Codes DeepL accepts as `target_lang`. See
-// https://developers.deepl.com/docs/resources/supported-languages
-// (subset — mirrors src/lib/locales.ts).
-const TARGET_LANG_MAP: Record<string, string> = {
-  en: "EN-US",
-  es: "ES",
-  fr: "FR",
-  de: "DE",
-  pt: "PT-PT",
-  it: "IT",
-  nl: "NL",
-  ja: "JA",
-  ko: "KO",
-  zh: "ZH",
-  ru: "RU",
-  tr: "TR",
-  pl: "PL",
-  // ar / hi have no official DeepL support at the time of writing —
-  // return not_supported for those rather than silently falling back.
-};
-
+// Every target DeepL has, one per language (src/lib/translationLanguages.ts).
+// It used to be thirteen of them, and Hindi and Arabic were refused as
+// unsupported long after DeepL added both.
 function toDeeplCode(code: string): string | null {
-  if (!code) return null;
-  const short = code.trim().toLowerCase().split("-")[0];
-  return TARGET_LANG_MAP[short] ?? null;
+  return deeplTarget(code);
 }
 
 interface Body {

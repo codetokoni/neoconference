@@ -128,7 +128,9 @@ export async function POST(req: NextRequest) {
         .filter((l): l is string => typeof l === 'string')
         .map((l) => l.trim().toLowerCase())
         .filter((l) => /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(l))
-        .slice(0, 20)
+        // Room for every translation language there is (a hundred-odd):
+        // twenty silently dropped the rest of a host's picks.
+        .slice(0, 200)
     : [];
   const uniqueLanguages = Array.from(new Set(languages));
   if (uniqueLanguages.length > 0) {

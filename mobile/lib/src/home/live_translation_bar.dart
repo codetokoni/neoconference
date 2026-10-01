@@ -294,11 +294,20 @@ class LiveTranslationHowTo extends StatelessWidget {
               spacing: NeoSpace.xs,
               runSpacing: NeoSpace.xs,
               children: [
-                for (final l in translationLanguages)
+                // The popular ones and how many more: all of them would
+                // fill the sheet with a hundred-odd chips.
+                for (final l in meetingLanguages)
                   Chip(
                     label: Text(l.native, style: const TextStyle(fontSize: 12)),
                     visualDensity: VisualDensity.compact,
                   ),
+                Chip(
+                  label: Text(
+                    '+ ${translationLanguages.length - meetingLanguages.length} more',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
               ],
             ),
           ],

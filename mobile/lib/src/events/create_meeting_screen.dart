@@ -182,7 +182,13 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (final lang in meetingLanguages)
+                // The popular ones, then any other the host picked from the
+                // full list, then the way to that list.
+                for (final lang in [
+                  ...meetingLanguages,
+                  for (final code in _languages)
+                    if (!meetingLanguages.any((l) => l.code == code)) ?languageFor(code),
+                ])
                   FilterChip(
                     label: Text('${lang.label} · ${lang.native}'),
                     selected: _languages.contains(lang.code),
@@ -199,6 +205,14 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
                     labelStyle: TextStyle(color: p.text, fontSize: 12),
                     side: BorderSide(color: p.border),
                   ),
+                ActionChip(
+                  avatar: Icon(Icons.add_rounded, size: 18, color: p.primary),
+                  label: Text('More languages (${translationLanguages.length})'),
+                  onPressed: _pickMoreLanguages,
+                  backgroundColor: p.surfaceAlt,
+                  labelStyle: TextStyle(color: p.primary, fontSize: 12),
+                  side: BorderSide(color: p.border),
+                ),
               ],
             ),
             if (_error != null) ...[
@@ -226,6 +240,106 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Text('Create and join'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Every language there is, searchable, ticked on and off in place.
+  Future<void> _pickMoreLanguages() async {
+    final picked = await showModalBottomSheet<Set<String>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => LanguageChecklistSheet(initial: _languages),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _languages
+          ..clear()
+          ..addAll(picked);
+      });
+    }
+  }
+}
+
+/// All translation languages with a search, ticked on and off; Done hands
+/// back the set. Choosing a new meeting's languages from a hundred-odd.
+class LanguageChecklistSheet extends StatefulWidget {
+  const LanguageChecklistSheet({super.key, required this.initial});
+
+  final Set<String> initial;
+
+  @override
+  State<LanguageChecklistSheet> createState() => _LanguageChecklistSheetState();
+}
+
+class _LanguageChecklistSheetState extends State<LanguageChecklistSheet> {
+  late final Set<String> _chosen = {...widget.initial};
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
+    final shown = [for (final l in translationLanguages) if (l.matches(_query)) l];
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.85,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 12, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Languages (${_chosen.length} chosen)',
+                      style: TextStyle(color: p.text, fontSize: 17, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, _chosen),
+                    child: const Text('Done'),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: TextField(
+                onChanged: (v) => setState(() => _query = v),
+                textInputAction: TextInputAction.search,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search_rounded),
+                  hintText: 'Search languages',
+                  isDense: true,
+                ),
+              ),
+            ),
+            Expanded(
+              child: shown.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Text(
+                        'No language matches "${_query.trim()}".',
+                        style: TextStyle(color: p.textMuted),
+                      ),
+                    )
+                  : ListView(
+                      children: [
+                        for (final l in shown)
+                          CheckboxListTile(
+                            value: _chosen.contains(l.code),
+                            onChanged: (on) => setState(() {
+                              on == true ? _chosen.add(l.code) : _chosen.remove(l.code);
+                            }),
+                            title: Text(l.label),
+                            subtitle: Text(l.native),
+                          ),
+                      ],
+                    ),
             ),
           ],
         ),
