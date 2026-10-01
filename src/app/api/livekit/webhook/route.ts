@@ -23,6 +23,7 @@ import { isAudioKey, slugFromRecordingKey } from '@/lib/eventRecordings';
 import { publicOrigin } from '@/lib/publicOrigin';
 import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
+import { disconnectReasonName } from '@/lib/disconnectReason';
 import { addRecordedSeconds, egressSeconds } from '@/lib/recordingUsage';
 import { recordWebhookEvent, recordWebhookRejection } from '@/lib/webhookMetrics';
 import {
@@ -79,6 +80,8 @@ export async function POST(req: Request) {
       identity?: string;
       name?: string;
       metadata?: string;
+      /** livekit.DisconnectReason on participant_left: a number, or its name in JSON form. */
+      disconnectReason?: number | string;
     };
     type LKWebhookEvent = {
       event?: string;
@@ -118,13 +121,18 @@ export async function POST(req: Request) {
       }
       const ts = Date.parse(isoFromWebhookCreatedAt(event.createdAt));
       const baseIdentity = participant.identity.split('#')[0];
+      const left = event.event === 'participant_left';
       await recordAttendance(ev.id, {
         ts: Number.isFinite(ts) ? ts : Date.now(),
-        action: event.event === 'participant_joined' ? 'join' : 'leave',
+        action: left ? 'leave' : 'join',
         userId: baseIdentity || null,
         name: participant.name || baseIdentity || '',
         role,
         source: 'webhook',
+        // Why they went, in LiveKit's words. Without it a room that
+        // emptied in a minute reads the same whether everyone pressed
+        // Leave or everyone's link dropped.
+        ...(left ? { reason: disconnectReasonName(participant.disconnectReason) } : {}),
       });
       return NextResponse.json({ ok: true, recorded: event.event, eventId: ev.id });
     }

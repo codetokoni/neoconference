@@ -36,6 +36,13 @@ export interface AttendanceEntry {
   /** Wire-format role at the moment the event was recorded. */
   role?: string;
   source: AttendanceSource;
+  /**
+   * On a webhook "leave": why LiveKit let the person go, by LiveKit's own
+   * name (CLIENT_INITIATED, SIGNAL_CLOSE, SERVER_SHUTDOWN, ...). A meeting
+   * once "closed" on two devices within a minute and the journal could
+   * not say whether they left, lost their link, or were cut off.
+   */
+  reason?: string;
 }
 
 function attendanceKey(eventId: string): string {
