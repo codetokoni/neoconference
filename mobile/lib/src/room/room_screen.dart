@@ -425,12 +425,7 @@ class _InMeetingState extends State<_InMeeting> {
               builder: (_) => TranslationSheet(slug: widget.slug),
             ),
             translationLabel: switch (state.translateTo) {
-              final code? => meetingLanguages
-                  .firstWhere(
-                    (l) => l.code == code,
-                    orElse: () => MeetingLanguage(code, code, code),
-                  )
-                  .label,
+              final code? => languageFor(code)?.label ?? code,
               null => 'Off',
             },
             openDetails: () => neoSheet(

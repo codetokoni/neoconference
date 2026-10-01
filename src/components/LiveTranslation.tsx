@@ -38,7 +38,7 @@ import {
   type TranscriptionSegment,
   type TrackPublication,
 } from 'livekit-client';
-import { CAPTION_LOCALES } from '@/lib/locales';
+import { TRANSLATION_LANGUAGES, matchesLanguage } from '@/lib/translationLanguages';
 
 // The chosen language belongs to one meeting, in one tab. It used to live
 // under a single localStorage key, so a language picked in one conference
@@ -53,14 +53,9 @@ const DUCK_STORAGE_KEY = 'neo:translation:duckLevel';
  *  applause / laughter / speaker's inflection entirely. Viewer can
  *  override via the slider below the language picker. */
 const DEFAULT_DUCK_LEVEL = 0.15;
-// DeepL doesn't cover ar / hi at the time of writing — filter them out
-// so the picker only lists languages that actually round-trip. Keeping
-// this list on the client too means we never post a request that we
-// know the server will refuse.
-const UNSUPPORTED_TARGETS = new Set(['ar', 'hi']);
-const TARGET_LANGUAGES = CAPTION_LOCALES.filter(
-  (l) => l.code !== 'auto' && !UNSUPPORTED_TARGETS.has(l.code),
-);
+// Every language the server can translate into (lib/translationLanguages):
+// the same list the API accepts, so nothing offered here is refused.
+const TARGET_LANGUAGES = TRANSLATION_LANGUAGES;
 
 const TOOLBAR_BTN_CLASS =
   'inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-white/10 hover:border-white/25 active:scale-[0.98] transition';
@@ -139,6 +134,12 @@ export default function LiveTranslation() {
   }, [isMicrophoneEnabled]);
   const [targetLang, setTargetLangState] = useState<string>('off');
   const [open, setOpen] = useState(false);
+  // A hundred-odd languages: typed, not scrolled for.
+  const [search, setSearch] = useState('');
+  const shownLanguages = useMemo(
+    () => TARGET_LANGUAGES.filter((l) => matchesLanguage(l, search)),
+    [search],
+  );
   const [diag, setDiag] = useState<Diagnostics>(EMPTY_DIAG);
   // Ref mirror so async work can update counters without stale closures.
   const diagRef = useRef<Diagnostics>(EMPTY_DIAG);
@@ -199,6 +200,7 @@ export default function LiveTranslation() {
   }, []);
   const setTargetLang = useCallback((next: string) => {
     setTargetLangState(next);
+    setSearch('');
     try {
       if (room?.name) window.sessionStorage.setItem(storageKey(room.name), next);
     } catch {
@@ -513,13 +515,47 @@ export default function LiveTranslation() {
       >
         Hear this meeting in
       </div>
-      <TargetOption
-        code="off"
-        label="Off (original audio only)"
-        active={targetLang === 'off'}
-        onPick={setTargetLang}
+      <input
+        type="search"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search languages"
+        aria-label="Search languages"
+        autoFocus
+        style={{
+          width: 'calc(100% - 12px)',
+          margin: '2px 6px 6px',
+          padding: '8px 10px',
+          borderRadius: 8,
+          border: '1px solid rgba(255,255,255,0.15)',
+          background: 'rgba(255,255,255,0.05)',
+          color: '#e5f8ff',
+          fontSize: 13,
+          outline: 'none',
+        }}
       />
-      {TARGET_LANGUAGES.map((l) => (
+      {targetLang !== 'off' && !voice ? (
+        // Translating into a language this browser has no voice for: it
+        // would read the words in another language's voice, or not at all.
+        <div style={{ fontSize: 11, color: 'rgba(251,191,36,0.9)', padding: '2px 10px 6px' }}>
+          This browser has no {currentLabel} voice, so it may not be spoken
+          well. The NeoConference app shows the translation as text too.
+        </div>
+      ) : null}
+      {search ? null : (
+        <TargetOption
+          code="off"
+          label="Off (original audio only)"
+          active={targetLang === 'off'}
+          onPick={setTargetLang}
+        />
+      )}
+      {shownLanguages.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', padding: '6px 10px' }}>
+          No language matches “{search}”.
+        </div>
+      ) : null}
+      {shownLanguages.map((l) => (
         <TargetOption
           key={l.code}
           code={l.code}

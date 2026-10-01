@@ -2,7 +2,7 @@ import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import HomeHeroCTAs from "./HomeHeroCTAs";
 import HomeFinalCTAs from "./HomeFinalCTAs";
-import { CAPTION_LOCALES } from "@/lib/locales";
+import { POPULAR_TRANSLATION_CODES, TRANSLATION_LANGUAGES as ALL_TRANSLATION_LANGUAGES } from "@/lib/translationLanguages";
 
 export default async function Home() {
   const { userId } = await auth();
@@ -178,6 +178,9 @@ export default async function Home() {
                   {TRANSLATION_LANGUAGES.map((l) => (
                     <span key={l} className="rounded-full neo-glass px-2.5 py-0.5 text-xs text-cyan-100/80">{l}</span>
                   ))}
+                  {MORE_TRANSLATION_LANGUAGES > 0 ? (
+                    <span className="rounded-full neo-glass px-2.5 py-0.5 text-xs text-cyan-100/60">+ {MORE_TRANSLATION_LANGUAGES} more</span>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -270,13 +273,14 @@ function Feature({ title, desc, icon }: { title: string; desc: string; icon: Rea
 }
 
 /**
- * What live translation can speak, by each language's own name. The same
- * list the room's Translate picker offers: the caption locales DeepL can
- * translate into (src/components/LiveTranslation.tsx drops Hindi and Arabic).
+ * What live translation can speak, by each language's own name: the most
+ * picked ones, then how many more the room's picker offers. All of them
+ * would be a wall of a hundred-odd chips.
  */
-const TRANSLATION_LANGUAGES = CAPTION_LOCALES
-  .filter((l) => l.code !== "auto" && l.code !== "hi" && l.code !== "ar")
-  .map((l) => l.native);
+const TRANSLATION_LANGUAGES = POPULAR_TRANSLATION_CODES
+  .map((c) => ALL_TRANSLATION_LANGUAGES.find((l) => l.code === c)?.native)
+  .filter((n): n is string => Boolean(n));
+const MORE_TRANSLATION_LANGUAGES = ALL_TRANSLATION_LANGUAGES.length - TRANSLATION_LANGUAGES.length;
 
 function Step({ n, children }: { n: number; children: React.ReactNode }) {
   return (
