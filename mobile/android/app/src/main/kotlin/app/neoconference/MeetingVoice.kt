@@ -86,6 +86,23 @@ class MeetingVoice(context: Context) {
         if (ready || failed) go() else waiting.add(go)
     }
 
+    /**
+     * Whether this phone has a voice for [languageTag]. Google's engine has
+     * none for Igbo, Hausa or Yoruba, nor any to download; asked before
+     * speaking so the meeting can say so instead of going quiet.
+     */
+    fun canSpeak(languageTag: String, result: MethodChannel.Result) {
+        val go = {
+            if (failed) {
+                result.success(false)
+            } else {
+                val availability = tts.isLanguageAvailable(Locale.forLanguageTag(languageTag))
+                result.success(availability >= TextToSpeech.LANG_AVAILABLE)
+            }
+        }
+        if (ready || failed) go() else waiting.add(go)
+    }
+
     fun stop() {
         tts.stop()
         val left = pending.keys.toList()
