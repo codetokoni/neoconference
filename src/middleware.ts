@@ -1,6 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse, type NextRequest } from 'next/server';
 import { kv } from '@vercel/kv';
+import { RESERVED_SHORT_URL_SLUGS } from '@/lib/reservedSlugs';
 import {
   SESSION_COOKIE,
   generateDeviceFingerprint,
@@ -152,12 +153,7 @@ async function resolveDomain(host: string, origin: string): Promise<string | nul
    route will be shadowed by this rewrite.
    ----------------------------------------------------------------------- */
 
-const RESERVED_SHORT_URL_SLUGS = new Set([
-  'admin', 'api', 'dashboard', 'docs', 'e', 'embed', 'explore', 'fonts',
-  'i', 'pricing', 'room', 'share', 'support', 'video',
-  'sign-in', 'sign-up', 'sign-out',
-  '_next', '_vercel',
-]);
+// The set lives in lib/reservedSlugs.ts, shared with the Android app gate.
 
 const SHORT_URL_SLUG_RE = /^\/([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)\/?$/;
 
