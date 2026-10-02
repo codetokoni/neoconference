@@ -9,6 +9,7 @@ import '../events/languages.dart';
 import '../meetings/meeting_links.dart';
 import '../meetings/meeting_share.dart';
 import 'room_controller.dart';
+import 'translation_voice.dart' show phoneVoices;
 
 /// What this meeting is, and the link to hand someone.
 ///
@@ -260,12 +261,16 @@ class TranslationSheet extends ConsumerWidget {
               ),
 
             Expanded(
-              child: TranslationLanguageList(
-                selected: state.translateTo,
-                onPick: (code) {
-                  controller.setTranslation(code);
-                  Navigator.pop(context);
-                },
+              child: FutureBuilder<Set<String>?>(
+                future: phoneVoices(),
+                builder: (context, voices) => TranslationLanguageList(
+                  selected: state.translateTo,
+                  speakable: voices.data,
+                  onPick: (code) {
+                    controller.setTranslation(code);
+                    Navigator.pop(context);
+                  },
+                ),
               ),
             ),
           ],
@@ -279,10 +284,19 @@ class TranslationSheet extends ConsumerWidget {
 /// and more of them, and scrolling for Kiswahili past Afrikaans is not a
 /// way to find it. [onPick] gets null for Off.
 class TranslationLanguageList extends StatefulWidget {
-  const TranslationLanguageList({super.key, required this.selected, required this.onPick});
+  const TranslationLanguageList({
+    super.key,
+    required this.selected,
+    required this.onPick,
+    this.speakable,
+  });
 
   final String? selected;
   final void Function(String? code) onPick;
+
+  /// The languages this phone can read aloud ([phoneVoices]); null while
+  /// unknown, when nothing is marked. The rest show as text only.
+  final Set<String>? speakable;
 
   @override
   State<TranslationLanguageList> createState() => _TranslationLanguageListState();
@@ -329,13 +343,36 @@ class _TranslationLanguageListState extends State<TranslationLanguageList> {
                     style: TextStyle(color: p.textMuted),
                   ),
                 ),
+              if (widget.speakable case final voices? when _query.trim().isEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(NeoSpace.xl, NeoSpace.sm, NeoSpace.xl, NeoSpace.xs),
+                  child: Text(
+                    'This phone can read ${voices.length} of ${translationLanguages.length} '
+                    'aloud. The others show as text.',
+                    style: TextStyle(color: p.textMuted, fontSize: 12),
+                  ),
+                ),
               for (final language in shown)
                 RadioListTile<String?>(
                   value: language.code,
                   groupValue: widget.selected,
                   onChanged: (_) => widget.onPick(language.code),
                   title: Text(language.label),
-                  subtitle: Text(language.native),
+                  subtitle: Text(switch (widget.speakable) {
+                    null => language.native,
+                    final voices when voices.contains(language.code) => '${language.native} · voice',
+                    _ => '${language.native} · text only',
+                  }),
+                  secondary: switch (widget.speakable) {
+                    null => null,
+                    final voices => Icon(
+                        voices.contains(language.code)
+                            ? Icons.volume_up_rounded
+                            : Icons.subtitles_outlined,
+                        size: 20,
+                        color: voices.contains(language.code) ? p.primary : p.textMuted,
+                      ),
+                  },
                 ),
             ],
           ),

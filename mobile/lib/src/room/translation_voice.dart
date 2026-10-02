@@ -18,6 +18,36 @@ bool shouldSpeakTranslation({
 }) =>
     speakOn && !micOn && !fromMe;
 
+/// The translation languages this phone can read aloud, by our code; null
+/// when there is no native side to ask (a test). The voices are the phone's
+/// own speech engine's, so the answer differs from phone to phone: Google's
+/// has none for Igbo, Hausa or Yoruba. Asked once and kept.
+Future<Set<String>?> phoneVoices({MethodChannel? channel}) =>
+    channel == null ? (_phoneVoices ??= _askPhoneVoices(_voiceChannel)) : _askPhoneVoices(channel);
+
+const _voiceChannel = MethodChannel('app.neoconference/voice');
+Future<Set<String>?>? _phoneVoices;
+
+Future<Set<String>?> _askPhoneVoices(MethodChannel channel) async {
+  final byLocale = <String, String>{
+    for (final l in translationLanguages) speechLocale(l.code): l.code,
+  };
+  try {
+    final answer = await channel.invokeListMethod<String>('speakable', {
+      'languages': byLocale.keys.toList(),
+    });
+    if (answer == null) return null;
+    final codes = {for (final locale in answer) ?byLocale[locale]};
+    debugPrint('[translation-voice] this phone can speak ${codes.length} of '
+        '${translationLanguages.length}: ${codes.toList()..sort()}');
+    return codes;
+  } on MissingPluginException {
+    return null;
+  } on PlatformException {
+    return null;
+  }
+}
+
 /// How loud the meeting's own voices play: a tenth while a spoken
 /// translation is on, so the listener hears their language over them —
 /// but only when the phone can speak it. Kept low for a language it has

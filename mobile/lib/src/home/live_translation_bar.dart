@@ -6,6 +6,7 @@ import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
 import '../events/languages.dart';
+import '../room/translation_voice.dart' show phoneVoices;
 
 /// "Hello" in each language live translation speaks, in its own script.
 /// The bar cycles through them: it shows translation rather than saying it.
@@ -338,11 +339,23 @@ class AllLanguagesSheet extends StatefulWidget {
 class _AllLanguagesSheetState extends State<AllLanguagesSheet> {
   String _query = '';
 
+  /// What this phone can read aloud; null until known (or in a test).
+  Set<String>? _voices;
+
+  @override
+  void initState() {
+    super.initState();
+    phoneVoices().then((v) {
+      if (mounted) setState(() => _voices = v);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = NeoTheme.of(context);
     final text = Theme.of(context).textTheme;
     final shown = [for (final l in translationLanguages) if (l.matches(_query)) l];
+    final voices = _voices;
     return SafeArea(
       child: SizedBox(
         height: MediaQuery.of(context).size.height * 0.8,
@@ -356,7 +369,10 @@ class _AllLanguagesSheetState extends State<AllLanguagesSheet> {
             Padding(
               padding: const EdgeInsets.fromLTRB(NeoSpace.xl, 0, NeoSpace.xl, NeoSpace.sm),
               child: Text(
-                'Pick yours in a meeting: More, then Live translation.',
+                voices == null
+                    ? 'Pick yours in a meeting: More, then Live translation.'
+                    : 'This phone can read ${voices.length} of them aloud; the others '
+                        'show as text. Pick yours in a meeting: More, then Live translation.',
                 style: text.bodySmall?.copyWith(color: p.textMuted),
               ),
             ),
@@ -388,6 +404,11 @@ class _AllLanguagesSheetState extends State<AllLanguagesSheet> {
                             dense: true,
                             title: Text(l.native),
                             subtitle: l.native == l.label ? null : Text(l.label),
+                            trailing: voices == null
+                                ? null
+                                : voices.contains(l.code)
+                                    ? Icon(Icons.volume_up_rounded, size: 20, color: p.primary)
+                                    : Text('text only', style: TextStyle(color: p.textMuted, fontSize: 12)),
                           ),
                       ],
                     ),

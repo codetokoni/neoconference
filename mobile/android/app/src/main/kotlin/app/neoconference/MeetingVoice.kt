@@ -103,6 +103,24 @@ class MeetingVoice(context: Context) {
         if (ready || failed) go() else waiting.add(go)
     }
 
+    /**
+     * Which of [languageTags] this phone has a voice for, answered in one
+     * go: the language list marks each one, so a listener knows before
+     * choosing whether they will hear it or read it.
+     */
+    fun speakable(languageTags: List<String>, result: MethodChannel.Result) {
+        val go = {
+            if (failed) {
+                result.success(emptyList<String>())
+            } else {
+                result.success(languageTags.filter {
+                    tts.isLanguageAvailable(Locale.forLanguageTag(it)) >= TextToSpeech.LANG_AVAILABLE
+                })
+            }
+        }
+        if (ready || failed) go() else waiting.add(go)
+    }
+
     fun stop() {
         tts.stop()
         val left = pending.keys.toList()
