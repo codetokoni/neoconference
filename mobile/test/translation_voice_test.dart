@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neoconference/src/events/languages.dart';
 import 'package:neoconference/src/room/translation_voice.dart';
@@ -59,6 +60,40 @@ void main() {
       expect(sw.matches('swa'), isTrue);
       expect(sw.matches('Kiswahili'), isTrue);
       expect(sw.matches('french'), isFalse);
+    });
+  });
+
+  noVoiceTests();
+}
+
+/// On build 3182 an Igbo listener got captions, silence, and the meeting
+/// turned down to a tenth: the phone has no Igbo voice ("language ig not
+/// installed" in the log) and nothing said so.
+void noVoiceTests() {
+  group('a language this phone cannot speak', () {
+    test('keeps the meeting at full volume', () {
+      expect(originalVolumeFor(translating: true, speakOn: true, phoneHasVoice: true), 0.1);
+      expect(originalVolumeFor(translating: true, speakOn: true, phoneHasVoice: false), 1.0);
+      expect(originalVolumeFor(translating: true, speakOn: false, phoneHasVoice: true), 1.0);
+      expect(originalVolumeFor(translating: false, speakOn: true, phoneHasVoice: true), 1.0);
+    });
+
+    test('is asked of the phone in its speech locale', () async {
+      TestWidgetsFlutterBinding.ensureInitialized();
+      const channel = MethodChannel('test/voice');
+      final asked = <Object?>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+        asked.add(call.arguments);
+        return (call.arguments as Map)['language'] != 'ig';
+      });
+      final voice = TranslationVoice(duck: (_) async {}, channel: channel);
+
+      expect(await voice.canSpeak('ig'), isFalse);
+      expect(await voice.canSpeak('es'), isTrue);
+      expect(asked, [
+        {'language': 'ig'},
+        {'language': 'es-ES'},
+      ]);
     });
   });
 }

@@ -18,6 +18,18 @@ bool shouldSpeakTranslation({
 }) =>
     speakOn && !micOn && !fromMe;
 
+/// How loud the meeting's own voices play: a tenth while a spoken
+/// translation is on, so the listener hears their language over them —
+/// but only when the phone can speak it. Kept low for a language it has
+/// no voice for (Igbo on build 3182), the meeting was a whisper and the
+/// translation silence.
+double originalVolumeFor({
+  required bool translating,
+  required bool speakOn,
+  required bool phoneHasVoice,
+}) =>
+    translating && speakOn && phoneHasVoice ? 0.1 : 1.0;
+
 /// Reads translated captions aloud, one after another, in the listener's
 /// language — what the web does with speechSynthesis, so a phone hears the
 /// meeting in its language rather than only reading it.
@@ -73,6 +85,23 @@ class TranslationVoice {
     } finally {
       _queued--;
       if (_queued == 0 && !_disposed) await duck(false);
+    }
+  }
+
+  /// Whether this phone can speak [languageCode] at all. Google's engine
+  /// has no Igbo, Hausa or Yoruba voice, and none to download; on build
+  /// 3182 an Igbo listener got captions and silence with no word why.
+  /// True when there is no native side to ask (a test).
+  Future<bool> canSpeak(String languageCode) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>('canSpeak', {
+        'language': speechLocale(languageCode),
+      });
+      return ok ?? true;
+    } on MissingPluginException {
+      return true;
+    } on PlatformException {
+      return true;
     }
   }
 

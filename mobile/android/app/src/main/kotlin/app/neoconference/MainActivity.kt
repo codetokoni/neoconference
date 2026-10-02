@@ -93,6 +93,10 @@ class MainActivity : FlutterActivity() {
                         voice.stop()
                         result.success(null)
                     }
+                    "canSpeak" -> voice.canSpeak(
+                        call.argument<String>("language") ?: "en-US",
+                        result,
+                    )
                     else -> result.notImplemented()
                 }
             }

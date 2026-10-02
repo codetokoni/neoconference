@@ -215,10 +215,14 @@ class TranslationSheet extends ConsumerWidget {
               onChanged: controller.setSpeakTranslations,
               title: const Text('Read translations aloud'),
               subtitle: Text(
-                state.micOn
-                    ? 'Paused while your microphone is on, so it is not picked up.'
-                    : 'The original voices are kept low so you hear your language. '
-                        'Off shows text only.',
+                state.noVoiceForTranslation
+                    ? 'This phone has no '
+                        '${languageFor(state.translateTo)?.label ?? 'such'} voice, so it '
+                        'shows as text. The meeting stays at full volume.'
+                    : state.micOn
+                        ? 'Paused while your microphone is on, so it is not picked up.'
+                        : 'The original voices are kept low so you hear your language. '
+                            'Off shows text only.',
               ),
             ),
 

@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../core/load_error.dart';
 import '../events/event.dart';
+import '../events/languages.dart' show languageFor;
 import 'audio_routes.dart';
 import 'auto_rejoin.dart';
 import 'chat_poller.dart';
@@ -170,6 +171,7 @@ class RoomState {
     this.translationError,
     this.captionsOn = false,
     this.speakTranslations = true,
+    this.noVoiceForTranslation = false,
     this.onPhoneCall = false,
     this.mutedByPhoneCall = false,
     this.weakLink = false,
@@ -264,6 +266,11 @@ class RoomState {
   /// Read translations aloud, not only show them. On by default: hearing
   /// the meeting in your language is the point.
   final bool speakTranslations;
+
+  /// This phone has no voice for the chosen language (Google's has none
+  /// for Igbo, Hausa or Yoruba): the translation can only be read, and
+  /// the meeting is not turned down for a voice that will never speak.
+  final bool noVoiceForTranslation;
 
   /// A phone call is ringing or in progress on this device.
   final bool onPhoneCall;
@@ -369,6 +376,7 @@ class RoomState {
     String? translationError,
     bool? captionsOn,
     bool? speakTranslations,
+    bool? noVoiceForTranslation,
     bool? onPhoneCall,
     bool? mutedByPhoneCall,
     bool? weakLink,
@@ -431,6 +439,7 @@ class RoomState {
             : (translationError ?? this.translationError),
         captionsOn: captionsOn ?? this.captionsOn,
         speakTranslations: speakTranslations ?? this.speakTranslations,
+        noVoiceForTranslation: noVoiceForTranslation ?? this.noVoiceForTranslation,
         onPhoneCall: onPhoneCall ?? this.onPhoneCall,
         mutedByPhoneCall: mutedByPhoneCall ?? this.mutedByPhoneCall,
         weakLink: weakLink ?? this.weakLink,
@@ -1281,7 +1290,7 @@ class RoomController extends StateNotifier<RoomState> {
         translatedCaption: translated,
         clearTranslationError: true,
       );
-      if (speak) _voice.speak(translated, target);
+      if (speak && !state.noVoiceForTranslation) _voice.speak(translated, target);
     } on ApiException catch (e) {
       if (_disposed) return;
       // 503 means the server has no DeepL key; that is a deployment fact
@@ -1308,17 +1317,36 @@ class RoomController extends StateNotifier<RoomState> {
       clearTranslation: language == null,
       clearTranslatedCaption: true,
       clearTranslationError: true,
+      noVoiceForTranslation: false,
     );
     unawaited(_applyOriginalVolume());
     if (language == null) {
       unawaited(_voice.stop());
       return;
     }
+    unawaited(_checkVoice(language));
     // The caption already on screen is shown translated, not read out:
     // it was said before this was switched on.
     final caption = state.caption;
     if (caption != null) unawaited(_translate(caption, language));
     if (!state.captionsOn && state.role == 'host') unawaited(setCaptions(true));
+  }
+
+  /// Asks the phone whether it can speak [language], and says so when it
+  /// cannot: the translation still shows as text, and the meeting is put
+  /// back to full volume instead of being kept low for a voice that never
+  /// comes. On build 3182 an Igbo listener got the meeting at a tenth of
+  /// its volume and silence, with only "language ig not installed" in a log.
+  Future<void> _checkVoice(String language) async {
+    final ok = await _voice.canSpeak(language);
+    if (_disposed || state.translateTo != language || ok) return;
+    final name = languageFor(language)?.label ?? language;
+    state = state.copyWith(
+      noVoiceForTranslation: true,
+      message: 'This phone has no $name voice, so the translation shows as '
+          'text. The meeting stays at full volume.',
+    );
+    await _applyOriginalVolume();
   }
 
   void setSpeakTranslations(bool on) {
@@ -1335,8 +1363,11 @@ class RoomController extends StateNotifier<RoomState> {
   /// Choosing a language is choosing to hear the meeting in it; ducking
   /// only during speech left the original at full volume between
   /// sentences, and the owner, set to Spanish, heard English.
-  double get originalVolume =>
-      state.translateTo != null && state.speakTranslations ? 0.1 : 1.0;
+  double get originalVolume => originalVolumeFor(
+        translating: state.translateTo != null,
+        speakOn: state.speakTranslations,
+        phoneHasVoice: !state.noVoiceForTranslation,
+      );
 
   Future<void> _applyOriginalVolume() async {
     final volume = originalVolume;
