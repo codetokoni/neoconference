@@ -8,7 +8,7 @@ import '../core/api_client.dart';
 import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
-import '../events/create_meeting_screen.dart' show createdSlug;
+import '../events/create_meeting_screen.dart' show createdSlug, LanguageChecklistSheet;
 import '../events/event.dart' show apiProvider;
 import '../events/languages.dart';
 import '../meetings/meeting_board.dart';
@@ -170,7 +170,15 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                     spacing: NeoSpace.sm,
                     runSpacing: NeoSpace.sm,
                     children: [
-                      for (final lang in meetingLanguages.take(8))
+                      // A few quick picks, any other the host chose from
+                      // the full list, then the way to that list — which
+                      // this screen did not have, so a scheduled meeting
+                      // could only ever take eight languages.
+                      for (final lang in [
+                        ...meetingLanguages.take(8),
+                        for (final code in _languages)
+                          if (!meetingLanguages.take(8).any((l) => l.code == code)) ?languageFor(code),
+                      ])
                         FilterChip(
                           label: Text(lang.label),
                           selected: _languages.contains(lang.code),
@@ -180,6 +188,14 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                                 : _languages.remove(lang.code);
                           }),
                         ),
+                      ActionChip(
+                        avatar: Icon(Icons.add_rounded, size: 18, color: p.primary),
+                        label: Text(
+                          'More languages (${translationLanguages.length})',
+                          style: TextStyle(color: p.primary),
+                        ),
+                        onPressed: _pickMoreLanguages,
+                      ),
                     ],
                   ),
                 ],
@@ -219,6 +235,22 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
         ),
       ),
     );
+  }
+
+  /// Every language there is, searchable, ticked on and off in place.
+  Future<void> _pickMoreLanguages() async {
+    final picked = await showModalBottomSheet<Set<String>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => LanguageChecklistSheet(initial: _languages),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _languages
+          ..clear()
+          ..addAll(picked);
+      });
+    }
   }
 
   Future<void> _schedule() async {

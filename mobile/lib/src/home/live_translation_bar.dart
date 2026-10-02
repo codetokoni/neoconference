@@ -301,14 +301,96 @@ class LiveTranslationHowTo extends StatelessWidget {
                     label: Text(l.native, style: const TextStyle(fontSize: 12)),
                     visualDensity: VisualDensity.compact,
                   ),
-                Chip(
+                // A button, not a label: on build 3181 it was a plain Chip,
+                // and tapping it to see the rest did nothing at all.
+                ActionChip(
+                  avatar: Icon(Icons.add_rounded, size: 16, color: p.primary),
                   label: Text(
-                    '+ ${translationLanguages.length - meetingLanguages.length} more',
-                    style: const TextStyle(fontSize: 12),
+                    '${translationLanguages.length - meetingLanguages.length} more',
+                    style: TextStyle(fontSize: 12, color: p.primary),
                   ),
                   visualDensity: VisualDensity.compact,
+                  onPressed: () => neoSheet(
+                    context,
+                    fullHeight: true,
+                    builder: (_) => const AllLanguagesSheet(),
+                  ),
                 ),
               ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Every language live translation can speak, searchable: what the
+/// how-to's "more" opens. Browsing only — a listener picks theirs inside
+/// a meeting, where the choice belongs.
+class AllLanguagesSheet extends StatefulWidget {
+  const AllLanguagesSheet({super.key});
+
+  @override
+  State<AllLanguagesSheet> createState() => _AllLanguagesSheetState();
+}
+
+class _AllLanguagesSheetState extends State<AllLanguagesSheet> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
+    final text = Theme.of(context).textTheme;
+    final shown = [for (final l in translationLanguages) if (l.matches(_query)) l];
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.8,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(NeoSpace.xl, NeoSpace.sm, NeoSpace.xl, NeoSpace.xs),
+              child: Text('${translationLanguages.length} languages', style: text.titleLarge),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(NeoSpace.xl, 0, NeoSpace.xl, NeoSpace.sm),
+              child: Text(
+                'Pick yours in a meeting: More, then Live translation.',
+                style: text.bodySmall?.copyWith(color: p.textMuted),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(NeoSpace.xl, 0, NeoSpace.xl, NeoSpace.sm),
+              child: TextField(
+                onChanged: (v) => setState(() => _query = v),
+                textInputAction: TextInputAction.search,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search_rounded),
+                  hintText: 'Search languages',
+                  isDense: true,
+                ),
+              ),
+            ),
+            Expanded(
+              child: shown.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(NeoSpace.xl),
+                      child: Text(
+                        'No language matches "${_query.trim()}".',
+                        style: TextStyle(color: p.textMuted),
+                      ),
+                    )
+                  : ListView(
+                      children: [
+                        for (final l in shown)
+                          ListTile(
+                            dense: true,
+                            title: Text(l.native),
+                            subtitle: l.native == l.label ? null : Text(l.label),
+                          ),
+                      ],
+                    ),
             ),
           ],
         ),
