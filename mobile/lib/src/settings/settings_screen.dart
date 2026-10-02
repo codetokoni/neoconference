@@ -179,8 +179,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               size: 18,
               color: p.textMuted,
             ),
+            // ?from=app: on Android the website asks for the app instead
+            // (AndroidAppGate), which is pointless when this is the app.
             onTap: () => launchUrl(
-              Uri.parse('https://www.neoconference.app/'),
+              Uri.parse('https://www.neoconference.app/?from=app'),
               mode: LaunchMode.externalApplication,
             ),
           ),

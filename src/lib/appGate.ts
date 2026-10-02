@@ -1,0 +1,77 @@
+// src/lib/appGate.ts
+//
+// On an Android phone the website asks for the app instead: NeoConference
+// on Android is the app, from the LoveWorld AppStore. iPhones and computers
+// keep the website — the app is Android-only, and a gate there would lock
+// them out of NeoConference altogether.
+//
+// Pure, so it can be tested without a browser; components/AndroidAppGate.tsx
+// draws it.
+
+import { RESERVED_SHORT_URL_SLUGS } from "@/lib/reservedSlugs";
+
+/** NeoConference on the LoveWorld AppStore. */
+export const APP_STORE_URL = "https://web.lwappstore.com/share/lW-APP-Y26-XG9328";
+
+/** The app's Android package. */
+export const APP_PACKAGE = "app.neoconference";
+
+export function isAndroid(userAgent: string | null | undefined): boolean {
+  return /Android/i.test(userAgent || "");
+}
+
+/**
+ * Pages an Android phone still gets, because the app needs them or cannot
+ * do what they do:
+ *   /app/*           where a sign-in or payment comes back to the app
+ *   /support         the app opens it inside itself (Help & support)
+ *   /e/<slug>/replay the app does not play recordings
+ *   /embed/*         a meeting shown inside someone else's website
+ *   /admin/*         operators' tools, which the app does not have
+ *   /sign-out        must run its clean-up whatever the device
+ * and any page the app itself opened (?from=app), or a sign-in carrying a
+ * ticket from the app's own sign-in.
+ */
+export function gateExempt(pathname: string, search = ""): boolean {
+  const p = pathname.replace(/\/+$/, "") || "/";
+  if (/^\/(app|embed|admin)(\/|$)/.test(p)) return true;
+  if (p === "/support" || p === "/sign-out") return true;
+  if (/^\/e\/[^/]+\/replay$/.test(p)) return true;
+  const q = new URLSearchParams(search);
+  if (q.get("from") === "app") return true;
+  if (q.has("__clerk_ticket")) return true;
+  return false;
+}
+
+/**
+ * The meeting a page is for, when it is one: /e/<slug>, /room/<room>
+ * (with ?event=<slug> when the room and the meeting differ), or a short
+ * link /<slug>. Null for every other page.
+ */
+export function meetingSlugFromPath(pathname: string, search = ""): string | null {
+  const p = pathname.replace(/\/+$/, "");
+  const e = /^\/e\/([^/]+)$/.exec(p);
+  if (e) return decodeURIComponent(e[1]);
+  const room = /^\/room\/([^/]+)$/.exec(p);
+  if (room) return new URLSearchParams(search).get("event") || decodeURIComponent(room[1]);
+  const short = /^\/([a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?)$/.exec(p);
+  if (short && !RESERVED_SHORT_URL_SLUGS.has(short[1])) return short[1];
+  return null;
+}
+
+/**
+ * An address Chrome on Android turns into "open the app": at the meeting
+ * when there is one (the app claims /e/<slug> links), otherwise at its
+ * start screen. Without the app installed, Chrome goes to the store.
+ */
+export function appOpenUrl(slug: string | null, fallback = APP_STORE_URL): string {
+  const back = "S.browser_fallback_url=" + encodeURIComponent(fallback);
+  if (slug) {
+    return (
+      "intent://www.neoconference.app/e/" +
+      encodeURIComponent(slug) +
+      `#Intent;scheme=https;package=${APP_PACKAGE};${back};end`
+    );
+  }
+  return `intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${APP_PACKAGE};${back};end`;
+}
