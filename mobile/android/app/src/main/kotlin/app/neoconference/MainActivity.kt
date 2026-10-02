@@ -97,6 +97,10 @@ class MainActivity : FlutterActivity() {
                         call.argument<String>("language") ?: "en-US",
                         result,
                     )
+                    "speakable" -> voice.speakable(
+                        call.argument<List<String>>("languages") ?: emptyList(),
+                        result,
+                    )
                     else -> result.notImplemented()
                 }
             }

@@ -64,6 +64,7 @@ void main() {
   });
 
   noVoiceTests();
+  phoneVoicesTests();
 }
 
 /// On build 3182 an Igbo listener got captions, silence, and the meeting
@@ -95,5 +96,31 @@ void noVoiceTests() {
         {'language': 'es-ES'},
       ]);
     });
+  });
+}
+
+/// Which languages a phone can read aloud is asked once, in its speech
+/// locales, and answered in our codes — what the language lists mark.
+void phoneVoicesTests() {
+  test('the phone is asked in speech locales and answers in our codes', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    const channel = MethodChannel('test/voices');
+    List<Object?>? asked;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      asked = (call.arguments as Map)['languages'] as List<Object?>;
+      // A phone with Spanish, Brazilian Portuguese and Swahili voices.
+      return ['es-ES', 'pt-BR', 'sw'];
+    });
+
+    final voices = await phoneVoices(channel: channel);
+
+    expect(asked, hasLength(translationLanguages.length));
+    expect(asked, containsAll(['es-ES', 'pt-BR', 'ig', 'sw']));
+    expect(voices, {'es', 'pt-br', 'sw'});
+  });
+
+  test('no native side means unknown, not "none"', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    expect(await phoneVoices(channel: const MethodChannel('test/absent')), isNull);
   });
 }

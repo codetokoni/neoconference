@@ -15,6 +15,8 @@ import 'package:neoconference/src/screens/schedule_screen.dart';
 
 /// A hundred-odd translation languages are found by typing, not scrolling.
 void main() {
+  voiceMarksTests();
+
   testWidgets('the room picker finds a language by its own name and picks it', (tester) async {
     String? picked = 'unset';
     await tester.pumpWidget(MaterialApp(
@@ -150,5 +152,24 @@ void main() {
 
     expect(posts, isNotEmpty);
     expect(posts.last['languages'], contains('sw'));
+  });
+}
+
+/// The room picker says which languages this phone can read aloud.
+void voiceMarksTests() {
+  testWidgets('voice or text only, and how many', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: TranslationLanguageList(selected: null, onPick: (_) {}, speakable: const {'es', 'sw'}),
+      ),
+    ));
+    expect(find.text('This phone can read 2 of ${translationLanguages.length} aloud. The others show as text.'),
+        findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'swahili');
+    await tester.pumpAndSettle();
+    expect(find.text('Kiswahili · voice'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'igbo');
+    await tester.pumpAndSettle();
+    expect(find.text('Igbo · text only'), findsOneWidget);
   });
 }
