@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { APP_STORE_URL, appOpenUrl, gateExempt, isAndroid, meetingSlugFromPath } from "../../src/lib/appGate";
+import { APP_STORE_URL, appOpenUrl, gateExempt, isAndroid, meetingSlugFromPath, shouldAutoOpen } from "../../src/lib/appGate";
 
 /**
  * Android phones are asked to use the app (LoveWorld AppStore); iPhones and
@@ -46,4 +46,12 @@ test("open-in-app falls back to the store when the app is missing", () => {
   const app = appOpenUrl(null);
   expect(app).toContain("action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=app.neoconference;");
   expect(app).toContain(encodeURIComponent(APP_STORE_URL));
+});
+
+test("a phone that downloaded the app opens it, once per tab", () => {
+  expect(shouldAutoOpen(true, false)).toBe(true);
+  // Already tried in this tab: back here means it did not open; ask instead.
+  expect(shouldAutoOpen(true, true)).toBe(false);
+  // Never downloaded: the download screen.
+  expect(shouldAutoOpen(false, false)).toBe(false);
 });
