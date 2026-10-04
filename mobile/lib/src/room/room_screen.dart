@@ -409,12 +409,12 @@ class _InMeetingState extends State<_InMeeting> {
               context,
               builder: (_) => CameraSheet(slug: widget.slug),
             ),
-            openPersonMenu: state.canModerateOthers
-                ? (person) => neoSheet(
-                      context,
-                      builder: (_) => PersonActionsSheet(slug: widget.slug, person: person),
-                    )
-                : null,
+            // Everyone can pin; the sheet adds the host actions for a host.
+            openPersonMenu: (person) => neoSheet(
+              context,
+              builder: (_) => PersonActionsSheet(slug: widget.slug, person: person),
+            ),
+            unpin: () => controller.togglePin(null),
             audioOutputLabel: switch (AudioRoutes.instance.selectedOutput) {
               final device? => AudioRoutes.label(device),
               null => null,
@@ -501,6 +501,7 @@ class _InMeetingState extends State<_InMeeting> {
       waitingCount: state.canManage ? state.waitingRoom.length : 0,
       onPhoneCall: state.onPhoneCall,
       callEndedMuted: state.callEndedMuted,
+      pinnedId: state.pinnedId,
     );
   }
 

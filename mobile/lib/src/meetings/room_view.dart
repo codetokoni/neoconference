@@ -81,7 +81,21 @@ class RoomView {
     this.waitingCount = 0,
     this.onPhoneCall = false,
     this.callEndedMuted = false,
+    this.pinnedId,
   });
+
+  /// Whom this person pinned to the big tile, by id. Only on their own
+  /// screen; ignored once that person has left.
+  final String? pinnedId;
+
+  /// The pinned person, while they are still here.
+  PersonView? get pinned {
+    if (pinnedId == null) return null;
+    for (final person in people) {
+      if (person.id == pinnedId) return person;
+    }
+    return null;
+  }
 
   final String title;
   final List<PersonView> people;
@@ -115,13 +129,15 @@ class RoomView {
   /// A call that muted this device has ended; the microphone is still off.
   final bool callEndedMuted;
 
-  /// Whoever is sharing, else whoever is speaking, else the first person
-  /// who is not this device.
+  /// Whoever this person pinned, else whoever is sharing, else whoever is
+  /// speaking, else the first person who is not this device.
   ///
   /// Falls back to this device only when nobody else is here, so a meeting
   /// of one shows something rather than an empty stage.
   PersonView? get focus {
     if (people.isEmpty) return null;
+    final pin = pinned;
+    if (pin != null) return pin;
     for (final person in people) {
       if (person.sharing) return person;
     }
@@ -173,6 +189,7 @@ class RoomActions {
     this.openHostControls,
     this.openWaitingRoom,
     this.openPersonMenu,
+    this.unpin,
     this.openCameraPicker,
     this.openMicPicker,
   });
@@ -218,9 +235,13 @@ class RoomActions {
   final VoidCallback? openHostControls;
   final VoidCallback? openWaitingRoom;
 
-  /// Host actions for one person (mute, camera off, roles, remove), opened
-  /// by a long press on their tile. Null for anyone who may not manage.
+  /// What can be done to one person, opened by a long press on their tile:
+  /// Pin for everyone, and the host actions (mute, camera off, roles,
+  /// remove) for a host.
   final void Function(PersonView person)? openPersonMenu;
+
+  /// Lets the pinned person go, from the "Pinned" chip on the big tile.
+  final VoidCallback? unpin;
 
   /// Which camera, and which microphone-and-speaker, to use: the ▾ beside
   /// those buttons on the web.
