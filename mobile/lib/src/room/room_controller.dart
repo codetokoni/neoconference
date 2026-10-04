@@ -1199,6 +1199,15 @@ class RoomController extends StateNotifier<RoomState> {
   /// Put away the call-ended reminder without unmuting.
   void dismissCallEnded() => state = state.copyWith(callEndedMuted: false);
 
+  /// Where the sound was before a phone call, to put it back after.
+  late final _callRoute = CallRoute(
+    apply: (speaker) async {
+      if (_disposed) return;
+      await AudioRoutes.instance.setSpeaker(speaker);
+      debugPrint('[neo-room] after the call: sound back on the ${speaker ? 'speaker' : 'earpiece/headset'}');
+    },
+  );
+
   /// A phone call started or ended on this device.
   ///
   /// The judgement is [decidePhoneCall]'s; this only carries it out. The
@@ -1209,6 +1218,12 @@ class RoomController extends StateNotifier<RoomState> {
     if (_disposed) return;
     final inCall = MeetingPresence.instance.onPhoneCall.value;
     final me = room.localParticipant;
+
+    if (inCall) {
+      _callRoute.callStarted(speakerOn: AudioRoutes.instance.speakerPreferred);
+    } else {
+      unawaited(_callRoute.callEnded());
+    }
 
     final outcome = decidePhoneCall(
       inCall: inCall,
