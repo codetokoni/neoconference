@@ -79,3 +79,53 @@ PhoneCallOutcome decidePhoneCall({
   // already, so there is nothing to restore and nothing worth saying.
   return const PhoneCallOutcome(muteMic: false, mutedByCall: false);
 }
+
+/// Where the meeting's sound was before a phone call, put back after it.
+///
+/// Reported from a phone: in a meeting on the loudspeaker, a call came in
+/// (or was made), and when it ended the meeting stayed on the earpiece.
+/// Android hands the audio to the call and, when the call ends, does not
+/// give the speaker back; the app never asked for it again.
+///
+/// The route is put back twice: as soon as the call ends, and once more a
+/// moment later, because Android finishes tearing the call's audio down
+/// after it reports the call over, and can undo a route set too early.
+class CallRoute {
+  CallRoute({
+    required this.apply,
+    this.settle = const Duration(milliseconds: 1500),
+    Future<void> Function(Duration)? wait,
+  }) : _wait = wait ?? Future<void>.delayed;
+
+  /// Puts the sound on the loudspeaker (true) or off it (false).
+  final Future<void> Function(bool speaker) apply;
+
+  /// How long after the call ends to put the route back a second time.
+  final Duration settle;
+
+  final Future<void> Function(Duration) _wait;
+
+  bool? _speakerBefore;
+
+  /// Whether a call's route is being kept.
+  bool get holding => _speakerBefore != null;
+
+  /// A call started: remember where the sound was. Only the first report
+  /// of a call counts — a second "ringing" must not record the earpiece
+  /// the call itself moved the sound to.
+  void callStarted({required bool speakerOn}) {
+    _speakerBefore ??= speakerOn;
+  }
+
+  /// The call ended: put the sound back where it was.
+  Future<void> callEnded() async {
+    final speaker = _speakerBefore;
+    _speakerBefore = null;
+    if (speaker == null) return;
+    await apply(speaker);
+    await _wait(settle);
+    // A newer call started meanwhile: that one owns the route now.
+    if (_speakerBefore != null) return;
+    await apply(speaker);
+  }
+}
