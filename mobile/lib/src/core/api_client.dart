@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart' show MediaType;
 
 import 'config.dart';
 
@@ -73,6 +74,27 @@ class ApiClient {
         body: body == null ? null : jsonEncode(body),
       ),
     );
+  }
+
+  /// Uploads one file as multipart form data, in a field named [field].
+  Future<dynamic> postFile(
+    String path, {
+    required List<int> bytes,
+    required String filename,
+    required String mimeType,
+    String field = 'file',
+  }) {
+    return _send('POST $path', (headers) async {
+      final request = http.MultipartRequest('POST', Uri.parse('${Config.site}$path'))
+        ..headers.addAll(headers)
+        ..files.add(http.MultipartFile.fromBytes(
+          field,
+          bytes,
+          filename: filename,
+          contentType: MediaType.parse(mimeType),
+        ));
+      return http.Response.fromStream(await _http.send(request));
+    });
   }
 
   Future<dynamic> patch(String path, [Object? body]) => _withBody('PATCH', path, body);

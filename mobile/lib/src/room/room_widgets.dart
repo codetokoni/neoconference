@@ -2,11 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../design/brand.dart';
 import '../design/components.dart';
+import '../design/tokens.dart';
 import '../meetings/room_view.dart';
 import 'go_live_sheet.dart';
 import 'room_controller.dart';
@@ -113,6 +116,29 @@ class _ChatSheetState extends ConsumerState<ChatSheet> {
     );
   }
 
+  /// Picks files from the phone and sends each one; any words typed go
+  /// with the first as its caption.
+  Future<void> _attach() async {
+    final files = await FilePicker.pickFiles(
+      dialogTitle: 'Send a file',
+      type: FileType.custom,
+      allowedExtensions: const [
+        'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif',
+        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+        'txt', 'csv', 'json', 'zip',
+      ],
+    );
+    if (files.isEmpty || !mounted) return;
+    final controller = ref.read(roomControllerProvider(widget.slug).notifier);
+    var caption = _input.text;
+    if (caption.trim().isNotEmpty) _input.clear();
+    for (final file in files) {
+      final bytes = await file.xFile.readAsBytes();
+      await controller.sendChatFile(file.name, bytes, caption: caption);
+      caption = '';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = NeoTheme.of(context);
@@ -192,10 +218,29 @@ class _ChatSheetState extends ConsumerState<ChatSheet> {
                       itemBuilder: (context, i) => _ChatBubble(chat[i]),
                     ),
             ),
+            if (state.chatUploading > 0)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                    const SizedBox(width: 8),
+                    Text(
+                      state.chatUploading == 1 ? 'Sending a file…' : 'Sending ${state.chatUploading} files…',
+                      style: TextStyle(color: p.textMuted, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
                 children: [
+                  IconButton(
+                    tooltip: 'Send a file',
+                    onPressed: _attach,
+                    icon: const Icon(Icons.attach_file_rounded),
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _input,
@@ -263,10 +308,99 @@ class _ChatBubble extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 2),
-          Text(line.text, style: TextStyle(color: p.text)),
+          if (line.text.isNotEmpty) Text(line.text, style: TextStyle(color: p.text)),
+          for (final a in line.attachments)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: ChatAttachmentView(attachment: a),
+            ),
         ],
       ),
     );
+  }
+}
+
+/// A file in a chat message: a picture shown in place, anything else as a
+/// card with its name and size. Either opens it with the phone's own apps.
+class ChatAttachmentView extends StatelessWidget {
+  const ChatAttachmentView({super.key, required this.attachment});
+  final ChatAttachment attachment;
+
+  Future<void> _open() => launchUrl(Uri.parse(attachment.url), mode: LaunchMode.externalApplication);
+
+  @override
+  Widget build(BuildContext context) {
+    final p = NeoTheme.of(context);
+    if (attachment.isImage) {
+      return GestureDetector(
+        onTap: _open,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 220, maxWidth: 260),
+            child: Image.network(
+              attachment.url,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) => progress == null
+                  ? child
+                  : const SizedBox(
+                      width: 160,
+                      height: 120,
+                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    ),
+              errorBuilder: (context, _, _) => _card(p, Icons.image_not_supported_outlined),
+            ),
+          ),
+        ),
+      );
+    }
+    return _card(p, _iconFor(attachment.mimeType));
+  }
+
+  Widget _card(NeoPalette p, IconData icon) => InkWell(
+        onTap: _open,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 280),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: p.surfaceAlt,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: p.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: p.primary),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      attachment.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: p.text, fontWeight: FontWeight.w600),
+                    ),
+                    Text(
+                      '${attachment.sizeLabel} · tap to open',
+                      style: TextStyle(color: p.textMuted, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  static IconData _iconFor(String mime) {
+    if (mime == 'application/pdf') return Icons.picture_as_pdf_outlined;
+    if (mime.contains('sheet') || mime.contains('excel') || mime == 'text/csv') return Icons.table_chart_outlined;
+    if (mime.contains('presentation') || mime.contains('powerpoint')) return Icons.slideshow_outlined;
+    if (mime.contains('zip')) return Icons.folder_zip_outlined;
+    return Icons.description_outlined;
   }
 }
 
