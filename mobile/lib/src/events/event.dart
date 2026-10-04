@@ -74,7 +74,10 @@ class NeoEvent {
 }
 
 final apiProvider = Provider<ApiClient>((ref) {
-  final client = ApiClient(token: () => ref.read(authProvider.notifier).currentToken());
+  final client = ApiClient(
+    token: () => ref.read(authProvider.notifier).currentToken(),
+    freshToken: () => ref.read(authProvider.notifier).freshToken(),
+  );
   ref.onDispose(client.close);
   return client;
 });

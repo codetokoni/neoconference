@@ -68,6 +68,20 @@ class TokenCache {
     return _start(sessionId);
   }
 
+  /// A token fetched now, not the cached one: for when the server refused
+  /// the cached one. A token can leave here 8 s before it expires and still
+  /// arrive late — between networks a request took longer than that — or
+  /// be refused for a reason the phone cannot see. A fetch already under
+  /// way is shared.
+  Future<String?> renew(String sessionId) {
+    if (_session == sessionId) {
+      _jwt = null;
+      _expires = null;
+    }
+    if (_inFlight != null && _inFlightSession == sessionId) return _inFlight!;
+    return _start(sessionId);
+  }
+
   Future<String?> _start(String sessionId) {
     _inFlightSession = sessionId;
     return _inFlight = _fetch(sessionId, _generation);
