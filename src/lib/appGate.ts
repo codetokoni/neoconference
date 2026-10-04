@@ -60,6 +60,22 @@ export function meetingSlugFromPath(pathname: string, search = ""): string | nul
 }
 
 /**
+ * Remembered on the phone once someone tapped Download, so a later visit
+ * goes straight to the app instead of asking again.
+ */
+export const DOWNLOADED_KEY = "neo:app-downloaded";
+
+/**
+ * Whether this visit should try the app straight away: they downloaded it
+ * before, and this is not the visit straight back from a failed attempt
+ * (the store fallback lands on the store, so coming back here at all means
+ * the app did not open — then the screen is shown, not another attempt).
+ */
+export function shouldAutoOpen(downloadedBefore: boolean, triedThisTab: boolean): boolean {
+  return downloadedBefore && !triedThisTab;
+}
+
+/**
  * An address Chrome on Android turns into "open the app": at the meeting
  * when there is one (the app claims /e/<slug> links), otherwise at its
  * start screen. Without the app installed, Chrome goes to the store.
