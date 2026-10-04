@@ -75,6 +75,7 @@ class ChatLine {
     required this.text,
     required this.at,
     this.isDirect = false,
+    this.attachments = const [],
   });
 
   final String id;
@@ -83,6 +84,10 @@ class ChatLine {
   final DateTime at;
   final bool isDirect;
 
+  /// Files sent with the message: a picture shown in place, anything else
+  /// as a card that opens it.
+  final List<ChatAttachment> attachments;
+
   factory ChatLine.fromJson(Map<String, dynamic> json) => ChatLine(
         id: json['id'] as String? ?? '${json['ts']}-${json['userId']}',
         name: json['name'] as String? ?? 'Someone',
@@ -90,7 +95,88 @@ class ChatLine {
         at: DateTime.tryParse(json['ts'] as String? ?? '')?.toLocal() ??
             DateTime.now(),
         isDirect: json['toUserId'] != null,
+        attachments: [
+          for (final a in (json['attachments'] as List? ?? const []))
+            if (a is Map<String, dynamic>) ?ChatAttachment.fromJson(a),
+        ],
       );
+}
+
+/// A file in a chat message, as the web's ChatAttachment
+/// (src/types/event.ts): uploaded to /api/chat/upload, which answers with
+/// this, then sent in the message's `attachments`.
+@immutable
+class ChatAttachment {
+  const ChatAttachment({
+    required this.url,
+    required this.name,
+    required this.mimeType,
+    required this.size,
+    required this.isImage,
+  });
+
+  final String url;
+  final String name;
+  final String mimeType;
+  final int size;
+  final bool isImage;
+
+  static ChatAttachment? fromJson(Map<String, dynamic> json) {
+    final url = json['url'];
+    if (url is! String || url.isEmpty) return null;
+    final size = json['size'];
+    return ChatAttachment(
+      url: url,
+      name: json['name'] as String? ?? 'file',
+      mimeType: json['mimeType'] as String? ?? 'application/octet-stream',
+      size: size is num ? size.toInt() : 0,
+      isImage: json['kind'] == 'image',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'url': url,
+        'name': name,
+        'mimeType': mimeType,
+        'size': size,
+        'kind': isImage ? 'image' : 'file',
+      };
+
+  /// "2.4 MB", "830 KB".
+  String get sizeLabel {
+    if (size >= 1024 * 1024) return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(size / 1024).ceil()} KB';
+  }
+}
+
+/// The largest file the chat accepts: the upload route's own limit.
+const chatFileLimit = 10 * 1024 * 1024;
+
+/// The type the upload route expects for a file, from its name. Only what
+/// the route accepts; anything else is null and refused before uploading.
+String? chatMimeType(String filename) {
+  final dot = filename.lastIndexOf('.');
+  final ext = dot < 0 ? '' : filename.substring(dot + 1).toLowerCase();
+  return const {
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'heic': 'image/heic',
+    'heif': 'image/heif',
+    'pdf': 'application/pdf',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls': 'application/vnd.ms-excel',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'ppt': 'application/vnd.ms-powerpoint',
+    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'txt': 'text/plain',
+    'csv': 'text/csv',
+    'json': 'application/json',
+    'zip': 'application/zip',
+  }[ext];
 }
 
 Map<String, dynamic>? _metadata(String? metadata) {
@@ -159,6 +245,7 @@ class RoomState {
     this.recordingFilepath,
     this.unreadChat = 0,
     this.chatError,
+    this.chatUploading = 0,
     this.chatPacketsSeen = 0,
     this.dataPacketsSeen = 0,
     this.lastDataTopic,
@@ -221,6 +308,9 @@ class RoomState {
 
   /// Why the chat is empty, when it is empty for a reason.
   final String? chatError;
+
+  /// Files on their way to the chat right now.
+  final int chatUploading;
 
   /// How many `neo-chat` packets have arrived over the data channel.
   ///
@@ -369,6 +459,7 @@ class RoomState {
     String? recordingFilepath,
     int? unreadChat,
     String? chatError,
+    int? chatUploading,
     int? chatPacketsSeen,
     int? dataPacketsSeen,
     String? lastDataTopic,
@@ -430,6 +521,7 @@ class RoomState {
             : (recordingFilepath ?? this.recordingFilepath),
         unreadChat: unreadChat ?? this.unreadChat,
         chatError: clearChatError ? null : (chatError ?? this.chatError),
+        chatUploading: chatUploading ?? this.chatUploading,
         chatPacketsSeen: chatPacketsSeen ?? this.chatPacketsSeen,
         dataPacketsSeen: dataPacketsSeen ?? this.dataPacketsSeen,
         lastDataTopic: lastDataTopic ?? this.lastDataTopic,
@@ -1691,6 +1783,59 @@ class RoomController extends StateNotifier<RoomState> {
       );
     } catch (e) {
       state = state.copyWith(chatError: 'Not sent. ${describeActionError(e)}');
+    }
+  }
+
+  /// Sends a file to everyone in the chat: uploaded first (the website's
+  /// /api/chat/upload, so web and app share one store and one limit), then
+  /// posted as a message carrying it, then fanned out like any message.
+  Future<void> sendChatFile(String filename, List<int> bytes, {String caption = ''}) async {
+    final mime = chatMimeType(filename);
+    if (mime == null) {
+      state = state.copyWith(
+        chatError: 'That kind of file can\'t be sent. Pictures, PDFs, Word, '
+            'Excel, PowerPoint, text and zip files can.',
+      );
+      return;
+    }
+    if (bytes.length > chatFileLimit) {
+      state = state.copyWith(chatError: 'That file is too big to send. The limit is 10 MB.');
+      return;
+    }
+    state = state.copyWith(chatUploading: state.chatUploading + 1, clearChatError: true);
+    try {
+      final up = await api.postFile('/api/chat/upload', bytes: bytes, filename: filename, mimeType: mime);
+      final attachment = up is Map<String, dynamic> && up['attachment'] is Map<String, dynamic>
+          ? ChatAttachment.fromJson(up['attachment'] as Map<String, dynamic>)
+          : null;
+      if (attachment == null) {
+        state = state.copyWith(chatError: 'The file was not stored. Try again.');
+        return;
+      }
+      final body = await api.post('/api/events/$slug/chat', {
+        'text': caption.trim(),
+        'attachments': [attachment.toJson()],
+      });
+      final saved = (body is Map ? body['message'] : null) as Map<String, dynamic>?;
+      if (saved == null) {
+        state = state.copyWith(chatError: 'The server accepted the file but returned nothing.');
+        return;
+      }
+      await _publish(Topics.chat, saved, reliable: true);
+      state = state.copyWith(chat: [...state.chat, ChatLine.fromJson(saved)], clearChatError: true);
+    } on ApiException catch (e) {
+      state = state.copyWith(
+        chatError: switch (e.code) {
+          'too_large' => 'That file is too big to send. The limit is 10 MB.',
+          'unsupported_type' => 'That kind of file can\'t be sent.',
+          'storage_not_configured' => 'Sending files is not switched on for this site.',
+          _ => 'Not sent (HTTP ${e.status}): ${e.message}',
+        },
+      );
+    } catch (e) {
+      state = state.copyWith(chatError: 'Not sent. ${describeActionError(e)}');
+    } finally {
+      if (!_disposed) state = state.copyWith(chatUploading: (state.chatUploading - 1).clamp(0, 99));
     }
   }
 
