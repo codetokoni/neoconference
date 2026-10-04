@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../auth/clerk_client.dart' show ClerkException;
 import 'api_client.dart';
 
 const _unreachable =
@@ -27,7 +28,16 @@ bool isNetworkError(Object error) =>
 String describeActionError(Object error) {
   debugPrint('[action] $error');
   if (isNetworkError(error)) return _unreachable;
+  // A 401 that survived a retry with a fresh token (ApiClient): the
+  // session really has ended. The bare "Unauthorized" said nothing to do.
+  if (error is ApiException && error.isUnauthenticated) {
+    return 'Your sign-in has expired. Sign out and sign in again.';
+  }
   if (error is ApiException) return error.message;
+  // Clerk itself busy or down, which is not the same as signed out.
+  if (error is ClerkException && !error.sessionGone) {
+    return "Couldn't reach the sign-in service. Check your connection and try again.";
+  }
   return '$error';
 }
 

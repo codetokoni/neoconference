@@ -14,68 +14,81 @@ import 'config.dart';
 /// this sends the session JWT as `Authorization: Bearer`, which Clerk's
 /// middleware accepts on equal terms.
 class ApiClient {
-  ApiClient({required this.token, http.Client? http_})
+  ApiClient({required this.token, this.freshToken, http.Client? http_})
       : _http = http_ ?? http.Client();
 
   /// Returns a fresh session JWT, or null when signed out. Called per
   /// request because Clerk's session tokens live about a minute.
   final Future<String?> Function() token;
 
+  /// A token fetched now rather than cached, for one retry when the server
+  /// answers 401 to a request that carried a token. Reported from a phone
+  /// that changed networks mid-meeting: rejoining said "Could not join:
+  /// Unauthorized" while the person was signed in all along.
+  final Future<String?> Function()? freshToken;
+
   final http.Client _http;
 
-  Future<Map<String, String>> _headers() async {
-    final jwt = await token();
-    return {
-      'accept': 'application/json',
-      if (jwt != null) 'authorization': 'Bearer $jwt',
-    };
+  Map<String, String> _headersWith(String? jwt) => {
+        'accept': 'application/json',
+        if (jwt != null) 'authorization': 'Bearer $jwt',
+      };
+
+  /// Sends a request built for a token; on a 401 to a request that carried
+  /// one, sends it once more with a token fetched now.
+  Future<dynamic> _send(String what, Future<http.Response> Function(Map<String, String> headers) send) async {
+    final clock = Stopwatch()..start();
+    var jwt = await token();
+    final tokenMs = clock.elapsedMilliseconds;
+    var res = await send(_headersWith(jwt));
+    _time(what, tokenMs, clock.elapsedMilliseconds, res.statusCode);
+    final renew = freshToken;
+    if (res.statusCode == 401 && jwt != null && renew != null) {
+      final again = await renew();
+      if (again != null && again != jwt) {
+        debugPrint('[api] $what: 401 with a cached token; retrying with a fresh one');
+        jwt = again;
+        res = await send(_headersWith(jwt));
+      }
+    }
+    return _decode(res, what);
   }
 
-  Future<dynamic> get(String path, [Map<String, String>? query]) async {
+  Future<dynamic> get(String path, [Map<String, String>? query]) {
     final uri = Uri.parse('${Config.site}$path').replace(
       queryParameters: query?.isEmpty ?? true ? null : query,
     );
-    final clock = Stopwatch()..start();
-    final headers = await _headers();
-    final tokenMs = clock.elapsedMilliseconds;
-    final res = await _http.get(uri, headers: headers);
-    _time('GET $path', tokenMs, clock.elapsedMilliseconds, res.statusCode);
-    return _decode(res, 'GET $path');
+    return _send('GET $path', (headers) => _http.get(uri, headers: headers));
   }
 
-  Future<dynamic> post(String path, [Object? body]) async {
-    final clock = Stopwatch()..start();
-    final headers = await _headers();
-    final tokenMs = clock.elapsedMilliseconds;
-    final res = await _http.post(
-      Uri.parse('${Config.site}$path'),
-      headers: {
-        ...headers,
-        if (body != null) 'content-type': 'application/json',
-      },
-      body: body == null ? null : jsonEncode(body),
+  Future<dynamic> post(String path, [Object? body]) {
+    return _send(
+      'POST $path',
+      (headers) => _http.post(
+        Uri.parse('${Config.site}$path'),
+        headers: {
+          ...headers,
+          if (body != null) 'content-type': 'application/json',
+        },
+        body: body == null ? null : jsonEncode(body),
+      ),
     );
-    _time('POST $path', tokenMs, clock.elapsedMilliseconds, res.statusCode);
-    return _decode(res, 'POST $path');
   }
 
   Future<dynamic> patch(String path, [Object? body]) => _withBody('PATCH', path, body);
 
   Future<dynamic> delete(String path, [Object? body]) => _withBody('DELETE', path, body);
 
-  Future<dynamic> _withBody(String method, String path, Object? body) async {
-    final clock = Stopwatch()..start();
-    final headers = await _headers();
-    final tokenMs = clock.elapsedMilliseconds;
-    final request = http.Request(method, Uri.parse('${Config.site}$path'))
-      ..headers.addAll({
-        ...headers,
-        if (body != null) 'content-type': 'application/json',
-      });
-    if (body != null) request.body = jsonEncode(body);
-    final res = await http.Response.fromStream(await _http.send(request));
-    _time('$method $path', tokenMs, clock.elapsedMilliseconds, res.statusCode);
-    return _decode(res, '$method $path');
+  Future<dynamic> _withBody(String method, String path, Object? body) {
+    return _send('$method $path', (headers) async {
+      final request = http.Request(method, Uri.parse('${Config.site}$path'))
+        ..headers.addAll({
+          ...headers,
+          if (body != null) 'content-type': 'application/json',
+        });
+      if (body != null) request.body = jsonEncode(body);
+      return http.Response.fromStream(await _http.send(request));
+    });
   }
 
   /// Logs a slow request, split into getting the session token and the

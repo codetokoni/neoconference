@@ -124,13 +124,21 @@ class ClerkClient {
   ///
   /// These expire after about a minute by design, so this is called before
   /// requests rather than cached for the life of the app.
+  ///
+  /// Null only when Clerk says the session is over (401, 403, 404). Any
+  /// other failure — Clerk busy (429), down (5xx), or the phone between
+  /// networks — is thrown. Every failure used to come back as null, which
+  /// reads as "signed out": the request then went without a token and the
+  /// meeting said "Could not join: Unauthorized" to someone who was signed
+  /// in and had only changed networks.
   Future<String?> sessionToken(String sessionId) async {
     try {
       final body = await _post('/v1/client/sessions/$sessionId/tokens', {});
       final jwt = body['jwt'];
       return jwt is String && jwt.isNotEmpty ? jwt : null;
-    } on ClerkException {
-      return null;
+    } on ClerkException catch (e) {
+      if (e.sessionGone) return null;
+      rethrow;
     }
   }
 
@@ -155,10 +163,17 @@ class ClerkClient {
 }
 
 class ClerkException implements Exception {
-  const ClerkException({required this.code, required this.message});
+  const ClerkException({required this.code, required this.message, this.status});
 
   final String code;
   final String message;
+
+  /// The HTTP status Clerk answered with, when there was one.
+  final int? status;
+
+  /// Clerk refused because the session no longer exists or is not this
+  /// client's — the only failure that means "signed out".
+  bool get sessionGone => status == 401 || status == 403 || status == 404;
 
   /// Clerk answers with `{ errors: [{ code, message, long_message }] }`.
   /// long_message is the one written for a person to read.
@@ -171,9 +186,10 @@ class ClerkException implements Exception {
         message: (first['long_message'] as String?) ??
             (first['message'] as String?) ??
             'Sign-in failed.',
+        status: status,
       );
     }
-    return ClerkException(code: 'http_$status', message: 'Sign-in failed.');
+    return ClerkException(code: 'http_$status', message: 'Sign-in failed.', status: status);
   }
 
   @override

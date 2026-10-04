@@ -367,6 +367,14 @@ class AuthController extends StateNotifier<AuthState> {
     return _tokens.get(sessionId);
   }
 
+  /// A token fetched from Clerk now, for retrying a request the server
+  /// refused (see [TokenCache.renew]).
+  Future<String?> freshToken() async {
+    final sessionId = state.sessionId;
+    if (sessionId == null) return null;
+    return _tokens.renew(sessionId);
+  }
+
   @override
   void dispose() {
     _linkSub?.cancel();
