@@ -172,6 +172,7 @@ class RoomState {
     this.captionsOn = false,
     this.speakTranslations = true,
     this.noVoiceForTranslation = false,
+    this.pinnedId,
     this.onPhoneCall = false,
     this.mutedByPhoneCall = false,
     this.weakLink = false,
@@ -271,6 +272,10 @@ class RoomState {
   /// for Igbo, Hausa or Yoruba): the translation can only be read, and
   /// the meeting is not turned down for a voice that will never speak.
   final bool noVoiceForTranslation;
+
+  /// Whom this device pinned to the big tile (a participant identity).
+  /// Local only: nobody else's screen changes.
+  final String? pinnedId;
 
   /// A phone call is ringing or in progress on this device.
   final bool onPhoneCall;
@@ -377,6 +382,8 @@ class RoomState {
     bool? captionsOn,
     bool? speakTranslations,
     bool? noVoiceForTranslation,
+    String? pinnedId,
+    bool clearPin = false,
     bool? onPhoneCall,
     bool? mutedByPhoneCall,
     bool? weakLink,
@@ -440,6 +447,7 @@ class RoomState {
         captionsOn: captionsOn ?? this.captionsOn,
         speakTranslations: speakTranslations ?? this.speakTranslations,
         noVoiceForTranslation: noVoiceForTranslation ?? this.noVoiceForTranslation,
+        pinnedId: clearPin ? null : (pinnedId ?? this.pinnedId),
         onPhoneCall: onPhoneCall ?? this.onPhoneCall,
         mutedByPhoneCall: mutedByPhoneCall ?? this.mutedByPhoneCall,
         weakLink: weakLink ?? this.weakLink,
@@ -1194,6 +1202,16 @@ class RoomController extends StateNotifier<RoomState> {
       // Unmuted, however it happened: the reminder has done its job.
       callEndedMuted: micOn ? false : null,
     );
+  }
+
+  /// Keep [identity] on the big tile, or let them go when they already are
+  /// pinned (or when [identity] is null). Only this screen changes.
+  void togglePin(String? identity) {
+    if (identity == null || state.pinnedId == identity) {
+      state = state.copyWith(clearPin: true);
+    } else {
+      state = state.copyWith(pinnedId: identity);
+    }
   }
 
   /// Put away the call-ended reminder without unmuting.

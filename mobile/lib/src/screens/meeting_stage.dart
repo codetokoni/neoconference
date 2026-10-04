@@ -65,8 +65,14 @@ class _MeetingStageState extends State<MeetingStage> {
             ),
             child: room.people.isEmpty
                 ? const _Alone()
-                : _layout == RoomLayout.speaker
-                    ? _SpeakerView(room: room, onPerson: widget.actions.openPersonMenu)
+                // Pinning someone means seeing them large: the grid gives
+                // way to the speaker view while a pin lasts.
+                : _layout == RoomLayout.speaker || room.pinned != null
+                    ? _SpeakerView(
+                        room: room,
+                        onPerson: widget.actions.openPersonMenu,
+                        onUnpin: widget.actions.unpin,
+                      )
                     : _GridView(room: room, onPerson: widget.actions.openPersonMenu),
           ),
         ),
@@ -466,9 +472,10 @@ class _Header extends StatelessWidget {
 }
 
 class _SpeakerView extends StatelessWidget {
-  const _SpeakerView({required this.room, this.onPerson});
+  const _SpeakerView({required this.room, this.onPerson, this.onUnpin});
   final RoomView room;
   final void Function(PersonView person)? onPerson;
+  final VoidCallback? onUnpin;
 
   @override
   Widget build(BuildContext context) {
@@ -476,12 +483,31 @@ class _SpeakerView extends StatelessWidget {
     final others = room.others;
     if (focus == null) return const SizedBox.shrink();
 
+    final pinned = room.pinned != null;
     return Column(
       children: [
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(NeoSpace.md),
-            child: ParticipantTile(person: focus, large: true, onLongPress: onPerson),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: ParticipantTile(person: focus, large: true, onLongPress: onPerson),
+                ),
+                if (pinned)
+                  // Says why this person stays put, and lets them go.
+                  Positioned(
+                    top: NeoSpace.sm,
+                    right: NeoSpace.sm,
+                    child: ActionChip(
+                      avatar: const Icon(Icons.push_pin_rounded, size: 16),
+                      label: const Text('Pinned · tap to unpin'),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: onUnpin,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
         if (others.isNotEmpty) ...[

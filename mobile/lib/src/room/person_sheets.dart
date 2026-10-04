@@ -6,9 +6,10 @@ import '../design/brand.dart';
 import '../meetings/room_view.dart';
 import 'room_controller.dart';
 
-/// What a host can do to one person, opened by holding their tile.
+/// What can be done to one person, opened by holding their tile.
 ///
-/// The web's tile menu, item for item and with its rules: every action is
+/// Pin, for everyone. Then, for a host, the web's tile menu, item for item
+/// and with its rules: every action is
 /// host rank on the server (the sheet is only offered to a host), Make Host
 /// is the owner's alone (FRS §1.1), and Demote only appears for someone who
 /// is a host or moderator. The owner is never offered to be demoted or
@@ -61,6 +62,37 @@ class PersonActionsSheet extends ConsumerWidget {
                 style: TextStyle(color: palette.textMuted),
               ),
             ),
+            // For everyone: keep this person on the big tile (only on this
+            // screen), or let them go.
+            if (state.pinnedId == person.id)
+              item(Icons.push_pin_outlined, 'Unpin', () {
+                Navigator.pop(context);
+                controller.togglePin(null);
+              })
+            else
+              item(Icons.push_pin_rounded, 'Pin to the big screen', () {
+                Navigator.pop(context);
+                controller.togglePin(person.id);
+              }),
+            if (state.canModerateOthers && !person.isMe) ..._hostActions(context, state, controller, run, item),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// What only a host can do to someone else.
+  List<Widget> _hostActions(
+    BuildContext context,
+    RoomState state,
+    RoomController controller,
+    Future<void> Function(Future<void> Function()) run,
+    Widget Function(IconData, String, VoidCallback, {Color? color}) item,
+  ) {
+    final palette = NeoTheme.of(context);
+    return [
+            const Divider(height: 16),
             item(Icons.mic_off_rounded, 'Mute microphone',
                 () => run(() => controller.moderate(person.id, 'muteAudio'))),
             item(Icons.videocam_off_rounded, 'Turn off camera',
@@ -100,11 +132,7 @@ class PersonActionsSheet extends ConsumerWidget {
                 color: palette.danger,
               ),
             ],
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
+    ];
   }
 }
 
