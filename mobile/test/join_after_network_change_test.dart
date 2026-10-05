@@ -10,6 +10,8 @@ import 'package:neoconference/src/core/api_client.dart';
 /// Reported from a phone that changed networks during a meeting: rejoining
 /// said "Could not join: Unauthorized" to someone signed in all along.
 void main() {
+  signedOut404Tests();
+
   group('the API client', () {
     test('retries a 401 once with a token fetched now', () async {
       final seen = <String?>[];
@@ -98,5 +100,55 @@ void main() {
     final renewed = await cache.renew('sess_1');
     expect(renewed, isNot(first));
     expect(await cache.get('sess_1'), renewed);
+  });
+}
+
+/// The sign-in check in front of most routes refuses with 404 and
+/// x-clerk-auth-status: signed-out, not 401. Seen in neodevteam's chat:
+/// "Could not load earlier messages (HTTP 404)".
+void signedOut404Tests() {
+  test('a signed-out 404 is retried with a fresh token', () async {
+    final seen = <String?>[];
+    final api = ApiClient(
+      token: () async => 'stale',
+      freshToken: () async => 'fresh',
+      http_: MockClient((req) async {
+        final auth = req.headers['authorization'];
+        seen.add(auth);
+        return auth == 'Bearer fresh'
+            ? http.Response('{"messages":[]}', 200)
+            : http.Response('<html>404</html>', 404, headers: {'x-clerk-auth-status': 'signed-out'});
+      }),
+    );
+    final body = await api.get('/api/events/neodevteam/chat');
+    expect(body['messages'], isEmpty);
+    expect(seen, ['Bearer stale', 'Bearer fresh']);
+  });
+
+  test('a signed-out 404 that stands reads as a sign-in problem', () async {
+    final api = ApiClient(
+      token: () async => 'stale',
+      freshToken: () async => 'fresh',
+      http_: MockClient((req) async =>
+          http.Response('<html>404</html>', 404, headers: {'x-clerk-auth-status': 'signed-out'})),
+    );
+    await expectLater(
+      api.get('/api/events/neodevteam/chat'),
+      throwsA(isA<ApiException>().having((e) => e.isUnauthenticated, 'isUnauthenticated', isTrue)),
+    );
+  });
+
+  test('a real not-found is not retried', () async {
+    var calls = 0;
+    final api = ApiClient(
+      token: () async => 'stale',
+      freshToken: () async => 'fresh',
+      http_: MockClient((req) async {
+        calls++;
+        return http.Response('{"error":"not_found"}', 404);
+      }),
+    );
+    await expectLater(api.get('/api/events/gone/chat'), throwsA(isA<ApiException>().having((e) => e.status, 'status', 404)));
+    expect(calls, 1);
   });
 }

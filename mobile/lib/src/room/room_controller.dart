@@ -1893,7 +1893,15 @@ class RoomController extends StateNotifier<RoomState> {
 
       final known = {for (final line in state.chat) line.id};
       final added = fetched.where((line) => !known.contains(line.id)).toList();
-      if (added.isEmpty) return;
+      if (added.isEmpty) {
+        // The chat loaded: an old "could not load" no longer applies. It
+        // used to stay up until a new message happened to arrive, over a
+        // chat that was working.
+        if (state.chatError != null && state.chatUploading == 0) {
+          state = state.copyWith(clearChatError: true);
+        }
+        return;
+      }
       final combined = [...state.chat, ...added]
         ..sort((a, b) => a.at.compareTo(b.at));
       state = state.copyWith(
@@ -1906,8 +1914,10 @@ class RoomController extends StateNotifier<RoomState> {
       // meeting where nobody has spoken yet, which is the one thing that
       // makes this impossible to diagnose from the outside.
       state = state.copyWith(
-        chatError: 'Could not load earlier messages '
-            '(HTTP ${e.status}${e.code.isEmpty ? '' : ', ${e.code}'}).',
+        chatError: e.isUnauthenticated
+            ? 'Chat could not refresh: your sign-in has expired. Sign out and in again.'
+            : 'Could not load earlier messages '
+                '(HTTP ${e.status}${e.code.isEmpty ? '' : ', ${e.code}'}).',
       );
     } catch (e) {
       state = state.copyWith(chatError: 'Could not load earlier messages. ${describeActionError(e)}');
