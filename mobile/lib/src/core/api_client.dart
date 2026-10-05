@@ -44,7 +44,7 @@ class ApiClient {
     var res = await send(_headersWith(jwt));
     _time(what, tokenMs, clock.elapsedMilliseconds, res.statusCode);
     final renew = freshToken;
-    if (res.statusCode == 401 && jwt != null && renew != null) {
+    if (refusedSignIn(res) && jwt != null && renew != null) {
       final again = await renew();
       if (again != null && again != jwt) {
         debugPrint('[api] $what: 401 with a cached token; retrying with a fresh one');
@@ -127,7 +127,21 @@ class ApiClient {
   static int slowMs =
       const bool.fromEnvironment('NEO_LOG_ALL_REQUESTS') ? 0 : 1000;
 
+  /// The site's sign-in check refused the request. A route that answers
+  /// for itself says 401; the sign-in check in front of the other routes
+  /// answers **404** with `x-clerk-auth-status: signed-out` instead. In
+  /// neodevteam the chat said "Could not load earlier messages (HTTP 404)"
+  /// to someone signed in all along — the same stale token as the
+  /// "Unauthorized" on joining, which this 404 was never retried for.
+  static bool refusedSignIn(http.Response res) =>
+      res.statusCode == 401 ||
+      (res.statusCode == 404 && res.headers['x-clerk-auth-status'] == 'signed-out');
+
   dynamic _decode(http.Response res, String what) {
+    if (refusedSignIn(res) && res.statusCode == 404) {
+      // Said as what it is, so callers treat it as a sign-in problem.
+      throw const ApiException(status: 401, message: 'Your sign-in needs refreshing.');
+    }
     dynamic body;
     try {
       body = res.body.isEmpty ? null : jsonDecode(res.body);
