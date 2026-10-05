@@ -371,12 +371,14 @@ class _Header extends StatelessWidget {
     final (statusLabel, statusColor) = switch (room.link) {
       RoomLinkState.live => (
           [
-            room.clock,
+            // The host's countdown, when there is one, says more than how
+            // long this phone has been in.
+            room.timerLabel ?? room.clock,
             if (room.recording) 'Recording',
             // Everyone is told the meeting is going out, as with recording.
             ?room.liveOn,
           ].join(' · '),
-          room.recording || room.liveOn != null ? p.danger : p.textMuted,
+          room.recording || room.liveOn != null || room.timerUrgent ? p.danger : p.textMuted,
         ),
       RoomLinkState.weak => ('Weak connection', p.warning),
       RoomLinkState.reconnecting => ('Reconnecting…', p.warning),

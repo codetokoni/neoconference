@@ -21,6 +21,7 @@ import 'meeting_drop.dart';
 import 'meeting_presence.dart';
 import 'phone_call_policy.dart';
 import 'live_stream.dart';
+import 'meeting_timer.dart';
 import 'plan_limit.dart';
 import 'reconnect_watchdog.dart';
 import 'translation_voice.dart';
@@ -260,6 +261,8 @@ class RoomState {
     this.speakTranslations = true,
     this.noVoiceForTranslation = false,
     this.pinnedId,
+    this.timer,
+    this.timerError,
     this.onPhoneCall = false,
     this.mutedByPhoneCall = false,
     this.weakLink = false,
@@ -366,6 +369,12 @@ class RoomState {
   /// Whom this device pinned to the big tile (a participant identity).
   /// Local only: nobody else's screen changes.
   final String? pinnedId;
+
+  /// The meeting's countdown, as the server last said; null until asked.
+  final MeetingTimerState? timer;
+
+  /// Why a host's timer change did not happen.
+  final String? timerError;
 
   /// A phone call is ringing or in progress on this device.
   final bool onPhoneCall;
@@ -475,6 +484,9 @@ class RoomState {
     bool? noVoiceForTranslation,
     String? pinnedId,
     bool clearPin = false,
+    MeetingTimerState? timer,
+    String? timerError,
+    bool clearTimerError = false,
     bool? onPhoneCall,
     bool? mutedByPhoneCall,
     bool? weakLink,
@@ -540,6 +552,8 @@ class RoomState {
         speakTranslations: speakTranslations ?? this.speakTranslations,
         noVoiceForTranslation: noVoiceForTranslation ?? this.noVoiceForTranslation,
         pinnedId: clearPin ? null : (pinnedId ?? this.pinnedId),
+        timer: timer ?? this.timer,
+        timerError: clearTimerError ? null : (timerError ?? this.timerError),
         onPhoneCall: onPhoneCall ?? this.onPhoneCall,
         mutedByPhoneCall: mutedByPhoneCall ?? this.mutedByPhoneCall,
         weakLink: weakLink ?? this.weakLink,
@@ -1009,6 +1023,9 @@ class RoomController extends StateNotifier<RoomState> {
       if (state.canManage) unawaited(refreshStream());
       _timeLimit.start(limits.meetingMinutes);
     }
+    // The meeting timer, for everyone: a late joiner sees the countdown a
+    // host already started.
+    _startTimerSync();
 
     // The foreground service starts here rather than at join, because
     // Android 14 only allows a microphone-type service to be started while
@@ -1567,6 +1584,13 @@ class RoomController extends StateNotifier<RoomState> {
     } catch (e) {
       state = state.copyWith(lastDataError: 'decode failed: $e');
       return; // Never crash a meeting over one bad packet.
+    }
+
+    // A host changed the meeting timer, as the web's MeetingTimer sends
+    // it: {type: 'timer', state}.
+    if (payload['type'] == 'timer') {
+      _takeTimer(MeetingTimerState.fromJson(payload['state']));
+      return;
     }
 
     // The host's captions switch, as the web's CaptionsToggle sends it:
@@ -2140,6 +2164,60 @@ class RoomController extends StateNotifier<RoomState> {
 
   // ---- Go Live ------------------------------------------------------------
 
+  // ---- The meeting timer ---------------------------------------------------
+
+  /// Keeps the timer in step while the meeting runs. A host's change
+  /// arrives on the data channel at once; this catches the ones that
+  /// channel drops (a browser's reliable packets never reach this app on
+  /// some networks — see _publish) and late joins.
+  Timer? _timerPoll;
+
+  void _startTimerSync() {
+    unawaited(refreshTimer());
+    _timerPoll?.cancel();
+    _timerPoll = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!_disposed) unawaited(refreshTimer());
+    });
+  }
+
+  /// A newer timer replaces an older one; an older one is ignored, so a
+  /// slow poll cannot undo what a host just did.
+  void _takeTimer(MeetingTimerState? next) {
+    if (_disposed || next == null) return;
+    final current = state.timer;
+    if (current != null && next.updatedAt != 0 && next.updatedAt < current.updatedAt) return;
+    state = state.copyWith(timer: next, clearTimerError: true);
+  }
+
+  Future<void> refreshTimer() async {
+    try {
+      final body = await api.get('/api/events/$slug/timer');
+      _takeTimer(MeetingTimerState.fromJson(body is Map ? body['state'] : null));
+    } catch (e) {
+      debugPrint('[neo-room] timer refresh failed: $e');
+    }
+  }
+
+  /// Sets, starts, pauses, resumes, adjusts or resets the timer — a host's
+  /// action, checked again by the server — then tells everyone, the way the
+  /// website does.
+  Future<void> timerAction(Map<String, Object?> action) async {
+    try {
+      final body = await api.post('/api/events/$slug/timer', action);
+      final next = MeetingTimerState.fromJson(body is Map ? body['state'] : null);
+      _takeTimer(next);
+      if (body is Map && body['state'] is Map) {
+        await _publish('', {'type': 'timer', 'state': body['state']}, reliable: true);
+      }
+    } on ApiException catch (e) {
+      state = state.copyWith(
+        timerError: e.status == 403 ? 'Only hosts and moderators can change the timer.' : 'Timer not changed: ${e.message}',
+      );
+    } catch (e) {
+      state = state.copyWith(timerError: 'Timer not changed. ${describeActionError(e)}');
+    }
+  }
+
   /// What the server says about this meeting's stream, if any.
   Future<void> refreshStream() async {
     try {
@@ -2285,6 +2363,7 @@ class RoomController extends StateNotifier<RoomState> {
   @override
   void dispose() {
     _disposed = true;
+    _timerPoll?.cancel();
     debugPrint('[neo-room] controller DISPOSED for $slug');
     unawaited(_voice.dispose());
     MeetingPresence.instance.onPhoneCall.removeListener(_onPhoneCall);

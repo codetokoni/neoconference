@@ -16,6 +16,7 @@ import 'audio_routes.dart';
 import 'audio_sheets.dart';
 import 'meeting_sheets.dart';
 import 'meeting_presence.dart';
+import 'meeting_timer.dart';
 import 'person_sheets.dart';
 import 'room_controller.dart';
 import 'room_widgets.dart';
@@ -465,6 +466,7 @@ class _InMeetingState extends State<_InMeeting> {
   /// looking like it has.
   RoomView _view(RoomState state, Room room) {
     final people = <PersonView>[];
+    final now = DateTime.now().millisecondsSinceEpoch;
 
     final me = room.localParticipant;
     if (me != null) {
@@ -502,6 +504,10 @@ class _InMeetingState extends State<_InMeeting> {
       onPhoneCall: state.onPhoneCall,
       callEndedMuted: state.callEndedMuted,
       pinnedId: state.pinnedId,
+      timerLabel: timerLabel(state.timer, manager: state.canManage, now: now),
+      timerUrgent: state.timer != null &&
+          state.timer!.visibleTo(manager: state.canManage) &&
+          (state.timer!.expired || state.timer!.urgent(now)),
     );
   }
 
