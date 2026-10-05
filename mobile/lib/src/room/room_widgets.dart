@@ -12,6 +12,7 @@ import '../design/components.dart';
 import '../design/tokens.dart';
 import '../meetings/room_view.dart';
 import 'go_live_sheet.dart';
+import 'meeting_timer.dart';
 import 'room_controller.dart';
 
 /// Reactions drifting up the screen, then gone.
@@ -558,6 +559,23 @@ class HostControlsSheet extends ConsumerWidget {
                   ),
                 ),
               ],
+            ),
+            ListTile(
+              leading: const Icon(Icons.timer_outlined),
+              title: const Text('Meeting timer'),
+              subtitle: Text(
+                timerLabel(state.timer, manager: true, now: DateTime.now().millisecondsSinceEpoch) ??
+                    'Set a countdown everyone sees',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () {
+                Navigator.pop(context);
+                showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (_) => MeetingTimerSheet(slug: slug),
+                );
+              },
             ),
             GoLiveControl(
               allowed: state.streamingAllowed,

@@ -82,7 +82,16 @@ class RoomView {
     this.onPhoneCall = false,
     this.callEndedMuted = false,
     this.pinnedId,
+    this.timerLabel,
+    this.timerUrgent = false,
   });
+
+  /// The meeting timer as the header shows it ("04:59 left", "Time's up"),
+  /// or null when there is none for this person to see.
+  final String? timerLabel;
+
+  /// The timer's last stretch, or over: said in the warning colour.
+  final bool timerUrgent;
 
   /// Whom this person pinned to the big tile, by id. Only on their own
   /// screen; ignored once that person has left.
