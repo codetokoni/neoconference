@@ -21,6 +21,7 @@ import { can } from "@/lib/permissions";
 import { listMembers } from "@/lib/groupStore";
 import { addParticipants, listInvited, type InviteTarget } from "@/lib/groupMeetings";
 import { notifyInvitees } from "@/lib/groupNotify";
+import { ringNow } from "@/lib/ringEngine";
 import {
   groupErrorResponse,
   invalidBody,
@@ -116,12 +117,18 @@ export async function POST(req: Request, ctx: Ctx) {
 
   try {
     const added = await addParticipants(ev, targets, gate.member);
+    const live = ev.state === "live";
+    // Into a meeting that is on, the new people are rung (and only they);
+    // into one that has not started, they are invited and rung at its start.
     const notified = await notifyInvitees(
       ev,
       added.map((t) => ({ userId: t.userId, email: t.email, name: t.name || t.email || "Guest" })),
-      ev.state === "live" ? "added" : "scheduled",
-      { senderUserId: gate.member.userId, senderName: gate.member.name, origin: siteOrigin(req) }
+      live ? "added" : "scheduled",
+      { senderUserId: gate.member.userId, senderName: gate.member.name, origin: siteOrigin(req) },
+      live ? { kingschat: false, inApp: false, push: false } : {}
     );
+    const newIds = added.map((t) => t.userId).filter((u): u is string => Boolean(u));
+    if (live && newIds.length > 0) await ringNow(ev.id, { only: newIds });
     return NextResponse.json({
       ok: true,
       added: added.map((t) => ({ userId: t.userId, email: t.email, name: t.name })),

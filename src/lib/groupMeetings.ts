@@ -43,6 +43,7 @@ import {
 } from "@/lib/groupStore";
 import type { GroupMeetingInfo, NeoEvent, WaitingRoomEntry } from "@/types/event";
 import { isValidTimezone, localParts, zonedToUtc } from "@/lib/zonedTime";
+import { cancelMeetingJobs, scheduleMeetingJobs } from "@/lib/scheduler";
 
 export { isValidTimezone, zonedToUtc } from "@/lib/zonedTime";
 
@@ -197,8 +198,9 @@ export async function listInvited(eid: string): Promise<Map<string, InvitedEntry
   return out;
 }
 
-/** Forget an event's invitations and its place in its group's list (on delete). */
+/** Forget an event's invitations, its queued jobs and its place in its group's list (on delete). */
 export async function forgetGroupMeeting(eid: string, gid?: string): Promise<void> {
+  await cancelMeetingJobs(eid);
   if (!isKvConfigured()) {
     memInvited.delete(eid);
     if (gid) memMeetings.get(gid)?.delete(eid);
@@ -709,6 +711,10 @@ export async function createGroupMeetings(
     }
     await addInvited(ev.id, rows);
     await indexMeeting(group.id, ev.id, Date.parse(startIso));
+    // Reminders an hour and half an hour ahead, and the first ring at the
+    // start (src/lib/ringEngine.ts). A meeting that starts now rings at once
+    // from its route instead.
+    if (kind === "scheduled") await scheduleMeetingJobs(ev);
     events.push(ev);
   }
 
@@ -873,6 +879,7 @@ export async function updateGroupMeetings(
     });
     if (next) {
       await indexMeeting(ev.groupId!, next.id, startMs);
+      await scheduleMeetingJobs(next, now);
       out.push(next);
     }
   }
@@ -910,6 +917,7 @@ export async function cancelGroupMeetings(
       updatedAt: at,
     }));
     await unindexMeeting(ev.groupId!, target.id);
+    await cancelMeetingJobs(target.id);
     if (next) out.push(next);
   }
   await appendActivity(ev.groupId!, {

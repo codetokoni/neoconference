@@ -26,6 +26,28 @@ export interface AppNotification {
   /** Same-origin path it opens. */
   url: string;
   read: boolean;
+  /** Rings: enough for the call overlay to answer or decline it later. */
+  eventSlug?: string;
+  ringId?: string;
+  /** Epoch ms after which the ring is over. */
+  expiresAt?: number;
+  caller?: string;
+  groupName?: string;
+  meetingTitle?: string;
+}
+
+/** The optional ring fields a notification may carry. */
+export type RingFields = Pick<AppNotification, "eventSlug" | "ringId" | "expiresAt" | "caller" | "groupName" | "meetingTitle">;
+
+function ringFields(r: Record<string, unknown>): RingFields {
+  const out: RingFields = {};
+  if (typeof r.eventSlug === "string") out.eventSlug = r.eventSlug.slice(0, 80);
+  if (typeof r.ringId === "string") out.ringId = r.ringId.slice(0, 40);
+  if (typeof r.expiresAt === "number") out.expiresAt = r.expiresAt;
+  if (typeof r.caller === "string") out.caller = r.caller.slice(0, 120);
+  if (typeof r.groupName === "string") out.groupName = r.groupName.slice(0, 120);
+  if (typeof r.meetingTitle === "string") out.meetingTitle = r.meetingTitle.slice(0, 200);
+  return out;
 }
 
 const listKey = (uid: string) => `neo:notif:${uid}`;
@@ -57,6 +79,7 @@ function parse(raw: unknown): AppNotification | null {
     body: typeof r.body === "string" ? r.body : "",
     url: typeof r.url === "string" && r.url.startsWith("/") ? r.url : "/dashboard",
     read: r.read === true,
+    ...ringFields(r),
   };
 }
 
@@ -81,7 +104,7 @@ function safeUrl(url: string): string {
 /** Add one to the top of someone's list. */
 export async function addNotification(
   uid: string,
-  n: { type: PushType; title: string; body: string; url: string },
+  n: { type: PushType; title: string; body: string; url: string } & RingFields,
   now: number = Date.now()
 ): Promise<AppNotification> {
   const item: AppNotification = {
@@ -92,6 +115,7 @@ export async function addNotification(
     body: n.body.slice(0, 500),
     url: safeUrl(n.url),
     read: false,
+    ...ringFields(n as unknown as Record<string, unknown>),
   };
   if (!isKvConfigured()) {
     const list = [item, ...(mem.get(uid) ?? [])].slice(0, MAX_NOTIFICATIONS);

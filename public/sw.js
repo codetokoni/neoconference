@@ -65,7 +65,14 @@ async function handlePush(p) {
     ...(p.eventSlug ? { tag: p.eventSlug } : {}),
     renotify: Boolean(p.eventSlug) && (ring || p.type === "reminder"),
     requireInteraction: ring,
-    actions: JOINABLE.includes(p.type) ? [{ action: "open", title: "Join" }] : [],
+    actions: ring
+      ? [
+          { action: "answer", title: "Answer" },
+          { action: "decline", title: "Decline" },
+        ]
+      : JOINABLE.includes(p.type)
+        ? [{ action: "open", title: "Join" }]
+        : [],
   };
   await self.registration.showNotification(p.title || "NeoConference", options);
 }
@@ -74,8 +81,35 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const p = event.notification.data || {};
   const url = sameOriginUrl(p.url);
+  if (p.type === "ring" && p.eventSlug) {
+    // Clicking the ring itself answers it, as the Answer button does.
+    event.waitUntil(event.action === "decline" ? respond(p, "decline") : answer(p, url));
+    return;
+  }
   event.waitUntil(openOrFocus(url));
 });
+
+/* Tell the server, best effort: the sign-in cookie may have lapsed while no
+ * page was open. An answer still opens the room either way — joining it is
+ * what stops the ringing for good. */
+async function respond(p, action) {
+  try {
+    const res = await fetch(`/api/events/${encodeURIComponent(p.eventSlug)}/call-response`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action, ringId: p.ringId }),
+    });
+    return res.ok ? await res.json() : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function answer(p, fallbackUrl) {
+  const res = await respond(p, "answer");
+  await openOrFocus(res && res.roomUrl ? sameOriginUrl(res.roomUrl) : fallbackUrl);
+}
 
 async function openOrFocus(url) {
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });

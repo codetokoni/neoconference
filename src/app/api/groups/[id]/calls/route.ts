@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 import { createGroupMeetings, inviteesOf, cleanMeetingFields } from "@/lib/groupMeetings";
 import { notifyInvitees } from "@/lib/groupNotify";
+import { ringNow } from "@/lib/ringEngine";
 import {
   groupErrorResponse,
   invalidBody,
@@ -54,11 +55,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       meetingGates
     );
     const ev = events[0];
-    const notified = await notifyInvitees(ev, await inviteesOf(ev, gate.member.userId), "started", {
-      senderUserId: gate.member.userId,
-      senderName: gate.member.name,
-      origin,
-    });
+    // The ring carries the push, bell entry and KingsChat fallback; the
+    // notice itself goes by email only.
+    const notified = await notifyInvitees(
+      ev,
+      await inviteesOf(ev, gate.member.userId),
+      "started",
+      { senderUserId: gate.member.userId, senderName: gate.member.name, origin },
+      { kingschat: false, inApp: false, push: false }
+    );
+    await ringNow(ev.id, { except: gate.member.userId });
     return NextResponse.json(
       {
         ok: true,
