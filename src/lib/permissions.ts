@@ -249,6 +249,22 @@ export interface Eventish {
   permissionOverrides?: PermissionOverrides;
 }
 
+/**
+ * The event with roles from the role hash (src/lib/meeting-roles.ts) added
+ * to its roles[] for one person, so resolveRole() sees both. Every promotion
+ * made since the hash exists lives only there.
+ */
+export function withAssignedRoles<E extends Eventish>(event: E, userId: string, roles: MeetingRole[]): E {
+  if (roles.length === 0) return event;
+  return {
+    ...event,
+    roles: [
+      ...(event.roles || []),
+      ...roles.map((role) => ({ identifier: userId, role: role as unknown as EventRole })),
+    ],
+  };
+}
+
 function matchesIdentity(identifier: string, userId: string | null, emails: string[]): boolean {
   const id = (identifier || "").trim().toLowerCase();
   if (!id) return false;

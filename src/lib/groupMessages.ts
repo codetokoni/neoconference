@@ -26,6 +26,18 @@ const MESSAGES: Record<string, string> = {
   not_started: "This meeting hasn't started yet, so there is no one to add.",
   invite_expired: "This invite link has expired. Ask for a new one.",
   event_not_found: "That meeting no longer exists.",
+  invalid_title: "Give the meeting a title (up to 120 characters).",
+  invalid_time: "Choose a time in the future.",
+  invalid_duration: "The meeting must last between 5 and 480 minutes.",
+  invalid_timezone: "Choose a timezone from the list.",
+  invalid_recurrence: "Check the repeat: every 1–12, and 1–52 meetings or a last date after the first.",
+  invalid_password: "The password can be up to 80 characters.",
+  invalid_scope: "Choose this meeting, or this and the following ones.",
+  lifetime_meetings_exhausted: "The group owner's Free plan has no meetings left. Ask the owner to upgrade.",
+  meeting_not_editable: "This meeting has already started, ended or been cancelled, so it can't be changed.",
+  meeting_not_open: "This meeting is over, so no one more can be added.",
+  not_group_meeting: "This isn't a group meeting.",
+  group_has_no_owner: "This group has no owner, so it can't hold meetings.",
 };
 
 export function groupErrorMessage(code: string | undefined | null): string {

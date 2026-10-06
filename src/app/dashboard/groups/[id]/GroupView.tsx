@@ -7,6 +7,8 @@ import type { MeetingRole } from "@/lib/permissions";
 import type { Group, GroupActivity, GroupCapabilities, GroupMember } from "@/lib/groupStore";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
 import GroupIcon from "../GroupIcon";
+import GroupActions from "./GroupActions";
+import MeetingsTab from "./MeetingsTab";
 
 type Tab = "members" | "meetings" | "reports" | "settings";
 
@@ -152,6 +154,17 @@ export default function GroupView({
     ...(showSettings ? [{ key: "settings" as Tab, label: "Settings" }] : []),
   ];
   const visibleActivity = showAllActivity ? activity : activity.slice(0, 5);
+  const router = useRouter();
+  const [meetingsVersion, setMeetingsVersion] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  /** A meeting was created, changed or cancelled: show it, list it, log it. */
+  function meetingsChanged(message: string) {
+    setNotice(message);
+    setMeetingsVersion((v) => v + 1);
+    setTab("meetings");
+    router.refresh();
+  }
 
   return (
     <main className="min-h-screen bg-[#05070d] text-white">
@@ -177,6 +190,21 @@ export default function GroupView({
               </p>
             </div>
           </div>
+          <div className="mt-5">
+            <GroupActions
+              groupId={group.id}
+              groupName={group.name}
+              members={members}
+              meId={me.userId}
+              capabilities={capabilities}
+              onChanged={meetingsChanged}
+            />
+          </div>
+          {notice ? (
+            <p role="status" className="mt-3 text-sm text-emerald-300">
+              {notice}
+            </p>
+          ) : null}
         </div>
 
         <section aria-labelledby="activity-heading" className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4">
@@ -231,7 +259,13 @@ export default function GroupView({
             {tab === "members" ? (
               <MembersTab group={group} members={members} me={me} capabilities={capabilities} />
             ) : tab === "meetings" ? (
-              <EmptyState title="No meetings yet" text="Meetings this group holds will be listed here." />
+              <MeetingsTab
+                groupId={group.id}
+                groupName={group.name}
+                canSchedule={capabilities.schedule}
+                version={meetingsVersion}
+                onChanged={meetingsChanged}
+              />
             ) : tab === "reports" ? (
               <EmptyState title="No reports yet" text="Attendance reports for this group's meetings will appear here." />
             ) : (

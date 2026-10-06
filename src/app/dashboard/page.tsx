@@ -16,6 +16,9 @@ import UpgradeBanner from "@/components/UpgradeBanner";
 import EventsGrid, { type EventCardData } from './EventsGrid';
 import PersonalRoomCard from './PersonalRoomCard';
 import RecurringRolesCard from './RecurringRolesCard';
+import UpcomingGroupMeetings from './UpcomingGroupMeetings';
+import { listGroupsForUser } from '@/lib/groupStore';
+import { upcomingForUser } from '@/lib/groupMeetings';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,9 +34,17 @@ export default async function DashboardPage() {
   // someone opened the phone.
   await maybeSweepMeetings();
 
-  const [user, events] = await Promise.all([
+  const [user, events, upcoming] = await Promise.all([
     currentUser(),
     eventStore.listReachableByOwner(userId!),
+    // Group meetings this person is invited to. A KV blip here should cost
+    // the list, not the dashboard.
+    listGroupsForUser(userId!)
+      .then((groups) => upcomingForUser(groups.map((g) => ({ id: g.group.id, name: g.group.name })), userId!, 8))
+      .catch((err) => {
+        console.warn('[dashboard] upcoming group meetings failed', err);
+        return [];
+      }),
   ]);
 
   // Sort: most recently updated first.
@@ -94,6 +105,18 @@ export default async function DashboardPage() {
             once and reuse forever. Sits above the stat strip so it's the
             first actionable thing on the dashboard. */}
         <div className="mt-8 space-y-4">
+          <UpcomingGroupMeetings
+            items={upcoming.map((m) => ({
+              id: m.id,
+              slug: m.slug,
+              title: m.title,
+              state: m.state,
+              kind: m.kind,
+              start: m.start,
+              groupId: m.groupId,
+              groupName: m.groupName,
+            }))}
+          />
           <PersonalRoomCard />
           <RecurringRolesCard />
         </div>

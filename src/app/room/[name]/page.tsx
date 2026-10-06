@@ -135,11 +135,18 @@ export default function RoomPage({ params }: { params: { name: string } }) {
               setWaitingState(body.status === "denied" ? "denied" : "pending");
             }
             try {
-              await fetch("/api/waiting-room", {
+              const knock = await fetch("/api/waiting-room", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
                 body: JSON.stringify({ op: "knock", slug: eventSlug }),
               });
+              // Someone invited to a group meeting is admitted by this very
+              // knock; go straight on to the token instead of showing the
+              // waiting screen until the next 4-second knock.
+              const answer = knock.ok ? await knock.json().catch(() => null) : null;
+              if (!cancelled && answer?.status === "admitted") {
+                setWaitingState(null);
+              }
             } catch { }
             return;
           }

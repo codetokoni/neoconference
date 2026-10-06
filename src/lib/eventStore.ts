@@ -268,6 +268,10 @@ export const eventStore = {
       for (const s of allSlugs) await releaseSlug(s, id);
       memOwner.get(prev.ownerUserId)?.delete(id);
       await deleteAllMeetingRoles(id);
+      if (prev.groupId) {
+        const { forgetGroupMeeting } = await import('@/lib/groupMeetings');
+        await forgetGroupMeeting(id, prev.groupId);
+      }
       return true;
     }
     await kv.del(PREFIX + id);
@@ -277,6 +281,12 @@ export const eventStore = {
     // Role assignments live outside the event JSON; without this the hash
     // outlives the event and leaks forever.
     await deleteAllMeetingRoles(id);
+    // Likewise a group meeting's invitations and its place in the group's
+    // list. Imported here, not at the top: groupMeetings imports this file.
+    if (prev.groupId) {
+      const { forgetGroupMeeting } = await import('@/lib/groupMeetings');
+      await forgetGroupMeeting(id, prev.groupId);
+    }
     return true;
   },
 };

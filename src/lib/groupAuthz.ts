@@ -19,6 +19,7 @@ import {
   type Group,
   type GroupMember,
 } from "@/lib/groupStore";
+import { LifetimeCapError } from "@/lib/groupMeetings";
 
 export type GroupGate =
   | { ok: true; actor: Actor; group: Group; member: GroupMember; response?: undefined }
@@ -54,6 +55,23 @@ export async function requireGroupPermission(groupId: string, permission: Permis
 
 /** A GroupError as the response it describes; anything else is a 500. */
 export function groupErrorResponse(err: unknown): NextResponse {
+  // Same body /api/events/create sends, so the screen can say the same thing.
+  if (err instanceof LifetimeCapError) {
+    const { plan, used, cap, needed } = err.detail;
+    return NextResponse.json(
+      {
+        error: "lifetime_meetings_exhausted",
+        plan,
+        used,
+        cap,
+        needed,
+        message:
+          "The group owner's Free plan allows " + cap + " lifetime meetings and " + used +
+          " are used. Ask the owner to upgrade to schedule more.",
+      },
+      { status: 403 }
+    );
+  }
   if (err instanceof GroupError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }

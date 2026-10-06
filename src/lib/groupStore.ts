@@ -78,7 +78,13 @@ export type GroupActivityType =
   | "member_joined"
   | "role_changed"
   | "ownership_transferred"
-  | "invite_created";
+  | "invite_created"
+  | "meeting_scheduled"
+  | "meeting_started"
+  | "call_started"
+  | "meeting_updated"
+  | "meeting_cancelled"
+  | "participants_added";
 
 export interface GroupActivity {
   /** Epoch ms. */
@@ -192,6 +198,14 @@ export interface GroupCapabilities {
   deleteGroup: boolean;
   transferOwnership: boolean;
   leave: boolean;
+  /** Schedule, edit and cancel meetings. */
+  schedule: boolean;
+  /** Start a meeting for the whole group now. */
+  start: boolean;
+  /** Start a private call with chosen members. */
+  call: boolean;
+  /** Add people to a meeting that is on. */
+  addParticipants: boolean;
 }
 
 export function groupCapabilities(actor: Actor): GroupCapabilities {
@@ -206,6 +220,10 @@ export function groupCapabilities(actor: Actor): GroupCapabilities {
     deleteGroup: can(actor, "group:delete"),
     transferOwnership: actor.role === "owner",
     leave: can(actor, "group:leave") && actor.role !== "owner",
+    schedule: can(actor, "group:schedule"),
+    start: can(actor, "group:start"),
+    call: can(actor, "group:call"),
+    addParticipants: can(actor, "group:participants:manage"),
   };
 }
 

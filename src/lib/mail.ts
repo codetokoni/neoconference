@@ -9,11 +9,15 @@
 
 export type SendMailInput = {
   to: string | string[];
+  /** Blind copies: one message to many people who should not see each other. */
+  bcc?: string[];
   subject: string;
   html?: string;
   text?: string;
   from?: string;
   replyTo?: string;
+  /** Files to attach, e.g. a calendar invite. Content is the file's text. */
+  attachments?: Array<{ filename: string; content: string; contentType?: string }>;
 };
 
 export type SendMailResult =
@@ -28,6 +32,13 @@ function defaultFrom(): string {
   return process.env.MAIL_FROM || "NeoConference <onboarding@resend.dev>";
 }
 
+/** The address mail is sent from, without its display name. */
+export function mailFromAddress(): string {
+  const from = defaultFrom();
+  const m = from.match(/<([^>]+)>/);
+  return (m ? m[1] : from).trim();
+}
+
 export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return { ok: false, error: "mail_not_configured" };
@@ -36,9 +47,18 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
     to: Array.isArray(input.to) ? input.to : [input.to],
     subject: input.subject,
   };
+  if (input.bcc && input.bcc.length > 0) body.bcc = input.bcc;
   if (input.html) body.html = input.html;
   if (input.text) body.text = input.text;
   if (input.replyTo) body.reply_to = input.replyTo;
+  if (input.attachments && input.attachments.length > 0) {
+    // Resend takes attachment content base64-encoded.
+    body.attachments = input.attachments.map((a) => ({
+      filename: a.filename,
+      content: Buffer.from(a.content, "utf8").toString("base64"),
+      ...(a.contentType ? { content_type: a.contentType } : {}),
+    }));
+  }
   try {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -49,7 +69,7 @@ export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
       body: JSON.stringify(body),
     });
     const j = (await r.json().catch(() => ({}))) as { id?: string; message?: string };
-    if (!r.ok) return { ok: false, error: j.message || ("http_" + r.status) };
+    if (!r.ok) return { ok: false, error: r.status === 429 ? "rate_limited" : j.message || ("http_" + r.status) };
     return { ok: true, id: j.id || "" };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "unknown_error";

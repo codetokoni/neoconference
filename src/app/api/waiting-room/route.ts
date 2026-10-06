@@ -14,12 +14,17 @@
 // On admit, the entry's status is flipped to 'admitted', which the LiveKit
 // token route lets through. That lasts until the room empties, and a
 // refusal holds for a minute; see lib/waitingRoom.
+//
+// In a group meeting, the knock of anyone invited to it is admitted at once
+// (lib/groupMeetings: isInvited), so invitees never wait for a host.
 
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { isAdmin } from "@/lib/roles";
 import { lastKnocks, noteKnock, refusalHolds, startsNewWait, stillWaiting } from "@/lib/waitingRoom";
+import { getMeetingRole, getMeetingRoleByEmail } from "@/lib/meeting-roles";
+import { admitInvitee } from "@/lib/groupMeetings";
 import type { NeoEvent, WaitingRoomEntry } from "@/types/event";
 
 export const runtime = "nodejs";
@@ -46,7 +51,7 @@ async function getCaller(): Promise<CallerInfo | null> {
   return { userId, emails, displayName };
 }
 
-function callerRole(ev: NeoEvent, caller: CallerInfo) {
+async function callerRole(ev: NeoEvent, caller: CallerInfo) {
   const isAdminCaller = caller.emails.some((e) => isAdmin(e));
   const ownerEmail = (ev.ownerEmail || "").toLowerCase();
   const isOwner =
@@ -56,11 +61,23 @@ function callerRole(ev: NeoEvent, caller: CallerInfo) {
     const id = r.identifier.toLowerCase();
     return id === caller.userId.toLowerCase() || caller.emails.includes(id);
   });
+  // Promotions made since the role hash exists (in-room promotions,
+  // recurring roles, group meetings' seeded Hosts and Moderators) live in
+  // the hash, not in roles[]; the token route already reads both. Reading
+  // only roles[] here meant a Moderator who ran a group meeting could not
+  // see or admit anyone waiting.
+  const hashRoles = (
+    await Promise.all([
+      getMeetingRole(ev.id, caller.userId),
+      ...caller.emails.map((e) => getMeetingRoleByEmail(ev.id, e)),
+    ]).catch(() => [])
+  ).filter((r) => r === "host" || r === "moderator");
   return {
     isOwner,
     role: role?.role,
     preApproved: Boolean(role?.preApproved),
-    isHostlike: isAdminCaller || isOwner || role?.role === "host" || role?.role === "cohost",
+    isHostlike:
+      isAdminCaller || isOwner || role?.role === "host" || role?.role === "cohost" || hashRoles.length > 0,
   };
 }
 
@@ -124,7 +141,7 @@ export async function GET(req: Request) {
   if (!ev) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
-  const r = callerRole(ev, caller);
+  const r = await callerRole(ev, caller);
   if (!r.isHostlike) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
@@ -151,7 +168,7 @@ async function setEnabled(ev: NeoEvent, caller: CallerInfo, enabled: boolean) {
   // The same people who admit and refuse. The dashboard's PATCH is the
   // owner's alone and edits the whole event; a co-host running the
   // meeting needs this one switch, from inside it.
-  const r = callerRole(ev, caller);
+  const r = await callerRole(ev, caller);
   if (!r.isHostlike) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
@@ -168,12 +185,25 @@ async function setEnabled(ev: NeoEvent, caller: CallerInfo, enabled: boolean) {
 
 // ---------- handlers ----------
 async function knock(ev: NeoEvent, caller: CallerInfo) {
-  const r = callerRole(ev, caller);
+  const r = await callerRole(ev, caller);
   if (r.isHostlike || r.preApproved) {
     return NextResponse.json({ status: "admitted", entryId: caller.userId });
   }
   if (!ev.waitingRoomEnabled) {
     return NextResponse.json({ status: "admitted", entryId: caller.userId });
+  }
+
+  // A group meeting lets its invitees straight in: their entry is written as
+  // admitted, which is what the token route checks. Everyone else waits for
+  // a host below, as in any meeting.
+  if (ev.groupId) {
+    try {
+      if (await admitInvitee(ev, { userId: caller.userId, emails: caller.emails, name: caller.displayName })) {
+        return NextResponse.json({ status: "admitted", entryId: caller.userId });
+      }
+    } catch (e) {
+      console.warn("[waiting-room] group invite check failed", e);
+    }
   }
 
   const now = Date.now();
@@ -235,7 +265,7 @@ async function decide(
   entryId: string,
   decision: "admit" | "deny"
 ) {
-  const r = callerRole(ev, caller);
+  const r = await callerRole(ev, caller);
   if (!r.isHostlike) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
