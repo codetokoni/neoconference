@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "998240052597",
+    "project_id": "neoconference-2e6a0",
+    "storage_bucket": "neoconference-2e6a0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:998240052597:android:fb886828cc90d56e735f3c",
+        "android_client_info": {
+          "package_name": "app.neoconference"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAJw7i2bYxtwz3bcKCGrhvJvX-GX7Ta9a0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

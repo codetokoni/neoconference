@@ -29,6 +29,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- An incoming group call vibrates like a phone call (IncomingRinger). -->
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <!-- A group call rings a locked or closed phone with the incoming-call
+         screen, as a phone call does (CallPush, flutter_local_notifications). -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
     <!-- Cameras and microphones are not required: someone can join to watch
@@ -123,6 +126,21 @@
             android:name=".MeetingService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback|microphone|mediaProjection" />
+
+        <!-- Answer and Decline on a call notification
+             (flutter_local_notifications delivers them through this). -->
+        <receiver
+            android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver" />
+
+        <!-- Call and meeting notifications: their channel and icon when FCM
+             shows one itself (the app normally draws its own). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="meetings" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_call" />
 
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
