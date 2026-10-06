@@ -76,18 +76,27 @@ export default function BackgroundContinuity({
       }
     };
 
-    const onVisibility = () => {
-      if (!document.hidden && releasedByBrowserRef.current) {
-        acquire();
-      }
+    // Ask again whenever there is no lock held: back in view, or on a tap.
+    // It used to retry only after the browser released a lock it had
+    // granted, so a first request that failed (the tab not quite active
+    // yet, a browser wanting a tap first) was never made again — and the
+    // screen dimmed and locked in the middle of a video call.
+    const ensure = () => {
+      if (document.hidden) return;
+      const s = sentinelRef.current;
+      if (!s || s.released || releasedByBrowserRef.current) acquire();
     };
 
     acquire();
-    document.addEventListener('visibilitychange', onVisibility);
+    document.addEventListener('visibilitychange', ensure);
+    window.addEventListener('pointerdown', ensure, { passive: true });
+    window.addEventListener('focus', ensure);
 
     return () => {
       cancelled = true;
-      document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('visibilitychange', ensure);
+      window.removeEventListener('pointerdown', ensure);
+      window.removeEventListener('focus', ensure);
       const s = sentinelRef.current;
       sentinelRef.current = null;
       if (s && !s.released) {
