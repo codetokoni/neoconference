@@ -13,6 +13,7 @@ import 'src/design/neo_theme.dart';
 import 'src/design/themes.dart';
 import 'src/design/tokens.dart';
 import 'src/events/create_meeting_screen.dart';
+import 'src/groups/group_screen.dart' show appRouteObserver;
 import 'src/groups/groups_screen.dart';
 import 'src/manage/dashboard_screen.dart';
 import 'src/meetings/meeting_board.dart';
@@ -177,6 +178,9 @@ class NeoConferenceApp extends ConsumerWidget {
           ),
         );
       },
+      // Lets a page know it is on top again (the group page reloads when
+      // someone comes back to it from a meeting).
+      navigatorObservers: [appRouteObserver],
       home: const _Root(),
     );
   }

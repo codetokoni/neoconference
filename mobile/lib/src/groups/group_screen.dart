@@ -6,6 +6,8 @@ import '../design/components.dart';
 import '../design/tokens.dart';
 import '../meetings/when.dart';
 import 'group_join.dart';
+import 'group_meetings_api.dart';
+import 'group_meetings_tab.dart';
 import 'group_members_tab.dart';
 import 'group_models.dart';
 import 'group_settings_tab.dart';
@@ -15,6 +17,7 @@ import 'groups_screen.dart' show GroupIcon, RolePill;
 /// The tabs a group page can have. Which ones show depends on what the
 /// person may do there, as on the web.
 enum GroupTab {
+  meetings('Meetings'),
   members('Members'),
   activity('Activity'),
   settings('Settings');
@@ -23,9 +26,13 @@ enum GroupTab {
   final String label;
 }
 
+/// Tells pages when they are on top again. Registered on the app's
+/// navigator (main.dart).
+final appRouteObserver = RouteObserver<ModalRoute<void>>();
+
 /// One group: who is in it, what it is doing next, and — for those who may
 /// — its settings. Mirrors the web's `/dashboard/groups/<id>`.
-class GroupScreen extends ConsumerWidget {
+class GroupScreen extends ConsumerStatefulWidget {
   const GroupScreen({super.key, required this.groupId, required this.title});
 
   final String groupId;
@@ -34,8 +41,35 @@ class GroupScreen extends ConsumerWidget {
   final String title;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<GroupScreen> createState() => _GroupScreenState();
+}
+
+class _GroupScreenState extends ConsumerState<GroupScreen> with RouteAware {
+  String get groupId => widget.groupId;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) appRouteObserver.subscribe(this, route);
+  }
+
+  @override
+  void dispose() {
+    appRouteObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  /// Back from a meeting (or anything else pushed over this page): what
+  /// was live may have ended, and a past meeting been added. Reported from
+  /// a phone that ended a meeting and came back to it still "Live now".
+  @override
+  void didPopNext() => refreshGroup(ref, groupId);
+
+  @override
+  Widget build(BuildContext context) {
     final p = NeoTheme.of(context);
+    final title = widget.title;
     final detail = ref.watch(groupDetailProvider(groupId));
     final d = detail.valueOrNull;
 
@@ -59,6 +93,7 @@ class GroupScreen extends ConsumerWidget {
     }
 
     final tabs = [
+      GroupTab.meetings,
       GroupTab.members,
       GroupTab.activity,
       if (d.capabilities.anySettings) GroupTab.settings,
@@ -75,10 +110,16 @@ class GroupScreen extends ConsumerWidget {
         ),
         body: RefreshIndicator(
           onRefresh: () async {
-            ref.invalidate(groupDetailProvider(groupId));
+            refreshGroup(ref, groupId);
             await ref.read(groupDetailProvider(groupId).future).then((_) {}, onError: (_) {});
           },
-          notificationPredicate: (n) => n.depth == 1,
+          // Pulled down from the top of whichever tab is showing. That tab's
+          // list is two scrollables down — the page's own scroll (0), the
+          // tab pager (1), the list (2) — and it is the list's pull that
+          // counts. With depth 1 (the pager, which only scrolls sideways)
+          // the pull never fired; listening at 0 as well let the page's
+          // own start and end of scrolling cut each pull short.
+          notificationPredicate: (n) => n.depth == 2 && n.metrics.axis == Axis.vertical,
           // The group's header first, then its tabs, which stay pinned
           // under the app bar once the header has scrolled away.
           child: NestedScrollView(
@@ -101,6 +142,7 @@ class GroupScreen extends ConsumerWidget {
               children: [
                 for (final t in tabs)
                   switch (t) {
+                    GroupTab.meetings => GroupMeetingsTab(detail: d),
                     GroupTab.members => GroupMembersTab(detail: d),
                     GroupTab.activity => GroupActivityTab(activity: d.activity),
                     GroupTab.settings => GroupSettingsTab(detail: d),
@@ -112,6 +154,14 @@ class GroupScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Loads everything on a group's page again: the group, its live and
+/// coming meetings, and (through [groupRevisionProvider]) its past ones.
+void refreshGroup(WidgetRef ref, String groupId) {
+  ref.invalidate(groupDetailProvider(groupId));
+  ref.invalidate(upcomingMeetingsProvider(groupId));
+  ref.read(groupRevisionProvider(groupId).notifier).state++;
 }
 
 class _PinnedTabs extends SliverPersistentHeaderDelegate {
