@@ -93,6 +93,8 @@
                 <data android:scheme="https" android:host="www.neoconference.app"/>
                 <data android:pathAdvancedPattern="/e/[^/]+"/>
                 <data android:pathAdvancedPattern="/room/[^/]+"/>
+                <!-- Group invite links: /groups/join/<token>. -->
+                <data android:pathAdvancedPattern="/groups/join/[^/]+"/>
             </intent-filter>
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>

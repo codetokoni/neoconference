@@ -13,6 +13,7 @@ import 'src/design/neo_theme.dart';
 import 'src/design/themes.dart';
 import 'src/design/tokens.dart';
 import 'src/events/create_meeting_screen.dart';
+import 'src/groups/groups_screen.dart';
 import 'src/manage/dashboard_screen.dart';
 import 'src/meetings/meeting_board.dart';
 import 'src/meetings/meeting_links.dart';
@@ -224,7 +225,8 @@ class _Root extends ConsumerWidget {
         : const SignedOutEntry(signIn: SignInScreen());
   }
 
-  /// Four destinations: Dashboard is the web's /dashboard, in brief.
+  /// Five destinations: Dashboard is the web's /dashboard, in brief, and
+  /// Groups its /dashboard/groups.
   ///
   /// Alerts is missing on purpose: nothing serves notifications to the app
   /// yet, and a tab that can only ever be empty is worse than no tab. It
@@ -235,6 +237,12 @@ class _Root extends ConsumerWidget {
       selectedIcon: Icons.home_rounded,
       label: 'Home',
       screen: HomeScreen(),
+    ),
+    NeoTab(
+      icon: Icons.groups_outlined,
+      selectedIcon: Icons.groups_rounded,
+      label: 'Groups',
+      screen: GroupsScreen(),
     ),
     NeoTab(
       icon: Icons.space_dashboard_outlined,

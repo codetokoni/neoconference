@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 
+import '../groups/join_group_screen.dart';
 import '../screens/prejoin_screen.dart';
 import 'meeting_view.dart';
 
@@ -45,6 +46,9 @@ class IncomingMeetingLinks {
   /// The slug waiting to be opened.
   final pending = ValueNotifier<String?>(null);
 
+  /// A group invite token waiting to be opened (`/groups/join/<token>`).
+  final pendingInvite = ValueNotifier<String?>(null);
+
   StreamSubscription<Uri>? _sub;
   String? _lastSlug;
   DateTime? _lastAt;
@@ -64,14 +68,21 @@ class IncomingMeetingLinks {
   }
 
   void _receive(Uri uri) {
-    final slug = meetingSlugFromLink(uri);
-    if (slug == null) return;
+    final invite = groupInviteTokenFromLink(uri);
+    final slug = invite == null ? meetingSlugFromLink(uri) : null;
+    final key = invite != null ? 'invite:$invite' : slug;
+    if (key == null) return;
     final now = DateTime.now();
-    if (slug == _lastSlug && _lastAt != null && now.difference(_lastAt!) < const Duration(seconds: 5)) {
+    if (key == _lastSlug && _lastAt != null && now.difference(_lastAt!) < const Duration(seconds: 5)) {
       return;
     }
-    _lastSlug = slug;
+    _lastSlug = key;
     _lastAt = now;
+    if (invite != null) {
+      debugPrint('[links] group invite link');
+      pendingInvite.value = invite;
+      return;
+    }
     debugPrint('[links] meeting link for $slug');
     pending.value = slug;
   }
@@ -102,14 +113,26 @@ class _MeetingLinkOpenerState extends State<MeetingLinkOpener> {
   void initState() {
     super.initState();
     _links.pending.addListener(_open);
+    _links.pendingInvite.addListener(_openInvite);
     // A link that came in before sign-in, or before this was built.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _open());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _open();
+      _openInvite();
+    });
   }
 
   @override
   void dispose() {
     _links.pending.removeListener(_open);
+    _links.pendingInvite.removeListener(_openInvite);
     super.dispose();
+  }
+
+  void _openInvite() {
+    final token = _links.pendingInvite.value;
+    if (!mounted || token == null) return;
+    _links.pendingInvite.value = null;
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => JoinGroupScreen(token: token)));
   }
 
   void _open() {
