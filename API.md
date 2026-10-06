@@ -143,7 +143,7 @@ Group roles, highest first: **Owner > Host > Moderator > Member**. The "Permissi
 
 | Method | Path | Permission | Body / query | Response |
 | --- | --- | --- | --- | --- |
-| GET | /api/groups | signed in | — | `{ groups: [{ …group, role, memberCount }] }` |
+| GET | /api/groups | signed in | — | `{ groups: [{ …group, role, memberCount, unread }] }` |
 | POST | /api/groups | signed in (host+ on `fromEventId`) | `{ name, description?, iconUrl?, fromEventId?, memberUserIds? }` | 201 `{ ok, group }` |
 | GET | /api/groups/{id} | group:read (Member) | — | `{ group, members, activity, me, capabilities, nextMeeting }` |
 | PATCH | /api/groups/{id} | group:settings (Owner) | `{ name?, description?, iconUrl?, settings?: { retryIntervalMin, maxAttempts } }` | `{ ok, group }` |

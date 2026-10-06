@@ -82,16 +82,20 @@ class Group {
 /// A row of the groups list: the group, your role in it and its size.
 @immutable
 class GroupSummary {
-  const GroupSummary({required this.group, required this.role, required this.memberCount});
+  const GroupSummary({required this.group, required this.role, required this.memberCount, this.unread = 0});
 
   final Group group;
   final GroupRole role;
   final int memberCount;
 
+  /// Chat messages from others since this person last read the chat.
+  final int unread;
+
   factory GroupSummary.fromJson(Map<String, dynamic> j) => GroupSummary(
         group: Group.fromJson(j),
         role: GroupRole.parse(j['role']),
         memberCount: (j['memberCount'] as num?)?.toInt() ?? 0,
+        unread: (j['unread'] as num?)?.toInt() ?? 0,
       );
 }
 

@@ -127,7 +127,20 @@ class GroupTile extends StatelessWidget {
             ),
           ),
           const SizedBox(width: NeoSpace.sm),
-          RolePill(role: summary.role),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              RolePill(role: summary.role),
+              if (summary.unread > 0) ...[
+                const SizedBox(height: NeoSpace.xs),
+                Badge(
+                  label: Text(summary.unread > 99 ? '99+' : '${summary.unread}'),
+                  backgroundColor: p.primary,
+                  textColor: p.onPrimary,
+                ),
+              ],
+            ],
+          ),
         ],
       ),
     );

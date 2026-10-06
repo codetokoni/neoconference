@@ -1,6 +1,7 @@
 // src/app/api/groups/route.ts
 //
-// GET  — the caller's groups, with their role in each and a member count.
+// GET  — the caller's groups, with their role in each, a member count and
+//        their unread chat messages (from others, since they last read it).
 // POST — create a group. The caller becomes its Owner.
 //
 //   { name, description?, iconUrl?, fromEventId?, memberUserIds? }
@@ -16,6 +17,7 @@ import { createGroup, listGroupsForUser, GROUP_LIMITS, type NewMember } from "@/
 import { groupErrorResponse, invalidBody, readJsonObject } from "@/lib/groupAuthz";
 import { eventAttendees, hasAttendance, selectAttendees } from "@/lib/groupAttendees";
 import { currentMember, memberLimitFor } from "@/lib/groupPeople";
+import { unreadChatCount } from "@/lib/groupChat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,8 +26,11 @@ export async function GET() {
   const { userId } = await getIdentity();
   if (!userId) return unauthorized();
   const rows = await listGroupsForUser(userId);
+  // Chat messages from others since this person last read the group's chat,
+  // as the web's list shows them (the phone app has no server page to read).
+  const unread = await Promise.all(rows.map((r) => unreadChatCount(r.group.id, userId).catch(() => 0)));
   return NextResponse.json(
-    { groups: rows.map((r) => ({ ...r.group, role: r.role, memberCount: r.memberCount })) },
+    { groups: rows.map((r, i) => ({ ...r.group, role: r.role, memberCount: r.memberCount, unread: unread[i] })) },
     { headers: { "cache-control": "no-store" } }
   );
 }
