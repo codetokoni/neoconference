@@ -25,7 +25,9 @@ import InvitesPanel from "./InvitesPanel";
 import RecordingsPanel from "./RecordingsPanel";
 import SummaryPanel from "./SummaryPanel";
 import AttendancePanel from "./AttendancePanel";
+import CreateGroupFromAttendees from "./CreateGroupFromAttendees";
 import TranscriptsPanel from "./TranscriptsPanel";
+import { hasAttendance } from "@/lib/groupAttendees";
 
 export const dynamic = "force-dynamic";
 
@@ -352,6 +354,11 @@ export default async function EventAdminPage({
         <InvitesPanel eventId={ev.id} initialRedemptions={ev.recentRedemptions || []} />
         <RecordingsPanel prefix={ev.slug} />
         <AttendancePanel eventId={ev.id} eventSlug={ev.slug} />
+        {hasAttendance(ev) ? (
+          <div className="flex justify-end">
+            <CreateGroupFromAttendees eventId={ev.id} eventName={ev.name} currentUserId={userId} />
+          </div>
+        ) : null}
         <TranscriptsPanel
           eventId={ev.id}
           eventSlug={ev.slug}

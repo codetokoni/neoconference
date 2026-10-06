@@ -7,7 +7,7 @@
 // short-link rewrite will shadow it.
 export const RESERVED_SHORT_URL_SLUGS = new Set([
   'admin', 'api', 'app', 'dashboard', 'docs', 'e', 'embed', 'explore', 'fonts',
-  'i', 'pricing', 'room', 'share', 'support', 'video',
+  'groups', 'i', 'pricing', 'room', 'share', 'support', 'video',
   'sign-in', 'sign-up', 'sign-out',
   '_next', '_vercel',
 ]);

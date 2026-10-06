@@ -291,7 +291,7 @@ export const eventStore = {
  *  because middleware is Edge-runtime and can't import from here. */
 const RESERVED_SLUGS = new Set([
   'admin', 'api', 'dashboard', 'docs', 'e', 'embed', 'explore', 'fonts',
-  'i', 'pricing', 'room', 'share', 'video',
+  'groups', 'i', 'pricing', 'room', 'share', 'video',
   'sign-in', 'sign-up', 'sign-out',
   '_next', '_vercel',
 ]);

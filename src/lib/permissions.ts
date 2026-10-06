@@ -141,6 +141,26 @@ export const PERMISSIONS = {
 
   /* --- commerce --- */
   "ticket:manage": RANK.owner,
+
+  /* --- groups ---
+     Resolved against group membership (src/lib/groupAuthz.ts), never against
+     an event, and never with per-event overrides. Group roles use the same
+     ladder: Owner > Host > Moderator > Member (participant). Each
+     "<role>s:manage" sits one rank above the role it manages, so holding it
+     is the same statement as "that role is below mine". */
+  "group:read": RANK.participant,
+  "group:leave": RANK.participant,
+  "group:members:manage": RANK.moderator,
+  "group:schedule": RANK.moderator,
+  "group:start": RANK.moderator,
+  "group:call": RANK.moderator,
+  "group:participants:manage": RANK.moderator,
+  "group:reports:view": RANK.moderator,
+  "group:moderators:manage": RANK.host,
+  "group:reports:export": RANK.host,
+  "group:hosts:manage": RANK.owner,
+  "group:settings": RANK.owner,
+  "group:delete": RANK.owner,
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;
