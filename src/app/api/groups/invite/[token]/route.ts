@@ -14,6 +14,7 @@ import { countMembers, getGroup, getInvite, getMember, redeemInvite, GROUP_INVIT
 import { groupErrorResponse } from "@/lib/groupAuthz";
 import { currentMember, memberLimitFor } from "@/lib/groupPeople";
 import { listMembers } from "@/lib/groupStore";
+import { ringNewMembers } from "@/lib/ringEngine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,6 +67,10 @@ export async function POST(_req: Request, ctx: Ctx) {
     const owner = invite ? (await listMembers(invite.gid)).find((m) => m.role === "owner") : undefined;
     const limit = owner ? await memberLimitFor(owner.userId) : undefined;
     const { group, member, alreadyMember } = await redeemInvite(token, me, Date.now(), limit);
+    // Joining while a group meeting is on rings you into it.
+    if (!alreadyMember) {
+      await ringNewMembers(group.id, [member.userId]).catch((err) => console.warn("[groups/invite] ring failed", err));
+    }
     return NextResponse.json({ ok: true, groupId: group.id, role: member.role, alreadyMember });
   } catch (err) {
     return groupErrorResponse(err);
