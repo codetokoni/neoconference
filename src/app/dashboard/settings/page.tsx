@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import SessionManager from "@/components/SessionManager";
+import CallAlertsButton from "@/components/notifications/CallAlertsButton";
 
 export const metadata: Metadata = {
   title: "Account & security — NeoConference",
@@ -29,6 +30,17 @@ export default function SettingsPage() {
         </div>
 
         <SessionManager />
+      </section>
+
+      <section className="mt-10 space-y-4">
+        <div>
+          <h2 className="text-lg font-medium text-cyan-100">Call alerts</h2>
+          <p className="mt-1 text-sm text-zinc-400">
+            Notifications on this device when a group meeting starts, changes or you&apos;re invited.
+            Turn them on in each browser you use.
+          </p>
+        </div>
+        <CallAlertsButton />
       </section>
     </div>
   );

@@ -7,6 +7,7 @@ import { useUser } from "@clerk/nextjs";
 import {
   LiveKitRoom,
   RoomAudioRenderer,
+  StartAudio,
   type LocalUserChoices,
   useRoomContext,
   useChat,
@@ -22,7 +23,7 @@ import "./initials-overlay.css";
 import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
 import MobileMoreMenu from "@/components/MobileMoreMenu";
 import ConferenceErrorBoundary from "@/components/ConferenceErrorBoundary";
-import { RoomNameEntry } from "@/components/RoomNameEntry";
+import { RoomNameEntry, getLastChoices, getSavedDisplayName } from "@/components/RoomNameEntry";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import RoomIdleController from "@/components/RoomIdleController";
 import GoLiveButton from "@/components/GoLiveButton";
@@ -103,6 +104,21 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   // trailing `|| undefined` could not happen and typed every consumer as
   // possibly-missing.
   const eventSlug: string = searchParams?.get("event") || roomName;const [pageRoomRole, setPageRoomRole] = useState<string>("guest"); useEffect(() => { if (!eventSlug) return; let cancelled = false; fetch("/api/events/role?slug=" + encodeURIComponent(eventSlug), { cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((j) => { if (!cancelled && j && typeof j.role === "string") setPageRoomRole(j.role); }).catch(() => {}); return () => { cancelled = true; }; }, [eventSlug]);
+  // ?join=1 — a "join now" notification: go straight in with this browser's
+  // last camera and microphone choices instead of stopping at the pre-join
+  // screen. Admission is unchanged: the token route still decides, so
+  // someone not invited lands in the waiting room as usual.
+  const directJoin = searchParams?.get("join") === "1";
+  useEffect(() => {
+    if (!directJoin || !isLoaded || !isSignedIn || choices) return;
+    const username =
+      getSavedDisplayName() ||
+      user?.fullName ||
+      user?.username ||
+      user?.primaryEmailAddress?.emailAddress ||
+      "Guest";
+    setChoices({ username, ...getLastChoices() } as LocalUserChoices);
+  }, [directJoin, isLoaded, isSignedIn, choices, user]);
   // Per-tab LiveKit identity suffix so the same Clerk user can join from
   // multiple tabs/browsers without being kicked for duplicate identity.
   // Stable across refresh in the same tab via sessionStorage; unique per tab.
@@ -877,6 +893,12 @@ function RoomContainer({
         <RoleMetadataListener onRoleChange={setRoomRole} />
         <TileRoleBadges ownerUserId={ownerUserId} />
         <ApplyPrejoinChoices choices={choices} />
+        {/* Shown only while the browser is blocking the meeting's sound —
+            as it can after joining straight from a notification, with no
+            tap on the page yet. One tap starts it. */}
+        <div style={{ position: "absolute", top: 72, left: "50%", transform: "translateX(-50%)", zIndex: 60 }}>
+          <StartAudio label="Tap to turn on sound" />
+        </div>
         <MobileMoreMenu />
         <div
           data-room-chrome="true"

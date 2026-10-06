@@ -9,6 +9,7 @@ import NeoMark from "@/components/NeoMark";
 import SupportWidget from "@/components/SupportWidget";
 import AndroidAppGate from "@/components/AndroidAppGate";
 import SessionBootstrap from "@/components/SessionBootstrap";
+import PushRegistrar from "@/components/notifications/PushRegistrar";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -17,6 +18,9 @@ export const metadata: Metadata = {
   title: "NeoConference — Video meetings with live translation",
   description:
     "Video meetings where everyone hears each speaker in their own language, translated live. On the web and in the Android app.",
+  // Added to an iPhone's Home Screen it opens as an app — which is the only
+  // way iOS delivers call alerts (Web Push) to a website.
+  appleWebApp: { capable: true, title: "NeoConference", statusBarStyle: "black-translucent" },
 };
 
 export const dynamic = "force-dynamic";
@@ -50,6 +54,7 @@ export default async function RootLayout({
 
           <main className="min-h-[calc(100vh-65px)]">{children}</main>
           <SessionBootstrap />
+          <PushRegistrar />
           <SupportWidget />
           {/* Android phones get the app, not the website. */}
           <AndroidAppGate />

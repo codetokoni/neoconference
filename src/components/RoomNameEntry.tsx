@@ -25,6 +25,31 @@ export function saveDisplayName(name: string) {
   try { localStorage.setItem(NAME_KEY, name); } catch {}
 }
 
+const CHOICES_KEY = "neoconf:lastChoices";
+
+/**
+ * The camera and microphone choices from the last time this browser joined a
+ * meeting, for joining straight from a notification without this screen.
+ * Both off when there is none — the same default as this screen.
+ */
+export function getLastChoices(): Omit<RoomEntryValues, "username"> {
+  try {
+    const v = JSON.parse(localStorage.getItem(CHOICES_KEY) || "null") as Partial<RoomEntryValues> | null;
+    return {
+      videoEnabled: v?.videoEnabled === true,
+      audioEnabled: v?.audioEnabled === true,
+      ...(typeof v?.videoDeviceId === "string" ? { videoDeviceId: v.videoDeviceId } : {}),
+      ...(typeof v?.audioDeviceId === "string" ? { audioDeviceId: v.audioDeviceId } : {}),
+    };
+  } catch {
+    return { videoEnabled: false, audioEnabled: false };
+  }
+}
+
+function saveLastChoices(v: Omit<RoomEntryValues, "username">) {
+  try { localStorage.setItem(CHOICES_KEY, JSON.stringify(v)); } catch {}
+}
+
 function humanizeRenameError(code?: string): string {
   switch ((code || "").toLowerCase()) {
     case "slug_taken": return "That URL is already taken. Try another.";
@@ -222,6 +247,7 @@ export function RoomNameEntry({
     if (joining) return;
     const trimmed = name.trim() || defaultName || "Guest";
     saveDisplayName(trimmed);
+    saveLastChoices({ videoEnabled: video, audioEnabled: audio, videoDeviceId, audioDeviceId });
     setJoining(true);
     setTimeout(() => {
       onSubmit({
