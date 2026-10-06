@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useUser } from "@clerk/nextjs";
 import HeaderUserMenu from "./HeaderUserMenu";
+import NotificationBell from "./notifications/NotificationBell";
 
 /**
  * Client-side header nav. Renders Sign in / Get started when the user is
@@ -43,6 +44,7 @@ export default function HeaderNav({ role }: { role?: string | null }) {
               Admin
             </Link>
           )}
+          <NotificationBell />
           <HeaderUserMenu />
         </>
       ) : (

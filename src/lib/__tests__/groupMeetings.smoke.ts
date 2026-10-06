@@ -305,12 +305,14 @@ const inDays = (d: number, hourUtc = 9) => {
     }
   });
 
-  await t("with mail not configured, nobody is reported as reached", async () => {
+  await t("with mail not configured, members are still reached in the app; email reaches no one", async () => {
     const evs = (await listGroupMeetings(g.id, MOD, "upcoming", { now: NOW })).items;
     const ev = (await eventStore.byId(evs[0].id)) as NeoEvent;
-    const summary = await notifyInvitees(ev, await inviteesOf(ev, MOD), "updated", { senderUserId: MOD, senderName: "Mod", origin: "https://neo.test" });
-    assert.equal(summary.sent, 0);
-    assert.ok(summary.unreachable > 0);
+    const recipients = await inviteesOf(ev, MOD);
+    const summary = await notifyInvitees(ev, recipients, "updated", { senderUserId: MOD, senderName: "Mod", origin: "https://neo.test" });
+    assert.ok(summary.results.every((r) => r.channels.email === "unavailable"));
+    assert.ok(summary.results.every((r) => r.channels.inApp === (r.userId ? "sent" : "unavailable")));
+    assert.equal(summary.sent, recipients.filter((r) => r.userId).length);
   });
 
   console.log(`\n${n} checks passed`);

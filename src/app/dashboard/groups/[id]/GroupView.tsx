@@ -9,6 +9,7 @@ import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
 import GroupIcon from "../GroupIcon";
 import GroupActions from "./GroupActions";
 import MeetingsTab from "./MeetingsTab";
+import CallAlertsButton from "@/components/notifications/CallAlertsButton";
 
 type Tab = "members" | "meetings" | "reports" | "settings";
 
@@ -190,7 +191,7 @@ export default function GroupView({
               </p>
             </div>
           </div>
-          <div className="mt-5">
+          <div className="mt-5 flex flex-wrap items-start justify-between gap-3">
             <GroupActions
               groupId={group.id}
               groupName={group.name}
@@ -199,6 +200,7 @@ export default function GroupView({
               capabilities={capabilities}
               onChanged={meetingsChanged}
             />
+            <CallAlertsButton compact />
           </div>
           {notice ? (
             <p role="status" className="mt-3 text-sm text-emerald-300">

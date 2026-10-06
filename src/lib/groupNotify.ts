@@ -2,23 +2,28 @@
 //
 // Telling people about group meetings. One entry point, notifyInvitees(),
 // which tries every channel for every recipient and reports what reached
-// whom. Each channel is its own small function; later phases add push,
-// in-app notices and ringing here as further channels.
+// whom. Each channel is its own small function; ringing (Phase 4) is added
+// here as another.
 //
-// Channels today
+// Channels
+//   in-app     the bell (notificationStore.ts) — everyone with an account.
+//   push       Web Push to every browser the person turned call alerts on
+//              in (pushStore.ts); skipped when VAPID keys are not set.
 //   email      via mail.ts (Resend). Scheduled, changed and cancelled
 //              meetings carry a calendar file, so the meeting lands in — or
 //              leaves — the recipient's calendar.
 //   KingsChat  from the creator's own KingsChat account, when both the
 //              creator and the recipient have signed in with KingsChat.
 //
-// A channel that cannot reach someone (no address, not linked, mail not
-// configured) is skipped for that person, not treated as an error.
+// A channel that cannot reach someone (no address, no device, not linked,
+// not configured) is skipped for that person, not treated as an error.
 
 import { isMailConfigured, mailFromAddress, sendMail } from "@/lib/mail";
 import { buildIcsCalendar } from "@/lib/ics";
 import { loadKcTokens } from "@/lib/kc-tokens";
 import { kcIdForClerkUser, sendKcMessage } from "@/lib/kingschat-send";
+import { sendPush, topicFor, type PushPayload, type PushType, type SendOptions } from "@/lib/pushStore";
+import { addNotification } from "@/lib/notificationStore";
 import type { Recipient } from "@/lib/groupMeetings";
 import type { NeoEvent } from "@/types/event";
 
@@ -29,7 +34,7 @@ export interface RecipientResult {
   name: string;
   userId?: string;
   email?: string;
-  channels: { email: ChannelOutcome; kingschat: ChannelOutcome };
+  channels: { email: ChannelOutcome; kingschat: ChannelOutcome; inApp: ChannelOutcome; push: ChannelOutcome };
   /** At least one channel delivered. */
   reached: boolean;
 }
@@ -207,6 +212,98 @@ async function sendKingsChatNotice(
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Push and the in-app centre                                                 */
+/* -------------------------------------------------------------------------- */
+
+const PUSH_TYPE: Record<NotifyKind, PushType> = {
+  scheduled: "invite",
+  updated: "updated",
+  cancelled: "cancelled",
+  started: "started",
+  added: "added",
+};
+
+/** Straight into the room, past the pre-join screen (see room/[name]). */
+export function joinUrl(slug: string): string {
+  return `/room/${encodeURIComponent(slug)}?event=${encodeURIComponent(slug)}&join=1`;
+}
+
+/** How long after it starts a meeting is still worth being told about. */
+function endsAt(ev: NeoEvent): number {
+  const start = Date.parse(ev.scheduledAt || ev.startedAt || ev.createdAt);
+  return start + (ev.groupMeeting?.durationMin ?? 60) * 60_000;
+}
+
+/**
+ * The notice as the bell and the service worker show it. Short: a phone's
+ * lock screen fits a title and a line.
+ */
+export function noticePayload(events: NeoEvent[], kind: NotifyKind, ctx: NotifyContext): PushPayload {
+  const first = events[0];
+  const last = events[events.length - 1];
+  const title = first.name;
+  const when = events.length > 1 ? `${events.length} meetings from ${whenText(first)}` : whenText(first);
+  const base = {
+    type: PUSH_TYPE[kind],
+    eventSlug: first.slug,
+    ...(first.groupId ? { groupId: first.groupId } : {}),
+    expiresAt: endsAt(last),
+  };
+  switch (kind) {
+    case "scheduled":
+      return { ...base, title, body: `${ctx.senderName} invited you · ${when}`, url: `/${first.slug}` };
+    case "updated":
+      return { ...base, title: `Changed: ${title}`, body: `Now ${when}`, url: `/${first.slug}` };
+    case "cancelled":
+      return {
+        ...base,
+        title: `Cancelled: ${title}`,
+        body: `${ctx.senderName} cancelled ${events.length > 1 ? `${events.length} meetings` : "it"} · ${when}`,
+        url: first.groupId ? `/dashboard/groups/${encodeURIComponent(first.groupId)}` : "/dashboard",
+      };
+    case "started":
+      return { ...base, title: `${ctx.senderName} started ${title}`, body: "Tap to join now", url: joinUrl(first.slug) };
+    case "added":
+      return {
+        ...base,
+        title: `${ctx.senderName} added you to ${title}`,
+        body: first.state === "live" ? "Tap to join now" : `It starts ${when}`,
+        url: first.state === "live" ? joinUrl(first.slug) : `/${first.slug}`,
+      };
+  }
+}
+
+/**
+ * Something about to start or already on is urgent and stale soon after; an
+ * invitation for next week can wait for a phone to come back online.
+ */
+export function pushOptionsFor(p: PushPayload): SendOptions {
+  const live = p.type === "started" || p.type === "added";
+  const untilEnd = p.expiresAt ? Math.round((p.expiresAt - Date.now()) / 1000) : 3600;
+  return {
+    ttlSec: Math.max(60, Math.min(live ? 15 * 60 : untilEnd, 7 * 24 * 3600)),
+    urgency: live ? "high" : "normal",
+    ...(p.eventSlug ? { topic: topicFor(p.eventSlug) } : {}),
+  };
+}
+
+/** Into the bell. Everyone with an account gets one. */
+async function sendInAppNotice(to: Recipient, p: PushPayload): Promise<ChannelOutcome> {
+  if (!to.userId) return "unavailable";
+  await addNotification(to.userId, { type: p.type, title: p.title, body: p.body, url: p.url });
+  return "sent";
+}
+
+/** To every browser this person turned call alerts on in. */
+async function sendPushNotice(to: Recipient, p: PushPayload, opts: SendOptions): Promise<ChannelOutcome> {
+  if (!to.userId) return "unavailable";
+  const res = await sendPush(to.userId, p, opts);
+  if (!res.configured || res.devices.length === 0) return "unavailable";
+  if (res.devices.some((d) => d.outcome === "sent")) return "sent";
+  return res.devices.every((d) => d.outcome === "gone") ? "unavailable" : "failed";
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Entry point                                                                */
 /* -------------------------------------------------------------------------- */
 
@@ -233,6 +330,9 @@ export async function notifyInvitees(
     );
   });
 
+  const payload = noticePayload(events, kind, ctx);
+  const pushOpts = pushOptionsFor(payload);
+
   const results: RecipientResult[] = [];
   for (let i = 0; i < recipients.length; i += CONCURRENCY) {
     const batch = recipients.slice(i, i + CONCURRENCY);
@@ -240,16 +340,21 @@ export async function notifyInvitees(
       ...(await Promise.all(
         batch.map(async (to): Promise<RecipientResult> => {
           const email: ChannelOutcome = (to.email && emailed.get(to.email.trim().toLowerCase())) || "unavailable";
-          const kingschat = await sendKingsChatNotice(to, events, kind, ctx, senderLinked).catch((err) => {
-            console.warn("[groupNotify] KingsChat threw", err);
+          const guard = (name: string) => (err: unknown) => {
+            console.warn(`[groupNotify] ${name} threw`, err);
             return "failed" as const;
-          });
+          };
+          const [kingschat, inApp, push] = await Promise.all([
+            sendKingsChatNotice(to, events, kind, ctx, senderLinked).catch(guard("KingsChat")),
+            sendInAppNotice(to, payload).catch(guard("in-app")),
+            sendPushNotice(to, payload, pushOpts).catch(guard("push")),
+          ]);
           return {
             name: to.name,
             ...(to.userId ? { userId: to.userId } : {}),
             ...(to.email ? { email: to.email } : {}),
-            channels: { email, kingschat },
-            reached: email === "sent" || kingschat === "sent",
+            channels: { email, kingschat, inApp, push },
+            reached: [email, kingschat, inApp, push].includes("sent"),
           };
         })
       ))
