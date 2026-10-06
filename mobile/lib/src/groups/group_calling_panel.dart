@@ -42,7 +42,7 @@ class CallPerson {
 /// or for someone who may not manage its calls. Refreshes every 5 s while
 /// open, as the web's panel does.
 class GroupCallingSection extends ConsumerStatefulWidget {
-  const GroupCallingSection({super.key, required this.slug, this.myUserId});
+  const GroupCallingSection({super.key, required this.slug, this.myUserId, this.roomPeople = const []});
 
   final String slug;
 
@@ -50,6 +50,11 @@ class GroupCallingSection extends ConsumerStatefulWidget {
   /// "Ring again" on yourself (the server lists every invitee) means
   /// nothing.
   final String? myUserId;
+
+  /// Everyone else in the room now (user id from their LiveKit identity,
+  /// and name), so someone who came in on a link but is not in the group
+  /// can be added to it from here.
+  final List<({String userId, String name})> roomPeople;
 
   static Duration every = const Duration(seconds: 5);
 
@@ -70,6 +75,14 @@ class _GroupCallingSectionState extends ConsumerState<GroupCallingSection> {
   bool _canAdd = false;
   String _kind = 'scheduled';
   List<({String userId, String name})> _candidates = const [];
+
+  /// The meeting's group, its members, and whether this person may add
+  /// members to it (Moderator and up), for "Add to group".
+  String? _groupId;
+  String _groupName = '';
+  Set<String>? _memberIds;
+  bool _canAddMembers = false;
+  String? _addingToGroup;
 
   ApiClient get _api => ref.read(apiProvider);
   String get _slug => Uri.encodeComponent(widget.slug);
@@ -128,9 +141,65 @@ class _GroupCallingSectionState extends ConsumerState<GroupCallingSection> {
           for (final c in (body['candidates'] as List? ?? const []).whereType<Map>())
             (userId: c['userId'] as String? ?? '', name: c['name'] as String? ?? ''),
         ];
+        _groupId = body['groupId'] as String?;
+        _groupName = body['groupName'] as String? ?? '';
       });
+      await _loadGroup();
     } catch (_) {
       // Adding stays hidden.
+    }
+  }
+
+  Future<void> _loadGroup() async {
+    final id = _groupId;
+    if (id == null) return;
+    try {
+      final d = await GroupsApi(_api).detail(id);
+      if (!mounted) return;
+      setState(() {
+        _memberIds = {for (final m in d.members) m.userId};
+        _canAddMembers = d.capabilities.manageMembers;
+        _groupName = d.group.name;
+      });
+    } catch (_) {
+      // "Add to group" stays hidden.
+    }
+  }
+
+  /// People in the room with an account who are not in the group yet.
+  /// Signed-out guests have no account to add; they need the invite link.
+  List<({String userId, String name})> get _notInGroup {
+    final members = _memberIds;
+    if (members == null || !_canAddMembers) return const [];
+    return [
+      for (final r in widget.roomPeople)
+        if (r.userId.startsWith('user_') && r.userId != widget.myUserId && !members.contains(r.userId)) r,
+    ];
+  }
+
+  Future<void> _addToGroup(({String userId, String name}) person) async {
+    final id = _groupId;
+    if (id == null) return;
+    setState(() {
+      _addingToGroup = person.userId;
+      _message = null;
+    });
+    try {
+      final r = await GroupsApi(_api).addByUserId(id, [person.userId]);
+      if (!mounted) return;
+      final name = person.name.isEmpty ? 'They' : person.name;
+      setState(
+        () => _message = r.added.isNotEmpty
+            ? '$name is now in $_groupName.'
+            : r.alreadyMembers.isNotEmpty
+                ? '$name is already in $_groupName.'
+                : 'Could not add $name.',
+      );
+      await _loadGroup();
+    } catch (e) {
+      if (mounted) setState(() => _message = groupErrorText(e));
+    } finally {
+      if (mounted) setState(() => _addingToGroup = null);
     }
   }
 
@@ -240,6 +309,36 @@ class _GroupCallingSectionState extends ConsumerState<GroupCallingSection> {
                 ],
               ),
             ),
+          if (_notInGroup.isNotEmpty) ...[
+            const SizedBox(height: NeoSpace.sm),
+            Text(
+              _groupName.isEmpty ? 'Here, not in the group' : 'Here, not in $_groupName',
+              style: TextStyle(color: p.text, fontWeight: FontWeight.w600),
+            ),
+            for (final r in _notInGroup)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: NeoSpace.xs),
+                child: Row(
+                  children: [
+                    NeoAvatar(name: r.name, size: 30),
+                    const SizedBox(width: NeoSpace.sm),
+                    Expanded(
+                      child: Text(
+                        r.name.isEmpty ? 'Someone' : r.name,
+                        style: TextStyle(color: p.text),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _addingToGroup == null ? () => _addToGroup(r) : null,
+                      icon: const Icon(Icons.group_add_rounded, size: 18),
+                      label: Text(_addingToGroup == r.userId ? 'Adding…' : 'Add to group'),
+                    ),
+                  ],
+                ),
+              ),
+          ],
           if (_message != null) Text(_message!, style: TextStyle(color: p.textMuted, fontSize: 12)),
           Divider(color: p.border),
         ],
