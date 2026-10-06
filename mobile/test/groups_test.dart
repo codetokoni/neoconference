@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:neoconference/src/core/api_client.dart';
 import 'package:neoconference/src/events/event.dart';
+import 'package:neoconference/src/groups/group_join.dart';
+import 'package:neoconference/src/groups/group_meetings_api.dart';
 import 'package:neoconference/src/groups/group_screen.dart';
 import 'package:neoconference/src/groups/groups_screen.dart';
 import 'package:neoconference/src/groups/join_group_screen.dart';
@@ -22,6 +24,9 @@ void main() {
   /// The signed-in person's role in the fake group.
   late String role;
   late List<Map<String, dynamic>> members;
+
+  /// The live meeting has since ended (as it does when someone leaves it).
+  late bool ended;
 
   http.Response json(Object body, [int status = 200]) =>
       http.Response(jsonEncode(body), status, headers: {'content-type': 'application/json'});
@@ -47,6 +52,12 @@ void main() {
             'deleteGroup': true,
             'transferOwnership': true,
             'leave': false,
+            'schedule': true,
+            'start': true,
+            'call': true,
+            'addParticipants': true,
+            'viewReports': true,
+            'exportReports': true,
           },
         _ => {
             'role': 'participant',
@@ -55,6 +66,30 @@ void main() {
             'removableRoles': [],
             'leave': true,
           },
+      };
+
+  Map<String, dynamic> meeting(String id, String title, String state, {String? seriesId, bool past = false}) => {
+        'id': id,
+        'slug': id.replaceAll('_', '-'),
+        'title': title,
+        'description': '',
+        'state': state,
+        'kind': 'scheduled',
+        'start': (past
+                ? DateTime.now().subtract(const Duration(days: 7))
+                : state == 'live'
+                    ? DateTime.now()
+                    : DateTime.now().add(const Duration(days: 2)))
+            .toUtc()
+            .toIso8601String(),
+        'durationMin': 60,
+        'timezone': 'Africa/Lagos',
+        'seriesId': ?seriesId,
+        'invitedCount': 5,
+        if (past) 'attendedCount': 3,
+        'hasPassword': true,
+        'waitingRoom': true,
+        'createdBy': 'user_me',
       };
 
   MockClient server() => MockClient((req) async {
@@ -87,7 +122,7 @@ void main() {
             ],
             'me': {'userId': 'user_me', 'role': role},
             'capabilities': capabilities(),
-            'nextMeeting': {
+            'nextMeeting': ended ? null : {
               'id': 'evt_1',
               'slug': 'cell-night',
               'title': 'Cell night',
@@ -126,6 +161,36 @@ void main() {
             'alreadyMember': false,
           });
         }
+        if (path == '/api/groups/g1/meetings' && req.method == 'GET') {
+          if (req.url.queryParameters['scope'] == 'past') {
+            // Two pages; the first one short (a private call left out).
+            return req.url.queryParameters['cursor'] == null
+                ? json({
+                    'items': [meeting('evt_p1', 'Last week', 'ended', past: true)],
+                    'nextCursor': 1790000000000,
+                  })
+                : json({
+                    'items': [meeting('evt_p2', 'Two weeks ago', 'ended', past: true)],
+                    'nextCursor': null,
+                  });
+          }
+          return json({
+            'items': [
+              if (!ended) meeting('evt_live', 'Cell night', 'live'),
+              meeting('evt_s', 'Planning', 'scheduled', seriesId: 's-1'),
+            ],
+            'nextCursor': null,
+          });
+        }
+        if (path == '/api/groups/g1/meetings' && req.method == 'POST') {
+          return json({'ok': true, 'slug': 'cell-leaders-meeting', 'eventUrl': '/x', 'roomUrl': '/x', 'events': [], 'notified': {'sent': 1, 'unreachable': 0}}, 201);
+        }
+        if (path == '/api/groups/g1/calls') {
+          return json({'ok': true, 'slug': 'call-abc', 'eventUrl': '/call-abc', 'roomUrl': '/call-abc', 'notified': {'sent': 1, 'unreachable': 0}}, 201);
+        }
+        if (path == '/api/groups/g1/meetings/evt_s') {
+          return json({'ok': true, 'updated': [], 'cancelled': [], 'notified': {'sent': 1, 'unreachable': 0}});
+        }
         if (path == '/api/groups/invite/expiredtoken12345') return json({'error': 'invite_expired'}, 410);
         return json({'error': 'not_found'}, 404);
       });
@@ -133,6 +198,7 @@ void main() {
   setUp(() {
     sent = [];
     role = 'owner';
+    ended = false;
     members = [
       {'userId': 'user_me', 'role': 'owner', 'name': 'Ada', 'email': 'ada@example.com', 'joinedAt': 1, 'addedBy': null},
       {'userId': 'user_k', 'role': 'participant', 'name': 'Kemi', 'email': 'kemi@example.com', 'joinedAt': 2, 'addedBy': 'user_me'},
@@ -150,7 +216,7 @@ void main() {
           sessionIdProvider.overrideWithValue('sess_1'),
           apiProvider.overrideWithValue(ApiClient(token: () async => 'jwt', http_: server())),
         ],
-        child: MaterialApp(home: home),
+        child: MaterialApp(home: home, navigatorObservers: [appRouteObserver]),
       );
 
   Future<void> openTab(WidgetTester tester, String label) async {
@@ -191,14 +257,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Live now'), findsOneWidget);
-    expect(find.text('Cell night'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Join'), findsOneWidget);
+    expect(find.text('Cell night'), findsWidgets);
+    expect(find.widgetWithText(FilledButton, 'Join'), findsWidgets);
   });
 
   testWidgets('adding by email sends the addresses and says who has no account', (tester) async {
     tall(tester);
     await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
     await tester.pumpAndSettle();
+    await openTab(tester, 'Members');
 
     await tester.enterText(find.widgetWithText(TextField, 'Email addresses'), 'bola@example.com, nobody@example.com');
     await tester.tap(find.widgetWithText(FilledButton, 'Add'));
@@ -216,6 +283,7 @@ void main() {
     tall(tester);
     await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
     await tester.pumpAndSettle();
+    await openTab(tester, 'Members');
 
     // The owner's own row has no menu; Kemi's does.
     expect(find.byTooltip('Manage Ada'), findsNothing);
@@ -247,6 +315,7 @@ void main() {
 
     await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
     await tester.pumpAndSettle();
+    await openTab(tester, 'Members');
     await tester.tap(find.text('Share invite link'));
     await tester.pumpAndSettle();
 
@@ -260,6 +329,7 @@ void main() {
     members[0]['role'] = 'participant';
     await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
     await tester.pumpAndSettle();
+    await openTab(tester, 'Members');
 
     expect(find.text('Add people'), findsNothing);
     expect(find.byTooltip('Manage Kemi'), findsNothing);
@@ -313,6 +383,194 @@ void main() {
 
     final del = sent.singleWhere((r) => r.method == 'DELETE' && r.url.path == '/api/groups/g1');
     expect(jsonDecode(del.body), {'confirmName': 'Cell Leaders'});
+  });
+
+  group('meetings', () {
+    late List<({String slug, bool straightIn})> joined;
+
+    setUp(() {
+      joined = [];
+      final originalJoin = joinGroupMeeting;
+      joinGroupMeeting = (context, {required slug, required title, straightIn = false}) async =>
+          joined.add((slug: slug, straightIn: straightIn));
+      final originalTz = deviceTimezone;
+      deviceTimezone = () async => 'Africa/Lagos';
+      addTearDown(() {
+        joinGroupMeeting = originalJoin;
+        deviceTimezone = originalTz;
+      });
+    });
+
+    testWidgets('live first with Join, then coming up, then past pages until the end', (tester) async {
+      tall(tester);
+      await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Planning'), findsOneWidget);
+      expect(find.textContaining('5 invited · repeats'), findsOneWidget);
+      expect(find.text('Last week'), findsOneWidget);
+      expect(find.textContaining('3 / 5 attended'), findsOneWidget);
+
+      await tester.tap(find.text('Load more'));
+      await tester.pumpAndSettle();
+      expect(find.text('Two weeks ago'), findsOneWidget);
+      expect(find.text('Load more'), findsNothing);
+      final pages = sent.where((r) => r.url.queryParameters['scope'] == 'past').toList();
+      expect(pages.last.url.queryParameters['cursor'], '1790000000000');
+
+      // The live meeting's own Join goes through the pre-join.
+      await tester.tap(find.widgetWithText(FilledButton, 'Join').last);
+      await tester.pumpAndSettle();
+      expect(joined.single, (slug: 'evt-live', straightIn: false));
+    });
+
+    testWidgets('coming back from the meeting reloads the page: no longer live, now past', (tester) async {
+      tall(tester);
+      // Into the meeting, which ends while there, and back.
+      joinGroupMeeting = (context, {required slug, required title, straightIn = false}) async {
+        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('In the room'))));
+      };
+      await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
+      await tester.pumpAndSettle();
+      expect(find.text('Live now'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Join').last);
+      await tester.pumpAndSettle();
+      expect(find.text('In the room'), findsOneWidget);
+      ended = true;
+      final pastLoads = sent.where((r) => r.url.queryParameters['scope'] == 'past').length;
+      Navigator.of(tester.element(find.text('In the room'))).pop();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Live now'), findsNothing);
+      expect(find.text('Cell night'), findsNothing);
+      expect(sent.where((r) => r.url.queryParameters['scope'] == 'past').length, pastLoads + 1);
+    });
+
+    testWidgets('pulling down on a tab reloads the group', (tester) async {
+      tall(tester);
+      await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
+      await tester.pumpAndSettle();
+      ended = true;
+
+      // Far enough to arm the indicator: a quarter of this tall test view.
+      await tester.fling(find.text('Start meeting'), const Offset(0, 1200), 1500);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Live now'), findsNothing);
+      expect(sent.where((r) => r.method == 'GET' && r.url.path == '/api/groups/g1').length, 2);
+    });
+
+    testWidgets('Start meeting starts it for the whole group and goes straight in', (tester) async {
+      tall(tester);
+      await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Start meeting'));
+      await tester.pumpAndSettle();
+
+      final post = sent.singleWhere((r) => r.method == 'POST' && r.url.path == '/api/groups/g1/meetings');
+      expect(jsonDecode(post.body), {'mode': 'now', 'title': 'Cell Leaders meeting', 'timezone': 'Africa/Lagos'});
+      expect(joined.single, (slug: 'cell-leaders-meeting', straightIn: true));
+    });
+
+    testWidgets('Call rings the members chosen and goes straight in', (tester) async {
+      tall(tester);
+      await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Call'));
+      await tester.pumpAndSettle();
+      // You are not offered to yourself.
+      expect(find.widgetWithText(CheckboxListTile, 'Ada'), findsNothing);
+      await tester.tap(find.widgetWithText(CheckboxListTile, 'Kemi'));
+      await tester.pump();
+      await tester.tap(find.text('Call 1'));
+      await tester.pumpAndSettle();
+
+      final post = sent.singleWhere((r) => r.url.path == '/api/groups/g1/calls');
+      expect(jsonDecode(post.body), {'userIds': ['user_k'], 'timezone': 'Africa/Lagos'});
+      expect(joined.single, (slug: 'call-abc', straightIn: true));
+    });
+
+    testWidgets('scheduling a weekly series sends the web\'s fields', (tester) async {
+      tall(tester);
+      await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Schedule'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Times are in Africa/Lagos.'), findsOneWidget);
+      await tester.enterText(find.widgetWithText(TextField, 'Title'), 'Prayer');
+      await tester.tap(find.text('Weekly'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Schedule'));
+      await tester.pumpAndSettle();
+
+      final post = sent.singleWhere((r) => r.method == 'POST' && r.url.path == '/api/groups/g1/meetings');
+      final body = jsonDecode(post.body) as Map<String, dynamic>;
+      expect(body['mode'], 'scheduled');
+      expect(body['title'], 'Prayer');
+      expect(body['timezone'], 'Africa/Lagos');
+      expect(body['durationMin'], 60);
+      expect(body['waitingRoom'], true);
+      expect(DateTime.parse(body['scheduledAt'] as String).isAfter(DateTime.now()), isTrue);
+      expect((body['scheduledAt'] as String).endsWith('Z'), isTrue);
+      final rec = body['recurrence'] as Map<String, dynamic>;
+      expect(rec['freq'], 'weekly');
+      expect(rec['interval'], 1);
+      expect(rec['count'], 4);
+      expect((rec['byWeekday'] as List).single, DateTime.parse(body['scheduledAt'] as String).toLocal().weekday % 7);
+      expect(body.containsKey('password'), isFalse);
+    });
+
+    testWidgets('changing one of a series asks which, and keeps the password when left blank', (tester) async {
+      tall(tester);
+      await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Change Planning'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Change'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('This and the following ones'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Leave blank to keep the current password.'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Save changes'));
+      await tester.pumpAndSettle();
+
+      final patch = sent.singleWhere((r) => r.method == 'PATCH' && r.url.path == '/api/groups/g1/meetings/evt_s');
+      final body = jsonDecode(patch.body) as Map<String, dynamic>;
+      expect(body['scope'], 'following');
+      expect(body['title'], 'Planning');
+      expect(body.containsKey('password'), isFalse);
+    });
+
+    testWidgets('cancelling just this one of a series says scope=this', (tester) async {
+      tall(tester);
+      await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Change Planning'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel meeting'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('This meeting'));
+      await tester.pumpAndSettle();
+
+      final del = sent.singleWhere((r) => r.method == 'DELETE' && r.url.path == '/api/groups/g1/meetings/evt_s');
+      expect(del.url.queryParameters, {'scope': 'this'});
+    });
+
+    testWidgets('a Member can join but not start, schedule, call, change or cancel', (tester) async {
+      tall(tester);
+      role = 'participant';
+      await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Start meeting'), findsNothing);
+      expect(find.widgetWithText(OutlinedButton, 'Schedule'), findsNothing);
+      expect(find.widgetWithText(OutlinedButton, 'Call'), findsNothing);
+      expect(find.byTooltip('Change Planning'), findsNothing);
+      expect(find.widgetWithText(FilledButton, 'Join'), findsWidgets);
+    });
   });
 
   group('invite links', () {
