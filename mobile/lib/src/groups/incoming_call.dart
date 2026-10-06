@@ -39,16 +39,20 @@ class IncomingRing {
   bool liveAt(DateTime now) => expiresAt.isAfter(now);
 
   /// A notification (or push) that is a ring still ringing, or null.
+  ///
+  /// A push's values all arrive as strings (FCM data), so the expiry may
+  /// be "1800000000000" as well as a number.
   static IncomingRing? from(Map<String, dynamic> j, DateTime now) {
-    if (j['type'] != 'ring' || j['read'] == true) return null;
+    if (j['type'] != 'ring' || j['read'] == true || j['read'] == 'true') return null;
     final ringId = j['ringId'];
     final slug = j['eventSlug'];
-    final expires = j['expiresAt'];
-    if (ringId is! String || slug is! String || expires is! num) return null;
+    final raw = j['expiresAt'];
+    final expires = raw is num ? raw.toInt() : (raw is String ? int.tryParse(raw) : null);
+    if (ringId is! String || slug is! String || expires == null) return null;
     final ring = IncomingRing(
       ringId: ringId,
       eventSlug: slug,
-      expiresAt: DateTime.fromMillisecondsSinceEpoch(expires.toInt()),
+      expiresAt: DateTime.fromMillisecondsSinceEpoch(expires),
       groupName: j['groupName'] as String? ?? '',
       meetingTitle: (j['meetingTitle'] ?? j['title']) as String? ?? '',
       caller: j['caller'] as String? ?? '',
@@ -66,13 +70,90 @@ class CallRinger {
   static Future<void> Function() start = () => _call('start');
   static Future<void> Function() stop = () => _call('stop');
 
-  static Future<void> _call(String method) async {
+  /// Lets the incoming-call screen show over the lock screen, and only it:
+  /// on while it is up, off when it goes.
+  static Future<void> Function(bool on) overLock = (on) => _call('showOverLock', {'on': on});
+
+  static Future<void> _call(String method, [Object? args]) async {
     try {
-      await _channel.invokeMethod<void>(method);
+      await _channel.invokeMethod<void>(method, args);
     } catch (e) {
       debugPrint('[ring] $method: $e');
     }
   }
+}
+
+/// Something from outside the watcher's own look at the list.
+sealed class IncomingEvent {
+  const IncomingEvent();
+}
+
+/// A ring arrived by push, or its notification was tapped — or Answer was
+/// pressed on it ([answerNow]), which goes straight in.
+class RingArrived extends IncomingEvent {
+  const RingArrived(this.ring, {this.answerNow = false});
+  final IncomingRing ring;
+  final bool answerNow;
+}
+
+/// Another notification was tapped: a reminder, an invite, a mention.
+/// Opens the group when it is known, else the meeting.
+class NoticeTapped extends IncomingEvent {
+  const NoticeTapped({required this.url, this.groupId});
+  final String url;
+  final String? groupId;
+}
+
+/// Where pushes and notification taps reach the signed-in app. One that
+/// arrives before anything listens (the app launched from a notification)
+/// is kept until the watcher takes it.
+class IncomingCalls {
+  IncomingCalls._();
+
+  static final instance = IncomingCalls._();
+
+  final _events = StreamController<IncomingEvent>.broadcast();
+  IncomingEvent? _pending;
+
+  Stream<IncomingEvent> get events => _events.stream;
+
+  void add(IncomingEvent event) {
+    if (_events.hasListener) {
+      _events.add(event);
+    } else {
+      _pending = event;
+    }
+  }
+
+  IncomingEvent? takePending() {
+    final e = _pending;
+    _pending = null;
+    return e;
+  }
+
+  /// Told when the in-app call screen takes over a ring, so its
+  /// notification (still sounding the ringtone) can be taken down.
+  void Function(IncomingRing ring)? onScreenShown;
+}
+
+/// The meeting a notification's link points at: `/room/<room>?event=<slug>`
+/// or `/<slug>`; null for any other page.
+String? meetingSlugFromPath(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null) return null;
+  final parts = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+  if (parts.length == 2 && parts[0] == 'room') {
+    final event = uri.queryParameters['event']?.trim();
+    return event != null && event.isNotEmpty ? event : parts[1];
+  }
+  if (parts.length == 1 && RegExp(r'^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$').hasMatch(parts[0])) return parts[0];
+  return null;
+}
+
+/// The group a notification's link points at: `/dashboard/groups/<id>`.
+String? groupIdFromPath(String url) {
+  final parts = (Uri.tryParse(url)?.pathSegments ?? const <String>[]).where((s) => s.isNotEmpty).toList();
+  return parts.length >= 3 && parts[0] == 'dashboard' && parts[1] == 'groups' ? parts[2] : null;
 }
 
 /// Answering or declining, as the web's IncomingCall does: tell the
@@ -115,6 +196,14 @@ class IncomingCallWatcher extends ConsumerStatefulWidget {
   /// How often the list is read while the app is open. A ring lasts 45 s.
   static Duration every = const Duration(seconds: 10);
 
+  /// Called once someone is signed in, with their API client: the app
+  /// registers for pushes here (CallPush). Unset in tests.
+  static void Function(ApiClient api)? onSignedIn;
+
+  /// Opens the group a notification was about. Set by main.dart, which can
+  /// see the group screens without this file importing them.
+  static void Function(BuildContext context, String groupId)? openGroup;
+
   @override
   ConsumerState<IncomingCallWatcher> createState() => _IncomingCallWatcherState();
 }
@@ -126,20 +215,64 @@ class _IncomingCallWatcherState extends ConsumerState<IncomingCallWatcher> with 
   /// Rings already shown, answered or declined: each is shown once.
   final _seen = <String>{};
   IncomingRing? _showing;
+  StreamSubscription<IncomingEvent>? _events;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _events = IncomingCalls.instance.events.listen(_onEvent);
+    IncomingCallWatcher.onSignedIn?.call(ref.read(apiProvider));
     _resume();
+    // Launched by tapping a notification: it is waiting.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pending = IncomingCalls.instance.takePending();
+      if (pending != null) _onEvent(pending);
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _events?.cancel();
     super.dispose();
   }
+
+  Future<void> _onEvent(IncomingEvent event) async {
+    if (!mounted) return;
+    switch (event) {
+      case RingArrived(:final ring, :final answerNow):
+        if (!ring.liveAt(DateTime.now()) || ring.eventSlug == MeetingHeartbeat.instance.current.value) return;
+        if (answerNow) {
+          // Answer pressed on the notification: straight in, no second ask.
+          _seen.add(ring.ringId);
+          if (_showing?.ringId == ring.ringId) return; // the screen answers it
+          await RingResponder(ref.read(apiProvider)).respond(ring, answer: true);
+          if (mounted) await _enter(ring);
+          return;
+        }
+        if (_seen.contains(ring.ringId) || _showing != null) return;
+        _seen.add(ring.ringId);
+        await _show(ring);
+      case NoticeTapped(:final url, :final groupId):
+        final group = groupId ?? groupIdFromPath(url);
+        final open = IncomingCallWatcher.openGroup;
+        if (group != null && open != null) {
+          open(context, group);
+          return;
+        }
+        final slug = meetingSlugFromPath(url);
+        if (slug != null) await joinGroupMeeting(context, slug: slug, title: slug);
+    }
+  }
+
+  Future<void> _enter(IncomingRing ring) => joinGroupMeeting(
+        context,
+        slug: ring.eventSlug,
+        title: ring.meetingTitle.isEmpty ? ring.eventSlug : ring.meetingTitle,
+        straightIn: true,
+      );
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -190,14 +323,7 @@ class _IncomingCallWatcherState extends ConsumerState<IncomingCallWatcher> with 
       ),
     );
     _showing = null;
-    if (answered == true && mounted) {
-      await joinGroupMeeting(
-        context,
-        slug: ring.eventSlug,
-        title: ring.meetingTitle.isEmpty ? ring.eventSlug : ring.meetingTitle,
-        straightIn: true,
-      );
-    }
+    if (answered == true && mounted) await _enter(ring);
   }
 
   @override
@@ -223,6 +349,10 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
   @override
   void initState() {
     super.initState();
+    // This screen rings from here on; a notification for the same ring
+    // (still sounding) is taken down.
+    IncomingCalls.instance.onScreenShown?.call(widget.ring);
+    unawaited(CallRinger.overLock(true));
     unawaited(CallRinger.start());
     final left = widget.ring.expiresAt.difference(DateTime.now());
     _expiry = Timer(left.isNegative ? Duration.zero : left, () {
@@ -234,6 +364,7 @@ class _IncomingCallScreenState extends ConsumerState<IncomingCallScreen> {
   void dispose() {
     _expiry?.cancel();
     unawaited(CallRinger.stop());
+    unawaited(CallRinger.overLock(false));
     super.dispose();
   }
 

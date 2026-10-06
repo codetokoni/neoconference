@@ -221,6 +221,89 @@ void main() {
     });
   });
 
+  group('pushes and notification taps', () {
+    late List<bool> overLock;
+    late List<String> shownOver;
+
+    setUp(() {
+      overLock = [];
+      shownOver = [];
+      final lock = CallRinger.overLock;
+      CallRinger.overLock = (on) async => overLock.add(on);
+      IncomingCalls.instance.onScreenShown = (r) => shownOver.add(r.ringId);
+      addTearDown(() {
+        CallRinger.overLock = lock;
+        IncomingCalls.instance.onScreenShown = null;
+        IncomingCallWatcher.openGroup = null;
+        IncomingCalls.instance.takePending();
+      });
+    });
+
+    IncomingRing pushed({String ringId = 'r9'}) =>
+        IncomingRing.from({...ring(ringId: ringId), 'expiresAt': '${DateTime.now().add(const Duration(seconds: 40)).millisecondsSinceEpoch}', 'read': 'false'}, DateTime.now())!;
+
+    test('a push\'s values are all strings, and still make a ring', () {
+      final r = pushed();
+      expect(r.ringId, 'r9');
+      expect(r.liveAt(DateTime.now()), isTrue);
+      expect(IncomingRing.from({...ring(), 'read': 'true'}, DateTime.now()), isNull);
+    });
+
+    test('a notification\'s link names its meeting or its group', () {
+      expect(meetingSlugFromPath('/room/abc?event=cell-night&join=1'), 'cell-night');
+      expect(meetingSlugFromPath('/room/cell-night'), 'cell-night');
+      expect(meetingSlugFromPath('/cell-night'), 'cell-night');
+      expect(meetingSlugFromPath('/dashboard/groups/g1?tab=chat'), isNull);
+      expect(groupIdFromPath('/dashboard/groups/g1?tab=chat'), 'g1');
+      expect(groupIdFromPath('/cell-night'), isNull);
+    });
+
+    testWidgets('a ring pushed while open shows the call over the lock screen, then lets go of it', (tester) async {
+      await tester.pumpWidget(watcher());
+      await tester.pumpAndSettle();
+      IncomingCalls.instance.add(RingArrived(pushed()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Answer'), findsOneWidget);
+      expect(shownOver, ['r9'], reason: 'its notification is taken down');
+      expect(overLock, [true]);
+
+      await tester.tap(find.text('Decline'));
+      await tester.pumpAndSettle();
+      expect(overLock, [true, false]);
+    });
+
+    testWidgets('Answer pressed on the notification goes straight in, without asking again', (tester) async {
+      await tester.pumpWidget(watcher());
+      await tester.pumpAndSettle();
+      IncomingCalls.instance.add(RingArrived(pushed(), answerNow: true));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Answer'), findsNothing);
+      final response = sent.singleWhere((r) => r.url.path == '/api/events/cell-night/call-response');
+      expect(jsonDecode(response.body), {'action': 'answer', 'ringId': 'r9'});
+      expect(joined.single, (slug: 'cell-night', straightIn: true));
+    });
+
+    testWidgets('a tapped reminder opens its group', (tester) async {
+      final opened = <String>[];
+      IncomingCallWatcher.openGroup = (_, id) => opened.add(id);
+      await tester.pumpWidget(watcher());
+      await tester.pumpAndSettle();
+      IncomingCalls.instance.add(const NoticeTapped(url: '/cell-night', groupId: 'g1'));
+      await tester.pumpAndSettle();
+      expect(opened, ['g1']);
+      expect(joined, isEmpty);
+    });
+
+    testWidgets('a call notification that launched the app is shown once the app is up', (tester) async {
+      IncomingCalls.instance.add(RingArrived(pushed(ringId: 'r10')));
+      await tester.pumpWidget(watcher());
+      await tester.pumpAndSettle();
+      expect(find.text('Answer'), findsOneWidget);
+    });
+  });
+
   test('the heartbeat says where this phone is, and that it left', () async {
     final api = ApiClient(token: () async => 'jwt', http_: server());
     MeetingHeartbeat.instance.start(api, 'cell-night');

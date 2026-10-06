@@ -82,14 +82,17 @@ class AuthController extends StateNotifier<AuthState> {
   final _links = AppLinks();
   StreamSubscription<Uri>? _linkSub;
 
-  static const _sessionKey = 'neo.clerk.session';
-  static const _cookieKey = 'neo.clerk.client';
+  /// Where the signed-in session and Clerk's client cookie are kept. Public
+  /// for the push handler, which answers a call from a background isolate
+  /// with no AuthController of its own (CallPush).
+  static const sessionKey = 'neo.clerk.session';
+  static const cookieKey = 'neo.clerk.client';
 
   Future<void> _restore() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _clerk.clientCookie = prefs.getString(_cookieKey);
-      final sessionId = prefs.getString(_sessionKey);
+      _clerk.clientCookie = prefs.getString(cookieKey);
+      final sessionId = prefs.getString(sessionKey);
       if (sessionId == null) {
         state = state.copyWith(restoring: false);
         return;
@@ -314,9 +317,9 @@ class AuthController extends StateNotifier<AuthState> {
     }
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_sessionKey, sessionId);
+      await prefs.setString(sessionKey, sessionId);
       if (_clerk.clientCookie != null) {
-        await prefs.setString(_cookieKey, _clerk.clientCookie!);
+        await prefs.setString(cookieKey, _clerk.clientCookie!);
       }
       if (name != null) await prefs.setString('neo.clerk.name', name);
     } catch (_) {
@@ -352,7 +355,7 @@ class AuthController extends StateNotifier<AuthState> {
     await EventsCache.clear();
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_sessionKey);
+      await prefs.remove(sessionKey);
       await prefs.remove('neo.clerk.name');
     } catch (_) {
       // Nothing useful to do if storage refuses.

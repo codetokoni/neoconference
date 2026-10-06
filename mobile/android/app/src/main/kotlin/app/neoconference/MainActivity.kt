@@ -121,6 +121,18 @@ class MainActivity : FlutterActivity() {
                         ringer.stop()
                         result.success(null)
                     }
+                    // Only while the incoming-call screen is up: a call
+                    // can be answered from the lock screen, as a phone
+                    // call can, but the rest of the app (meetings, chat)
+                    // never shows over it.
+                    "showOverLock" -> {
+                        val on = call.argument<Boolean>("on") ?: false
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                            setShowWhenLocked(on)
+                            setTurnScreenOn(on)
+                        }
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }

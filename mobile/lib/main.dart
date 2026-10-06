@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,6 +17,7 @@ import 'src/design/tokens.dart';
 import 'src/events/create_meeting_screen.dart';
 import 'src/groups/group_screen.dart' show appRouteObserver;
 import 'src/groups/groups_screen.dart';
+import 'src/groups/call_push.dart';
 import 'src/groups/incoming_call.dart';
 import 'src/manage/dashboard_screen.dart';
 import 'src/meetings/meeting_board.dart';
@@ -35,6 +38,11 @@ void main() {
   // and after the binding, which the platform channel needs.
   WidgetsFlutterBinding.ensureInitialized();
   IncomingMeetingLinks.instance.start();
+  // Group calls and meeting notices by push (Firebase), registered once
+  // someone is signed in; a tapped notification opens its group.
+  unawaited(CallPush.instance.start());
+  IncomingCallWatcher.onSignedIn = (api) => unawaited(CallPush.instance.register(api));
+  IncomingCallWatcher.openGroup = (context, id) => unawaited(openGroup(context, id, 'Group'));
   runApp(
     ProviderScope(
       // The designed screens read their data from providers so that one set
@@ -210,6 +218,11 @@ class _Root extends ConsumerWidget {
     // A cancelled payment comes back the same way and is reported for the
     // same reason: the person left, went through a checkout, and returned.
     // Reappearing in silence reads like the app lost the attempt.
+    // Signed out: this phone stops getting that person's calls.
+    ref.listen(authProvider.select((s) => s.sessionId), (before, now) {
+      if (before != null && now == null) unawaited(CallPush.instance.unregister());
+    });
+
     ref.listen(authProvider.select((s) => s.error), (_, error) {
       if (error == null) return;
       ScaffoldMessenger.of(context)

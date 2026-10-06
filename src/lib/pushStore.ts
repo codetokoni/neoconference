@@ -16,6 +16,7 @@
 import { createHash } from "node:crypto";
 import { kv } from "@vercel/kv";
 import webpush from "web-push";
+import { isFcmConfigured, sendFcm } from "@/lib/fcmStore";
 
 export const MAX_DEVICES = 10;
 
@@ -262,10 +263,26 @@ export function topicFor(s: string): string {
 }
 
 /**
+ * Send to every device a person has: their browsers (Web Push) and their
+ * phones running the app (FCM, src/lib/fcmStore.ts). Configured when either
+ * is; the devices are both lists, so "has a device" counts phones too.
+ */
+export async function sendPush(uid: string, payload: PushPayload, opts: SendOptions = {}): Promise<SendResult> {
+  const [web, phones] = await Promise.all([
+    sendWebPush(uid, payload, opts),
+    sendFcm(uid, payload, opts).catch((err) => {
+      console.warn("[push] fcm failed", (err as Error).message);
+      return { configured: isFcmConfigured(), devices: [] };
+    }),
+  ]);
+  return { configured: web.configured || phones.configured, devices: [...web.devices, ...phones.devices] };
+}
+
+/**
  * Send to every browser a person has. Subscriptions the push service says are
  * gone (404, 410) are deleted; the rest record when they last worked.
  */
-export async function sendPush(uid: string, payload: PushPayload, opts: SendOptions = {}): Promise<SendResult> {
+async function sendWebPush(uid: string, payload: PushPayload, opts: SendOptions): Promise<SendResult> {
   if (!isPushConfigured()) return { configured: false, devices: [] };
   const devices = await listDevices(uid);
   if (devices.size === 0) return { configured: true, devices: [] };
