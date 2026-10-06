@@ -56,8 +56,15 @@ function serviceAccount(): ServiceAccount | null {
   parsedFrom = raw;
   parsed = null;
   if (!raw) return null;
+  const text = serviceAccountJson(raw);
+  if (text === null) {
+    // Never the value; its shape is enough to see what was pasted.
+    const t = raw.trim();
+    console.warn(`[fcm] FIREBASE_SERVICE_ACCOUNT is not JSON (${t.length} chars, starts with ${JSON.stringify(t.slice(0, 1))})`);
+    return null;
+  }
   try {
-    const j = JSON.parse(raw) as Record<string, unknown>;
+    const j = JSON.parse(text) as Record<string, unknown>;
     const projectId = j.project_id;
     const clientEmail = j.client_email;
     const privateKey = j.private_key;
@@ -68,9 +75,44 @@ function serviceAccount(): ServiceAccount | null {
       console.warn("[fcm] FIREBASE_SERVICE_ACCOUNT lacks project_id, client_email or private_key");
     }
   } catch {
-    console.warn("[fcm] FIREBASE_SERVICE_ACCOUNT is not JSON");
+    // serviceAccountJson already checked it parses.
+    console.warn("[fcm] FIREBASE_SERVICE_ACCOUNT could not be read");
   }
   return parsed;
+}
+
+/**
+ * The service account's JSON from the env var as it was pasted: the file's
+ * contents, the same wrapped in quotes, or base64 of it (the usual way to
+ * keep a multi-line secret on one line). Null when it is none of those.
+ */
+export function serviceAccountJson(raw: string): string | null {
+  let t = raw.trim();
+  if (t.length >= 2 && (t[0] === "'" || t[0] === '"') && t[t.length - 1] === t[0]) t = t.slice(1, -1).trim();
+  const isObject = (s: string) => {
+    try {
+      const v = JSON.parse(s);
+      return v !== null && typeof v === "object" && !Array.isArray(v);
+    } catch {
+      return false;
+    }
+  };
+  if (t.startsWith("{\\")) {
+    // The JSON written as a JSON string, its quotes escaped ({\"type\":…}):
+    // read it as the string it is.
+    try {
+      const inner = JSON.parse(`"${t}"`) as string;
+      return isObject(inner) ? inner : null;
+    } catch {
+      return null;
+    }
+  }
+  if (t.startsWith("{")) return isObject(t) ? t : null;
+  if (/^[A-Za-z0-9+/=_-]+$/.test(t)) {
+    const decoded = Buffer.from(t, "base64").toString("utf8").trim();
+    if (decoded.startsWith("{") && isObject(decoded)) return decoded;
+  }
+  return null;
 }
 
 export function isFcmConfigured(): boolean {

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { decodeJwt, decodeProtectedHeader } from "jose";
 import {
-  __setFcmSender, cleanFcmToken, listFcmDevices, removeFcmToken, saveFcmToken, sendFcm, MAX_FCM_DEVICES,
+  __setFcmSender, cleanFcmToken, listFcmDevices, removeFcmToken, saveFcmToken, sendFcm, serviceAccountJson, MAX_FCM_DEVICES,
   type FcmSender,
 } from "@/lib/fcmStore";
 import { __setPushSender, saveSubscription, sendPush, type PushPayload } from "@/lib/pushStore";
@@ -58,6 +58,17 @@ const t = async (name: string, fn: () => Promise<void> | void) => { await fn(); 
     assert.ok(!left.includes(tok(0)));
     assert.equal(await removeFcmToken("u_many", tok(1)), true);
     assert.equal(await removeFcmToken("u_many", tok(1)), false);
+  });
+
+  await t("the key is read however it was pasted: as is, in quotes, escaped or base64; anything else is refused", () => {
+    const want = JSON.parse(serviceAccount).client_email;
+    const email = (s: string | null) => (s === null ? null : JSON.parse(s).client_email);
+    assert.equal(email(serviceAccountJson(serviceAccount)), want);
+    assert.equal(email(serviceAccountJson(`  '${serviceAccount}'\n`)), want);
+    assert.equal(email(serviceAccountJson(JSON.stringify(serviceAccount).slice(1, -1))), want);
+    assert.equal(email(serviceAccountJson(Buffer.from(serviceAccount).toString("base64"))), want);
+    assert.equal(serviceAccountJson("C:\\Users\\me\\Downloads\\neo-firebase-adminsdk.json"), null);
+    assert.equal(serviceAccountJson('{"type": "service_account", "project_id": '), null);
   });
 
   console.log("sending");
