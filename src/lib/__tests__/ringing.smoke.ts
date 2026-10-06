@@ -6,14 +6,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import vm from "node:vm";
-import { createGroup, getMember, updateGroup, type Group } from "@/lib/groupStore";
+import { createGroup, getMember, updateGroup, addMembers, type Group } from "@/lib/groupStore";
 import {
   createGroupMeetings, cleanMeetingFields, cancelGroupMeetings, updateGroupMeetings, addParticipants,
   type CreateMeetingDeps,
 } from "@/lib/groupMeetings";
 import { jobsFor, claimDue, scheduleJob } from "@/lib/scheduler";
 import {
-  runDispatch, getCalls, respondToRing, ringNow, ringAgain, __setKingsChatSender, STALE_RING_MS,
+  runDispatch, getCalls, respondToRing, ringNow, ringAgain, ringNewMembers, __setKingsChatSender, STALE_RING_MS,
 } from "@/lib/ringEngine";
 import { recordAttendance } from "@/lib/attendance";
 import { setPresence } from "@/lib/presence";
@@ -68,6 +68,9 @@ async function scheduleAt(g: Group, at: number, creator?: string) {
   return (await createGroupMeetings({ group: g, creator: c, kind: "scheduled", fields, origin: "https://neo.test" }, deps)).events[0];
 }
 const status = async (eid: string, uid: string) => (await getCalls(eid)).get(uid);
+/** The newest group's owner, as an actor. */
+const ownerActor = () =>
+  ({ userId: `user_owner${seq}`, emails: [], isPlatformAdmin: false, role: "owner" as const, isOwner: true, reason: "owner" as const });
 
 (async () => {
   const T = Date.now() + 2 * 24 * 60 * MIN;   // a meeting two days out; the clock below is fake
@@ -210,6 +213,56 @@ const status = async (eid: string, uid: string) => (await getCalls(eid)).get(uid
     await ringNow(ev.id, { except: owner.userId, now: T });
     assert.deepEqual((await ringNow(ev.id, { except: owner.userId, now: T + MIN })).rung, []);   // at its limit of 1
     assert.deepEqual((await ringAgain(ev.id, ["user_j1"], T + 2 * MIN)).rung, ["user_j1"]);
+  });
+
+  console.log("people who arrive late");
+
+  await t("a late ring job when everyone has since joined queues nothing more", async () => {
+    const g = await freshGroup(["user_l1"]);
+    const ev = await scheduleAt(g, T);
+    await claimDue(T - 1);
+    await runDispatch(T);
+    await recordAttendance(ev.id, { action: "join", userId: "user_l1", name: "L1", source: "webhook" });
+    await scheduleJob(ev.id, "ring", T + 3 * MIN, { attempt: 2 });
+    const res = await runDispatch(T + 3 * MIN + STALE_RING_MS + MIN);
+    assert.equal(res.skipped, 1);
+    assert.deepEqual(await jobsFor(ev.id), []);
+  });
+
+  await t("someone who joins the group mid-call is rung next round, even as the only one left", async () => {
+    const g = await freshGroup(["user_m1"]);
+    const ev = await scheduleAt(g, T);
+    await claimDue(T - 1);
+    await runDispatch(T);
+    await respondToRing(ev.id, "user_m1", "decline", T + MIN);
+    // Added without the route's immediate ring, so only the rounds can reach them.
+    await addMembers(g.id, [{ userId: "user_m2", name: "M2" }], ownerActor());
+    // The round due at T+3 runs late: no one rung before is still due, but
+    // the newcomer has never been rung, so another round is queued for them.
+    const late = T + 3 * MIN + STALE_RING_MS + MIN;
+    await runDispatch(late);
+    const next = await jobsFor(ev.id);
+    assert.deepEqual(next.map((j) => j.fireAt), [late + 3 * MIN]);
+    await runDispatch(late + 3 * MIN);
+    assert.equal((await status(ev.id, "user_m2"))!.attempts, 1);
+    assert.equal((await status(ev.id, "user_m1"))!.status, "declined");
+  });
+
+  await t("joining a group while its meeting is on rings you into it at once (not into private calls)", async () => {
+    const g = await freshGroup(["user_n1"]);
+    const owner = (await getMember(g.id, `user_owner${seq}`))!;
+    const live = (await createGroupMeetings(
+      { group: g, creator: owner, kind: "now", fields: cleanMeetingFields({ title: "On now" }, "now"), origin: "https://neo.test" },
+      deps
+    )).events[0];
+    const call = (await createGroupMeetings(
+      { group: g, creator: owner, kind: "call", fields: cleanMeetingFields({ title: "Private" }, "call"), callUserIds: ["user_n1"], origin: "https://neo.test" },
+      deps
+    )).events[0];
+    await addMembers(g.id, [{ userId: "user_n2", name: "N2" }], ownerActor());
+    assert.equal(await ringNewMembers(g.id, ["user_n2"]), 1);
+    assert.equal((await status(live.id, "user_n2"))!.status, "ringing");
+    assert.equal(await status(call.id, "user_n2"), undefined);
   });
 
   console.log("KingsChat");
