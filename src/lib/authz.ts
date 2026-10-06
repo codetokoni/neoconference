@@ -71,6 +71,8 @@ export interface AuthzDecision {
   role: Actor["role"];
   reason: Actor["reason"];
   eventId?: string;
+  /** Set instead of eventId when the decision was about a group (src/lib/groupAuthz.ts). */
+  groupId?: string;
 }
 
 /**
@@ -83,7 +85,8 @@ export function recordDecision(d: AuthzDecision): void {
   const verb = d.allowed ? "allow" : "DENY";
   console.log(
     `[authz] ${verb} ${d.permission} user=${d.userId ?? "anon"} role=${d.role} via=${d.reason}` +
-      (d.eventId ? ` event=${d.eventId}` : "")
+      (d.eventId ? ` event=${d.eventId}` : "") +
+      (d.groupId ? ` group=${d.groupId}` : "")
   );
   // Fire-and-forget. appendAuditEntry catches its own errors — an audit sink
   // must never be able to break the request it audits.
@@ -95,6 +98,7 @@ export function recordDecision(d: AuthzDecision): void {
     role: d.role,
     reason: d.reason,
     eventId: d.eventId,
+    groupId: d.groupId,
   });
 }
 

@@ -56,6 +56,10 @@ const isPublicRoute = createRouteMatcher([
   '/api/billing/espees/fail',
   '/api/events/(.*)/checkout',
   '/api/invites/(.*)',
+  // A group invite link opened before signing in: the landing page and its
+  // preview. Joining (POST) checks auth() in the route itself.
+  '/groups/join/(.*)',
+  '/api/groups/invite/(.*)',
   '/api/cron/(.*)',
   '/i/(.*)',
   '/video/dashboard',

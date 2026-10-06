@@ -28,6 +28,7 @@ export interface AuditLogEntry {
   role: string;
   reason: string;
   eventId?: string;
+  groupId?: string;
 }
 
 function isKvConfigured(): boolean {
