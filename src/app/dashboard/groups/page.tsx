@@ -8,6 +8,7 @@ import { listGroupsForUser, roleLabel } from "@/lib/groupStore";
 import { unreadChatCount } from "@/lib/groupChat";
 import NewGroupButton from "./NewGroupButton";
 import GroupIcon from "./GroupIcon";
+import DashboardTabs from "@/components/groups/DashboardTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,9 @@ export default async function GroupsPage() {
   return (
     <main className="min-h-screen bg-[#05070d] text-white">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 py-10 md:py-14">
+        <div className="mb-6">
+          <DashboardTabs current="/dashboard/groups" />
+        </div>
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div>
             <Link href="/dashboard" className="text-xs text-white/50 hover:text-white transition">
@@ -42,7 +46,7 @@ export default async function GroupsPage() {
         ) : (
           <ul className="mt-8 grid gap-3">
             {groups.map(({ group, role, memberCount }, i) => (
-              <li key={group.id}>
+              <li key={group.id} className="min-w-0">
                 <Link
                   href={`/dashboard/groups/${encodeURIComponent(group.id)}`}
                   className="flex items-center gap-4 rounded-2xl border border-slate-800 bg-slate-900/40 p-4 hover:border-cyan-400/40 hover:bg-slate-900/70 transition"

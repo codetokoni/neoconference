@@ -34,11 +34,20 @@ const MESSAGES: Record<string, string> = {
   invalid_password: "The password can be up to 80 characters.",
   invalid_scope: "Choose this meeting, or this and the following ones.",
   lifetime_meetings_exhausted: "The group owner's Free plan has no meetings left. Ask the owner to upgrade.",
+  plan_member_limit: "This group has as many members as its owner's plan allows.",
   meeting_not_editable: "This meeting has already started, ended or been cancelled, so it can't be changed.",
   meeting_not_open: "This meeting is over, so no one more can be added.",
   not_group_meeting: "This isn't a group meeting.",
   group_has_no_owner: "This group has no owner, so it can't hold meetings.",
 };
+
+/** Refusals that an upgrade of the owner's plan would lift. */
+const PLAN_LIMIT_CODES = ["lifetime_meetings_exhausted", "plan_member_limit"];
+
+/** Whether a message shown to someone is one of the plan limits (so an upgrade link fits). */
+export function isPlanLimitMessage(text: string): boolean {
+  return PLAN_LIMIT_CODES.some((c) => MESSAGES[c] === text);
+}
 
 export function groupErrorMessage(code: string | undefined | null): string {
   return (code && MESSAGES[code]) || "Something went wrong. Please try again.";

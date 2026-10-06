@@ -59,9 +59,17 @@ async function untrack(eid: string): Promise<void> {
   await kv.srem(OPEN, eid);
 }
 
+/** At most this many open meetings are looked at in one tick. */
+export const OPEN_PER_TICK = 100;
+
+/**
+ * Up to OPEN_PER_TICK open meetings, picked at random when there are more, so
+ * every one is reached within a few ticks and a tick's work stays bounded.
+ */
 async function openMeetings(): Promise<string[]> {
-  if (!isKvConfigured()) return Array.from(memOpen);
-  return ((await kv.smembers(OPEN)) as unknown[]).map(String);
+  if (!isKvConfigured()) return Array.from(memOpen).slice(0, OPEN_PER_TICK);
+  const picked = await kv.srandmember<string[]>(OPEN, OPEN_PER_TICK);
+  return (Array.isArray(picked) ? picked : picked ? [picked] : []).map(String);
 }
 
 const joinHref = (ev: NeoEvent) => `/room/${encodeURIComponent(ev.slug)}?event=${encodeURIComponent(ev.slug)}&join=1`;

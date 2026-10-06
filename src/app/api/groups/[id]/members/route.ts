@@ -27,7 +27,8 @@ import {
   readJsonObject,
   requireGroupPermission,
 } from "@/lib/groupAuthz";
-import { membersByEmail, membersById } from "@/lib/groupPeople";
+import { memberLimitFor, membersByEmail, membersById } from "@/lib/groupPeople";
+import { listMembers } from "@/lib/groupStore";
 import { ringNewMembers } from "@/lib/ringEngine";
 
 export const runtime = "nodejs";
@@ -72,7 +73,10 @@ export async function POST(req: Request, ctx: Ctx) {
   }
 
   try {
-    const { added, alreadyMembers } = await addMembers(id, people, gate.actor);
+    // The group's size follows its Owner's plan.
+    const owner = (await listMembers(id)).find((m) => m.role === "owner");
+    const limit = owner ? await memberLimitFor(owner.userId) : undefined;
+    const { added, alreadyMembers } = await addMembers(id, people, gate.actor, limit);
     // A meeting of the group on right now rings its newest members too.
     await ringNewMembers(id, added.map((m) => m.userId)).catch((err) => console.warn("[groups/members] ring failed", err));
     return NextResponse.json({ ok: true, added, alreadyMembers, notFound });

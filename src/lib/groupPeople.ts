@@ -4,9 +4,9 @@
 // Server-only (Clerk backend API); the group store itself stays pure.
 
 import { clerkClient, currentUser } from "@clerk/nextjs/server";
-import type { NewMember } from "@/lib/groupStore";
+import { GROUP_LIMITS, type MemberLimit, type NewMember } from "@/lib/groupStore";
 import type { CreateMeetingDeps } from "@/lib/groupMeetings";
-import { checkLifetimeCap, incrementMeetingsCreated } from "@/lib/plan";
+import { checkLifetimeCap, getPlanForUserId, getPlanLimits, incrementMeetingsCreated } from "@/lib/plan";
 
 type ClerkUserLike = {
   id: string;
@@ -97,4 +97,19 @@ export function siteOrigin(req: Request): string {
   const proto = req.headers.get("x-forwarded-proto") ?? "https";
   const host = req.headers.get("host") ?? "localhost:3000";
   return proto + "://" + host;
+}
+
+/**
+ * A group's member limit, from its Owner's plan: as many members as the plan
+ * allows people in a meeting (everyone invited can then come), capped at
+ * GROUP_LIMITS.membersMax. An unlimited plan gets the cap.
+ */
+export async function memberLimitFor(ownerUserId: string): Promise<MemberLimit> {
+  try {
+    const plan = await getPlanForUserId(ownerUserId);
+    const max = getPlanLimits(plan).maxParticipants;
+    return { cap: max > 0 ? Math.min(max, GROUP_LIMITS.membersMax) : GROUP_LIMITS.membersMax, plan };
+  } catch {
+    return { cap: GROUP_LIMITS.membersMax };
+  }
 }

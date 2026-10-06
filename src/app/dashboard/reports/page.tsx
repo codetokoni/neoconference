@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
 import { attendedText as attended } from "@/lib/durationText";
+import DashboardTabs from "@/components/groups/DashboardTabs";
 
 interface Item {
   eventId: string;
@@ -53,6 +54,7 @@ export default function MyReportsPage() {
   return (
     <main className="min-h-screen bg-[#05070d] text-white">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 py-10 md:py-14 space-y-6">
+        <DashboardTabs current="/dashboard/reports" />
         <div>
           <Link href="/dashboard" className="text-xs text-white/50 hover:text-white transition">← Dashboard</Link>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white">My meeting reports</h1>

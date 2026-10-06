@@ -2,7 +2,8 @@
 
 // The group's meetings: what is live and coming up, and what has happened.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useModal } from "@/components/ui/useModal";
 import type { MeetingListItem } from "@/lib/groupMeetings";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
 import ScheduleDialog, { deliveryText } from "./ScheduleDialog";
@@ -57,6 +58,8 @@ export default function MeetingsTab({
   const [cancelBusy, setCancelBusy] = useState(false);
   const [cancelErr, setCancelErr] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const cancelBoxRef = useRef<HTMLDivElement>(null);
+  useModal(cancelBoxRef, () => setCancelling(null), { open: cancelling !== null, busy: cancelBusy });
 
   const base = `/api/groups/${encodeURIComponent(groupId)}/meetings`;
 
@@ -169,7 +172,7 @@ export default function MeetingsTab({
               const startsIn = Date.parse(m.start) - now;
               const joinable = startsIn <= JOIN_EARLY_MS;
               return (
-                <li key={m.id} className="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+                <li key={m.id} className="min-w-0 rounded-xl border border-slate-800 bg-slate-900/40 p-3">
                   <div className="flex flex-wrap items-center gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm text-slate-100">
@@ -220,7 +223,7 @@ export default function MeetingsTab({
         ) : (
           <ul className="grid gap-2">
             {past.map((m) => (
-              <li key={m.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/30 p-3">
+              <li key={m.id} className="min-w-0 flex flex-wrap items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/30 p-3">
                 <div className="min-w-0 flex-1">
                   {canViewReports ? (
                     <a
@@ -273,7 +276,7 @@ export default function MeetingsTab({
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
           onClick={() => !cancelBusy && setCancelling(null)}
         >
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl border border-rose-500/30 bg-[#0a0b12] text-slate-100 shadow-2xl overflow-hidden">
+          <div ref={cancelBoxRef} onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl border border-rose-500/30 bg-[#0a0b12] text-slate-100 shadow-2xl overflow-hidden">
             <div className="px-6 py-5 space-y-3 text-sm">
               <h2 id="cancel-title" className="text-lg font-semibold text-slate-100">Cancel “{cancelling.title}”?</h2>
               <p className="text-slate-300">Everyone invited is told, and it is taken off their calendar.</p>

@@ -15,7 +15,7 @@ import { eventStore } from "@/lib/eventStore";
 import { createGroup, listGroupsForUser, GROUP_LIMITS, type NewMember } from "@/lib/groupStore";
 import { groupErrorResponse, invalidBody, readJsonObject } from "@/lib/groupAuthz";
 import { eventAttendees, hasAttendance, selectAttendees } from "@/lib/groupAttendees";
-import { currentMember } from "@/lib/groupPeople";
+import { currentMember, memberLimitFor } from "@/lib/groupPeople";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,7 +77,8 @@ export async function POST(req: Request) {
     const group = await createGroup(
       { name: body.name, description: body.description, iconUrl: body.iconUrl, sourceEventId },
       creator,
-      members
+      members,
+      await memberLimitFor(userId)
     );
     return NextResponse.json({ ok: true, group }, { status: 201 });
   } catch (err) {

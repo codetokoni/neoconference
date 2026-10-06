@@ -3,9 +3,11 @@
 // The group's "Start meeting", "Schedule" and "Call" buttons, each shown only
 // to a rank that may use it (the routes check again regardless).
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useModal } from "@/components/ui/useModal";
 import type { GroupCapabilities, GroupMember } from "@/lib/groupStore";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
+import UpgradeHint from "@/components/groups/UpgradeHint";
 import ScheduleDialog, { viewerTimezone } from "./ScheduleDialog";
 import MemberPicker from "@/components/groups/MemberPicker";
 
@@ -35,6 +37,8 @@ export default function GroupActions({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<"start" | "call" | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const callBoxRef = useRef<HTMLDivElement>(null);
+  useModal(callBoxRef, () => setCalling(false), { open: calling, busy: busy !== null });
 
   if (!capabilities.start && !capabilities.schedule && !capabilities.call) return null;
   const others = members.filter((m) => m.userId !== meId);
@@ -116,6 +120,7 @@ export default function GroupActions({
         ) : null}
       </div>
       {err && !calling ? <p className="text-xs text-rose-300">{err}</p> : null}
+      {!calling ? <UpgradeHint error={err} /> : null}
 
       {scheduling ? (
         <ScheduleDialog
@@ -138,6 +143,7 @@ export default function GroupActions({
           onClick={() => busy === null && setCalling(false)}
         >
           <div
+            ref={callBoxRef}
             onClick={(e) => e.stopPropagation()}
             className="w-full sm:max-w-md max-h-[90vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-slate-800 bg-[#0a0b12] text-slate-100 shadow-2xl overflow-hidden"
           >

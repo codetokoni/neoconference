@@ -14,6 +14,7 @@ import type { GroupMember } from "@/lib/groupStore";
 import type { ChatMessageView } from "@/lib/groupChatView";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
 import { roomHref } from "./GroupActions";
+import { useModal } from "@/components/ui/useModal";
 
 const POLL_MS = 3_000;
 const MAX_LEN = 8000;
@@ -87,6 +88,8 @@ export default function ChatTab({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const lastMarked = useRef<string>("");
+  const deleteBoxRef = useRef<HTMLDivElement>(null);
+  useModal(deleteBoxRef, () => setConfirmDelete(null), { open: confirmDelete !== null });
   const base = `/api/groups/${encodeURIComponent(groupId)}/messages`;
 
   const scrollToEnd = () => {
@@ -319,11 +322,11 @@ export default function ChatTab({
                       <span className="text-[11px] text-slate-500">{clock(m.ts)}</span>
                     </div>
                     {m.replyTo ? (
-                      <div className="mt-1 border-l-2 border-slate-600 pl-2 text-xs text-slate-400">
+                      <div className="mt-1 border-l-2 border-slate-600 pl-2 text-xs text-slate-400 line-clamp-2 [overflow-wrap:anywhere]">
                         <span className="text-slate-300">{m.replyTo.name}:</span> {m.replyTo.snippet}
                       </div>
                     ) : null}
-                    <p className={"mt-0.5 whitespace-pre-wrap break-words text-sm " + (m.deleted ? "italic text-slate-500" : "text-slate-200")}>{m.text}</p>
+                    <p className={"mt-0.5 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm " + (m.deleted ? "italic text-slate-500" : "text-slate-200")}>{m.text}</p>
                     {m.attachments?.length ? (
                       <div className="mt-2 flex flex-wrap gap-2">
                         {m.attachments.map((a, k) =>
@@ -455,7 +458,7 @@ export default function ChatTab({
 
       {confirmDelete ? (
         <div role="dialog" aria-modal="true" aria-labelledby="delete-msg-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setConfirmDelete(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl border border-rose-500/30 bg-[#0a0b12] text-slate-100 shadow-2xl p-5 space-y-4">
+          <div ref={deleteBoxRef} onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl border border-rose-500/30 bg-[#0a0b12] text-slate-100 shadow-2xl p-5 space-y-4">
             <h2 id="delete-msg-title" className="text-base font-semibold text-slate-100">Delete this message?</h2>
             <p className="text-sm text-slate-300 line-clamp-3">{confirmDelete.text}</p>
             <div className="flex justify-end gap-2">

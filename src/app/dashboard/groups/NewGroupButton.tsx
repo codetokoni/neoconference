@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useModal } from "@/components/ui/useModal";
 import { useRouter } from "next/navigation";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
 
@@ -15,6 +16,8 @@ export default function NewGroupButton() {
   const [err, setErr] = useState<string | null>(null);
 
   const nameError = touched && !name.trim() ? "Give the group a name." : null;
+  const boxRef = useRef<HTMLFormElement>(null);
+  useModal(boxRef, close, { open, busy: submitting });
 
   function close() {
     if (submitting) return;
@@ -64,6 +67,7 @@ export default function NewGroupButton() {
           onClick={close}
         >
           <form
+            ref={boxRef}
             onClick={(e) => e.stopPropagation()}
             onSubmit={(e) => {
               e.preventDefault();

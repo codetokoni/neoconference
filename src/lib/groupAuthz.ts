@@ -13,6 +13,7 @@ import { forbidden, getIdentity, notFound, recordDecision, unauthorized } from "
 import type { Actor, Permission } from "@/lib/permissions";
 import {
   GroupError,
+  PlanMemberLimitError,
   decideGroupAccess,
   getGroup,
   getMember,
@@ -68,6 +69,19 @@ export function groupErrorResponse(err: unknown): NextResponse {
         message:
           "The group owner's Free plan allows " + cap + " lifetime meetings and " + used +
           " are used. Ask the owner to upgrade to schedule more.",
+      },
+      { status: 403 }
+    );
+  }
+  if (err instanceof PlanMemberLimitError) {
+    return NextResponse.json(
+      {
+        error: "plan_member_limit",
+        cap: err.limit.cap,
+        plan: err.limit.plan,
+        message:
+          "This group has reached " + err.limit.cap + " members, the most its owner's plan allows. " +
+          "The owner can upgrade at /dashboard/billing.",
       },
       { status: 403 }
     );
