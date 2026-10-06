@@ -21,6 +21,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { randomUUID } from 'node:crypto';
 import { isR2Configured, putObject, signGetUrl } from '@/lib/r2';
+import { CHAT_IMAGE_MIMES, CHAT_UPLOAD_ALLOWED, CHAT_UPLOAD_MAX_BYTES, safeFilename } from '@/lib/chatUploadRules';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,50 +29,11 @@ export const dynamic = 'force-dynamic';
 // image inside the window. The endpoint is small even at max size.
 export const maxDuration = 30;
 
-const MAX_BYTES = 10 * 1024 * 1024;
-
-// Broad allow-list: image formats, PDFs, common documents, plain text,
-// common archives. Anything not on this list is refused up-front so a
-// user can't stash executables in R2 via chat.
-const ALLOWED = new Set<string>([
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml',
-  'image/heic',
-  'image/heif',
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-powerpoint',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'text/plain',
-  'text/csv',
-  'application/json',
-  'application/zip',
-]);
-
-const IMAGE_MIMES = new Set<string>([
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-  'image/svg+xml',
-  'image/heic',
-  'image/heif',
-]);
-
-/** Restrict to path-safe chars; keep original extension for the card. */
-function safeFilename(raw: string): string {
-  const base = raw.split(/[\\/]/).pop() || 'file';
-  return base
-    .replace(/[^\w. \-]+/g, '_')
-    .replace(/^\.+/, '')
-    .slice(0, 100) || 'file';
-}
+// Limits and the allowed file types are shared with group chat
+// (src/lib/chatUploadRules.ts).
+const MAX_BYTES = CHAT_UPLOAD_MAX_BYTES;
+const ALLOWED = CHAT_UPLOAD_ALLOWED;
+const IMAGE_MIMES = CHAT_IMAGE_MIMES;
 
 export async function POST(req: Request) {
   const { userId } = await auth();

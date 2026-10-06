@@ -10,9 +10,11 @@ import GroupIcon from "../GroupIcon";
 import GroupActions from "./GroupActions";
 import MeetingsTab from "./MeetingsTab";
 import ReportsTab from "./ReportsTab";
+import ChatTab from "./ChatTab";
 import CallAlertsButton from "@/components/notifications/CallAlertsButton";
 
-type Tab = "members" | "meetings" | "reports" | "settings";
+type Tab = "chat" | "members" | "meetings" | "reports" | "settings";
+const TABS: Tab[] = ["chat", "members", "meetings", "reports", "settings"];
 
 const ROLE_LABEL: Record<MeetingRole, string> = {
   owner: "Owner",
@@ -139,17 +141,28 @@ export default function GroupView({
   activity,
   me,
   capabilities,
+  chatUnread,
+  initialTab,
 }: {
   group: Group;
   members: GroupMember[];
   activity: GroupActivity[];
   me: { userId: string; role: MeetingRole };
   capabilities: GroupCapabilities;
+  /** Messages in the group's chat this person has not read. */
+  chatUnread: number;
+  /** ?tab= from the link that brought them (a mention opens the chat). */
+  initialTab?: string;
 }) {
   const showSettings = capabilities.editSettings || capabilities.deleteGroup || capabilities.transferOwnership;
-  const [tab, setTab] = useState<Tab>("members");
+  // Members land in the chat; those who run the group, on its members.
+  const [tab, setTab] = useState<Tab>(
+    TABS.includes(initialTab as Tab) ? (initialTab as Tab) : me.role === "participant" ? "chat" : "members"
+  );
+  const [unread, setUnread] = useState(chatUnread);
   const [showAllActivity, setShowAllActivity] = useState(false);
   const tabs: Array<{ key: Tab; label: string }> = [
+    { key: "chat", label: unread > 0 ? `Chat (${unread > 99 ? "99+" : unread})` : "Chat" },
     { key: "members", label: "Members" },
     { key: "meetings", label: "Meetings" },
     { key: "reports", label: "Reports" },
@@ -259,7 +272,16 @@ export default function GroupView({
           </div>
 
           <div role="tabpanel" className="pt-6">
-            {tab === "members" ? (
+            {tab === "chat" ? (
+              <ChatTab
+                groupId={group.id}
+                meId={me.userId}
+                members={members}
+                canModerate={capabilities.manageMembers}
+                active
+                onUnreadCleared={() => setUnread(0)}
+              />
+            ) : tab === "members" ? (
               <MembersTab group={group} members={members} me={me} capabilities={capabilities} />
             ) : tab === "meetings" ? (
               <MeetingsTab

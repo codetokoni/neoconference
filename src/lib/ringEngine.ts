@@ -428,6 +428,8 @@ export interface DispatchResult {
   errors: number;
   /** Another tick held the lock; this one did nothing. */
   locked?: boolean;
+  /** Group-chat lines this tick posted, and how many meetings are still open. */
+  chat?: { started: number; ended: number; open: number };
 }
 
 /** Run one job. "skipped" when it no longer applies. */
@@ -478,6 +480,15 @@ export async function runDispatch(now: number = Date.now()): Promise<DispatchRes
         result.errors++;
         console.error("[dispatch] job failed", job.id, err);
       }
+    }
+    // Group meetings that started or ended since the last tick get their
+    // line in the group's chat (src/lib/groupChatEvents.ts).
+    try {
+      const { processOpenMeetings } = await import("@/lib/groupChatEvents");
+      result.chat = await processOpenMeetings(now);
+    } catch (err) {
+      result.errors++;
+      console.error("[dispatch] chat lines failed", err);
     }
   } finally {
     await releaseTickLock();

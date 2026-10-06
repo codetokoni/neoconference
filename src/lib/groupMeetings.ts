@@ -766,6 +766,20 @@ export async function createGroupMeetings(
             ? `${creator.name} scheduled “${first.name}” (${events.length} meetings)`
             : `${creator.name} scheduled “${first.name}”`,
   });
+  // The group's chat says so (calls are private and say nothing). Loaded
+  // here: groupChatEvents reads reports, which read this module.
+  if (kind !== "call") {
+    const chat = await import("@/lib/groupChatEvents");
+    try {
+      if (kind === "scheduled") await chat.announceScheduled(events, creator.name);
+      else {
+        await chat.trackOpenMeeting(first.id);
+        await chat.announceStarted(first);
+      }
+    } catch (err) {
+      console.warn("[groupMeetings] chat line failed", err);
+    }
+  }
   return { events, ...(seriesId ? { seriesId } : {}) };
 }
 
@@ -952,6 +966,11 @@ export async function cancelGroupMeetings(
         ? `${actor.name} cancelled “${ev.name}” (${out.length} meetings)`
         : `${actor.name} cancelled “${ev.name}”`,
   });
+  if (out.length > 0) {
+    // Loaded here: groupChatEvents reads reports, which read this module.
+    const { announceCancelled } = await import("@/lib/groupChatEvents");
+    await announceCancelled(out, actor.name).catch((err) => console.warn("[groupMeetings] chat line failed", err));
+  }
   return out;
 }
 
