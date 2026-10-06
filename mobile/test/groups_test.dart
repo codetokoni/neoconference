@@ -191,6 +191,7 @@ void main() {
         if (path == '/api/groups/g1/meetings/evt_s') {
           return json({'ok': true, 'updated': [], 'cancelled': [], 'notified': {'sent': 1, 'unreachable': 0}});
         }
+        if (path == '/api/groups/g1/messages') return json({'ver': 1, 'messages': [], 'hasOlder': false, 'live': []});
         if (path == '/api/groups/invite/expiredtoken12345') return json({'error': 'invite_expired'}, 410);
         return json({'error': 'not_found'}, 404);
       });
@@ -564,6 +565,9 @@ void main() {
       role = 'participant';
       await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
       await tester.pumpAndSettle();
+      // A Member lands in the chat; the meetings are a tab away.
+      expect(find.text('Message the group'), findsOneWidget);
+      await openTab(tester, 'Meetings');
 
       expect(find.text('Start meeting'), findsNothing);
       expect(find.widgetWithText(OutlinedButton, 'Schedule'), findsNothing);

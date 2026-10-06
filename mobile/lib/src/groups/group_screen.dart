@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +7,7 @@ import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
 import '../meetings/when.dart';
+import 'group_chat_tab.dart';
 import 'group_join.dart';
 import 'group_meetings_api.dart';
 import 'group_meetings_tab.dart';
@@ -17,6 +20,7 @@ import 'groups_screen.dart' show GroupIcon, RolePill;
 /// The tabs a group page can have. Which ones show depends on what the
 /// person may do there, as on the web.
 enum GroupTab {
+  chat('Chat'),
   meetings('Meetings'),
   members('Members'),
   activity('Activity'),
@@ -47,6 +51,9 @@ class GroupScreen extends ConsumerStatefulWidget {
 class _GroupScreenState extends ConsumerState<GroupScreen> with RouteAware {
   String get groupId => widget.groupId;
 
+  /// The page's own scroll: the header, then the pinned tabs.
+  final _outer = ScrollController();
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -57,6 +64,7 @@ class _GroupScreenState extends ConsumerState<GroupScreen> with RouteAware {
   @override
   void dispose() {
     appRouteObserver.unsubscribe(this);
+    _outer.dispose();
     super.dispose();
   }
 
@@ -93,17 +101,32 @@ class _GroupScreenState extends ConsumerState<GroupScreen> with RouteAware {
     }
 
     final tabs = [
+      GroupTab.chat,
       GroupTab.meetings,
       GroupTab.members,
       GroupTab.activity,
       if (d.capabilities.anySettings) GroupTab.settings,
     ];
+    // Members land in the chat, as on the web; whoever runs the group
+    // lands on its meetings.
+    final first = d.myRole == GroupRole.participant ? GroupTab.chat : GroupTab.meetings;
+    final unread = ref
+            .watch(groupsProvider)
+            .valueOrNull
+            ?.where((g) => g.group.id == groupId)
+            .firstOrNull
+            ?.unread ??
+        0;
 
     return DefaultTabController(
       // A new set of tabs (a role changed) starts a new controller.
       key: ValueKey(tabs.map((t) => t.name).join(',')),
       length: tabs.length,
-      child: Scaffold(
+      initialIndex: tabs.indexOf(first),
+      child: _HeaderFolder(
+        outer: _outer,
+        tabs: tabs,
+        child: Scaffold(
         backgroundColor: p.bg,
         appBar: AppBar(
           title: Text(d.group.name, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -123,6 +146,7 @@ class _GroupScreenState extends ConsumerState<GroupScreen> with RouteAware {
           // The group's header first, then its tabs, which stay pinned
           // under the app bar once the header has scrolled away.
           child: NestedScrollView(
+            controller: _outer,
             headerSliverBuilder: (context, _) => [
               SliverToBoxAdapter(child: GroupHeader(detail: d)),
               SliverPersistentHeader(
@@ -133,7 +157,18 @@ class _GroupScreenState extends ConsumerState<GroupScreen> with RouteAware {
                   bar: TabBar(
                     isScrollable: tabs.length > 3,
                     tabAlignment: tabs.length > 3 ? TabAlignment.start : null,
-                    tabs: [for (final t in tabs) Tab(text: t.label)],
+                    tabs: [
+                      for (final t in tabs)
+                        t == GroupTab.chat && unread > 0
+                            ? Tab(
+                                child: Badge(
+                                  label: Text(unread > 99 ? '99+' : '$unread'),
+                                  offset: const Offset(14, -6),
+                                  child: Text(t.label),
+                                ),
+                              )
+                            : Tab(text: t.label),
+                    ],
                   ),
                 ),
               ),
@@ -142,6 +177,7 @@ class _GroupScreenState extends ConsumerState<GroupScreen> with RouteAware {
               children: [
                 for (final t in tabs)
                   switch (t) {
+                    GroupTab.chat => GroupChatTab(detail: d),
                     GroupTab.meetings => GroupMeetingsTab(detail: d),
                     GroupTab.members => GroupMembersTab(detail: d),
                     GroupTab.activity => GroupActivityTab(activity: d.activity),
@@ -152,8 +188,54 @@ class _GroupScreenState extends ConsumerState<GroupScreen> with RouteAware {
           ),
         ),
       ),
+      ),
     );
   }
+}
+
+/// Folds the group's header away whenever the Chat tab is showing, so the
+/// conversation and the keyboard get the screen; the other tabs leave it
+/// where it is (scrolling them brings it back).
+class _HeaderFolder extends StatefulWidget {
+  const _HeaderFolder({required this.outer, required this.tabs, required this.child});
+
+  final ScrollController outer;
+  final List<GroupTab> tabs;
+  final Widget child;
+
+  @override
+  State<_HeaderFolder> createState() => _HeaderFolderState();
+}
+
+class _HeaderFolderState extends State<_HeaderFolder> {
+  TabController? _tabs;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final tabs = DefaultTabController.of(context);
+    if (tabs == _tabs) return;
+    _tabs?.removeListener(_follow);
+    _tabs = tabs..addListener(_follow);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _follow());
+  }
+
+  @override
+  void dispose() {
+    _tabs?.removeListener(_follow);
+    super.dispose();
+  }
+
+  void _follow() {
+    final tabs = _tabs;
+    if (tabs == null || !mounted || widget.tabs[tabs.index] != GroupTab.chat) return;
+    final outer = widget.outer;
+    if (!outer.hasClients) return;
+    unawaited(outer.animateTo(outer.position.maxScrollExtent, duration: NeoMotion.base, curve: NeoMotion.curve));
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// Loads everything on a group's page again: the group, its live and
