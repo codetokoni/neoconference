@@ -36,16 +36,20 @@ class CallPush {
   static const callsChannel = 'calls';
   static const meetingsChannel = 'meetings';
 
-  bool _started = false;
+  /// Whether start-up finished and pushes work; awaited by everything else.
+  /// The signed-in screen asks to register on its first frame, before
+  /// Firebase has finished starting — registering then failed with "no
+  /// Firebase App", which is why this is a future and not a flag.
+  Future<bool>? _ready;
   String? _registeredToken;
   StreamSubscription<String>? _refresh;
 
   /// Firebase and the notification channels, and listening for pushes and
   /// taps. Called once from main(); a phone without Google Play services
   /// (or a build without google-services.json) carries on without pushes.
-  Future<void> start() async {
-    if (_started) return;
-    _started = true;
+  Future<bool> start() => _ready ??= _start();
+
+  Future<bool> _start() async {
     try {
       await Firebase.initializeApp();
       FirebaseMessaging.onBackgroundMessage(callPushBackgroundMessage);
@@ -56,15 +60,18 @@ class CallPush {
       final launch = await _plugin.getNotificationAppLaunchDetails();
       final response = launch?.notificationResponse;
       if (launch?.didNotificationLaunchApp == true && response != null) _onTap(response);
+      return true;
     } catch (e) {
       debugPrint('[push] start: $e');
+      return false;
     }
   }
 
   /// Registers this phone for the signed-in person's pushes, and again
   /// whenever Firebase gives it a new token.
   Future<void> register(ApiClient api) async {
-    if (!_started) return;
+    final ready = _ready;
+    if (ready == null || !await ready) return;
     try {
       await FirebaseMessaging.instance.requestPermission();
       await _plugin
@@ -95,7 +102,8 @@ class CallPush {
   /// push to it fails as unregistered and it is forgotten there too. No
   /// signed-in request is needed, which there no longer is.
   Future<void> unregister() async {
-    if (!_started) return;
+    final ready = _ready;
+    if (ready == null || !await ready) return;
     await _refresh?.cancel();
     _refresh = null;
     _registeredToken = null;
