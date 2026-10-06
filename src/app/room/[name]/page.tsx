@@ -24,6 +24,7 @@ import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
 import MobileMoreMenu from "@/components/MobileMoreMenu";
 import ConferenceErrorBoundary from "@/components/ConferenceErrorBoundary";
 import { RoomNameEntry, getLastChoices, getSavedDisplayName } from "@/components/RoomNameEntry";
+import PresenceHeartbeat from "@/components/groups/PresenceHeartbeat";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import RoomIdleController from "@/components/RoomIdleController";
 import GoLiveButton from "@/components/GoLiveButton";
@@ -893,6 +894,7 @@ function RoomContainer({
         <RoleMetadataListener onRoleChange={setRoomRole} />
         <TileRoleBadges ownerUserId={ownerUserId} />
         <ApplyPrejoinChoices choices={choices} />
+        <PresenceHeartbeat eventSlug={eventSlug} />
         {/* Shown only while the browser is blocking the meeting's sound —
             as it can after joining straight from a notification, with no
             tap on the page yet. One tap starts it. */}

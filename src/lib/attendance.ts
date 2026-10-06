@@ -81,13 +81,29 @@ export async function recordAttendance(
   };
   if (!isKvConfigured()) {
     memBucket(eventId).push(enriched);
-    return;
+  } else {
+    try {
+      await kv.rpush(attendanceKey(eventId), JSON.stringify(enriched));
+      await kv.expire(attendanceKey(eventId), RETENTION_SECONDS);
+    } catch (err) {
+      console.warn("[attendance] KV write failed", err);
+    }
   }
+  if (enriched.action === "join" && enriched.userId) await stopCalling(eventId, enriched.userId);
+}
+
+/**
+ * Someone joined: if a group meeting was ringing them, it stops
+ * (src/lib/ringEngine.ts). Every join — the webhook's, the web beacon's, the
+ * app's — comes through here. Loaded only when needed, and never allowed to
+ * fail the attendance write it follows.
+ */
+async function stopCalling(eventId: string, userId: string): Promise<void> {
   try {
-    await kv.rpush(attendanceKey(eventId), JSON.stringify(enriched));
-    await kv.expire(attendanceKey(eventId), RETENTION_SECONDS);
+    const { markJoinedIfCalled } = await import("@/lib/ringEngine");
+    await markJoinedIfCalled(eventId, userId.split("#")[0]);
   } catch (err) {
-    console.warn("[attendance] KV write failed", err);
+    console.warn("[attendance] could not update call status", err);
   }
 }
 

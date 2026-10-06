@@ -42,6 +42,10 @@ export interface PushPayload {
   ringId?: string;
   /** Epoch ms after which the worker drops it unshown. */
   expiresAt?: number;
+  /** Rings: who is calling, from which group, into which meeting. */
+  caller?: string;
+  groupName?: string;
+  meetingTitle?: string;
 }
 
 /** A browser's PushSubscription, as PushSubscription.toJSON() gives it. */

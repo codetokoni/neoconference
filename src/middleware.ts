@@ -61,6 +61,9 @@ const isPublicRoute = createRouteMatcher([
   '/groups/join/(.*)',
   '/api/groups/invite/(.*)',
   '/api/cron/(.*)',
+  // The scheduler's tick. No session: the bearer secret checked in the route
+  // (DISPATCH_SECRET / CRON_SECRET) is the credential.
+  '/api/internal/dispatch',
   '/i/(.*)',
   '/video/dashboard',
   // Listed individually on purpose: a wildcard here would silently expose

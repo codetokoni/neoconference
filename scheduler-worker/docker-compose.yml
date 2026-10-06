@@ -1,0 +1,17 @@
+services:
+  scheduler-worker:
+    container_name: neo-scheduler
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Outbound only: it calls the site, nothing calls it.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    stop_grace_period: 25s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

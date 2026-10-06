@@ -10,6 +10,7 @@ import SupportWidget from "@/components/SupportWidget";
 import AndroidAppGate from "@/components/AndroidAppGate";
 import SessionBootstrap from "@/components/SessionBootstrap";
 import PushRegistrar from "@/components/notifications/PushRegistrar";
+import IncomingCall from "@/components/notifications/IncomingCall";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -55,6 +56,7 @@ export default async function RootLayout({
           <main className="min-h-[calc(100vh-65px)]">{children}</main>
           <SessionBootstrap />
           <PushRegistrar />
+          <IncomingCall />
           <SupportWidget />
           {/* Android phones get the app, not the website. */}
           <AndroidAppGate />

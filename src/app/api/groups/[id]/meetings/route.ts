@@ -25,6 +25,7 @@ import {
 } from "@/lib/groupMeetings";
 import { eventAttendees } from "@/lib/groupAttendees";
 import { notifyInvitees } from "@/lib/groupNotify";
+import { ringNow } from "@/lib/ringEngine";
 import {
   groupErrorResponse,
   invalidBody,
@@ -98,12 +99,17 @@ export async function POST(req: Request, ctx: Ctx) {
       meetingGates
     );
     const first = events[0];
-    const notified = await notifyInvitees(
-      events,
-      await inviteesOf(first, gate.member.userId),
-      mode === "scheduled" ? "scheduled" : "started",
-      { senderUserId: gate.member.userId, senderName: gate.member.name, origin }
-    );
+    const recipients = await inviteesOf(first, gate.member.userId);
+    const notifyCtx = { senderUserId: gate.member.userId, senderName: gate.member.name, origin };
+    // A scheduled meeting is announced now and rung at its start (the
+    // scheduler). One starting now rings everyone at once; its push, bell
+    // entry and KingsChat fallback come from the ring, so the notice itself
+    // goes by email only.
+    const notified =
+      mode === "scheduled"
+        ? await notifyInvitees(events, recipients, "scheduled", notifyCtx)
+        : await notifyInvitees(events, recipients, "started", notifyCtx, { kingschat: false, inApp: false, push: false });
+    if (mode === "now") await ringNow(first.id, { except: gate.member.userId });
     return NextResponse.json(
       {
         ok: true,

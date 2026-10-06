@@ -23,9 +23,10 @@ export default function PushRegistrar() {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
 
     const onMessage = (e: MessageEvent) => {
-      const data = e.data as { kind?: string; url?: string } | null;
+      const data = e.data as { kind?: string; url?: string; payload?: unknown } | null;
       if (data?.kind === "neo-push") {
-        window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED));
+        // The payload rides along: the call overlay acts on rings at once.
+        window.dispatchEvent(new CustomEvent(NOTIFICATIONS_CHANGED, { detail: data.payload }));
       } else if (data?.kind === "neo-navigate" && typeof data.url === "string") {
         const url = new URL(data.url, window.location.origin);
         if (url.origin === window.location.origin) window.location.assign(url.href);

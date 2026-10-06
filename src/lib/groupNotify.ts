@@ -313,17 +313,31 @@ async function sendPushNotice(to: Recipient, p: PushPayload, opts: SendOptions):
  * channel is reported in the result, so the change that caused the notice
  * stands either way.
  */
+/**
+ * Channels to leave out. A meeting that rings people (src/lib/ringEngine.ts)
+ * sends its own push, bell entry and KingsChat fallback, so its "started"
+ * notice goes by email only.
+ */
+export interface ChannelSwitches {
+  email?: boolean;
+  kingschat?: boolean;
+  inApp?: boolean;
+  push?: boolean;
+}
+
 export async function notifyInvitees(
   event: NeoEvent | NeoEvent[],
   recipients: Recipient[],
   kind: NotifyKind,
-  ctx: NotifyContext
+  ctx: NotifyContext,
+  channels: ChannelSwitches = {}
 ): Promise<NotifySummary> {
+  const on = { email: true, kingschat: true, inApp: true, push: true, ...channels };
   const events = Array.isArray(event) ? event : [event];
   if (events.length === 0 || recipients.length === 0) return { sent: 0, unreachable: 0, results: [] };
 
-  const senderLinked = Boolean((await loadKcTokens(ctx.senderUserId).catch(() => null))?.accessToken);
-  const emailed = await sendEmailNotices(recipients, events, kind, ctx).catch((err) => {
+  const senderLinked = on.kingschat && Boolean((await loadKcTokens(ctx.senderUserId).catch(() => null))?.accessToken);
+  const emailed = await (on.email ? sendEmailNotices(recipients, events, kind, ctx) : Promise.resolve(new Map<string, ChannelOutcome>())).catch((err) => {
     console.warn("[groupNotify] email threw", err);
     return new Map<string, ChannelOutcome>(
       recipients.filter((r) => r.email).map((r) => [r.email!.trim().toLowerCase(), "failed" as const])
@@ -346,8 +360,8 @@ export async function notifyInvitees(
           };
           const [kingschat, inApp, push] = await Promise.all([
             sendKingsChatNotice(to, events, kind, ctx, senderLinked).catch(guard("KingsChat")),
-            sendInAppNotice(to, payload).catch(guard("in-app")),
-            sendPushNotice(to, payload, pushOpts).catch(guard("push")),
+            on.inApp ? sendInAppNotice(to, payload).catch(guard("in-app")) : Promise.resolve("unavailable" as const),
+            on.push ? sendPushNotice(to, payload, pushOpts).catch(guard("push")) : Promise.resolve("unavailable" as const),
           ]);
           return {
             name: to.name,
