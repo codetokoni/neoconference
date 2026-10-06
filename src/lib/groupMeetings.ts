@@ -44,6 +44,7 @@ import {
 import type { GroupMeetingInfo, NeoEvent, WaitingRoomEntry } from "@/types/event";
 import { isValidTimezone, localParts, zonedToUtc } from "@/lib/zonedTime";
 import { cancelMeetingJobs, scheduleMeetingJobs } from "@/lib/scheduler";
+import { addUserMeeting, meetingStartMs } from "@/lib/userMeetings";
 
 export { isValidTimezone, zonedToUtc } from "@/lib/zonedTime";
 
@@ -59,6 +60,12 @@ export interface InvitedEntry {
   addedBy: string;
   /** Epoch ms. */
   addedAt: number;
+  /**
+   * Who they were when invited, kept so a report still names someone who
+   * never came and has since left the group.
+   */
+  name?: string;
+  email?: string;
 }
 
 /** Someone to invite: an account, an address, or both. */
@@ -157,7 +164,14 @@ function parseInvited(raw: unknown): InvitedEntry | null {
     source,
     addedBy: typeof o.addedBy === "string" ? o.addedBy : "",
     addedAt: typeof o.addedAt === "number" ? o.addedAt : 0,
+    ...(typeof o.name === "string" && o.name ? { name: o.name } : {}),
+    ...(typeof o.email === "string" && o.email ? { email: o.email } : {}),
   };
+}
+
+/** Name and email for an invited row, when known. */
+function who(name?: string, email?: string): Pick<InvitedEntry, "name" | "email"> {
+  return { ...(name ? { name: name.slice(0, 120) } : {}), ...(email ? { email: email.toLowerCase() } : {}) };
 }
 
 /** userId, or a lowercased email for someone without an account. */
@@ -167,7 +181,11 @@ export function inviteKey(t: InviteTarget): string | null {
   return null;
 }
 
-export async function addInvited(eid: string, rows: Record<string, InvitedEntry>): Promise<void> {
+/**
+ * Record invitations. With `startMs`, each invited account also gets the
+ * meeting in its own list (userMeetings.ts), for My meeting reports.
+ */
+export async function addInvited(eid: string, rows: Record<string, InvitedEntry>, startMs?: number): Promise<void> {
   const keys = Object.keys(rows);
   if (keys.length === 0) return;
   if (!isKvConfigured()) {
@@ -177,11 +195,14 @@ export async function addInvited(eid: string, rows: Record<string, InvitedEntry>
       memInvited.set(eid, b);
     }
     for (const k of keys) b.set(k, rows[k]);
-    return;
+  } else {
+    const fields: Record<string, string> = {};
+    for (const k of keys) fields[k] = JSON.stringify(rows[k]);
+    await kv.hset(invitedKey(eid), fields);
   }
-  const fields: Record<string, string> = {};
-  for (const k of keys) fields[k] = JSON.stringify(rows[k]);
-  await kv.hset(invitedKey(eid), fields);
+  if (startMs !== undefined) {
+    await Promise.all(keys.filter((k) => !k.includes("@")).map((k) => addUserMeeting(k, eid, startMs)));
+  }
 }
 
 export async function listInvited(eid: string): Promise<Map<string, InvitedEntry>> {
@@ -701,15 +722,18 @@ export async function createGroupMeetings(
     const at = Date.now();
     const rows: Record<string, InvitedEntry> = {};
     if (kind === "call") {
-      for (const id of callIds) rows[id] = { source: "private", addedBy: creator.userId, addedAt: at };
+      for (const id of callIds) {
+        const m = members.find((x) => x.userId === id);
+        rows[id] = { source: "private", addedBy: creator.userId, addedAt: at, ...who(m?.name, m?.email) };
+      }
     } else {
-      for (const m of members) rows[m.userId] = { source: "group", addedBy: creator.userId, addedAt: at };
+      for (const m of members) rows[m.userId] = { source: "group", addedBy: creator.userId, addedAt: at, ...who(m.name, m.email) };
       for (const t of extras) {
         const key = inviteKey(t);
-        if (key && !rows[key]) rows[key] = { source: "extra", addedBy: creator.userId, addedAt: at };
+        if (key && !rows[key]) rows[key] = { source: "extra", addedBy: creator.userId, addedAt: at, ...who(t.name, t.email) };
       }
     }
-    await addInvited(ev.id, rows);
+    await addInvited(ev.id, rows, Date.parse(startIso));
     await indexMeeting(group.id, ev.id, Date.parse(startIso));
     // Reminders an hour and half an hour ahead, and the first ring at the
     // start (src/lib/ringEngine.ts). A meeting that starts now rings at once
@@ -775,10 +799,10 @@ export async function addParticipants(
     const existing = invited.get(key);
     const alreadyIn = (existing && existing.source !== "group") || (wholeGroup && memberIds.has(key));
     if (alreadyIn) continue;
-    rows[key] = { source: "added", addedBy: addedBy.userId, addedAt: at };
+    rows[key] = { source: "added", addedBy: addedBy.userId, addedAt: at, ...who(t.name, t.email) };
     added.push(t);
   }
-  await addInvited(ev.id, rows);
+  await addInvited(ev.id, rows, meetingStartMs(ev));
   if (added.length > 0) {
     await appendActivity(ev.groupId, {
       actorId: addedBy.userId,
@@ -955,8 +979,11 @@ export interface MeetingListItem {
   createdBy: string;
 }
 
-/** Whether `userId` should see this meeting in its group's list. */
-async function visibleTo(ev: NeoEvent, userId: string): Promise<boolean> {
+/**
+ * Whether `userId` should see this meeting in its group's lists and
+ * reports: a private call only to the people in it.
+ */
+export async function visibleTo(ev: NeoEvent, userId: string): Promise<boolean> {
   if (ev.groupMeeting?.kind !== "call") return true;
   return (await listInvited(ev.id)).has(userId);
 }

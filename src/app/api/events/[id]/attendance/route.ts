@@ -15,7 +15,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import ExcelJS from "exceljs";
 import { authorize } from "@/lib/authz";
 import { eventStore } from "@/lib/eventStore";
-import { fetchAttendanceReport } from "@/lib/attendance";
+import { ATTENDANCE_COLUMNS, attendanceRowCells, fetchAttendanceReport } from "@/lib/attendance";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,43 +35,11 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet("Attendance");
-  sheet.columns = [
-    { header: "Full Name", key: "fullName", width: 24 },
-    { header: "Username", key: "username", width: 20 },
-    { header: "Email", key: "email", width: 30 },
-    { header: "Meeting Title", key: "meetingTitle", width: 28 },
-    { header: "Joined Date", key: "joinedDate", width: 14 },
-    { header: "Joined Time", key: "joinedTime", width: 14 },
-    { header: "Left Time", key: "leftTime", width: 14 },
-    { header: "Time Zone", key: "timeZone", width: 10 },
-    { header: "Attendance Duration", key: "attendanceDuration", width: 18 },
-    { header: "Repeat Attendance", key: "repeatAttendance", width: 16 },
-    { header: "Number of Entries", key: "numberOfEntries", width: 16 },
-    { header: "Role", key: "role", width: 12 },
-    { header: "Attendance Status", key: "attendanceStatus", width: 16 },
-    { header: "Inactivity Warnings", key: "inactivityWarnings", width: 16 },
-  ];
+  sheet.columns = ATTENDANCE_COLUMNS.map((c) => ({ ...c }));
   sheet.getRow(1).font = { bold: true };
   sheet.getRow(1).alignment = { vertical: "middle" };
 
-  for (const row of rows) {
-    sheet.addRow({
-      fullName: row.fullName,
-      username: row.username,
-      email: row.email,
-      meetingTitle: row.meetingTitle,
-      joinedDate: row.joinedDate,
-      joinedTime: row.joinedTime,
-      leftTime: row.leftTime,
-      timeZone: row.timeZone,
-      attendanceDuration: row.attendanceDuration,
-      repeatAttendance: row.repeatAttendance ? "Yes" : "No",
-      numberOfEntries: row.numberOfEntries,
-      role: row.role,
-      attendanceStatus: row.attendanceStatus,
-      inactivityWarnings: row.inactivityWarnings,
-    });
-  }
+  for (const row of rows) sheet.addRow(attendanceRowCells(row));
 
   // Sessions sheet: one row per individual join/leave interval — spec asks
   // for both the combined summary AND the underlying individual records.

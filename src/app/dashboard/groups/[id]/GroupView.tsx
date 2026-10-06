@@ -9,6 +9,7 @@ import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
 import GroupIcon from "../GroupIcon";
 import GroupActions from "./GroupActions";
 import MeetingsTab from "./MeetingsTab";
+import ReportsTab from "./ReportsTab";
 import CallAlertsButton from "@/components/notifications/CallAlertsButton";
 
 type Tab = "members" | "meetings" | "reports" | "settings";
@@ -265,11 +266,12 @@ export default function GroupView({
                 groupId={group.id}
                 groupName={group.name}
                 canSchedule={capabilities.schedule}
+                canViewReports={capabilities.viewReports}
                 version={meetingsVersion}
                 onChanged={meetingsChanged}
               />
             ) : tab === "reports" ? (
-              <EmptyState title="No reports yet" text="Attendance reports for this group's meetings will appear here." />
+              <ReportsTab groupId={group.id} canView={capabilities.viewReports} canExport={capabilities.exportReports} />
             ) : (
               <SettingsTab group={group} members={members} me={me} capabilities={capabilities} />
             )}
@@ -277,15 +279,6 @@ export default function GroupView({
         </div>
       </div>
     </main>
-  );
-}
-
-function EmptyState({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/20 p-10 text-center">
-      <p className="font-medium text-slate-200">{title}</p>
-      <p className="mt-1 text-sm text-slate-400">{text}</p>
-    </div>
   );
 }
 

@@ -95,6 +95,9 @@ export default async function DashboardPage() {
             <Link href="/dashboard/groups" className="neo-btn-ghost text-sm px-4 py-2.5">
               Groups
             </Link>
+            <Link href="/dashboard/reports" className="neo-btn-ghost text-sm px-4 py-2.5">
+              My reports
+            </Link>
             <Link href="/dashboard/new" className="neo-btn text-sm px-4 py-2.5">
               + New event
             </Link>

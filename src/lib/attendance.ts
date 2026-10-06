@@ -89,21 +89,35 @@ export async function recordAttendance(
       console.warn("[attendance] KV write failed", err);
     }
   }
-  if (enriched.action === "join" && enriched.userId) await stopCalling(eventId, enriched.userId);
+  if (enriched.action === "join" && enriched.userId) await afterJoin(eventId, enriched.userId);
 }
 
 /**
- * Someone joined: if a group meeting was ringing them, it stops
- * (src/lib/ringEngine.ts). Every join — the webhook's, the web beacon's, the
- * app's — comes through here. Loaded only when needed, and never allowed to
- * fail the attendance write it follows.
+ * Someone joined. If a group meeting was ringing them, it stops
+ * (src/lib/ringEngine.ts), and a group meeting goes into their own list
+ * (src/lib/userMeetings.ts). Every join — the webhook's, the web beacon's,
+ * the app's — comes through here. Loaded only when needed, and never allowed
+ * to fail the attendance write it follows.
  */
-async function stopCalling(eventId: string, userId: string): Promise<void> {
+async function afterJoin(eventId: string, userId: string): Promise<void> {
+  const uid = userId.split("#")[0];
   try {
     const { markJoinedIfCalled } = await import("@/lib/ringEngine");
-    await markJoinedIfCalled(eventId, userId.split("#")[0]);
+    await markJoinedIfCalled(eventId, uid);
   } catch (err) {
     console.warn("[attendance] could not update call status", err);
+  }
+  // A group meeting someone joined goes into their own list (My meeting
+  // reports), invited or not.
+  try {
+    const { eventStore } = await import("@/lib/eventStore");
+    const ev = await eventStore.byId(eventId);
+    if (ev?.groupId) {
+      const { addUserMeeting, meetingStartMs } = await import("@/lib/userMeetings");
+      await addUserMeeting(uid, eventId, meetingStartMs(ev));
+    }
+  } catch (err) {
+    console.warn("[attendance] could not add to the person's meetings", err);
   }
 }
 
@@ -323,6 +337,47 @@ export function buildAttendanceReport(
     const bv = b.joinedDate + b.joinedTime;
     return av.localeCompare(bv);
   });
+}
+
+/**
+ * The FRS §4 spreadsheet columns, shared by the meeting's attendance export
+ * (/api/events/[id]/attendance) and the group reports, so both read the same.
+ */
+export const ATTENDANCE_COLUMNS: Array<{ header: string; key: keyof AttendanceReportRow; width: number }> = [
+  { header: "Full Name", key: "fullName", width: 24 },
+  { header: "Username", key: "username", width: 20 },
+  { header: "Email", key: "email", width: 30 },
+  { header: "Meeting Title", key: "meetingTitle", width: 28 },
+  { header: "Joined Date", key: "joinedDate", width: 14 },
+  { header: "Joined Time", key: "joinedTime", width: 14 },
+  { header: "Left Time", key: "leftTime", width: 14 },
+  { header: "Time Zone", key: "timeZone", width: 10 },
+  { header: "Attendance Duration", key: "attendanceDuration", width: 18 },
+  { header: "Repeat Attendance", key: "repeatAttendance", width: 16 },
+  { header: "Number of Entries", key: "numberOfEntries", width: 16 },
+  { header: "Role", key: "role", width: 12 },
+  { header: "Attendance Status", key: "attendanceStatus", width: 16 },
+  { header: "Inactivity Warnings", key: "inactivityWarnings", width: 16 },
+];
+
+/** One report row as spreadsheet cells, keyed like ATTENDANCE_COLUMNS. */
+export function attendanceRowCells(row: AttendanceReportRow): Record<string, string | number> {
+  return {
+    fullName: row.fullName,
+    username: row.username,
+    email: row.email,
+    meetingTitle: row.meetingTitle,
+    joinedDate: row.joinedDate,
+    joinedTime: row.joinedTime,
+    leftTime: row.leftTime,
+    timeZone: row.timeZone,
+    attendanceDuration: row.attendanceDuration,
+    repeatAttendance: row.repeatAttendance ? "Yes" : "No",
+    numberOfEntries: row.numberOfEntries,
+    role: row.role,
+    attendanceStatus: row.attendanceStatus,
+    inactivityWarnings: row.inactivityWarnings,
+  };
 }
 
 /** Convenience wrapper: fetch + aggregate in one call for the export route. */
