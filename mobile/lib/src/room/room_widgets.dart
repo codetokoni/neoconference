@@ -749,6 +749,10 @@ class ParticipantsSheet extends ConsumerWidget {
                       slug: slug,
                       // The LiveKit identity is the user id plus "#nonce".
                       myUserId: me?.identity.split('#').first,
+                      roomPeople: [
+                        for (final person in others)
+                          (userId: person.identity.split('#').first, name: person.name),
+                      ],
                     ),
                   if (me != null)
                     _PersonRow(

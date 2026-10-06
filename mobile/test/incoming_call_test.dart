@@ -41,6 +41,8 @@ void main() {
       };
 
   late Map<String, dynamic> calls;
+  late bool addedZed;
+  late String groupRole;
 
   MockClient server() => MockClient((req) async {
         sent.add(req);
@@ -58,6 +60,30 @@ void main() {
           return json({'eventId': 'e1', 'groupId': 'g1', 'groupName': 'Cell Leaders', 'kind': 'now', 'canAdd': true, 'candidates': []});
         }
         if (path == '/api/events/cell-night/ring') return json({'ok': true, 'rung': ['user_k'], 'busy': []});
+        if (path == '/api/groups/g1' && req.method == 'GET') {
+          return json({
+            'group': {'id': 'g1', 'name': 'Cell Leaders', 'settings': {}},
+            'members': [
+              {'userId': 'user_me', 'role': 'owner', 'name': 'Ada', 'joinedAt': 1},
+              {'userId': 'user_k', 'role': 'participant', 'name': 'Kemi', 'joinedAt': 2},
+              if (addedZed) {'userId': 'user_z', 'role': 'participant', 'name': 'Zed', 'joinedAt': 3},
+            ],
+            'activity': [],
+            'me': {'userId': 'user_me', 'role': groupRole},
+            'capabilities': {'role': groupRole, 'manageMembers': groupRole != 'participant'},
+          });
+        }
+        if (path == '/api/groups/g1/members' && req.method == 'POST') {
+          addedZed = true;
+          return json({
+            'ok': true,
+            'added': [
+              {'userId': 'user_z', 'role': 'participant', 'name': 'Zed', 'joinedAt': 3},
+            ],
+            'alreadyMembers': [],
+            'notFound': [],
+          });
+        }
         if (path == '/api/events/plain-meeting/calls') return json({'error': 'not_found'}, 404);
         if (path == '/api/me/presence') return json({'ok': true});
         return json({'error': 'not_found'}, 404);
@@ -65,6 +91,8 @@ void main() {
 
   setUp(() {
     sent = [];
+    addedZed = false;
+    groupRole = 'owner';
     notifications = [];
     ringer = [];
     joined = [];
@@ -209,6 +237,47 @@ void main() {
         'userIds': ['user_k'],
       });
       expect(find.text('Ringing Kemi again.'), findsOneWidget);
+    });
+
+    testWidgets('someone here on a link, not in the group, can be added to it by their account', (tester) async {
+      await tester.pumpWidget(app(const Scaffold(
+        body: SingleChildScrollView(
+          child: GroupCallingSection(
+            slug: 'cell-night',
+            myUserId: 'user_me',
+            roomPeople: [
+              (userId: 'user_k', name: 'Kemi'), // already in the group
+              (userId: 'user_z', name: 'Zed'), // came in on a link
+              (userId: 'guest-4f2a', name: 'Visitor'), // signed out: no account to add
+            ],
+          ),
+        ),
+      )));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Here, not in Cell Leaders'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Add to group'), findsOneWidget);
+      expect(find.text('Visitor'), findsNothing);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Add to group'));
+      await tester.pumpAndSettle();
+      final add = sent.singleWhere((r) => r.method == 'POST' && r.url.path == '/api/groups/g1/members');
+      expect(jsonDecode(add.body), {
+        'userIds': ['user_z'],
+      });
+      expect(find.text('Zed is now in Cell Leaders.'), findsOneWidget);
+      expect(find.text('Here, not in Cell Leaders'), findsNothing, reason: 'Zed is a member now');
+    });
+
+    testWidgets('a Member is not offered "Add to group"', (tester) async {
+      groupRole = 'participant';
+      await tester.pumpWidget(app(const Scaffold(
+        body: SingleChildScrollView(
+          child: GroupCallingSection(slug: 'cell-night', myUserId: 'user_me', roomPeople: [(userId: 'user_z', name: 'Zed')]),
+        ),
+      )));
+      await tester.pumpAndSettle();
+      expect(find.text('Add to group'), findsNothing);
     });
 
     testWidgets('in a meeting that is not a group\'s it shows nothing and stops asking', (tester) async {

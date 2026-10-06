@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParticipants, useLocalParticipant } from '@livekit/components-react';
 import AddGroupParticipants from '@/components/groups/AddGroupParticipants';
 import GroupCallingPanel from '@/components/groups/GroupCallingPanel';
+import AddRoomPeopleToGroup from '@/components/groups/AddRoomPeopleToGroup';
+import { userIdOfIdentity } from '@/lib/roomPeople';
 
 /**
  * ParticipantsPanel
@@ -315,6 +317,13 @@ export default function ParticipantsPanel({
       {/* Group meetings only; it asks the server and shows nothing otherwise. */}
       {isHost && slug ? <AddGroupParticipants slug={slug} /> : null}
       {isHost && slug ? <GroupCallingPanel slug={slug} /> : null}
+      {isHost && slug ? (
+        <AddRoomPeopleToGroup
+          slug={slug}
+          meId={userIdOfIdentity(localIdentity)}
+          people={remote.map((p) => ({ userId: userIdOfIdentity(p.identity), name: p.name || '' }))}
+        />
+      ) : null}
 
       {canMuteAll && (
         <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: 8 }}>

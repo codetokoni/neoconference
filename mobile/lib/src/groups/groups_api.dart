@@ -70,6 +70,20 @@ class GroupsApi {
     );
   }
 
+  /// Adds people by their account (someone met in a meeting, whose email
+  /// this person may not know).
+  Future<AddMembersResult> addByUserId(String id, List<String> userIds) async {
+    final body = await api.post('/api/groups/${_id(id)}/members', {'userIds': userIds}) as Map;
+    return AddMembersResult(
+      added: [
+        for (final m in (body['added'] as List? ?? const []).whereType<Map<String, dynamic>>())
+          GroupMember.fromJson(m),
+      ],
+      alreadyMembers: [for (final s in (body['alreadyMembers'] as List? ?? const [])) '$s'],
+      notFound: [for (final s in (body['notFound'] as List? ?? const [])) '$s'],
+    );
+  }
+
   /// Gives someone a role; [GroupRole.owner] hands the group over.
   Future<void> setRole(String id, String userId, GroupRole role) async {
     await api.patch('/api/groups/${_id(id)}/members', {'userId': userId, 'role': role.wire});
