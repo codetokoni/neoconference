@@ -25,9 +25,13 @@ import 'incoming_call.dart';
 ///    incoming-call screen, which takes over the ringing.
 ///  - anything else (a reminder, an invite, a mention): an ordinary
 ///    notification on the "meetings" channel that opens the group or
-///    meeting it is about.
+///    meeting it is about. The server sends these with a notification
+///    block, so with the app in the background Android shows them itself
+///    — app code run for them waits out Battery Saver — and this only
+///    handles the tap.
 ///
-/// With the app open, a ring goes straight to the in-app call screen.
+/// With the app open, a ring goes straight to the in-app call screen, and
+/// a notice is shown here (Android shows none for an app in front).
 class CallPush {
   CallPush._();
 
@@ -60,6 +64,11 @@ class CallPush {
       final launch = await _plugin.getNotificationAppLaunchDetails();
       final response = launch?.notificationResponse;
       if (launch?.didNotificationLaunchApp == true && response != null) _onTap(response);
+      // A notice Android showed by itself (see fcmNotice on the server),
+      // tapped while the app was closed, or in the background.
+      final opened = await FirebaseMessaging.instance.getInitialMessage();
+      if (opened != null) _onNoticeOpened(opened);
+      FirebaseMessaging.onMessageOpenedApp.listen(_onNoticeOpened);
       return true;
     } catch (e) {
       debugPrint('[push] start: $e');
@@ -121,6 +130,13 @@ class CallPush {
       IncomingCalls.instance.add(RingArrived(ring));
     } else if (data['type'] != 'ring') {
       unawaited(showNotice(data));
+    }
+  }
+
+  void _onNoticeOpened(RemoteMessage message) {
+    final url = message.data['url'];
+    if (url is String) {
+      IncomingCalls.instance.add(NoticeTapped(url: url, groupId: message.data['groupId'] as String?));
     }
   }
 
@@ -258,6 +274,8 @@ Future<void> showNotice(Map<String, dynamic> data) async {
 /// A push arriving while the app is not in front (in its own isolate).
 @pragma('vm:entry-point')
 Future<void> callPushBackgroundMessage(RemoteMessage message) async {
+  // A notice Android already showed by itself: another would be a copy.
+  if (message.notification != null) return;
   try {
     await Firebase.initializeApp();
     await _initNotifications();

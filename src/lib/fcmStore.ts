@@ -12,8 +12,10 @@
 // FCM answering UNREGISTERED (or 404, or an invalid token) means the app was
 // uninstalled or its token rotated, so that device is deleted on the spot.
 //
-// Messages are data-only: the app builds the notification itself, which is
-// what lets a ring open the full-screen incoming-call screen.
+// A ring is data-only and high priority: the app builds the call
+// notification itself, which is what lets it open the full-screen
+// incoming-call screen. Every other push also carries a notification block
+// that Android shows without the app (see fcmNotice).
 //
 // Optional: without FIREBASE_SERVICE_ACCOUNT (the service account's JSON key)
 // it is simply unavailable and sends report that.
@@ -158,8 +160,17 @@ async function accessToken(sa: ServiceAccount, now: number = Date.now()): Promis
 export type FcmSender = (
   token: string,
   data: Record<string, string>,
-  android: { priority: "HIGH" | "NORMAL"; ttl: string; collapse_key?: string }
+  android: FcmAndroidConfig
 ) => Promise<{ status: number; errorCode?: string }>;
+
+/** The Android part of an FCM message (AndroidConfig in the v1 API). */
+export interface FcmAndroidConfig {
+  priority: "HIGH" | "NORMAL";
+  ttl: string;
+  collapse_key?: string;
+  /** Shown by Android itself, with no app code running (see fcmNotice). */
+  notification?: { title: string; body: string; channel_id: string; icon: string; tag?: string };
+}
 
 const defaultSender: FcmSender = async (token, data, android) => {
   const sa = serviceAccount();
@@ -316,6 +327,29 @@ export function fcmData(payload: PushPayload): Record<string, string> {
 }
 
 /**
+ * What Android shows by itself for every push but a ring.
+ *
+ * A data-only message is handled by app code, which Android runs as a
+ * background job — and in Battery Saver it holds a normal-priority job back
+ * until the app is opened. Found on a phone: a 30-minute reminder reached it
+ * at 23:50 and was still waiting to be shown ten minutes later. With this
+ * block Android draws the notification itself, Battery Saver or not; the app
+ * still gets the data when it is tapped. A ring stays data-only and high
+ * priority: only app code can open the full-screen call, and high priority is
+ * let through at once.
+ */
+export function fcmNotice(payload: PushPayload, tag?: string): FcmAndroidConfig["notification"] | undefined {
+  if (payload.type === "ring") return undefined;
+  return {
+    title: payload.title,
+    body: payload.body,
+    channel_id: "meetings",
+    icon: "ic_stat_call",
+    ...(tag ? { tag } : {}),
+  };
+}
+
+/**
  * FCM refusals that mean the token will never work again. Not
  * INVALID_ARGUMENT: FCM also says that about a malformed message, and a bad
  * message must not cost every phone its registration.
@@ -336,10 +370,12 @@ export async function sendFcm(
   if (devices.size === 0) return { configured: true, devices: [] };
 
   const data = fcmData(payload);
-  const android = {
-    priority: opts.urgency === "high" ? ("HIGH" as const) : ("NORMAL" as const),
+  const notification = fcmNotice(payload, opts.topic);
+  const android: FcmAndroidConfig = {
+    priority: opts.urgency === "high" ? "HIGH" : "NORMAL",
     ttl: `${Math.max(0, Math.round(opts.ttlSec ?? 60 * 60))}s`,
     ...(opts.topic ? { collapse_key: opts.topic } : {}),
+    ...(notification ? { notification } : {}),
   };
   const gone: string[] = [];
   const results = await Promise.all(

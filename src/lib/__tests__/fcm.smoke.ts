@@ -101,6 +101,22 @@ const t = async (name: string, fn: () => Promise<void> | void) => { await fn(); 
     assert.ok(Object.values(sent[0].data).every((v) => typeof v === "string"));
   });
 
+  await t("a ring is data only; anything else carries a notification Android shows itself", async () => {
+    sent.length = 0;
+    await sendFcm("u1", ring, { urgency: "high" });
+    assert.equal(sent[0].android.notification, undefined);
+    const reminder: PushPayload = { type: "reminder", title: "Night starts in 30 minutes", body: "Cell · 00:20", url: "/night", eventSlug: "night" };
+    await sendFcm("u1", reminder, { urgency: "normal", topic: "t-night" });
+    assert.deepEqual(sent[1].android.notification, {
+      title: "Night starts in 30 minutes",
+      body: "Cell · 00:20",
+      channel_id: "meetings",
+      icon: "ic_stat_call",
+      tag: "t-night",
+    });
+    assert.equal(sent[1].data.url, "/night", "the app still gets the data when it is tapped");
+  });
+
   await t("an uninstalled app's token is dropped; a malformed-message refusal keeps it", async () => {
     await saveFcmToken("u2", tok(2));
     await saveFcmToken("u2", tok(3));
