@@ -13,6 +13,7 @@ import '../core/api_client.dart';
 import '../core/load_error.dart';
 import '../events/event.dart';
 import '../events/languages.dart' show languageFor;
+import '../groups/presence_heartbeat.dart';
 import 'audio_routes.dart';
 import 'auto_rejoin.dart';
 import 'chat_poller.dart';
@@ -1012,6 +1013,9 @@ class RoomController extends StateNotifier<RoomState> {
       link: RoomLink.live,
       clearMessage: true,
     );
+    // Tells the server this phone is in this meeting, so a group meeting
+    // does not ring someone who is already here or busy in another.
+    MeetingHeartbeat.instance.start(api, slug);
 
     // The owner's plan, from this device's own token: whether Record is
     // offered, and how long the meeting may run (Free 60 minutes, Starter
@@ -2356,6 +2360,7 @@ class RoomController extends StateNotifier<RoomState> {
     // Leaving ends the sitting; joining again counts from the start, as
     // the web's countdown does.
     _timeLimit.cancel();
+    MeetingHeartbeat.instance.stop(slug);
     await MeetingPresence.instance.end();
     await room.disconnect();
   }
@@ -2365,6 +2370,7 @@ class RoomController extends StateNotifier<RoomState> {
     _disposed = true;
     _timerPoll?.cancel();
     debugPrint('[neo-room] controller DISPOSED for $slug');
+    MeetingHeartbeat.instance.stop(slug);
     unawaited(_voice.dispose());
     MeetingPresence.instance.onPhoneCall.removeListener(_onPhoneCall);
     unawaited(MeetingPresence.instance.end());

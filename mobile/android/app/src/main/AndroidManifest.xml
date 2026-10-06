@@ -27,6 +27,8 @@
          if it is missing. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- An incoming group call vibrates like a phone call (IncomingRinger). -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
     <!-- Cameras and microphones are not required: someone can join to watch

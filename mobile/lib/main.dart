@@ -15,6 +15,7 @@ import 'src/design/tokens.dart';
 import 'src/events/create_meeting_screen.dart';
 import 'src/groups/group_screen.dart' show appRouteObserver;
 import 'src/groups/groups_screen.dart';
+import 'src/groups/incoming_call.dart';
 import 'src/manage/dashboard_screen.dart';
 import 'src/meetings/meeting_board.dart';
 import 'src/meetings/meeting_links.dart';
@@ -225,7 +226,7 @@ class _Root extends ConsumerWidget {
     // A meeting link waits through sign-in and opens once someone is in.
     // Signed out, the first launch shows what the app is before sign-in.
     return auth.signedIn
-        ? MeetingLinkOpener(child: AppShell(tabs: _tabs))
+        ? MeetingLinkOpener(child: IncomingCallWatcher(child: AppShell(tabs: _tabs)))
         : const SignedOutEntry(signIn: SignInScreen());
   }
 
