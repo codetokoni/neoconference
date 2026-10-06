@@ -32,12 +32,15 @@ export default function MeetingsTab({
   groupId,
   groupName,
   canSchedule,
+  canViewReports,
   version,
   onChanged,
 }: {
   groupId: string;
   groupName: string;
   canSchedule: boolean;
+  /** Past meetings link to their reports (Moderator and up). */
+  canViewReports: boolean;
   /** Bumped whenever a meeting is created elsewhere on the page. */
   version: number;
   onChanged: (message: string) => void;
@@ -219,7 +222,16 @@ export default function MeetingsTab({
             {past.map((m) => (
               <li key={m.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/30 p-3">
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm text-slate-200">{m.title}</div>
+                  {canViewReports ? (
+                    <a
+                      href={`/dashboard/groups/${encodeURIComponent(groupId)}/reports/${encodeURIComponent(m.id)}`}
+                      className="block truncate text-sm text-slate-200 hover:text-cyan-200"
+                    >
+                      {m.title}
+                    </a>
+                  ) : (
+                    <div className="truncate text-sm text-slate-200">{m.title}</div>
+                  )}
                   <div className="text-xs text-slate-400">
                     {when(m.start)} · {duration(m.durationMin)}
                   </div>

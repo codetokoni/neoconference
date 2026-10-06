@@ -206,6 +206,10 @@ export interface GroupCapabilities {
   call: boolean;
   /** Add people to a meeting that is on. */
   addParticipants: boolean;
+  /** See the group's meeting reports (Moderator and up). */
+  viewReports: boolean;
+  /** Download them as spreadsheets (Host and up). */
+  exportReports: boolean;
 }
 
 export function groupCapabilities(actor: Actor): GroupCapabilities {
@@ -224,6 +228,8 @@ export function groupCapabilities(actor: Actor): GroupCapabilities {
     start: can(actor, "group:start"),
     call: can(actor, "group:call"),
     addParticipants: can(actor, "group:participants:manage"),
+    viewReports: can(actor, "group:reports:view"),
+    exportReports: can(actor, "group:reports:export"),
   };
 }
 

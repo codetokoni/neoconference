@@ -23,10 +23,10 @@ export interface Attendee {
 }
 
 /** A Clerk account id, as the token route stamps it on a LiveKit identity. */
-const CLERK_USER_ID = /^user_[A-Za-z0-9]+$/;
+export const CLERK_USER_ID = /^user_[A-Za-z0-9]+$/;
 
 /** Server-side participants the webhook also journals: captions, AI agents. */
-const SERVICE_IDENTITY = /^(agent-|neo-captions|EG_)/i;
+export const SERVICE_IDENTITY = /^(agent-|neo-captions|EG_)/i;
 
 /**
  * Who was in a meeting. One row per signed-in person (the report already
