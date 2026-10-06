@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.util.Rational
+import android.view.WindowManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -127,6 +128,11 @@ class MainActivity : FlutterActivity() {
                     phoneCalls.start()
                     callAudio.start()
                     updateAutoPip()
+                    // The screen stays on for as long as the meeting does.
+                    // Asked for: on a video call the phone dimmed and
+                    // locked after its timeout, which stops the camera
+                    // and leaves the person looking at a lock screen.
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     result.success(true)
                 }
 
@@ -151,6 +157,8 @@ class MainActivity : FlutterActivity() {
                     phoneCalls.stop()
                     callAudio.stop()
                     updateAutoPip()
+                    // Out of the meeting: the phone's own timeout applies again.
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     result.success(true)
                 }
 
