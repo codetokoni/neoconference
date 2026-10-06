@@ -28,6 +28,7 @@ import {
   requireGroupPermission,
 } from "@/lib/groupAuthz";
 import { membersByEmail, membersById } from "@/lib/groupPeople";
+import { ringNewMembers } from "@/lib/ringEngine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,6 +73,8 @@ export async function POST(req: Request, ctx: Ctx) {
 
   try {
     const { added, alreadyMembers } = await addMembers(id, people, gate.actor);
+    // A meeting of the group on right now rings its newest members too.
+    await ringNewMembers(id, added.map((m) => m.userId)).catch((err) => console.warn("[groups/members] ring failed", err));
     return NextResponse.json({ ok: true, added, alreadyMembers, notFound });
   } catch (err) {
     return groupErrorResponse(err);

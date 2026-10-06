@@ -24,7 +24,7 @@ import { kv } from "@vercel/kv";
 import { randomBytes } from "node:crypto";
 import { eventStore } from "@/lib/eventStore";
 import { getGroup, getMember } from "@/lib/groupStore";
-import { inviteesOf } from "@/lib/groupMeetings";
+import { inviteesOf, listGroupMeetings } from "@/lib/groupMeetings";
 import { getPresence } from "@/lib/presence";
 import { sendPush, topicFor, type PushPayload } from "@/lib/pushStore";
 import { addNotification } from "@/lib/notificationStore";
@@ -122,7 +122,6 @@ async function setCall(eid: string, uid: string, c: CallRecord): Promise<void> {
   }
   await kv.hset(callsKey(eid), { [uid]: JSON.stringify(c) });
 }
-
 
 const blank = (): CallRecord => ({ status: "missed", attempts: 0, lastAttemptAt: 0, ringId: "", kcSent: false });
 
@@ -306,7 +305,8 @@ function siteOrigin(): string {
 }
 
 /**
- * Queue the next round if anyone invited can still be rung. Returns when, or
+ * Queue the next round if anyone invited can still be rung — including anyone
+ * invited since the last round who has not been rung at all. Returns when, or
  * null when everyone has joined, answered, declined or used their rings.
  */
 async function queueNextRound(
@@ -320,7 +320,9 @@ async function queueNextRound(
   const calls = await getCalls(ev.id);
   const pending = invitees.some((uid) => {
     const c = calls.get(uid);
-    if (!c) return false; // never rung: not part of any call yet
+    // Never rung yet — invited after the calling began (a member who joined
+    // the group meanwhile): the next round is theirs.
+    if (!c) return true;
     return !SETTLED.includes(c.status) && c.attempts < settings.maxAttempts;
   });
   if (!pending) return null;
@@ -338,6 +340,22 @@ export async function ringNow(
   opts: { only?: string[]; except?: string; now?: number } = {}
 ): Promise<RingRound> {
   return ringAttempt(eid, { ...opts, round: 1 });
+}
+
+/**
+ * People just added to a group (by a Moderator, or through an invite link):
+ * ring them into whichever of its meetings are on right now. Private calls
+ * are left alone — joining the group does not invite anyone to those.
+ */
+export async function ringNewMembers(gid: string, userIds: string[], now: number = Date.now()): Promise<number> {
+  if (userIds.length === 0) return 0;
+  const { items } = await listGroupMeetings(gid, "", "upcoming", { now });
+  let rung = 0;
+  for (const m of items) {
+    if (m.state !== "live" || m.kind === "call") continue;
+    rung += (await ringAttempt(m.id, { only: userIds, now, round: 1 })).rung.length;
+  }
+  return rung;
 }
 
 /** "Ring again": these people start over, as if never rung. */
@@ -384,7 +402,6 @@ export async function markJoinedIfCalled(eid: string, uid: string): Promise<bool
   await setCall(eid, uid, { ...c, status: "joined" });
   return true;
 }
-
 
 /* -------------------------------------------------------------------------- */
 /*  Reminders                                                                  */
@@ -456,10 +473,7 @@ export async function runJob(job: Job, now: number = Date.now()): Promise<"ran" 
         eventSlug: ev.slug,
       });
     }
-    await scheduleJob(job.eid, "ring", now + ctx.group.settings.retryIntervalMin * 60_000, {
-      attempt: (job.attempt ?? 1) + 1,
-      now,
-    });
+    await queueNextRound(ev, ctx.group.settings, now, (job.attempt ?? 1) + 1);
     return "skipped";
   }
   await ringAttempt(job.eid, { now, round: job.attempt ?? 1 });

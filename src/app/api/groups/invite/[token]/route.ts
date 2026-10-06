@@ -13,6 +13,7 @@ import { auth } from "@clerk/nextjs/server";
 import { countMembers, getGroup, getInvite, getMember, redeemInvite, GROUP_INVITE_TTL_SECONDS } from "@/lib/groupStore";
 import { groupErrorResponse } from "@/lib/groupAuthz";
 import { currentMember } from "@/lib/groupPeople";
+import { ringNewMembers } from "@/lib/ringEngine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,6 +62,10 @@ export async function POST(_req: Request, ctx: Ctx) {
 
   try {
     const { group, member, alreadyMember } = await redeemInvite(token, me);
+    // Joining while a group meeting is on rings you into it.
+    if (!alreadyMember) {
+      await ringNewMembers(group.id, [member.userId]).catch((err) => console.warn("[groups/invite] ring failed", err));
+    }
     return NextResponse.json({ ok: true, groupId: group.id, role: member.role, alreadyMember });
   } catch (err) {
     return groupErrorResponse(err);
