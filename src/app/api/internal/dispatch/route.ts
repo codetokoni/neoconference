@@ -14,13 +14,16 @@
 
 import { NextResponse } from "next/server";
 import { runDispatch } from "@/lib/ringEngine";
-import { authorizedDispatch } from "@/lib/dispatchAuth";
+import { authorizedDispatch, dispatchRefusal } from "@/lib/dispatchAuth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function handle(req: Request) {
-  if (!authorizedDispatch(req.headers.get("authorization"), [process.env.DISPATCH_SECRET, process.env.CRON_SECRET])) {
+  const header = req.headers.get("authorization");
+  if (!authorizedDispatch(header, [process.env.DISPATCH_SECRET, process.env.CRON_SECRET])) {
+    const why = dispatchRefusal(header, { DISPATCH_SECRET: process.env.DISPATCH_SECRET, CRON_SECRET: process.env.CRON_SECRET });
+    console.warn(`[dispatch] 401: ${why}`);
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const started = Date.now();
