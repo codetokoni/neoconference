@@ -19,7 +19,7 @@ import { recordAttendance } from "@/lib/attendance";
 import { setPresence } from "@/lib/presence";
 import { listNotifications } from "@/lib/notificationStore";
 import { saveSubscription, __setPushSender, type PushPayload } from "@/lib/pushStore";
-import { authorizedDispatch } from "@/lib/dispatchAuth";
+import { authorizedDispatch, dispatchRefusal } from "@/lib/dispatchAuth";
 import { eventStore } from "@/lib/eventStore";
 
 delete process.env.KV_REST_API_URL;
@@ -305,6 +305,15 @@ const ownerActor = () =>
     assert.equal(authorizedDispatch("Bearer wrong", ["right", undefined]), false);
     assert.equal(authorizedDispatch(null, ["right"]), false);
     assert.equal(authorizedDispatch("Bearer ", [undefined, undefined]), false);
+    // A secret pasted into the dashboard with a trailing newline still matches.
+    assert.equal(authorizedDispatch("Bearer right", ["right\n", undefined]), true);
+    assert.equal(authorizedDispatch("Bearer right", ["   ", undefined]), false);
+    // The log says which side is wrong, without the values.
+    assert.equal(dispatchRefusal(null, { DISPATCH_SECRET: "right" }), "no Bearer token sent");
+    assert.equal(dispatchRefusal("Bearer x", { DISPATCH_SECRET: undefined, CRON_SECRET: " " }), "none of DISPATCH_SECRET, CRON_SECRET is set");
+    const why = dispatchRefusal("Bearer wrong!", { DISPATCH_SECRET: "right\n", CRON_SECRET: undefined });
+    assert.equal(why, "token of 6 chars matches no secret (DISPATCH_SECRET is 5 chars)");
+    assert.ok(!why.includes("right") && !why.includes("wrong"));
     process.env.DISPATCH_SECRET = "right";
     const { POST } = await import("@/app/api/internal/dispatch/route");
     const bad = await POST(new Request("https://neo.test/api/internal/dispatch", { method: "POST", headers: { authorization: "Bearer wrong" } }));
