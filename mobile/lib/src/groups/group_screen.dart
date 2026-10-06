@@ -13,9 +13,11 @@ import 'group_meetings_api.dart';
 import 'group_meetings_tab.dart';
 import 'group_members_tab.dart';
 import 'group_models.dart';
+import 'group_reports_tab.dart';
 import 'group_settings_tab.dart';
 import 'groups_api.dart';
 import 'groups_screen.dart' show GroupIcon, RolePill;
+import 'meeting_report_screen.dart';
 
 /// The tabs a group page can have. Which ones show depends on what the
 /// person may do there, as on the web.
@@ -23,6 +25,7 @@ enum GroupTab {
   chat('Chat'),
   meetings('Meetings'),
   members('Members'),
+  reports('Reports'),
   activity('Activity'),
   settings('Settings');
 
@@ -74,6 +77,12 @@ class _GroupScreenState extends ConsumerState<GroupScreen> with RouteAware {
   @override
   void didPopNext() => refreshGroup(ref, groupId);
 
+  void _openReport(GroupDetail d, String eventId) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => MeetingReportScreen(groupId: d.group.id, eventId: eventId, canExport: d.capabilities.exportReports),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = NeoTheme.of(context);
@@ -104,6 +113,7 @@ class _GroupScreenState extends ConsumerState<GroupScreen> with RouteAware {
       GroupTab.chat,
       GroupTab.meetings,
       GroupTab.members,
+      if (d.capabilities.viewReports) GroupTab.reports,
       GroupTab.activity,
       if (d.capabilities.anySettings) GroupTab.settings,
     ];
@@ -177,9 +187,10 @@ class _GroupScreenState extends ConsumerState<GroupScreen> with RouteAware {
               children: [
                 for (final t in tabs)
                   switch (t) {
-                    GroupTab.chat => GroupChatTab(detail: d),
-                    GroupTab.meetings => GroupMeetingsTab(detail: d),
+                    GroupTab.chat => GroupChatTab(detail: d, onOpenReport: d.capabilities.viewReports ? (eid) => _openReport(d, eid) : null),
+                    GroupTab.meetings => GroupMeetingsTab(detail: d, onOpenReport: (m) => _openReport(d, m.id)),
                     GroupTab.members => GroupMembersTab(detail: d),
+                    GroupTab.reports => GroupReportsTab(detail: d),
                     GroupTab.activity => GroupActivityTab(activity: d.activity),
                     GroupTab.settings => GroupSettingsTab(detail: d),
                   },
