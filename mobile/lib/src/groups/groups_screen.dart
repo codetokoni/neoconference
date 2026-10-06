@@ -8,6 +8,7 @@ import '../design/tokens.dart';
 import 'group_models.dart';
 import 'group_screen.dart';
 import 'groups_api.dart';
+import 'my_meetings_screen.dart';
 
 /// The groups someone is in, as the web's /dashboard/groups lists them:
 /// icon, name, size and description, and their role. "New group" makes one
@@ -37,7 +38,16 @@ class GroupsScreen extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(NeoSpace.xl, NeoSpace.xl, NeoSpace.xl, 96),
             children: [
-              Text('Groups', style: Theme.of(context).textTheme.headlineSmall),
+              Row(
+                children: [
+                  Expanded(child: Text('Groups', style: Theme.of(context).textTheme.headlineSmall)),
+                  TextButton.icon(
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MyMeetingsScreen())),
+                    icon: const Icon(Icons.assignment_turned_in_outlined, size: 18),
+                    label: const Text('My reports'),
+                  ),
+                ],
+              ),
               const SizedBox(height: NeoSpace.xs),
               Text(
                 'Meet, call and chat with the same people again and again.',

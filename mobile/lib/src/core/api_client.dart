@@ -62,6 +62,34 @@ class ApiClient {
     return _send('GET $path', (headers) => _http.get(uri, headers: headers));
   }
 
+  /// A file rather than JSON (a spreadsheet export): its bytes and the
+  /// name the server gave it (Content-Disposition), or [fallbackName].
+  Future<({List<int> bytes, String filename, String mimeType})> getBytes(
+    String path, {
+    Map<String, String>? query,
+    required String fallbackName,
+  }) async {
+    final uri = Uri.parse('${Config.site}$path').replace(queryParameters: query?.isEmpty ?? true ? null : query);
+    var jwt = await token();
+    var res = await _http.get(uri, headers: _headersWith(jwt)..remove('accept'));
+    final renew = freshToken;
+    if (refusedSignIn(res) && jwt != null && renew != null) {
+      final again = await renew();
+      if (again != null && again != jwt) res = await _http.get(uri, headers: _headersWith(again)..remove('accept'));
+    }
+    if (res.statusCode >= 400) {
+      // The refusal is JSON like any other; say it the same way.
+      _decode(res, 'GET $path');
+    }
+    final disposition = res.headers['content-disposition'] ?? '';
+    final name = RegExp(r'filename="?([^";]+)"?').firstMatch(disposition)?.group(1);
+    return (
+      bytes: res.bodyBytes,
+      filename: name ?? fallbackName,
+      mimeType: res.headers['content-type']?.split(';').first ?? 'application/octet-stream',
+    );
+  }
+
   Future<dynamic> post(String path, [Object? body]) {
     return _send(
       'POST $path',
