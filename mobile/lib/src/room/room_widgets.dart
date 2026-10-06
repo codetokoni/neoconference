@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../groups/group_calling_panel.dart';
 import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
@@ -742,6 +743,13 @@ class ParticipantsSheet extends ConsumerWidget {
             Expanded(
               child: ListView(
                 children: [
+                  // A group meeting's calls, for its hosts (nothing otherwise).
+                  if (state.canManage)
+                    GroupCallingSection(
+                      slug: slug,
+                      // The LiveKit identity is the user id plus "#nonce".
+                      myUserId: me?.identity.split('#').first,
+                    ),
                   if (me != null)
                     _PersonRow(
                       name: 'You',

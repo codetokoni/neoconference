@@ -60,6 +60,9 @@ class MainActivity : FlutterActivity() {
 
     private val kingsChat = KingsChatLogin()
 
+    /** The ringtone and vibration of an incoming group call. */
+    private val ringer by lazy { IncomingRinger(this) }
+
     /** Live translation read aloud on the call's audio path; see MeetingVoice. */
     private var voiceEngine: MeetingVoice? = null
     private val voice: MeetingVoice
@@ -102,6 +105,22 @@ class MainActivity : FlutterActivity() {
                         call.argument<List<String>>("languages") ?: emptyList(),
                         result,
                     )
+                    else -> result.notImplemented()
+                }
+            }
+
+        // A group meeting calling: the incoming-call screen rings with this.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.neoconference/ring")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        ringer.start()
+                        result.success(null)
+                    }
+                    "stop" -> {
+                        ringer.stop()
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -247,6 +266,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        ringer.stop()
         phoneCalls.stop()
         callAudio.stop()
         network.stop()
