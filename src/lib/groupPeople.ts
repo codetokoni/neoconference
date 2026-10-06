@@ -5,6 +5,8 @@
 
 import { clerkClient, currentUser } from "@clerk/nextjs/server";
 import type { NewMember } from "@/lib/groupStore";
+import type { CreateMeetingDeps } from "@/lib/groupMeetings";
+import { checkLifetimeCap, incrementMeetingsCreated } from "@/lib/plan";
 
 type ClerkUserLike = {
   id: string;
@@ -68,4 +70,31 @@ export async function membersById(ids: string[]): Promise<{ found: NewMember[]; 
   const found = list.data.map(memberFromClerkUser);
   const have = new Set(found.map((m) => m.userId));
   return { found, missing: wanted.filter((i) => !have.has(i)) };
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Meeting creation gates                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The gates /api/events/create and /api/events/instant apply, for group
+ * meetings: the Free lifetime cap and its counter, and the owner's recurring
+ * roles. groupMeetings.ts calls them with the group Owner's id.
+ */
+export const meetingGates: CreateMeetingDeps = {
+  checkCap: (userId) => checkLifetimeCap(userId),
+  incrementCap: (userId) => incrementMeetingsCreated(userId),
+  applyRecurringRoles: async (eventId, ownerUserId) => {
+    const { applyRecurringRoles } = await import("@/lib/recurring-roles");
+    await applyRecurringRoles(eventId, ownerUserId);
+  },
+};
+
+/** The site's own origin, as /api/events/instant works it out. */
+export function siteOrigin(req: Request): string {
+  const env = process.env.NEXT_PUBLIC_SITE_URL;
+  if (env) return env.replace(/\/+$/, "");
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  const host = req.headers.get("host") ?? "localhost:3000";
+  return proto + "://" + host;
 }

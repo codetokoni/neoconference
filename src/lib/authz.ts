@@ -23,11 +23,14 @@ import {
   can,
   grantsFor,
   resolveRole,
+  withAssignedRoles,
   type Actor,
   type Eventish,
+  type MeetingRole,
   type Permission,
   type PermissionOverrides,
 } from "@/lib/permissions";
+import { getMeetingRole, getMeetingRoleByEmail } from "@/lib/meeting-roles";
 
 export type { Actor, Permission } from "@/lib/permissions";
 
@@ -57,7 +60,33 @@ export async function getIdentity(): Promise<Identity> {
 export async function getActor(event: Eventish | null | undefined): Promise<Actor> {
   const identity = await getIdentity();
   if (!identity.userId) return { ...ANONYMOUS_ACTOR };
-  return resolveRole(event, identity);
+  return resolveRole(await withHashRoles(event, identity.userId, identity.emails), identity);
+}
+
+/**
+ * Roles assigned through the role hash count here as they do at the LiveKit
+ * token route. This read only event.roles[], so a person promoted in the room,
+ * seeded by recurring roles, or made host of a group meeting was host in the
+ * room yet refused (403) by every route behind authorize() — Start, End,
+ * promoting others.
+ */
+async function withHashRoles(
+  event: Eventish | null | undefined,
+  userId: string,
+  emails: string[]
+): Promise<Eventish | null | undefined> {
+  const id = (event as { id?: string } | null | undefined)?.id;
+  if (!event || !id) return event;
+  try {
+    const found = await Promise.all([
+      getMeetingRole(id, userId),
+      ...emails.map((e) => getMeetingRoleByEmail(id, e)),
+    ]);
+    return withAssignedRoles(event, userId, found.filter((r): r is MeetingRole => r !== null));
+  } catch (err) {
+    console.warn("[authz] role hash lookup failed", err);
+    return event;
+  }
 }
 
 /* -------------------------------------------------------------------------- */

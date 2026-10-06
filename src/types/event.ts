@@ -325,6 +325,34 @@ export interface NeoEvent {
   recentRedemptions?: Array<{ token: string; identifier: string; role: string; ts: number }>;
   /** AI-generated meeting summary (host-triggered). */
   summary?: { text: string; model: string; generatedAt: number };
+
+  /** The group this meeting or call belongs to (src/lib/groupMeetings.ts). */
+  groupId?: string;
+  /** Shared by every occurrence of one recurring group meeting. */
+  seriesId?: string;
+  /** What a group meeting is, beyond what every event has. */
+  groupMeeting?: GroupMeetingInfo;
+}
+
+/**
+ * The parts of a group meeting a plain event has no field for.
+ *
+ * `kind` decides who is invited: a scheduled or started meeting invites the
+ * whole group as it is when someone arrives; a call invites only the people
+ * chosen for it (and anyone added later).
+ */
+export interface GroupMeetingInfo {
+  kind: 'scheduled' | 'now' | 'call';
+  /** Planned length in minutes. */
+  durationMin: number;
+  /** IANA zone the meeting was scheduled in, for recurrence and invites. */
+  timezone: string;
+  /** Clerk userId of the member who created it. */
+  createdBy: string;
+  /** Calendar SEQUENCE: bumped on every change so invites replace each other. */
+  sequence: number;
+  /** ISO time it was cancelled; the event is archived at the same moment. */
+  cancelledAt?: string;
 }
 
 /**
