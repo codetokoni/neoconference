@@ -16,6 +16,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { Phone, PhoneOff } from "lucide-react";
 import { NOTIFICATIONS_CHANGED } from "@/lib/pushClient";
+import { useModal } from "@/components/ui/useModal";
 
 interface Ring {
   ringId: string;
@@ -162,6 +163,12 @@ export default function IncomingCall() {
     return stop;
   }, [ringing]);
 
+  // Keyboard: focus stays on the call while it rings; Escape declines the
+  // first one. Answer gets focus, so Enter answers.
+  const boxRef = useRef<HTMLDivElement>(null);
+  useModal(boxRef, () => {
+    if (shown[0]) void respond(shown[0], "decline");
+  }, { open: ringing });
   useEffect(() => {
     if (ringing) answerRef.current?.focus();
   }, [ringing]);
@@ -198,6 +205,7 @@ export default function IncomingCall() {
 
   return (
     <div
+      ref={boxRef}
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="incoming-call-title"
@@ -209,9 +217,6 @@ export default function IncomingCall() {
       {shown.map((r, i) => (
         <div
           key={r.ringId}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") void respond(r, "decline");
-          }}
           className="pointer-events-auto w-full max-w-md rounded-2xl border border-emerald-400/40 bg-[#07130f] text-slate-100 shadow-[0_20px_60px_rgba(0,0,0,0.6)] p-4"
         >
           <div className="flex items-center gap-3">

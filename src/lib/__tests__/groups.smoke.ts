@@ -11,7 +11,7 @@ import {
   addMembers, removeMember, setRole, transferOwnership, leaveGroup, updateGroup, deleteGroup,
   createInvite, getInvite, redeemInvite,
   canChangeGroupRole, canManageGroupMember, assignableGroupRoles, groupCapabilities, decideGroupAccess,
-  GroupError, GROUP_INVITE_TTL_SECONDS,
+  GroupError, GROUP_INVITE_TTL_SECONDS, PlanMemberLimitError,
 } from "@/lib/groupStore";
 import type { NeoEvent } from "@/types/event";
 
@@ -161,6 +161,18 @@ const EVENT = {
     await leaveGroup(g.id, OWNER);
     assert.equal(await getMember(g.id, OWNER), null);
     assert.equal((await listMembers(g.id))[0].userId, HOST);
+  });
+
+  await t("a group can't grow past its owner's plan; the refusal says it is the plan", async () => {
+    const small = await createGroup({ name: "Small plan" }, person("user_cap_owner"), [person("user_cap_1")], { cap: 3, plan: "free" });
+    const owner = actor("user_cap_owner", "owner");
+    await addMembers(small.id, [person("user_cap_2")], owner, { cap: 3, plan: "free" });
+    await assert.rejects(
+      () => addMembers(small.id, [person("user_cap_3")], owner, { cap: 3, plan: "free" }),
+      (e: unknown) => e instanceof PlanMemberLimitError && e.status === 403 && e.limit.cap === 3
+    );
+    // The site-wide cap is not a plan limit, and says so.
+    await assert.rejects(() => addMembers(small.id, [person("user_cap_3")], owner, { cap: 3 }), /too_many_members/);
   });
 
   await t("settings are validated and kept", async () => {

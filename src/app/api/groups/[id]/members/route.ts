@@ -27,7 +27,8 @@ import {
   readJsonObject,
   requireGroupPermission,
 } from "@/lib/groupAuthz";
-import { membersByEmail, membersById } from "@/lib/groupPeople";
+import { memberLimitFor, membersByEmail, membersById } from "@/lib/groupPeople";
+import { listMembers } from "@/lib/groupStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,7 +72,10 @@ export async function POST(req: Request, ctx: Ctx) {
   }
 
   try {
-    const { added, alreadyMembers } = await addMembers(id, people, gate.actor);
+    // The group's size follows its Owner's plan.
+    const owner = (await listMembers(id)).find((m) => m.role === "owner");
+    const limit = owner ? await memberLimitFor(owner.userId) : undefined;
+    const { added, alreadyMembers } = await addMembers(id, people, gate.actor, limit);
     return NextResponse.json({ ok: true, added, alreadyMembers, notFound });
   } catch (err) {
     return groupErrorResponse(err);

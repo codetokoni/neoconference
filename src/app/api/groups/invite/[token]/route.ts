@@ -12,7 +12,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { countMembers, getGroup, getInvite, getMember, redeemInvite, GROUP_INVITE_TTL_SECONDS } from "@/lib/groupStore";
 import { groupErrorResponse } from "@/lib/groupAuthz";
-import { currentMember } from "@/lib/groupPeople";
+import { currentMember, memberLimitFor } from "@/lib/groupPeople";
+import { listMembers } from "@/lib/groupStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,7 +61,11 @@ export async function POST(_req: Request, ctx: Ctx) {
   if (!me) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   try {
-    const { group, member, alreadyMember } = await redeemInvite(token, me);
+    // The group's size follows its Owner's plan.
+    const invite = await getInvite(token);
+    const owner = invite ? (await listMembers(invite.gid)).find((m) => m.role === "owner") : undefined;
+    const limit = owner ? await memberLimitFor(owner.userId) : undefined;
+    const { group, member, alreadyMember } = await redeemInvite(token, me, Date.now(), limit);
     return NextResponse.json({ ok: true, groupId: group.id, role: member.role, alreadyMember });
   } catch (err) {
     return groupErrorResponse(err);

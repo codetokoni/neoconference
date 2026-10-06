@@ -15,6 +15,7 @@ import {
   listMembers,
 } from "@/lib/groupStore";
 import { unreadChatCount } from "@/lib/groupChat";
+import { listGroupMeetings } from "@/lib/groupMeetings";
 import GroupView from "./GroupView";
 
 export const dynamic = "force-dynamic";
@@ -36,11 +37,14 @@ export default async function GroupPage({
 
   const identity = await getIdentity();
   const actor = groupActor({ ...identity, userId }, member);
-  const [members, activity, chatUnread] = await Promise.all([
+  // Everything the page opens with, in one go: no request waterfall.
+  const [members, activity, chatUnread, upcoming] = await Promise.all([
     listMembers(id),
     listActivity(id, 50),
     unreadChatCount(id, userId).catch(() => 0),
+    listGroupMeetings(id, userId, "upcoming").catch(() => ({ items: [] })),
   ]);
+  const next = upcoming.items[0];
 
   return (
     <GroupView
@@ -50,6 +54,7 @@ export default async function GroupPage({
       me={{ userId, role: member.role }}
       capabilities={groupCapabilities(actor)}
       chatUnread={chatUnread}
+      nextMeeting={next ? { slug: next.slug, title: next.title, start: next.start, state: next.state } : null}
       {...(tab ? { initialTab: tab } : {})}
     />
   );

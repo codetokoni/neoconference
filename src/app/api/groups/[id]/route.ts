@@ -9,6 +9,7 @@
 
 import { NextResponse } from "next/server";
 import { groupCapabilities, deleteGroup, listActivity, listMembers, updateGroup } from "@/lib/groupStore";
+import { listGroupMeetings } from "@/lib/groupMeetings";
 import {
   groupErrorResponse,
   invalidBody,
@@ -26,7 +27,12 @@ export async function GET(_req: Request, ctx: Ctx) {
   const gate = await requireGroupPermission(id, "group:read");
   if (!gate.ok) return gate.response;
 
-  const [members, activity] = await Promise.all([listMembers(id), listActivity(id, 50)]);
+  const [members, activity, upcoming] = await Promise.all([
+    listMembers(id),
+    listActivity(id, 50),
+    listGroupMeetings(id, gate.member.userId, "upcoming"),
+  ]);
+  const next = upcoming.items[0] ?? null;
   return NextResponse.json(
     {
       group: gate.group,
@@ -34,6 +40,7 @@ export async function GET(_req: Request, ctx: Ctx) {
       activity,
       me: { userId: gate.member.userId, role: gate.member.role },
       capabilities: groupCapabilities(gate.actor),
+      nextMeeting: next && { id: next.id, slug: next.slug, title: next.title, start: next.start, state: next.state },
     },
     { headers: { "cache-control": "no-store" } }
   );

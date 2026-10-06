@@ -17,6 +17,7 @@ import EventsGrid, { type EventCardData } from './EventsGrid';
 import PersonalRoomCard from './PersonalRoomCard';
 import RecurringRolesCard from './RecurringRolesCard';
 import UpcomingGroupMeetings from './UpcomingGroupMeetings';
+import DashboardTabs from '@/components/groups/DashboardTabs';
 import { listGroupsForUser } from '@/lib/groupStore';
 import { upcomingForUser } from '@/lib/groupMeetings';
 
@@ -72,6 +73,9 @@ export default async function DashboardPage() {
       </div>
 
       <div className="relative mx-auto max-w-6xl px-4 sm:px-6 py-10 md:py-14">
+        <div className="mb-6">
+          <DashboardTabs current="/dashboard" />
+        </div>
         {/* Top row */}
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div>

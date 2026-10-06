@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useModal } from "@/components/ui/useModal";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MeetingRole } from "@/lib/permissions";
 import type { Group, GroupActivity, GroupCapabilities, GroupMember } from "@/lib/groupStore";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
 import GroupIcon from "../GroupIcon";
-import GroupActions from "./GroupActions";
+import UpgradeHint from "@/components/groups/UpgradeHint";
+import GroupActions, { roomHref } from "./GroupActions";
 import MeetingsTab from "./MeetingsTab";
 import ReportsTab from "./ReportsTab";
 import ChatTab from "./ChatTab";
@@ -78,6 +80,8 @@ function ConfirmDialog({
   onCancel: () => void;
   children?: React.ReactNode;
 }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  useModal(boxRef, onCancel, { busy });
   return (
     <div
       role="dialog"
@@ -87,6 +91,7 @@ function ConfirmDialog({
       onClick={() => !busy && onCancel()}
     >
       <div
+        ref={boxRef}
         onClick={(e) => e.stopPropagation()}
         className={
           "w-full max-w-md rounded-2xl border bg-[#0a0b12] text-slate-100 shadow-2xl overflow-hidden " +
@@ -143,6 +148,7 @@ export default function GroupView({
   capabilities,
   chatUnread,
   initialTab,
+  nextMeeting,
 }: {
   group: Group;
   members: GroupMember[];
@@ -153,6 +159,8 @@ export default function GroupView({
   chatUnread: number;
   /** ?tab= from the link that brought them (a mention opens the chat). */
   initialTab?: string;
+  /** The soonest meeting this person is invited to, or the one on now. */
+  nextMeeting: { slug: string; title: string; start: string; state: string } | null;
 }) {
   const showSettings = capabilities.editSettings || capabilities.deleteGroup || capabilities.transferOwnership;
   // Members land in the chat; those who run the group, on its members.
@@ -203,6 +211,7 @@ export default function GroupView({
               <p className="mt-1 text-xs text-slate-400">
                 {members.length} {members.length === 1 ? "member" : "members"}
               </p>
+              {nextMeeting ? <NextMeetingLine meeting={nextMeeting} /> : null}
             </div>
           </div>
           <div className="mt-5 flex flex-wrap items-start justify-between gap-3">
@@ -301,6 +310,34 @@ export default function GroupView({
         </div>
       </div>
     </main>
+  );
+}
+
+/** "Up next: Choir practice · Tue 10:00 · Join" under the group's name. */
+function NextMeetingLine({ meeting }: { meeting: { slug: string; title: string; start: string; state: string } }) {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const live = meeting.state === "live";
+  const joinable = live || (now !== null && Date.parse(meeting.start) - now <= 15 * 60_000);
+  return (
+    <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-300">
+      <span className={live ? "text-rose-200" : "text-cyan-200"}>{live ? "Live now:" : "Up next:"}</span>
+      <span className="min-w-0 truncate text-slate-100">{meeting.title}</span>
+      {!live && now !== null ? (
+        <span className="text-slate-400">
+          {new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(meeting.start))}
+        </span>
+      ) : null}
+      {joinable ? (
+        <a href={live ? roomHref(meeting.slug) : `/${encodeURIComponent(meeting.slug)}`} className="rounded-full bg-cyan-500 px-3 py-1 text-xs font-semibold text-slate-950 hover:bg-cyan-400">
+          Join
+        </a>
+      ) : null}
+    </p>
   );
 }
 
@@ -486,6 +523,7 @@ function MembersTab({
             {addMsg ? (
               <p className={"text-xs " + (addMsg.kind === "ok" ? "text-emerald-300" : "text-rose-300")}>{addMsg.text}</p>
             ) : null}
+            <UpgradeHint error={addMsg?.kind === "err" ? addMsg.text : null} />
           </form>
 
           <div className="border-t border-slate-800 pt-4 space-y-2">
@@ -525,7 +563,7 @@ function MembersTab({
           const canChange = !isMe && capabilities.assignableRoles.includes(m.role);
           const canRemove = !isMe && capabilities.removableRoles.includes(m.role);
           return (
-            <li key={m.userId} className="rounded-xl border border-slate-800 bg-slate-900/40 p-3">
+            <li key={m.userId} className="min-w-0 rounded-xl border border-slate-800 bg-slate-900/40 p-3">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm text-slate-100">

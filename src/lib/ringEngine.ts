@@ -466,7 +466,11 @@ export async function runJob(job: Job, now: number = Date.now()): Promise<"ran" 
   return "ran";
 }
 
-/** One tick: take what is due and run it. Overlapping ticks back off. */
+/**
+ * One tick: take what is due and run it. Overlapping ticks back off. Its work
+ * is bounded: at most 200 jobs (claimDue) and 100 open meetings
+ * (groupChatEvents.OPEN_PER_TICK) a tick, logged by the dispatch route.
+ */
 export async function runDispatch(now: number = Date.now()): Promise<DispatchResult> {
   if (!(await acquireTickLock(now))) return { ran: 0, skipped: 0, errors: 0, locked: true };
   const result: DispatchResult = { ran: 0, skipped: 0, errors: 0 };

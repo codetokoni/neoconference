@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
 import GroupIcon from "@/app/dashboard/groups/GroupIcon";
+import UpgradeHint from "@/components/groups/UpgradeHint";
 
 interface Preview {
   group: { id?: string; name: string; description: string; iconUrl: string; memberCount: number };
@@ -131,6 +132,7 @@ export default function JoinGroupPage() {
                 {joinErr}
               </div>
             ) : null}
+            <UpgradeHint error={joinErr} />
             <p className="text-center text-xs text-slate-500">
               This link works until {new Date(preview.invite.expiresAt).toLocaleString()}.
             </p>

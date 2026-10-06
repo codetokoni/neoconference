@@ -171,7 +171,7 @@ export default function MeetingReportView({
                   <tr key={p.key} className="border-t border-slate-800">
                     <td className="px-4 py-3">
                       <div className="text-slate-100">{p.name}</div>
-                      {p.email ? <div className="text-xs text-slate-400">{p.email}</div> : null}
+                      {p.email ? <div className="max-w-[16rem] text-xs text-slate-400 [overflow-wrap:anywhere]">{p.email}</div> : null}
                       {!p.invited ? <div className="text-xs text-slate-500">not invited</div> : null}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-slate-300">{time(p.joinedAt)}</td>

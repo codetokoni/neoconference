@@ -26,7 +26,9 @@ async function handle(req: Request) {
   const started = Date.now();
   const result = await runDispatch(started);
   console.info(
-    `[dispatch] ran=${result.ran} skipped=${result.skipped} errors=${result.errors}${result.locked ? " locked" : ""} ms=${Date.now() - started}`
+    `[dispatch] ran=${result.ran} skipped=${result.skipped} errors=${result.errors}` +
+      (result.chat ? ` chat_started=${result.chat.started} chat_ended=${result.chat.ended} open=${result.chat.open}` : "") +
+      `${result.locked ? " locked" : ""} ms=${Date.now() - started}`
   );
   return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
 }

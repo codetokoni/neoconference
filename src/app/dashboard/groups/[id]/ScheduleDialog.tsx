@@ -3,14 +3,18 @@
 // Schedule a group meeting, or change one. Every rule the server enforces is
 // checked inline first, so the form says what is wrong before sending it.
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useModal } from "@/components/ui/useModal";
 import type { MeetingListItem } from "@/lib/groupMeetings";
 import { isoToWallTime, wallTimeToIso } from "@/lib/zonedTime";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
+import UpgradeHint from "@/components/groups/UpgradeHint";
 
 const inputClass =
   "w-full px-3 py-2 rounded-lg bg-slate-900 text-slate-100 placeholder:text-slate-500 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm";
 const errorInput = " border-rose-500 focus:border-rose-400";
+// The same field look without the full width, for the short ones in a row.
+const shortInput = inputClass.replace("w-full ", "");
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -76,6 +80,8 @@ export default function ScheduleDialog({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const zones = useMemo(() => timezones(timezone), [timezone]);
+  const boxRef = useRef<HTMLFormElement>(null);
+  useModal(boxRef, onClose, { busy });
 
   const startIso = wallTimeToIso(when, timezone);
   const durationN = Number(duration);
@@ -190,6 +196,7 @@ export default function ScheduleDialog({
       onClick={() => !busy && onClose()}
     >
       <form
+        ref={boxRef}
         onClick={(e) => e.stopPropagation()}
         onSubmit={submit}
         noValidate
@@ -290,7 +297,7 @@ export default function ScheduleDialog({
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-slate-200">
                       <span>Every</span>
-                      <input aria-label="Interval" type="number" min={1} max={12} value={interval} onChange={(e) => setIntervalValue(e.target.value)} className={inputClass + " w-20" + (show("interval") ? errorInput : "")} />
+                      <input aria-label="Interval" type="number" min={1} max={12} value={interval} onChange={(e) => setIntervalValue(e.target.value)} className={shortInput + " w-20" + (show("interval") ? errorInput : "")} />
                       <span>{recurrence === "daily" ? "day(s)" : recurrence === "weekly" ? "week(s)" : "month(s)"}</span>
                     </div>
                     {fieldError(show("interval"))}
@@ -313,17 +320,17 @@ export default function ScheduleDialog({
                       </div>
                     ) : null}
                     <div className="flex flex-wrap items-center gap-2 text-slate-200">
-                      <select aria-label="Ends" value={endBy} onChange={(e) => setEndBy(e.target.value as "count" | "until")} className={inputClass + " w-auto"}>
+                      <select aria-label="Ends" value={endBy} onChange={(e) => setEndBy(e.target.value as "count" | "until")} className={shortInput + " w-auto"}>
                         <option value="count" className="bg-slate-900 text-slate-100">After</option>
                         <option value="until" className="bg-slate-900 text-slate-100">Until</option>
                       </select>
                       {endBy === "count" ? (
                         <>
-                          <input aria-label="Number of meetings" type="number" min={1} max={52} value={count} onChange={(e) => setCount(e.target.value)} className={inputClass + " w-20" + (show("end") ? errorInput : "")} />
+                          <input aria-label="Number of meetings" type="number" min={1} max={52} value={count} onChange={(e) => setCount(e.target.value)} className={shortInput + " w-20" + (show("end") ? errorInput : "")} />
                           <span>meetings</span>
                         </>
                       ) : (
-                        <input aria-label="Last date" type="date" value={until} onChange={(e) => setUntil(e.target.value)} className={inputClass + " w-auto [color-scheme:dark]" + (show("end") ? errorInput : "")} />
+                        <input aria-label="Last date" type="date" value={until} onChange={(e) => setUntil(e.target.value)} className={shortInput + " w-auto [color-scheme:dark]" + (show("end") ? errorInput : "")} />
                       )}
                     </div>
                     {fieldError(show("end"))}
@@ -345,6 +352,7 @@ export default function ScheduleDialog({
           ) : null}
 
           {err ? <div className="text-xs text-rose-200 bg-rose-500/10 border border-rose-500/30 rounded-lg px-3 py-2">{err}</div> : null}
+          <UpgradeHint error={err} />
         </div>
 
         <div className="px-6 py-4 border-t border-slate-800 flex items-center justify-end gap-2 bg-slate-900/40">

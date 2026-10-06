@@ -137,6 +137,36 @@ export class GroupError extends Error {
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Member limit                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * How many members a group may have. It follows the group Owner's plan
+ * (src/lib/groupPeople.ts memberLimitFor): the plan's participants per
+ * meeting, never more than GROUP_LIMITS.membersMax.
+ */
+export interface MemberLimit {
+  cap: number;
+  /** The Owner's plan, when the cap comes from it. */
+  plan?: string;
+}
+
+export const DEFAULT_MEMBER_LIMIT: MemberLimit = { cap: GROUP_LIMITS.membersMax };
+
+/** Refused by the group Owner's plan: the screen offers the upgrade. */
+export class PlanMemberLimitError extends GroupError {
+  constructor(public readonly limit: MemberLimit) {
+    super("plan_member_limit", 403);
+  }
+}
+
+function overLimit(limit: MemberLimit): GroupError {
+  return limit.plan && limit.cap < GROUP_LIMITS.membersMax
+    ? new PlanMemberLimitError(limit)
+    : new GroupError("too_many_members");
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Role rules                                                                 */
 /* -------------------------------------------------------------------------- */
 
@@ -572,7 +602,8 @@ export interface CreateGroupInput {
 export async function createGroup(
   input: CreateGroupInput,
   creator: NewMember,
-  members: NewMember[] = []
+  members: NewMember[] = [],
+  limit: MemberLimit = DEFAULT_MEMBER_LIMIT
 ): Promise<Group> {
   const name = cleanName(input.name);
   const description = cleanDescription(input.description);
@@ -584,7 +615,7 @@ export async function createGroup(
     const clean = cleanNewMember(m);
     if (clean.userId !== owner.userId) others.set(clean.userId, clean);
   }
-  if (others.size + 1 > GROUP_LIMITS.membersMax) throw new GroupError("too_many_members");
+  if (others.size + 1 > limit.cap) throw overLimit(limit);
 
   const now = new Date();
   const group: Group = {
@@ -761,7 +792,8 @@ async function requireGroup(gid: string): Promise<Group> {
 export async function addMembers(
   gid: string,
   people: NewMember[],
-  actor: Actor
+  actor: Actor,
+  limit: MemberLimit = DEFAULT_MEMBER_LIMIT
 ): Promise<{ added: GroupMember[]; alreadyMembers: string[] }> {
   await requireGroup(gid);
   if (!canManageGroupMember(actor, "participant")) throw new GroupError("insufficient_rank", 403);
@@ -780,9 +812,7 @@ export async function addMembers(
     have.add(clean.userId);
     added.push({ ...clean, role: "participant", joinedAt: now, addedBy: actor.userId });
   }
-  if (existing.length + added.length > GROUP_LIMITS.membersMax) {
-    throw new GroupError("too_many_members");
-  }
+  if (existing.length + added.length > limit.cap) throw overLimit(limit);
   await writeMembers(gid, added);
   for (const m of added) {
     await appendActivity(gid, { ts: now, actorId: actor.userId, type: "member_added", detail: `Added ${m.name}` });
@@ -909,7 +939,8 @@ export async function getInvite(token: string, now: number = Date.now()): Promis
 export async function redeemInvite(
   token: string,
   person: NewMember,
-  now: number = Date.now()
+  now: number = Date.now(),
+  limit: MemberLimit = DEFAULT_MEMBER_LIMIT
 ): Promise<{ group: Group; member: GroupMember; alreadyMember: boolean }> {
   const invite = await getInvite(token, now);
   if (!invite) throw new GroupError("invite_expired", 410);
@@ -920,9 +951,7 @@ export async function redeemInvite(
   const existing = await getMember(group.id, clean.userId);
   if (existing) return { group, member: existing, alreadyMember: true };
 
-  if ((await countMembers(group.id)) + 1 > GROUP_LIMITS.membersMax) {
-    throw new GroupError("too_many_members");
-  }
+  if ((await countMembers(group.id)) + 1 > limit.cap) throw overLimit(limit);
   const member: GroupMember = { ...clean, role: "participant", joinedAt: now, addedBy: null };
   await writeMembers(group.id, [member]);
   await appendActivity(group.id, { ts: now, actorId: clean.userId, type: "member_joined", detail: `${clean.name} joined with an invite link` });

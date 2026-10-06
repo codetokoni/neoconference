@@ -4,9 +4,11 @@
 // into a group. Everyone signed in starts ticked; guests have no account to
 // add, so they are shown greyed out and reached through an invite link later.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useModal } from "@/components/ui/useModal";
 import { useRouter } from "next/navigation";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
+import UpgradeHint from "@/components/groups/UpgradeHint";
 
 interface Attendee {
   userId: string;
@@ -35,6 +37,8 @@ export default function CreateGroupFromAttendees({
   const [err, setErr] = useState<string | null>(null);
 
   const nameError = nameTouched && !name.trim() ? "Give the group a name." : null;
+  const boxRef = useRef<HTMLDivElement>(null);
+  useModal(boxRef, close, { open, busy: submitting });
 
   async function openSheet() {
     setOpen(true);
@@ -126,6 +130,7 @@ export default function CreateGroupFromAttendees({
           onClick={close}
         >
           <div
+            ref={boxRef}
             onClick={(e) => e.stopPropagation()}
             className="w-full sm:max-w-lg max-h-[90vh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-slate-800 bg-[#0a0b12] text-slate-100 shadow-2xl overflow-hidden"
           >
@@ -230,6 +235,7 @@ export default function CreateGroupFromAttendees({
                   {err}
                 </div>
               ) : null}
+              <UpgradeHint error={err} />
             </div>
 
             <div className="px-6 py-4 border-t border-slate-800 flex items-center justify-end gap-2 bg-slate-900/40">
