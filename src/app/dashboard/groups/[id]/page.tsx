@@ -14,12 +14,20 @@ import {
   listActivity,
   listMembers,
 } from "@/lib/groupStore";
+import { unreadChatCount } from "@/lib/groupChat";
 import GroupView from "./GroupView";
 
 export const dynamic = "force-dynamic";
 
-export default async function GroupPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function GroupPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const { id } = await params;
+  const { tab } = await searchParams;
   const { userId } = await auth();
   if (!userId) redirect(`/sign-in?redirect_url=${encodeURIComponent(`/dashboard/groups/${id}`)}`);
 
@@ -28,7 +36,11 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
 
   const identity = await getIdentity();
   const actor = groupActor({ ...identity, userId }, member);
-  const [members, activity] = await Promise.all([listMembers(id), listActivity(id, 50)]);
+  const [members, activity, chatUnread] = await Promise.all([
+    listMembers(id),
+    listActivity(id, 50),
+    unreadChatCount(id, userId).catch(() => 0),
+  ]);
 
   return (
     <GroupView
@@ -37,6 +49,8 @@ export default async function GroupPage({ params }: { params: Promise<{ id: stri
       activity={activity}
       me={{ userId, role: member.role }}
       capabilities={groupCapabilities(actor)}
+      chatUnread={chatUnread}
+      {...(tab ? { initialTab: tab } : {})}
     />
   );
 }

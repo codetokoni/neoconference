@@ -671,6 +671,9 @@ export async function deleteGroup(gid: string): Promise<boolean> {
   const group = await getGroup(gid);
   if (!group) return false;
   const members = await listMembers(gid);
+  // Its chat goes with it. Loaded here: groupChat uses this module.
+  const { deleteGroupChat } = await import("@/lib/groupChat");
+  await deleteGroupChat(gid);
   if (!isKvConfigured()) {
     for (const m of members) memUserGroups.get(m.userId)?.delete(gid);
     memMembers.delete(gid);

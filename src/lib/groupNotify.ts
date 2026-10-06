@@ -377,3 +377,35 @@ export async function notifyInvitees(
   const sent = results.filter((r) => r.reached).length;
   return { sent, unreachable: results.length - sent, results };
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Mentions                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Someone was @mentioned in a group's chat: a bell entry and a push, nothing
+ * else (ordinary messages send no push at all). Never throws.
+ */
+export async function notifyMention(
+  userIds: string[],
+  m: { groupId: string; groupName: string; senderName: string; text: string }
+): Promise<{ sent: number }> {
+  const payload: PushPayload = {
+    type: "mention",
+    title: `${m.senderName} mentioned you in ${m.groupName}`,
+    body: m.text.length > 140 ? `${m.text.slice(0, 139)}…` : m.text,
+    url: `/dashboard/groups/${encodeURIComponent(m.groupId)}?tab=chat`,
+    groupId: m.groupId,
+  };
+  const opts: SendOptions = { ttlSec: 24 * 3600, urgency: "normal", topic: topicFor(`chat:${m.groupId}`) };
+  let sent = 0;
+  for (const uid of userIds) {
+    const to = { userId: uid, name: "" };
+    const [inApp, push] = await Promise.all([
+      sendInAppNotice(to, payload).catch(() => "failed" as const),
+      sendPushNotice(to, payload, opts).catch(() => "failed" as const),
+    ]);
+    if (inApp === "sent" || push === "sent") sent++;
+  }
+  return { sent };
+}

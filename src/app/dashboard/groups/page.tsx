@@ -5,6 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { listGroupsForUser, roleLabel } from "@/lib/groupStore";
+import { unreadChatCount } from "@/lib/groupChat";
 import NewGroupButton from "./NewGroupButton";
 import GroupIcon from "./GroupIcon";
 
@@ -15,6 +16,7 @@ export default async function GroupsPage() {
   if (!userId) redirect("/sign-in?redirect_url=/dashboard/groups");
 
   const groups = await listGroupsForUser(userId);
+  const unread = await Promise.all(groups.map(({ group }) => unreadChatCount(group.id, userId).catch(() => 0)));
 
   return (
     <main className="min-h-screen bg-[#05070d] text-white">
@@ -39,7 +41,7 @@ export default async function GroupsPage() {
           </div>
         ) : (
           <ul className="mt-8 grid gap-3">
-            {groups.map(({ group, role, memberCount }) => (
+            {groups.map(({ group, role, memberCount }, i) => (
               <li key={group.id}>
                 <Link
                   href={`/dashboard/groups/${encodeURIComponent(group.id)}`}
@@ -53,6 +55,14 @@ export default async function GroupsPage() {
                       {group.description ? ` · ${group.description}` : ""}
                     </div>
                   </div>
+                  {unread[i] > 0 ? (
+                    <span
+                      aria-label={`${unread[i]} unread messages`}
+                      className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-cyan-500 text-[11px] font-semibold leading-[22px] text-slate-950 text-center"
+                    >
+                      {unread[i] > 99 ? "99+" : unread[i]}
+                    </span>
+                  ) : null}
                   <span className="shrink-0 text-xs px-2.5 py-1 rounded-full bg-slate-800/60 border border-slate-700 text-slate-300">
                     {roleLabel(role)}
                   </span>
