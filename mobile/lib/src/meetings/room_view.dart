@@ -62,6 +62,18 @@ class PersonView {
   }
 }
 
+/// A role as LiveKit carries it ('host', 'cohost', 'attendee', 'guest'), as
+/// people read it. 'cohost' is a Moderator on every screen (#462); spelling
+/// the wire value out showed "Cohost".
+String wireRoleLabel(String role) => switch (role) {
+      'host' => 'Host',
+      'cohost' => 'Moderator',
+      'attendee' => 'Attendee',
+      'guest' => 'Guest',
+      '' => '',
+      _ => role[0].toUpperCase() + role.substring(1),
+    };
+
 /// The meeting, as the screen sees it.
 @immutable
 class RoomView {

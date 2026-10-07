@@ -885,7 +885,7 @@ class _PersonRow extends StatelessWidget {
       subtitle: role == null
           ? null
           : Text(
-              role![0].toUpperCase() + role!.substring(1),
+              wireRoleLabel(role!),
               style: TextStyle(color: palette.textMuted),
             ),
       trailing: Row(
