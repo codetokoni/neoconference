@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface Line {
   lang: string;
@@ -32,14 +32,40 @@ export default function TranslationOverlay({
   lang,
   active,
   muted,
+  onSpeaking,
 }: {
   room: string;
   lang: string;
   active: boolean;
   muted: boolean;
+  /** True while a sentence is being read aloud (the player dips the floor under it). */
+  onSpeaking?: (speaking: boolean) => void;
 }) {
   const [line, setLine] = useState<Line | null>(null);
   const spokenSeqRef = useRef<number>(0);
+
+  // Sentences queued or being read. Back-to-back sentences keep it above
+  // zero, so the floor stays down between them rather than bobbing.
+  const pendingRef = useRef(0);
+  // Bumped whenever the count is reset, so a sentence from before the
+  // reset ending late doesn't take a newer one off the count.
+  const generationRef = useRef(0);
+  const onSpeakingRef = useRef(onSpeaking);
+  onSpeakingRef.current = onSpeaking;
+  const setPending = useCallback((n: number) => {
+    const was = pendingRef.current > 0;
+    pendingRef.current = Math.max(0, n);
+    const now = pendingRef.current > 0;
+    if (was !== now) onSpeakingRef.current?.(now);
+  }, []);
+  const resetPending = useCallback(() => {
+    generationRef.current += 1;
+    setPending(0);
+  }, [setPending]);
+
+  // Nothing is being read once this goes away (back to the floor, or on
+  // air), whatever the browser's queue still says.
+  useEffect(() => () => onSpeakingRef.current?.(false), []);
 
   useEffect(() => {
     if (!active) {
@@ -51,6 +77,7 @@ export default function TranslationOverlay({
       } catch {
         /* ignore */
       }
+      resetPending();
       return;
     }
     const base = process.env.NEXT_PUBLIC_TRANSLATION_SSE?.trim().replace(/\/$/, "");
@@ -74,7 +101,7 @@ export default function TranslationOverlay({
     return () => {
       es.close();
     };
-  }, [active, room, lang]);
+  }, [active, room, lang, resetPending]);
 
   // Speak final utterances. Interim ones update the visible caption
   // but don't queue speech, so a long utterance doesn't stutter.
@@ -101,12 +128,31 @@ export default function TranslationOverlay({
     utter.rate = 1.05;
     utter.pitch = 1;
     utter.volume = 1;
+    // Cancelling the queue fires onerror for every queued sentence, so
+    // each one comes off the count exactly once, however it ends.
+    let counted = true;
+    const generation = generationRef.current;
+    const done = () => {
+      if (!counted) return;
+      counted = false;
+      if (generation !== generationRef.current) return;
+      setPending(pendingRef.current - 1);
+    };
+    utter.onend = done;
+    utter.onerror = done;
     try {
+      setPending(pendingRef.current + 1);
       synth.speak(utter);
     } catch {
       /* browsers occasionally throw on rapid speak; skip */
+      done();
     }
-  }, [active, muted, line]);
+  }, [active, muted, line, setPending]);
+
+  // Muted or switched away: whatever was queued is no longer heard.
+  useEffect(() => {
+    if (muted) resetPending();
+  }, [muted, resetPending]);
 
   if (!active || !line) return null;
 

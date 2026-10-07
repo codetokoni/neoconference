@@ -61,6 +61,21 @@ const BANDWIDTH_SAVER = false;
 const FLOOR_DUCK_VOLUME = 0.15;
 
 /**
+ * While the browser is reading a translated sentence aloud, the floor
+ * drops to this share of the viewer's floor level, and comes back up
+ * between sentences: 15% becomes 5% under the voice.
+ *
+ * The browser's voice (SpeechSynthesis) caps at volume 1 and can't go
+ * through the Web Audio boost the booths get, so the only way to put it
+ * clearly over the floor is to dip the floor while it talks. Asked for
+ * on 7 Oct 2026 as "the translation should be louder than the English";
+ * a fixed 5% floor was rejected earlier as "a whisper", which is why
+ * this dips only under the voice. A share rather than a fixed level, so
+ * the slider still means something (0 stays silent).
+ */
+const SPEAKING_DUCK = 1 / 3;
+
+/**
  * Gain applied to the selected translation via Web Audio. A plain
  * <audio> element's `.volume` caps at 1.0; the boost is the extra
  * headroom on top for browsers that let AudioContext + GainNode
@@ -124,6 +139,9 @@ export default function SimulcastPlayer({
   // slider existed.
   const FLOOR_LEVEL_KEY = "nc:floorLevel";
   const [floorLevel, setFloorLevel] = useState<number>(FLOOR_DUCK_VOLUME);
+  // The browser is reading a translated sentence aloud right now.
+  const [voiceSpeaking, setVoiceSpeaking] = useState(false);
+  const floorNow = voiceSpeaking ? floorLevel * SPEAKING_DUCK : floorLevel;
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(FLOOR_LEVEL_KEY);
@@ -463,7 +481,8 @@ export default function SimulcastPlayer({
         // Floor level comes from the viewer-controlled slider now
         // (persisted per viewer via localStorage). The constant
         // FLOOR_DUCK_VOLUME remains as the initial default only.
-        el.volume = shouldPlay && isFloor && activeIsTranslation ? floorLevel : 1;
+        // Dipped further while a translated sentence is read aloud.
+        el.volume = shouldPlay && isFloor && activeIsTranslation ? floorNow : 1;
       }
 
       if (shouldPlay) {
@@ -473,7 +492,7 @@ export default function SimulcastPlayer({
         el.play().catch(() => setMuted(true));
       }
     });
-  }, [active, muted, audioStreams, mode, onAir, videoChannel.id, wireBoost, floorLevel]);
+  }, [active, muted, audioStreams, mode, onAir, videoChannel.id, wireBoost, floorNow]);
 
   /* ---- optional: stop receiving the languages nobody is listening to ---- */
   useEffect(() => {
@@ -592,6 +611,14 @@ export default function SimulcastPlayer({
       hlsAudio.current = null;
     };
   }, [mode, active, muted, videoChannel.id, floorLevel, channelById]);
+
+  // HLS: the same dip under the browser's voice. Its own effect, so a
+  // sentence starting or ending doesn't tear down and reload the
+  // language audio above.
+  useEffect(() => {
+    if (mode !== "hls" || active === videoChannel.id) return;
+    if (videoRef.current) videoRef.current.volume = floorNow;
+  }, [mode, active, muted, videoChannel.id, floorNow]);
 
   const unmute = useCallback(() => setMuted(false), []);
 
@@ -809,6 +836,7 @@ export default function SimulcastPlayer({
                 lang={activeChannel.lang}
                 active={!muted}
                 muted={muted || Boolean(audioStreams[active])}
+                onSpeaking={setVoiceSpeaking}
               />
             )}
 
