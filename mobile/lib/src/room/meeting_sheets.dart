@@ -7,6 +7,7 @@ import '../design/components.dart';
 import '../design/tokens.dart';
 import '../events/languages.dart';
 import '../meetings/meeting_links.dart';
+import '../meetings/room_view.dart' show wireRoleLabel;
 import '../meetings/meeting_share.dart';
 import 'room_controller.dart';
 import 'translation_voice.dart' show phoneVoices;
@@ -72,7 +73,7 @@ class MeetingDetailsSheet extends ConsumerWidget {
               ),
               _Row(
                 label: 'Your role',
-                value: state.role[0].toUpperCase() + state.role.substring(1),
+                value: wireRoleLabel(state.role),
               ),
               if (state.waitingRoom.isNotEmpty && state.canManage)
                 _Row(label: 'Waiting', value: '${state.waitingRoom.length}'),

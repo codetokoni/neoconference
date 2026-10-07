@@ -32,6 +32,17 @@ void main() {
       expect(participantIsOwner(null), isFalse);
     });
 
+    test('a role spelled out from LiveKit reads as people call it: cohost is a Moderator', () {
+      // The participants list's "You" row and Meeting details' "Your role"
+      // used to capitalise the wire value and said "Cohost".
+      expect(wireRoleLabel('cohost'), 'Moderator');
+      expect(wireRoleLabel('host'), 'Host');
+      expect(wireRoleLabel('attendee'), 'Attendee');
+      expect(wireRoleLabel('guest'), 'Guest');
+      expect(wireRoleLabel(''), '');
+      expect(wireRoleLabel('speaker'), 'Speaker');
+    });
+
     test('tiles name owner, host and moderator, and nobody else', () {
       const base = PersonView(id: 'a', name: 'A');
       expect(const PersonView(id: 'a', name: 'A', role: 'host', owner: true).roleLabel, 'Owner');
