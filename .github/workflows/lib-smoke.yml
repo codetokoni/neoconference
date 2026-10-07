@@ -1,0 +1,33 @@
+name: lib-smoke
+
+# The src/lib/__tests__/*.smoke.ts scripts: the permission catalog, role
+# storage, groups, payments and the rest, against in-memory stores. Unlike
+# the e2e workflow's `smoke` job, these test the code in this branch and
+# need no deployment, browser or secrets.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Same as e2e.yml: a new commit cancels the run for the stale one.
+concurrency:
+  group: lib-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lib-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lib smoke tests
+        run: npm run test:smoke
