@@ -222,7 +222,7 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
               <MobileParticipantTile
                 participant={p}
                 localIsHost={localIsHost}
-                localCanRemove={isHostRank(localParticipant)}
+                localIsHostRank={isHostRank(localParticipant)}
                 localIsOwner={isOwner}
                 participantIsHost={isHostRole(p)}
                 slug={slug}
