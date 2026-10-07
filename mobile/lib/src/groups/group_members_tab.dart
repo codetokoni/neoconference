@@ -142,6 +142,22 @@ class _GroupMembersTabState extends ConsumerState<GroupMembersTab> {
     }
   }
 
+  Future<void> _removePending(PendingMember p) async {
+    final ok = await _confirm(
+      title: 'Remove ${p.label}?',
+      body: "They won't join the group when they sign up. You can add them again.",
+      action: 'Remove',
+    );
+    if (!ok) return;
+    try {
+      await _api.removePending(d.group.id, p.key);
+      _say('${p.label} was removed.');
+      _refresh();
+    } catch (e) {
+      _say(groupErrorText(e));
+    }
+  }
+
   Future<void> _leave() async {
     final ok = await _confirm(
       title: 'Leave ${d.group.name}?',
@@ -257,6 +273,36 @@ class _GroupMembersTabState extends ConsumerState<GroupMembersTab> {
             ],
           ),
         ),
+        if (caps.manageMembers && d.pending.isNotEmpty)
+          NeoSection(
+            title: 'Waiting to sign up (${d.pending.length})',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Added by email or KingsChat handle before they had an account. They join the first '
+                  "time they sign in with it, and count toward the group's member limit until then.",
+                  style: TextStyle(color: p.textMuted, fontSize: 12),
+                ),
+                for (final x in d.pending)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(x.isKingsChat ? Icons.alternate_email_rounded : Icons.mail_outline_rounded,
+                        color: p.textMuted),
+                    title: Text(x.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(
+                      x.isKingsChat ? 'KingsChat handle · pending' : 'Email · pending',
+                      style: TextStyle(color: p.textMuted, fontSize: 12),
+                    ),
+                    trailing: IconButton(
+                      tooltip: 'Remove ${x.label}',
+                      icon: Icon(Icons.person_remove_rounded, color: p.danger),
+                      onPressed: () => _removePending(x),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         if (caps.leave)
           Align(
             alignment: Alignment.centerLeft,

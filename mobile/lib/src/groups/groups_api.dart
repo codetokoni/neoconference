@@ -106,6 +106,11 @@ class GroupsApi {
     await api.delete('/api/groups/${_id(id)}/members?userId=${Uri.encodeQueryComponent(userId)}');
   }
 
+  /// Takes back a place held for someone who has not signed up yet.
+  Future<void> removePending(String id, String key) async {
+    await api.delete('/api/groups/${_id(id)}/members?pending=${Uri.encodeQueryComponent(key)}');
+  }
+
   Future<void> leave(String id) async {
     await api.delete('/api/groups/${_id(id)}/members');
   }

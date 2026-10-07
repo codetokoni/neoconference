@@ -243,6 +243,35 @@ class NextMeeting {
 
 /// Everything the group page shows (`GET /api/groups/<id>`).
 @immutable
+/// Someone added by email or KingsChat handle who has no account yet. They
+/// join the group the first time they sign in with it.
+@immutable
+class PendingMember {
+  const PendingMember({required this.key, required this.kind, required this.value, this.addedAt});
+
+  /// "email:…" or "kc:…": what the server takes to remove them.
+  final String key;
+
+  /// "email" or "kc".
+  final String kind;
+  final String value;
+  final DateTime? addedAt;
+
+  bool get isKingsChat => kind == 'kc';
+
+  /// "@ada" or "ada@example.com".
+  String get label => isKingsChat ? '@$value' : value;
+
+  factory PendingMember.fromJson(Map<String, dynamic> j) => PendingMember(
+        key: _str(j['key']),
+        kind: _str(j['kind']),
+        value: _str(j['value']),
+        addedAt: j['addedAt'] is num && (j['addedAt'] as num) > 0
+            ? DateTime.fromMillisecondsSinceEpoch((j['addedAt'] as num).toInt())
+            : null,
+      );
+}
+
 class GroupDetail {
   const GroupDetail({
     required this.group,
@@ -251,10 +280,14 @@ class GroupDetail {
     required this.myUserId,
     required this.capabilities,
     this.nextMeeting,
+    this.pending = const [],
   });
 
   final Group group;
   final List<GroupMember> members;
+
+  /// Waiting to sign up; only sent to those who manage members.
+  final List<PendingMember> pending;
   final List<GroupActivity> activity;
   final String myUserId;
   final GroupCapabilities capabilities;
@@ -277,6 +310,9 @@ class GroupDetail {
       myUserId: me is Map ? _str(me['userId']) : '',
       capabilities: GroupCapabilities.fromJson(j['capabilities']),
       nextMeeting: NextMeeting.fromJson(j['nextMeeting']),
+      pending: [
+        for (final p in (j['pending'] as List? ?? const []).whereType<Map<String, dynamic>>()) PendingMember.fromJson(p),
+      ],
     );
   }
 }

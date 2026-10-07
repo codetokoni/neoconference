@@ -118,6 +118,13 @@ void main() {
           return json({
             'group': cell,
             'members': members,
+            // As the server: only to those who manage members.
+            'pending': role == 'participant'
+                ? []
+                : [
+                    {'key': 'kc:newkc', 'kind': 'kc', 'value': 'newkc', 'addedBy': 'user_me', 'addedAt': 1791300000000},
+                    {'key': 'email:late@example.com', 'kind': 'email', 'value': 'late@example.com', 'addedBy': 'user_me', 'addedAt': 1791300000000},
+                  ],
             'activity': [
               {'ts': 1791300000000, 'actorId': 'user_me', 'type': 'created', 'detail': 'Ada created the group'},
             ],
@@ -350,6 +357,29 @@ void main() {
     expect(remove.url.queryParameters, {'userId': 'user_k'});
   });
 
+  testWidgets('people waiting to sign up are listed, and one can be taken back by its key', (tester) async {
+    tall(tester);
+    await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
+    await tester.pumpAndSettle();
+    await openTab(tester, 'Members');
+
+    await tester.ensureVisible(find.text('late@example.com'));
+    await tester.pumpAndSettle();
+    expect(find.text('WAITING TO SIGN UP (2)'), findsOneWidget, reason: 'NeoSection titles are upper case');
+    expect(find.text('@newkc'), findsOneWidget);
+    expect(find.text('KingsChat handle · pending'), findsOneWidget);
+    expect(find.text('Email · pending'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Remove @newkc'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Remove'));
+    await tester.pumpAndSettle();
+
+    final remove = sent.singleWhere((r) => r.method == 'DELETE' && r.url.path == '/api/groups/g1/members');
+    expect(remove.url.queryParameters, {'pending': 'kc:newkc'});
+    expect(find.text('@newkc was removed.'), findsOneWidget);
+  });
+
   testWidgets('the invite link is created on the server and shared', (tester) async {
     tall(tester);
     final shared = <ShareParams>[];
@@ -378,6 +408,8 @@ void main() {
     expect(find.text('Add people'), findsNothing);
     expect(find.byTooltip('Manage Kemi'), findsNothing);
     expect(find.widgetWithText(Tab, 'Settings'), findsNothing);
+    expect(find.textContaining(RegExp('waiting to sign up', caseSensitive: false)), findsNothing);
+    expect(find.text('@newkc'), findsNothing);
 
     await tester.tap(find.text('Leave group'));
     await tester.pumpAndSettle();
