@@ -4,6 +4,7 @@
 //
 // Auth model: caller must be the event owner (role "host") OR have role "cohost"
 // in event.roles. This mirrors the client-side check used by /api/events/role.
+// "kick" additionally needs participant:kick, which is host rank.
 //
 // Role administration (makeCohost / demoteToAttendee) lives on the RBAC-aware
 // /api/events/[id]/roles route instead, so writes land in the Redis membership
@@ -20,6 +21,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { RoomServiceClient } from "livekit-server-sdk";
 import { eventStore } from "@/lib/eventStore";
 import { assertOwnerOrAdmin } from "@/lib/roles";
+import { authorize } from "@/lib/authz";
 import type { RoleAssignment } from "@/types/event";
 
 export const runtime = "nodejs";
@@ -61,6 +63,15 @@ export async function POST(req: Request) {
   const check = await assertOwnerOrAdmin(ev, userId, { allowCohost: true });
   if (!check.ok) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  // Removing someone is host rank (participant:kick; FRS §1.3: a cohost
+  // must not remove participants). The check above is participant:mute,
+  // moderator rank, so on its own it let a cohost who called this route
+  // directly remove anyone the UI never offered them.
+  if (action === "kick") {
+    const gate = await authorize(ev, "participant:kick");
+    if (!gate.ok) return gate.response;
   }
 
   // Self-moderation prevention: hosts can\'t kick/mute themselves through this

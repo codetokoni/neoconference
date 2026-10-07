@@ -24,6 +24,10 @@ import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 interface MobileParticipantTileProps {
   participant: Participant;
   localIsHost: boolean;
+  /** Host rank (wire role 'host', which covers the owner). Remove is host
+   *  rank on the server (participant:kick; FRS §1.3), while localIsHost
+   *  also covers a cohost. */
+  localCanRemove?: boolean;
   /** Whether the local viewer is the actual event owner — controls the
    *  Make Host action gate in the long-press menu (FRS §1.1). */
   localIsOwner?: boolean;
@@ -91,6 +95,7 @@ const BURST_DURATION = 2500;
 function MobileParticipantTileInner({
   participant,
   localIsHost,
+  localCanRemove = false,
   localIsOwner = false,
   participantIsHost,
   slug,
@@ -709,14 +714,18 @@ function MobileParticipantTileInner({
                   />
                 )}
 
-                <MenuSection label="Danger" />
-                <MenuBtn
-                  label="Remove from room"
-                  danger
-                  disabled={pending !== null}
-                  loading={pending === 'kick'}
-                  onClick={() => handleModerate('kick')}
-                />
+                {(localCanRemove || localIsOwner) && (
+                  <>
+                    <MenuSection label="Danger" />
+                    <MenuBtn
+                      label="Remove from room"
+                      danger
+                      disabled={pending !== null}
+                      loading={pending === 'kick'}
+                      onClick={() => handleModerate('kick')}
+                    />
+                  </>
+                )}
               </>
             )}
 
@@ -813,6 +822,7 @@ export const MobileParticipantTile = React.memo(
     prev.participant.isMicrophoneEnabled === next.participant.isMicrophoneEnabled &&
     prev.participant.isCameraEnabled === next.participant.isCameraEnabled &&
     prev.localIsHost === next.localIsHost &&
+    prev.localCanRemove === next.localCanRemove &&
     prev.localIsOwner === next.localIsOwner &&
     prev.participantIsHost === next.participantIsHost &&
     prev.slug === next.slug &&

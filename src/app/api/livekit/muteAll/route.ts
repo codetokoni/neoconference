@@ -15,8 +15,8 @@
 // field (host/cohost/attendee), stamped by the token grant and updated live
 // by /api/events/[id]/roles when someone is promoted/demoted mid-meeting.
 //
-// Authorization: participant:muteAll — RANK.host (raised from moderator to
-// match §5.1's Owner+Host phrasing).
+// Authorization: participant:muteAll — RANK.moderator, so a cohost may mute
+// everyone (permissions.ts; permissions.smoke.ts asserts it).
 
 import { NextResponse } from "next/server";
 import { RoomServiceClient } from "livekit-server-sdk";
