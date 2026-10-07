@@ -13,6 +13,7 @@ import {
   groupCapabilities,
   listActivity,
   listMembers,
+  listPendingMembers,
 } from "@/lib/groupStore";
 import { unreadChatCount } from "@/lib/groupChat";
 import { listGroupMeetings } from "@/lib/groupMeetings";
@@ -37,12 +38,15 @@ export default async function GroupPage({
 
   const identity = await getIdentity();
   const actor = groupActor({ ...identity, userId }, member);
+  const capabilities = groupCapabilities(actor);
   // Everything the page opens with, in one go: no request waterfall.
-  const [members, activity, chatUnread, upcoming] = await Promise.all([
+  const [members, activity, chatUnread, upcoming, pending] = await Promise.all([
     listMembers(id),
     listActivity(id, 50),
     unreadChatCount(id, userId).catch(() => 0),
     listGroupMeetings(id, userId, "upcoming").catch(() => ({ items: [] })),
+    // Who is waiting to sign up: for those who add and remove members only.
+    capabilities.manageMembers ? listPendingMembers(id).catch(() => []) : Promise.resolve([]),
   ]);
   const next = upcoming.items[0];
 
@@ -50,9 +54,10 @@ export default async function GroupPage({
     <GroupView
       group={group}
       members={members}
+      pending={pending}
       activity={activity}
       me={{ userId, role: member.role }}
-      capabilities={groupCapabilities(actor)}
+      capabilities={capabilities}
       chatUnread={chatUnread}
       nextMeeting={next ? { slug: next.slug, title: next.title, start: next.start, state: next.state } : null}
       {...(tab ? { initialTab: tab } : {})}

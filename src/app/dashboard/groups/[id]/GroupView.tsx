@@ -5,7 +5,7 @@ import { useModal } from "@/components/ui/useModal";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { MeetingRole } from "@/lib/permissions";
-import type { Group, GroupActivity, GroupCapabilities, GroupMember } from "@/lib/groupStore";
+import type { Group, GroupActivity, GroupCapabilities, GroupMember, PendingMember } from "@/lib/groupStore";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
 import GroupIcon from "../GroupIcon";
 import UpgradeHint from "@/components/groups/UpgradeHint";
@@ -143,6 +143,7 @@ function ConfirmDialog({
 export default function GroupView({
   group,
   members,
+  pending = [],
   activity,
   me,
   capabilities,
@@ -152,6 +153,8 @@ export default function GroupView({
 }: {
   group: Group;
   members: GroupMember[];
+  /** People added by email or KingsChat handle who have not signed up yet (managers only). */
+  pending?: PendingMember[];
   activity: GroupActivity[];
   me: { userId: string; role: MeetingRole };
   capabilities: GroupCapabilities;
@@ -291,7 +294,7 @@ export default function GroupView({
                 onUnreadCleared={() => setUnread(0)}
               />
             ) : tab === "members" ? (
-              <MembersTab group={group} members={members} me={me} capabilities={capabilities} />
+              <MembersTab group={group} members={members} pending={pending} me={me} capabilities={capabilities} />
             ) : tab === "meetings" ? (
               <MeetingsTab
                 groupId={group.id}
@@ -348,11 +351,13 @@ function NextMeetingLine({ meeting }: { meeting: { slug: string; title: string; 
 function MembersTab({
   group,
   members,
+  pending,
   me,
   capabilities,
 }: {
   group: Group;
   members: GroupMember[];
+  pending: PendingMember[];
   me: { userId: string; role: MeetingRole };
   capabilities: GroupCapabilities;
 }) {
@@ -447,6 +452,27 @@ function MembersTab({
       router.refresh();
     } catch {
       setRowErr({ userId: target.userId, text: groupErrorMessage(null) });
+    } finally {
+      setRowBusy(null);
+    }
+  }
+
+  /** Take back a place held for someone who has not signed up yet. */
+  async function removePending(p: PendingMember) {
+    setRowBusy(p.key);
+    setRowErr(null);
+    try {
+      const res = await fetch(
+        `/api/groups/${encodeURIComponent(group.id)}/members?pending=${encodeURIComponent(p.key)}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        setRowErr({ userId: p.key, text: await groupErrorFrom(res) });
+        return;
+      }
+      router.refresh();
+    } catch {
+      setRowErr({ userId: p.key, text: groupErrorMessage(null) });
     } finally {
       setRowBusy(null);
     }
@@ -607,6 +633,45 @@ function MembersTab({
           );
         })}
       </ul>
+
+      {capabilities.manageMembers && pending.length > 0 ? (
+        <section aria-labelledby="pending-members-title" className="space-y-2">
+          <h3 id="pending-members-title" className="text-xs uppercase tracking-widest text-slate-400">
+            Waiting to sign up ({pending.length})
+          </h3>
+          <p className="text-xs text-slate-400">
+            Added by email or KingsChat handle before they had an account. They join the group the first time they
+            sign in with it, and count toward the group&apos;s member limit until then.
+          </p>
+          <ul className="grid gap-2">
+            {pending.map((p) => (
+              <li key={p.key} className="min-w-0 rounded-xl border border-dashed border-slate-700 bg-slate-900/20 p-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm text-slate-100">{p.kind === "kc" ? `@${p.value}` : p.value}</div>
+                    <div className="text-xs text-slate-400">
+                      {p.kind === "kc" ? "KingsChat handle" : "Email"} · added {timeAgo(p.addedAt)}
+                    </div>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-slate-700 px-2.5 py-1 text-[11px] text-slate-300">
+                    Pending
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removePending(p)}
+                    disabled={rowBusy === p.key}
+                    aria-label={`Remove ${p.kind === "kc" ? `@${p.value}` : p.value}`}
+                    className="shrink-0 px-3 py-1.5 rounded-full border border-rose-500/40 text-rose-200 hover:bg-rose-500/15 transition text-xs disabled:opacity-60"
+                  >
+                    {rowBusy === p.key ? "Removing…" : "Remove"}
+                  </button>
+                </div>
+                {rowErr?.userId === p.key ? <p className="mt-2 text-xs text-rose-300">{rowErr.text}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {capabilities.leave ? (
         <div className="flex justify-end">
