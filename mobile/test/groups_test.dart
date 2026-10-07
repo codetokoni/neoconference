@@ -11,6 +11,7 @@ import 'package:neoconference/src/groups/group_join.dart';
 import 'package:neoconference/src/groups/group_meetings_api.dart';
 import 'package:neoconference/src/groups/group_screen.dart';
 import 'package:neoconference/src/groups/groups_screen.dart';
+import 'package:neoconference/src/groups/incoming_call.dart';
 import 'package:neoconference/src/groups/join_group_screen.dart';
 import 'package:neoconference/src/meetings/meeting_share.dart';
 import 'package:share_plus/share_plus.dart';
@@ -233,6 +234,48 @@ void main() {
     expect(find.text('Cell Leaders'), findsOneWidget);
     expect(find.text('2 members · Thursday cell'), findsOneWidget);
     expect(find.text('Owner'), findsOneWidget);
+  });
+
+  testWidgets('with full-screen calls switched off, the list asks to allow them until they are', (tester) async {
+    tall(tester);
+    var allowed = false;
+    var opened = 0;
+    final can = CallRinger.canFullScreen, open = CallRinger.openFullScreenSettings;
+    CallRinger.canFullScreen = () async => allowed;
+    CallRinger.openFullScreenSettings = () async {
+      opened++;
+      return true;
+    };
+    addTearDown(() {
+      CallRinger.canFullScreen = can;
+      CallRinger.openFullScreenSettings = open;
+    });
+
+    await tester.pumpWidget(app(const GroupsScreen()));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('show only as a notification'), findsOneWidget);
+    expect(find.text('Cell Leaders'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Allow'));
+    await tester.pumpAndSettle();
+    expect(opened, 1);
+
+    // Back from the phone's settings with it switched on.
+    allowed = true;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('show only as a notification'), findsNothing);
+  });
+
+  testWidgets('with full-screen calls allowed, the list says nothing about them', (tester) async {
+    tall(tester);
+    final can = CallRinger.canFullScreen;
+    CallRinger.canFullScreen = () async => true;
+    addTearDown(() => CallRinger.canFullScreen = can);
+
+    await tester.pumpWidget(app(const GroupsScreen()));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('show only as a notification'), findsNothing);
   });
 
   testWidgets('New group sends the name and opens the new group', (tester) async {

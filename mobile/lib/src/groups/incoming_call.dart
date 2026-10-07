@@ -74,6 +74,23 @@ class CallRinger {
   /// on while it is up, off when it goes.
   static Future<void> Function(bool on) overLock = (on) => _call('showOverLock', {'on': on});
 
+  /// Whether a call can take over the screen; false where the phone has
+  /// switched that off for this app, and it arrives as a banner instead.
+  /// True when it can't tell (nothing to ask the person to change).
+  static Future<bool> Function() canFullScreen = () => _ask('canFullScreen');
+
+  /// Opens the phone's switch for it; false if no settings page opened.
+  static Future<bool> Function() openFullScreenSettings = () => _ask('openFullScreenSettings');
+
+  static Future<bool> _ask(String method) async {
+    try {
+      return await _channel.invokeMethod<bool>(method) ?? true;
+    } catch (e) {
+      debugPrint('[ring] $method: $e');
+      return method == 'canFullScreen';
+    }
+  }
+
   static Future<void> _call(String method, [Object? args]) async {
     try {
       await _channel.invokeMethod<void>(method, args);
