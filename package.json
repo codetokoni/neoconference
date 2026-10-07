@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test:smoke": "node scripts/run-smoke.mjs",
     "test:e2e": "playwright test --grep-invert \"@postdeploy\"",
     "test:e2e:ui": "playwright test --ui",
     "check:deploy": "node scripts/check-deploy.mjs",
@@ -49,6 +50,7 @@
     "eslint-config-next": "14.2.35",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

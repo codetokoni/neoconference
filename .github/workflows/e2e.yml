@@ -17,6 +17,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The server's own smoke tests (src/lib/__tests__/*.smoke.ts): the
+  # permission catalog, ringing, groups, reports and the rest, against the
+  # in-memory stores. No browser and no network, so they need nothing but
+  # the dependencies, and run in seconds.
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run server smoke tests
+        run: npm run test:smoke
+
   smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 15
