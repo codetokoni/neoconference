@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:background_hold/background_hold.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -297,21 +298,33 @@ Future<void> callPushBackgroundMessage(RemoteMessage message) async {
 @pragma('vm:entry-point')
 Future<void> callPushNotificationAction(NotificationResponse response) async {
   if (response.actionId != declineAction) return;
-  final data = _decode(response.payload);
-  if (data == null) return;
-  final ring = IncomingRing.from(data, DateTime.now());
-  if (ring == null) return;
-  final prefs = await SharedPreferences.getInstance();
-  final session = prefs.getString(AuthController.sessionKey);
-  if (session == null) return;
-  // Signed in from what the app saved: the session and Clerk's client
-  // cookie. This isolate has no AuthController of its own.
-  final clerk = ClerkClient()..clientCookie = prefs.getString(AuthController.cookieKey);
-  final api = ApiClient(token: () => clerk.sessionToken(session));
+  // The button thaws a frozen app for 5 s on some phones (ColorOS), and
+  // this takes 3 s on a good day — most of it getting a Clerk token. Held
+  // in the foreground, it is not frozen halfway.
+  final held = await BackgroundHold.start('Declining the call…');
+  // Each way out says why, in logcat: this runs where no one sees it.
   try {
-    await RingResponder(api).respond(ring, answer: false);
+    final data = _decode(response.payload);
+    if (data == null) return debugPrint('[ring] decline: no payload');
+    final ring = IncomingRing.from(data, DateTime.now());
+    if (ring == null) return debugPrint('[ring] decline: not a ring');
+    final prefs = await SharedPreferences.getInstance();
+    final session = prefs.getString(AuthController.sessionKey);
+    if (session == null) return debugPrint('[ring] decline: signed out');
+    // Signed in from what the app saved: the session and Clerk's client
+    // cookie. This isolate has no AuthController of its own.
+    final clerk = ClerkClient()..clientCookie = prefs.getString(AuthController.cookieKey);
+    final api = ApiClient(token: () => clerk.sessionToken(session));
+    try {
+      await RingResponder(api).respond(ring, answer: false);
+      debugPrint('[ring] decline: sent');
+    } finally {
+      api.close();
+      clerk.close();
+    }
+  } catch (e) {
+    debugPrint('[ring] decline: $e');
   } finally {
-    api.close();
-    clerk.close();
+    if (held) await BackgroundHold.stop();
   }
 }
