@@ -221,7 +221,7 @@ export default function LiveTranslation() {
     // captions are enabled, so a viewer who picked a language but
     // still needed to click CC first would see nothing until they
     // did. CaptionsToggle listens for this event and, if the local
-    // participant can control captions (host / cohost), flips them
+    // participant can control captions (a host), flips them
     // on. For non-controllers this is a no-op today; the panel
     // still reflects the correct off state.
     if (next !== 'off' && typeof window !== 'undefined') {

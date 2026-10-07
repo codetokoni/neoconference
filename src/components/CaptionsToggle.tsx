@@ -2,8 +2,9 @@
 
 // src/components/CaptionsToggle.tsx
 //
-// Toolbar pill for the in-room live-captions feature. Host and co-host can
-// click to toggle live captions ON / OFF; everyone else sees the pill as a
+// Toolbar pill for the in-room live-captions feature. A host (owner or
+// host; captions:dispatch is host rank) can click to toggle live captions
+// ON / OFF; everyone else, a cohost included, sees the pill as a
 // read-only status indicator ("Captions: ON" or no pill when off).
 //
 // State synchronization model:
