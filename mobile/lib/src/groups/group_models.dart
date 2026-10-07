@@ -284,13 +284,55 @@ class GroupDetail {
 /// The result of adding people by email.
 @immutable
 class AddMembersResult {
-  const AddMembersResult({required this.added, required this.alreadyMembers, required this.notFound});
+  const AddMembersResult({
+    required this.added,
+    required this.alreadyMembers,
+    required this.notFound,
+    this.pending = const [],
+    this.alreadyPending = const [],
+  });
 
   final List<GroupMember> added;
   final List<String> alreadyMembers;
 
   /// Addresses with no NeoConference account: send them the invite link.
   final List<String> notFound;
+
+  /// People with no account yet, kept in the group until they sign up with
+  /// that email or KingsChat handle, as they read ("ada@x.com", "@ada").
+  final List<String> pending;
+
+  /// The same, who were already waiting.
+  final List<String> alreadyPending;
+
+  factory AddMembersResult.fromJson(Map body) {
+    String label(dynamic p) => p is Map
+        ? (p['kind'] == 'kc' ? '@${p['value']}' : '${p['value']}')
+        : '$p'.replaceFirst(RegExp(r'^email:'), '').replaceFirst(RegExp(r'^kc:'), '@');
+    return AddMembersResult(
+      added: [
+        for (final m in (body['added'] as List? ?? const []).whereType<Map<String, dynamic>>()) GroupMember.fromJson(m),
+      ],
+      alreadyMembers: [for (final s in (body['alreadyMembers'] as List? ?? const [])) '$s'],
+      notFound: [for (final s in (body['notFound'] as List? ?? const [])) '$s'],
+      pending: [for (final p in (body['pending'] as List? ?? const [])) label(p)],
+      alreadyPending: [for (final p in (body['alreadyPending'] as List? ?? const [])) label(p)],
+    );
+  }
+
+  /// One sentence for a snackbar: who was added, who waits, who already was.
+  String get summary {
+    String people(int n) => n == 1 ? '1 person' : '$n people';
+    final parts = <String>[
+      if (added.isNotEmpty) 'Added ${people(added.length)}.',
+      if (pending.isNotEmpty)
+        '${people(pending.length)} without an account yet will join when they sign up: ${pending.join(', ')}.',
+      if (alreadyMembers.isNotEmpty) '${people(alreadyMembers.length)} already in the group.',
+      if (alreadyPending.isNotEmpty) '${people(alreadyPending.length)} already waiting to sign up.',
+      if (notFound.isNotEmpty) 'Not found: ${notFound.join(', ')}.',
+    ];
+    return parts.isEmpty ? 'Nobody new to add.' : parts.join(' ');
+  }
 }
 
 /// An invite link and when it stops working (72 hours).

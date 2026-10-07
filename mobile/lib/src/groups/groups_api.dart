@@ -18,12 +18,39 @@ class GroupsApi {
     return [for (final g in list.whereType<Map<String, dynamic>>()) GroupSummary.fromJson(g)];
   }
 
-  Future<Group> create({required String name, String description = ''}) async {
+  /// Creates a group. With [fromEventId], [memberUserIds] are people who
+  /// attended that meeting (the server checks), added as Members at once.
+  Future<Group> create({
+    required String name,
+    String description = '',
+    String? fromEventId,
+    List<String> memberUserIds = const [],
+  }) async {
     final body = await api.post('/api/groups', {
       'name': name,
       if (description.trim().isNotEmpty) 'description': description,
+      'fromEventId': ?fromEventId,
+      if (fromEventId != null && memberUserIds.isNotEmpty) 'memberUserIds': memberUserIds,
     });
     return Group.fromJson((body as Map)['group'] as Map<String, dynamic>);
+  }
+
+  /// Adds people by account, email or KingsChat handle. Anyone with no
+  /// account yet is kept in the group, pending, and joins when they first
+  /// sign in with that email or handle.
+  Future<AddMembersResult> addPeople(
+    String id, {
+    List<String> userIds = const [],
+    List<String> emails = const [],
+    List<String> kcHandles = const [],
+  }) async {
+    final body = await api.post('/api/groups/${_id(id)}/members', {
+      if (userIds.isNotEmpty) 'userIds': userIds,
+      if (emails.isNotEmpty) 'emails': emails,
+      if (kcHandles.isNotEmpty) 'kcHandles': kcHandles,
+      'pending': true,
+    }) as Map;
+    return AddMembersResult.fromJson(body);
   }
 
   Future<GroupDetail> detail(String id) async {
@@ -60,28 +87,14 @@ class GroupsApi {
 
   Future<AddMembersResult> addByEmail(String id, List<String> emails) async {
     final body = await api.post('/api/groups/${_id(id)}/members', {'emails': emails}) as Map;
-    return AddMembersResult(
-      added: [
-        for (final m in (body['added'] as List? ?? const []).whereType<Map<String, dynamic>>())
-          GroupMember.fromJson(m),
-      ],
-      alreadyMembers: [for (final s in (body['alreadyMembers'] as List? ?? const [])) '$s'],
-      notFound: [for (final s in (body['notFound'] as List? ?? const [])) '$s'],
-    );
+    return AddMembersResult.fromJson(body);
   }
 
   /// Adds people by their account (someone met in a meeting, whose email
   /// this person may not know).
   Future<AddMembersResult> addByUserId(String id, List<String> userIds) async {
     final body = await api.post('/api/groups/${_id(id)}/members', {'userIds': userIds}) as Map;
-    return AddMembersResult(
-      added: [
-        for (final m in (body['added'] as List? ?? const []).whereType<Map<String, dynamic>>())
-          GroupMember.fromJson(m),
-      ],
-      alreadyMembers: [for (final s in (body['alreadyMembers'] as List? ?? const [])) '$s'],
-      notFound: [for (final s in (body['notFound'] as List? ?? const [])) '$s'],
-    );
+    return AddMembersResult.fromJson(body);
   }
 
   /// Gives someone a role; [GroupRole.owner] hands the group over.
@@ -142,7 +155,7 @@ const _groupMessages = <String, String>{
   'invalid_description': 'The description is too long (500 characters at most).',
   'invalid_icon': 'The icon must be an https:// image link.',
   'invalid_settings': 'Retry interval must be 1–60 minutes and attempts 1–10.',
-  'invalid_members': "One of those entries isn't a valid email address.",
+  'invalid_members': "One of those entries isn't a valid email address or KingsChat handle.",
   'no_members': 'Enter an email address to add.',
   'too_many_at_once': 'Add at most 50 people at a time.',
   'too_many_members': 'A group can have at most 500 members.',

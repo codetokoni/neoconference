@@ -7,6 +7,7 @@ import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
 import '../meetings/when.dart';
+import 'add_to_group_sheet.dart';
 import 'group_reports_api.dart';
 import 'group_reports_tab.dart' show reportWhen, shareSpreadsheet;
 import 'groups_api.dart';
@@ -14,12 +15,25 @@ import 'groups_api.dart';
 /// One meeting's report: who was invited and who came, for how long, the
 /// calls made, the recording and the AI summary; Export XLSX for Hosts and
 /// the Owner. The web's MeetingReportView.
+///
+/// [MeetingReportScreen.forMeeting] is the same for any meeting, from
+/// History: chat messages instead of the group's calling, and Create a group
+/// / Add to a group for the people in it.
 class MeetingReportScreen extends ConsumerStatefulWidget {
-  const MeetingReportScreen({super.key, required this.groupId, required this.eventId, required this.canExport});
+  const MeetingReportScreen({super.key, required this.groupId, required this.eventId, required this.canExport})
+      : reopen = null;
 
-  final String groupId;
+  /// Any meeting's report, by its owner or a host. [reopen] opens the meeting
+  /// again (History's rows used to do only that).
+  const MeetingReportScreen.forMeeting({super.key, required this.eventId, this.reopen})
+      : groupId = null,
+        canExport = true;
+
+  /// The group whose report this is; null for a report from History.
+  final String? groupId;
   final String eventId;
   final bool canExport;
+  final VoidCallback? reopen;
 
   @override
   ConsumerState<MeetingReportScreen> createState() => _MeetingReportScreenState();
@@ -33,8 +47,12 @@ class _MeetingReportScreenState extends ConsumerState<MeetingReportScreen> {
   bool _exporting = false;
 
   GroupReportsApi get _api => GroupReportsApi(ref.read(groupsApiProvider).api);
+  EventReportsApi get _events => EventReportsApi(ref.read(groupsApiProvider).api);
 
-  Future<MeetingReport> _load() => GroupReportsApi(ref.read(groupsApiProvider).api).report(widget.groupId, widget.eventId);
+  Future<MeetingReport> _load() {
+    final gid = widget.groupId;
+    return gid == null ? _events.report(widget.eventId) : _api.report(gid, widget.eventId);
+  }
 
   Future<void> _export() async {
     setState(() => _exporting = true);
@@ -42,11 +60,43 @@ class _MeetingReportScreenState extends ConsumerState<MeetingReportScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(content: Text('Preparing the spreadsheet…')));
     try {
-      await shareSpreadsheet(await _api.reportXlsx(widget.groupId, widget.eventId));
+      final gid = widget.groupId;
+      await shareSpreadsheet(
+          await (gid == null ? _events.xlsx(widget.eventId) : _api.reportXlsx(gid, widget.eventId)));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(groupErrorText(e))));
     } finally {
       if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  /// Create a group, or add to one, from the people in the meeting: those who
+  /// came and have an account are ticked; invitees who never came can be.
+  Future<void> _toGroup(MeetingReport r, {required bool startNew}) async {
+    final people = [
+      for (final x in r.people)
+        if (x.addable)
+          GroupCandidate(
+            name: x.name.isEmpty ? x.email : x.name,
+            detail: x.present
+                ? 'Came · ${attendedText(x.attendedMs)}'
+                : "Invited, didn't come${x.kcHandle != null ? ' · @${x.kcHandle}' : x.email.isNotEmpty ? ' · ${x.email}' : ''}",
+            userId: x.userId,
+            email: x.email.isEmpty ? null : x.email,
+            kcHandle: x.kcHandle,
+            attended: x.present,
+            selected: x.present && x.userId != null,
+          ),
+    ];
+    final message = await showAddToGroupSheet(
+      context,
+      people: people,
+      suggestedName: r.title,
+      fromEventId: r.eventId,
+      startNew: startNew,
+    );
+    if (message != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -91,12 +141,25 @@ class _MeetingReportScreenState extends ConsumerState<MeetingReportScreen> {
           if (snap.hasError) {
             return Padding(
               padding: const EdgeInsets.all(NeoSpace.xl),
-              child: NeoBanner(
-                icon: Icons.cloud_off_rounded,
-                tone: NeoBannerTone.warning,
-                message: groupLoadText(snap.error!),
-                action: () => setState(() => _report = _load()),
-                actionLabel: 'Retry',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  NeoBanner(
+                    icon: Icons.cloud_off_rounded,
+                    tone: NeoBannerTone.warning,
+                    message: groupLoadText(snap.error!),
+                    action: () => setState(() => _report = _load()),
+                    actionLabel: 'Retry',
+                  ),
+                  // A meeting that never started has no report, but can
+                  // still be opened.
+                  if (widget.reopen != null)
+                    TextButton.icon(
+                      onPressed: widget.reopen,
+                      icon: const Icon(Icons.replay_rounded),
+                      label: const Text('Open the meeting again'),
+                    ),
+                ],
               ),
             );
           }
@@ -131,10 +194,44 @@ class _MeetingReportScreenState extends ConsumerState<MeetingReportScreen> {
                   _Stat('Attended', '${r.attended}', color: p.success),
                   _Stat('Absent', '${r.absent}', color: r.absent > 0 ? p.warning : null),
                   _Stat('Duration', r.durationMin > 0 ? '${r.durationMin} min' : '—'),
-                  _Stat('Call attempts', '${r.callAttempts}'),
-                  _Stat('Missed calls', '${r.missedCalls}'),
+                  if (widget.groupId != null) ...[
+                    _Stat('Call attempts', '${r.callAttempts}'),
+                    _Stat('Missed calls', '${r.missedCalls}'),
+                  ] else
+                    _Stat('Chat messages', '${r.chatMessages}'),
                 ],
               ),
+              if (widget.groupId == null) ...[
+                const SizedBox(height: NeoSpace.lg),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => _toGroup(r, startNew: true),
+                        icon: const Icon(Icons.group_add_rounded),
+                        label: const Text('Create a group'),
+                      ),
+                    ),
+                    const SizedBox(width: NeoSpace.sm),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _toGroup(r, startNew: false),
+                        icon: const Icon(Icons.person_add_alt_1_rounded),
+                        label: const Text('Add to a group'),
+                      ),
+                    ),
+                  ],
+                ),
+                if (widget.reopen != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: widget.reopen,
+                      icon: const Icon(Icons.replay_rounded),
+                      label: const Text('Open the meeting again'),
+                    ),
+                  ),
+              ],
               const SizedBox(height: NeoSpace.lg),
               Text('First to join: ${r.firstToJoin ?? '—'}', style: TextStyle(color: p.text)),
               Text('Last to leave: ${r.lastToLeave ?? '—'}', style: TextStyle(color: p.text)),
@@ -214,6 +311,7 @@ class _PersonRow extends StatelessWidget {
     final status = x.present ? 'Present' : (x.declined ? 'Declined' : 'Absent');
     final details = [
       if (x.joinedAt != null) 'joined ${neoClock(x.joinedAt!)}',
+      if (x.leftAt != null) 'left ${neoClock(x.leftAt!)}',
       if (x.present) attendedText(x.attendedMs),
       if (x.entries > 1) '${x.entries} times',
       if (x.callAttempts > 0) '${x.callAttempts} rung · ${x.missedCalls} missed',

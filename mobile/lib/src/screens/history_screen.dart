@@ -5,6 +5,7 @@ import '../core/load_error.dart';
 import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
+import '../groups/meeting_report_screen.dart';
 import '../meetings/meeting_board.dart';
 import '../meetings/meeting_view.dart';
 import '../meetings/when.dart';
@@ -147,16 +148,27 @@ class _PastRow extends StatelessWidget {
       if (meeting.startsAt == null) meeting.code,
     ].join(' · ');
 
+    void reopen() => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => PreJoinScreen(meeting: meeting)),
+        );
+    final eventId = meeting.eventId;
+
     return NeoCard(
-      // Opens pre-join, which reopens a meeting that ended. It was a card
-      // you could look at and not use.
-      onTap: meeting.canJoin
+      // Opens the meeting's report: when, how long, who came, and making a
+      // group of them. Reopening the meeting is a button there; a meeting
+      // with no server id still goes straight to pre-join.
+      onTap: eventId != null
           ? () => Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => PreJoinScreen(meeting: meeting),
+                  builder: (_) => MeetingReportScreen.forMeeting(
+                    eventId: eventId,
+                    reopen: meeting.canJoin ? reopen : null,
+                  ),
                 ),
               )
-          : null,
+          : meeting.canJoin
+              ? reopen
+              : null,
       child: Row(
         children: [
           NeoAvatar(name: meeting.host ?? meeting.title, size: 42),
