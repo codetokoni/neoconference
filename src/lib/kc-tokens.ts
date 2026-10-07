@@ -17,7 +17,7 @@
 // treat the person as unreachable (returns null), so the sender falls
 // back to the copy-invite path.
 
-import { kv } from '@vercel/kv';
+import { kv } from '@/lib/kv';
 
 const PREFIX = 'neo:kc:tokens:';
 const HANDLE_INDEX_PREFIX = 'neo:kc:handle-to-clerk:';

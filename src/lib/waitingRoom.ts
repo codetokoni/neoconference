@@ -16,7 +16,7 @@
 //  - A refusal is shown for a minute, long enough to reach the person who
 //    was knocking. After that a knock is a new request.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import type { NeoEvent, RoleAssignment, WaitingRoomEntry } from "@/types/event";
 
 /**

@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
 import { listCodes, mintCodes } from "@/lib/participantCodes";
 import { ensureRoomBroadcasts } from "@/lib/amsMainTrack";

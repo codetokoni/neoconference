@@ -13,7 +13,7 @@
 //
 // Private calls are never posted: they are not the group's business.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import { eventStore } from "@/lib/eventStore";
 import { postSystemMessage } from "@/lib/groupChat";
 import { buildMeetingReport } from "@/lib/groupReports";

@@ -21,7 +21,7 @@
 // it is simply unavailable and sends report that.
 
 import { createHash } from "node:crypto";
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import { SignJWT, importPKCS8 } from "jose";
 import type { PushPayload, SendOptions } from "@/lib/pushStore";
 

@@ -17,7 +17,7 @@
 // claimDue() takes a job by removing it from the zset; only the caller whose
 // remove succeeded runs it, so overlapping ticks never run a job twice.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 
 export type JobType = "remind60" | "remind30" | "ring";
 

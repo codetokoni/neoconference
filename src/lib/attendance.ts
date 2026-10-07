@@ -18,7 +18,7 @@
 // Pure module: no Clerk, no Next, no HTTP. Safe to call from routes,
 // webhooks, tests, or a report generator.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import type { NeoEvent } from "@/types/event";
 
 const RETENTION_SECONDS = 90 * 24 * 60 * 60; // 90 days

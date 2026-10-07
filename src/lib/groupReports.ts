@@ -14,7 +14,7 @@
 // minutes (late leave events have arrived by then); until then it is built
 // fresh each time.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import { eventStore } from "@/lib/eventStore";
 import { fetchAttendanceReport, type AttendanceReportRow } from "@/lib/attendance";
 import { CLERK_USER_ID, SERVICE_IDENTITY } from "@/lib/groupAttendees";

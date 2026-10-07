@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createHash } from 'crypto';
-import { kv } from '@vercel/kv';
+import { kv } from '@/lib/kv';
 import { getPlanForUserId } from '@/lib/plan';
 
 export type ApiPlan = 'free' | 'starter' | 'pro' | 'business' | 'enterprise';

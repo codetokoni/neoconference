@@ -7,7 +7,7 @@
 // Key layout:
 //   neo:breakouts:<slug> -> BreakoutState JSON
 
-import { kv } from '@vercel/kv';
+import { kv } from '@/lib/kv';
 
 export interface BreakoutGroup {
   id: string;

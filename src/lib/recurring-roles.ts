@@ -18,7 +18,7 @@
 // the operator can re-promote manually if they add a person after the
 // event was created.
 
-import { kv } from '@vercel/kv';
+import { kv } from '@/lib/kv';
 import { assignMeetingRole } from '@/lib/meeting-roles';
 import type { MeetingRole, Actor } from '@/lib/permissions';
 

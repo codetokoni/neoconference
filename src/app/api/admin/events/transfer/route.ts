@@ -19,7 +19,7 @@
 
 import { NextResponse } from 'next/server';
 import { clerkClient } from '@clerk/nextjs/server';
-import { kv } from '@vercel/kv';
+import { kv } from '@/lib/kv';
 import { requireRole } from '@/lib/roles';
 import { eventStore } from '@/lib/eventStore';
 

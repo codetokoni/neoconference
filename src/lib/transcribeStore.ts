@@ -12,7 +12,7 @@
 // for this R2 key?" without scanning. We base64-url-encode the recording key
 // because KV keys must be opaque ASCII and recording paths contain slashes.
 
-import { kv } from '@vercel/kv';
+import { kv } from '@/lib/kv';
 import type { TranscribeJob } from '@/lib/transcribe';
 
 const PREFIX = 'neo:transcribe:';

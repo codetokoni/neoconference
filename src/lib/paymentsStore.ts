@@ -18,7 +18,7 @@
 // no Prisma). In-memory fallback for tests and unconfigured
 // environments, matching the auditLog.ts / attendance.ts pattern.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import type { Plan } from "@/lib/plan";
 import type { BillingCycle } from "@/lib/espees";
 

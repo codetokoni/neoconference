@@ -9,7 +9,7 @@
 // The counter is recounted from the list after every write, so it cannot
 // drift when old notifications fall off the end of the list.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import { randomBytes } from "node:crypto";
 import type { PushType } from "@/lib/pushStore";
 

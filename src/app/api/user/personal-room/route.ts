@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
 
   // Fast path: user already has a personal room.
   try {
-    const { kv } = await import('@vercel/kv');
+    const { kv } = await import('@/lib/kv');
     const existingId = await kv.get<string>(PERSONAL_ROOM_INDEX + userId);
     if (existingId) {
       const ev = await eventStore.byId(existingId);
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
   await eventStore.create(ev);
 
   try {
-    const { kv } = await import('@vercel/kv');
+    const { kv } = await import('@/lib/kv');
     await kv.set(PERSONAL_ROOM_INDEX + userId, id);
   } catch {
     // Non-fatal: next call falls back to a re-create, but the event will

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import { SIMULCAST_MAIN, type ChatMessage } from "@/lib/simulcast";
 
 export const runtime = "nodejs";

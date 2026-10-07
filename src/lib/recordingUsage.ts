@@ -13,7 +13,7 @@
 // The cap is checked when a recording starts. One already running when the
 // cap is reached finishes; the next is refused. The FAQ says so.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 
 const USAGE_KEY = (owner: string) => `neo:rec-usage:${owner}`;
 const EGRESS_KEY = (egressId: string) => `neo:rec-egress:${egressId}`;

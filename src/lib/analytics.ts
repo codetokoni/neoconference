@@ -8,7 +8,7 @@
 //   neo:rec:downloads:<base64url(key)>  -> integer
 //   neo:rec:shares:<base64url(key)>     -> integer
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 
 export type RecordingMetric = "views" | "downloads" | "shares";
 

@@ -9,7 +9,7 @@
 // join is recorded (attendance.ts). It is never trimmed when someone leaves a
 // group, so their history stays theirs.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import type { NeoEvent } from "@/types/event";
 
 const key = (uid: string) => `neo:user:${uid}:meetings`;

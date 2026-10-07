@@ -14,7 +14,7 @@
 // "count:participant_joined" and "lastAt:participant_joined". Values are
 // stringified.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 
 const KEY = "neo:webhook:metrics";
 

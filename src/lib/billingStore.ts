@@ -7,7 +7,7 @@
 // TTL: 1 hour. If the user does not finish paying within an hour, the
 // record expires and they need to start over.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import type { EspeesPlan, BillingCycle } from "./espees";
 
 const KEY_PREFIX = "billing:pending:";

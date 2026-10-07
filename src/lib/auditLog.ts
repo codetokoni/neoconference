@@ -14,7 +14,7 @@
 // first. Bounded so KV doesn't grow unboundedly for popular deployments;
 // entries beyond the cap fall out FIFO from the back of the list.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 
 const KEY = "neo:authz:log";
 const MAX_ENTRIES = 5000;

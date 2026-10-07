@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import { AMS_WS, SIMULCAST_MAIN } from "@/lib/simulcast";
 import { claimCode, releaseCode, roomMainTrack } from "@/lib/participantCodes";
 

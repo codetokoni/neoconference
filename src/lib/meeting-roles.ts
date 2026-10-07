@@ -22,7 +22,7 @@
 // Pure module: no Clerk, no Next, no HTTP. Safe to call from a route handler,
 // a cron job, or a test.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import { RANK, canManageRole, isMeetingRole, normalizeRole, type Actor, type MeetingRole } from "@/lib/permissions";
 import type { NeoEvent } from "@/types/event";
 
