@@ -8,7 +8,8 @@ import '../core/api_client.dart';
 import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
-import '../events/create_meeting_screen.dart' show createdSlug, LanguageChecklistSheet;
+import '../events/create_meeting_screen.dart'
+    show createdSlug, createMeetingErrorText, LanguageChecklistSheet, meetingNameMissing;
 import '../events/event.dart' show apiProvider;
 import '../events/languages.dart';
 import '../meetings/meeting_board.dart';
@@ -254,7 +255,16 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   }
 
   Future<void> _schedule() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final valid = _formKey.currentState?.validate() ?? false;
+    // Checked on the controller as well as through the form, as Create does.
+    // The name field is at the top of a lazy list, and scrolling down to
+    // this button disposes it, leaving the form nothing to validate: the
+    // empty name went to the server and its code came back on screen.
+    if (_title.text.trim().isEmpty) {
+      setState(() => _error = meetingNameMissing);
+      return;
+    }
+    if (!valid) return;
     final when = scheduledFor(_date, _time);
     final problem = scheduleProblem(when, DateTime.now());
     if (problem != null) {
@@ -311,7 +321,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
         );
         return;
       }
-      setState(() => _error = e.message);
+      setState(() => _error = createMeetingErrorText(e));
     } catch (e) {
       if (!mounted) return;
       setState(() {
