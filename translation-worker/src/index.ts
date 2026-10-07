@@ -181,7 +181,12 @@ function connectDeepgram(room: string, pipeline: Pipeline): LiveClient {
     language: SOURCE_LANG,
     smart_format: true,
     interim_results: false,
-    utterance_end_ms: 1000,
+    // No utterance_end_ms: Deepgram refuses the whole connection (400,
+    // "Utterance End feature requires interim results") when it comes
+    // without interim results. With both set, from 8 Sep to 7 Oct 2026
+    // every room's pipeline opened and errored at once, and no caption
+    // in any language was ever produced. Finals still end on Deepgram's
+    // own endpointing.
     encoding: "linear16",
     sample_rate: 16000,
     channels: 1,
