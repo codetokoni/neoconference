@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-type Status = "not_called" | "ringing" | "answered" | "joined" | "declined" | "missed" | "busy";
+type Status = "not_called" | "ringing" | "answered" | "joined" | "left" | "declined" | "missed" | "busy";
 
 interface Person {
   userId: string;
@@ -25,6 +25,7 @@ const LABEL: Record<Status, { text: string; mark: string; cls: string }> = {
   declined: { text: "Declined", mark: "✕", cls: "text-rose-300" },
   missed: { text: "Missed", mark: "!", cls: "text-amber-300" },
   busy: { text: "In another meeting", mark: "◐", cls: "text-amber-200" },
+  left: { text: "Left", mark: "←", cls: "text-slate-300" },
   not_called: { text: "Not rung yet", mark: "·", cls: "text-slate-400" },
 };
 

@@ -239,6 +239,23 @@ void main() {
       expect(find.text('Ringing Kemi again.'), findsOneWidget);
     });
 
+    testWidgets('someone who joined and left shows as Left, is not counted in, and can be rung again', (tester) async {
+      (calls['people'] as List)
+        ..clear()
+        ..add({'userId': 'user_b', 'name': 'Bola', 'status': 'left', 'attempts': 1, 'lastAttemptAt': 1});
+      await tester.pumpWidget(app(const Scaffold(body: GroupCallingSection(slug: 'cell-night', myUserId: 'user_me'))));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Calling · 0 of 1 joined'), findsOneWidget);
+      expect(find.text('Left · rung 1/5'), findsOneWidget);
+      await tester.tap(find.text('Ring again'));
+      await tester.pumpAndSettle();
+      final ringAgain = sent.singleWhere((r) => r.url.path == '/api/events/cell-night/ring');
+      expect(jsonDecode(ringAgain.body), {
+        'userIds': ['user_b'],
+      });
+    });
+
     testWidgets('someone here on a link, not in the group, can be added to it by their account', (tester) async {
       await tester.pumpWidget(app(const Scaffold(
         body: SingleChildScrollView(

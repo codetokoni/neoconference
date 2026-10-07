@@ -17,7 +17,8 @@ class CallPerson {
   final String userId;
   final String name;
 
-  /// not_called | ringing | answered | joined | declined | missed | busy
+  /// not_called | ringing | answered | joined | left | declined | missed |
+  /// busy. "left": joined, and has since gone; can be rung again.
   final String status;
   final int attempts;
 
@@ -32,6 +33,7 @@ class CallPerson {
     'declined' => 'Declined',
     'missed' => 'Missed',
     'busy' => 'In another meeting',
+    'left' => 'Left',
     _ => 'Not rung yet',
   };
 }

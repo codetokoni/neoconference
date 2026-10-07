@@ -13,10 +13,10 @@ import {
 } from "@/lib/groupMeetings";
 import { jobsFor, claimDue, scheduleJob } from "@/lib/scheduler";
 import {
-  runDispatch, getCalls, respondToRing, ringNow, ringAgain, ringNewMembers, __setKingsChatSender, STALE_RING_MS,
+  runDispatch, getCalls, respondToRing, ringNow, ringAgain, ringNewMembers, __setKingsChatSender, STALE_RING_MS, shownStatus,
 } from "@/lib/ringEngine";
 import { recordAttendance } from "@/lib/attendance";
-import { setPresence } from "@/lib/presence";
+import { getPresence, setPresence } from "@/lib/presence";
 import { listNotifications } from "@/lib/notificationStore";
 import { saveSubscription, __setPushSender, type PushPayload } from "@/lib/pushStore";
 import { authorizedDispatch, dispatchRefusal } from "@/lib/dispatchAuth";
@@ -213,6 +213,56 @@ const ownerActor = () =>
     await ringNow(ev.id, { except: owner.userId, now: T });
     assert.deepEqual((await ringNow(ev.id, { except: owner.userId, now: T + MIN })).rung, []);   // at its limit of 1
     assert.deepEqual((await ringAgain(ev.id, ["user_j1"], T + 2 * MIN)).rung, ["user_j1"]);
+  });
+
+  await t("someone who joined and left shows as left, and only Ring again reaches them", async () => {
+    const g = await freshGroup(["user_jl"]);
+    const owner = (await getMember(g.id, `user_owner${seq}`))!;
+    const ev = (await createGroupMeetings(
+      { group: g, creator: owner, kind: "now", fields: cleanMeetingFields({ title: "Back" }, "now"), origin: "https://neo.test" },
+      deps
+    )).events[0];
+    const shown = async (now: number) =>
+      shownStatus((await status(ev.id, "user_jl"))!, await getPresence("user_jl", now), ev.id, now);
+    await ringNow(ev.id, { except: owner.userId, now: T });
+    await recordAttendance(ev.id, { action: "join", userId: "user_jl", name: "JL", source: "webhook", ts: T + MIN });
+
+    // Just in, before the first heartbeat: here, not gone.
+    assert.equal(await shown(T + MIN + 30_000), "joined");
+    // In the meeting by its heartbeat: Ring again leaves them alone.
+    await setPresence("user_jl", { eventSlug: ev.slug, eventId: ev.id, ts: T + 2 * MIN });
+    assert.equal(await shown(T + 2 * MIN + 30_000), "joined");
+    assert.deepEqual((await ringAgain(ev.id, ["user_jl"], T + 2 * MIN + 30_000)).rung, []);
+
+    // Gone: the heartbeat stopped and its 90 s ran out.
+    const gone = T + 5 * MIN;
+    assert.equal(await shown(gone), "left");
+    // The automatic rounds still treat them as settled.
+    assert.deepEqual((await ringNow(ev.id, { except: owner.userId, now: gone })).rung, []);
+    // The host's Ring again rings them, from a fresh count.
+    assert.deepEqual((await ringAgain(ev.id, ["user_jl"], gone)).rung, ["user_jl"]);
+    const after = (await status(ev.id, "user_jl"))!;
+    assert.equal(after.status, "ringing");
+    assert.equal(after.attempts, 1);
+
+    // Back in: joined again, with the grace starting over.
+    await recordAttendance(ev.id, { action: "join", userId: "user_jl", name: "JL", source: "webhook", ts: gone + MIN });
+    assert.equal(await shown(gone + MIN + 30_000), "joined");
+  });
+
+  await t("someone in another meeting is not shown as left from this one", async () => {
+    const g = await freshGroup(["user_jo"]);
+    const owner = (await getMember(g.id, `user_owner${seq}`))!;
+    const ev = (await createGroupMeetings(
+      { group: g, creator: owner, kind: "now", fields: cleanMeetingFields({ title: "Here" }, "now"), origin: "https://neo.test" },
+      deps
+    )).events[0];
+    await ringNow(ev.id, { except: owner.userId, now: T });
+    await recordAttendance(ev.id, { action: "join", userId: "user_jo", name: "JO", source: "webhook", ts: T + MIN });
+    // Now in a different meeting: gone from this one.
+    await setPresence("user_jo", { eventSlug: "elsewhere", eventId: "other-event", ts: T + 5 * MIN });
+    const c = (await status(ev.id, "user_jo"))!;
+    assert.equal(shownStatus(c, await getPresence("user_jo", T + 5 * MIN), ev.id, T + 5 * MIN), "left");
   });
 
   console.log("people who arrive late");
