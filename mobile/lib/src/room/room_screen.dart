@@ -58,6 +58,11 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
       controller.clearMessage();
     });
 
+    ref.listen(provider.select((s) => s.mediaRequest), (_, request) {
+      if (request == null || !state.inRoom || _askingForMedia) return;
+      _askForMedia(context, p, request, controller);
+    });
+
     return Theme(
       data: neoThemeData(p),
       child: NeoTheme(
@@ -125,6 +130,56 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
         ),
       ),
     );
+  }
+
+  /// A host's "please unmute" or "please turn your camera on" is on screen.
+  /// A second one while it is open waits its turn rather than stacking.
+  bool _askingForMedia = false;
+
+  /// Asks before switching anything on, as the web does: a host can ask,
+  /// never unmute someone themselves.
+  Future<void> _askForMedia(
+    BuildContext context,
+    NeoPalette p,
+    MediaRequest request,
+    RoomController controller,
+  ) async {
+    _askingForMedia = true;
+    final what = request.video ? 'turn on your camera' : 'unmute your microphone';
+    final allow = await showDialog<bool>(
+      context: context,
+      // This State's context is above the meeting's dark theme (see the
+      // Builder below), so the dialog brings it along itself.
+      builder: (context) => Theme(
+        data: neoThemeData(p),
+        child: NeoTheme(
+          palette: p,
+          child: AlertDialog(
+            title: Text(request.video ? 'Turn on your camera?' : 'Unmute your microphone?'),
+            content: Text('${request.fromName} is asking you to $what. '
+                'Nothing changes unless you allow it.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Not now'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(request.video ? 'Turn on camera' : 'Unmute'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    _askingForMedia = false;
+    await controller.answerMediaRequest(request, allow: allow ?? false);
+    if (!mounted || !context.mounted) return;
+    final now = ref.read(roomControllerProvider(widget.slug));
+    final next = now.mediaRequest;
+    if (next != null && now.inRoom) {
+      await _askForMedia(context, p, next, controller);
+    }
   }
 
   /// Leaving, and for a host, ending it for everyone — offered in the same
