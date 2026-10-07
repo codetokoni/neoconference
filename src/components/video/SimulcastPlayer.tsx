@@ -76,6 +76,22 @@ const FLOOR_DUCK_VOLUME = 0.15;
 const SPEAKING_DUCK = 1 / 3;
 
 /**
+ * Whether this browser ignores a media element's volume, as iPhone and
+ * iPad Safari do (and every browser on iOS, which are Safari inside): the
+ * level always reads back as 1, and the sound always plays at full.
+ */
+function mediaVolumeIsLocked(): boolean {
+  if (typeof document === "undefined") return false;
+  try {
+    const probe = document.createElement("audio");
+    probe.volume = 0.5;
+    return probe.volume !== 0.5;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Gain applied to the selected translation via Web Audio. A plain
  * <audio> element's `.volume` caps at 1.0; the boost is the extra
  * headroom on top for browsers that let AudioContext + GainNode
@@ -201,6 +217,58 @@ export default function SimulcastPlayer({
   const gainNodesRef = useRef<Record<string, GainNode>>({});
   const wiredElsRef = useRef<Set<string>>(new Set());
 
+  /** The player's AudioContext, made on first use; null without Web Audio. */
+  const getAudioCtx = useCallback((): AudioContext | null => {
+    if (audioCtxRef.current) return audioCtxRef.current;
+    const Ctx: typeof AudioContext | undefined =
+      typeof window !== "undefined"
+        ? (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)
+        : undefined;
+    if (!Ctx) return null;
+    audioCtxRef.current = new Ctx();
+    return audioCtxRef.current;
+  }, []);
+
+  // iPhone and iPad ignore a media element's volume: it always plays at
+  // full. There the floor's level (the slider, and the dip under the
+  // translated voice) goes through a GainNode instead, fed from the floor
+  // stream itself while its <audio> element plays muted. Detected rather
+  // than sniffed, and only there, so every other browser keeps the plain
+  // element volume it has always used.
+  const volumeLocked = useMemo(() => mediaVolumeIsLocked(), []);
+  const floorWireRef = useRef<{
+    stream: MediaStream;
+    source: MediaStreamAudioSourceNode;
+    gain: GainNode;
+  } | null>(null);
+  const wireFloor = useCallback(
+    (stream: MediaStream | undefined): GainNode | null => {
+      if (!stream) return null;
+      const wired = floorWireRef.current;
+      if (wired?.stream === stream) return wired.gain;
+      try {
+        const ctx = getAudioCtx();
+        if (!ctx) return null;
+        if (wired) {
+          // A reconnect brings a new stream; let go of the old one.
+          wired.source.disconnect();
+          wired.gain.disconnect();
+        }
+        const source = ctx.createMediaStreamSource(stream);
+        const gain = ctx.createGain();
+        source.connect(gain);
+        gain.connect(ctx.destination);
+        floorWireRef.current = { stream, source, gain };
+        return gain;
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[player] floor level control unavailable", err);
+        return null;
+      }
+    },
+    [getAudioCtx],
+  );
+
   // Lazily wire one language <audio> through the AudioContext so its
   // output goes through a GainNode we can push above 1.0. Returns the
   // GainNode on success, or null if Web Audio isn't usable in this
@@ -210,13 +278,8 @@ export default function SimulcastPlayer({
   const wireBoost = useCallback((id: string, el: HTMLAudioElement): GainNode | null => {
     if (wiredElsRef.current.has(id)) return gainNodesRef.current[id] ?? null;
     try {
-      const Ctx: typeof AudioContext | undefined =
-        typeof window !== "undefined"
-          ? (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)
-          : undefined;
-      if (!Ctx) return null;
-      if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
-      const ctx = audioCtxRef.current;
+      const ctx = getAudioCtx();
+      if (!ctx) return null;
       const source = ctx.createMediaElementSource(el);
       const gain = ctx.createGain();
       gain.gain.value = 1;
@@ -231,7 +294,7 @@ export default function SimulcastPlayer({
       wiredElsRef.current.add(id); // don't retry forever
       return null;
     }
-  }, []);
+  }, [getAudioCtx]);
 
   // Track the browser's fullscreen state so the button label and icon
   // reflect reality when the user presses Esc to exit.
@@ -466,6 +529,21 @@ export default function SimulcastPlayer({
       // native volume — it never needs boost, only duck.
       const gain = !isFloor && shouldPlay ? wireBoost(id, el) : gainNodesRef.current[id] ?? null;
 
+      // iPhone / iPad: the element's volume would be ignored, so the
+      // floor's level is set on a GainNode fed from its stream, and the
+      // element plays muted (it still keeps the stream flowing).
+      const floorGain = isFloor && volumeLocked ? wireFloor(audioStreams[id]) : null;
+
+      if (floorGain) {
+        el.muted = true;
+        floorGain.gain.value = shouldPlay ? (activeIsTranslation ? floorNow : 1) : 0;
+        if (shouldPlay) {
+          audioCtxRef.current?.resume().catch(() => {});
+          el.play().catch(() => {});
+        }
+        return;
+      }
+
       if (gain) {
         // Boosted path: element itself stays at max, GainNode does
         // the level control. Setting gain to 0 while muting is
@@ -492,7 +570,7 @@ export default function SimulcastPlayer({
         el.play().catch(() => setMuted(true));
       }
     });
-  }, [active, muted, audioStreams, mode, onAir, videoChannel.id, wireBoost, floorNow]);
+  }, [active, muted, audioStreams, mode, onAir, videoChannel.id, wireBoost, floorNow, volumeLocked, wireFloor]);
 
   /* ---- optional: stop receiving the languages nobody is listening to ---- */
   useEffect(() => {
@@ -620,7 +698,21 @@ export default function SimulcastPlayer({
     if (videoRef.current) videoRef.current.volume = floorNow;
   }, [mode, active, muted, videoChannel.id, floorNow]);
 
-  const unmute = useCallback(() => setMuted(false), []);
+  const unmute = useCallback(() => {
+    setMuted(false);
+    if (!volumeLocked) return;
+    // iOS starts Web Audio only from a tap, and this is the tap. Ask for
+    // media playback, too: Web Audio is otherwise silenced by the ring /
+    // silent switch, which a plain media element never was, and the
+    // floor now plays through it (Safari 16.4+; older ones ignore this).
+    try {
+      const session = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+      if (session) session.type = "playback";
+    } catch {
+      /* not offered here */
+    }
+    getAudioCtx()?.resume().catch(() => {});
+  }, [volumeLocked, getAudioCtx]);
 
   const statusLabel =
     mode === "hls"
