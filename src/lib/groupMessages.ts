@@ -12,7 +12,7 @@ const MESSAGES: Record<string, string> = {
   invalid_description: "The description is too long (500 characters at most).",
   invalid_icon: "The icon must be an https:// image link.",
   invalid_settings: "Retry interval must be 1–60 minutes and attempts 1–10.",
-  invalid_members: "One of those entries isn't a valid email address.",
+  invalid_members: "One of those entries isn't a valid email address or KingsChat handle.",
   no_members: "Enter an email address to add.",
   too_many_at_once: "Add at most 50 people at a time.",
   too_many_members: "A group can have at most 500 members.",
