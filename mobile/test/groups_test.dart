@@ -147,7 +147,18 @@ void main() {
                 {'userId': 'user_b', 'role': 'participant', 'name': 'Bola', 'email': 'bola@example.com', 'joinedAt': 1, 'addedBy': 'user_me'},
               ],
               'alreadyMembers': [],
-              'notFound': ['nobody@example.com'],
+              // As the server: with pending, people with no account wait;
+              // without it, they are not found.
+              ...((jsonDecode(req.body) as Map)['pending'] == true
+                  ? {
+                      'notFound': [],
+                      'pending': [
+                        {'key': 'email:nobody@example.com', 'kind': 'email', 'value': 'nobody@example.com'},
+                        {'key': 'kc:newbie', 'kind': 'kc', 'value': 'newbie'},
+                      ],
+                      'alreadyPending': [],
+                    }
+                  : {'notFound': ['nobody@example.com']}),
             });
           }
           return json({'ok': true});
@@ -312,22 +323,25 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Join'), findsWidgets);
   });
 
-  testWidgets('adding by email sends the addresses and says who has no account', (tester) async {
+  testWidgets('adding by email or KingsChat handle keeps people with no account waiting to sign up', (tester) async {
     tall(tester);
     await tester.pumpWidget(app(const GroupScreen(groupId: 'g1', title: 'Cell Leaders')));
     await tester.pumpAndSettle();
     await openTab(tester, 'Members');
 
-    await tester.enterText(find.widgetWithText(TextField, 'Email addresses'), 'bola@example.com, nobody@example.com');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Emails or KingsChat handles'), 'bola@example.com, Nobody@example.com @Newbie');
     await tester.tap(find.widgetWithText(FilledButton, 'Add'));
     await tester.pumpAndSettle();
 
     final add = sent.singleWhere((r) => r.method == 'POST' && r.url.path == '/api/groups/g1/members');
     expect(jsonDecode(add.body), {
       'emails': ['bola@example.com', 'nobody@example.com'],
+      'kcHandles': ['newbie'],
+      'pending': true,
     });
     expect(find.textContaining('Added Bola.'), findsOneWidget);
-    expect(find.textContaining('No account for nobody@example.com'), findsOneWidget);
+    expect(find.textContaining('nobody@example.com, @newbie will join when they sign up.'), findsOneWidget);
   });
 
   testWidgets('a member can be made a Moderator or removed, by their user id', (tester) async {

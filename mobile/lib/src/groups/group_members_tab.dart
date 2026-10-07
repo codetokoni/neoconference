@@ -7,6 +7,7 @@ import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
 import '../meetings/meeting_share.dart' show shareSheet;
+import 'add_to_group_sheet.dart' show splitPeople;
 import 'group_models.dart';
 import 'groups_api.dart';
 import 'groups_screen.dart' show RolePill;
@@ -49,34 +50,32 @@ class _GroupMembersTabState extends ConsumerState<GroupMembersTab> {
       ..showSnackBar(SnackBar(content: Text(text)));
   }
 
-  /// Splits on commas, semicolons, spaces and new lines, so a pasted list
-  /// works as well as one address.
-  static List<String> splitEmails(String text) => [
-        for (final part in text.split(RegExp(r'[\s,;]+')))
-          if (part.trim().isNotEmpty) part.trim(),
-      ];
-
+  /// Emails and KingsChat handles, split on commas, semicolons, spaces and new
+  /// lines, so a pasted list works as well as one. Anyone with no account yet
+  /// is kept in the group, pending, and joins when they sign up.
   Future<void> _add() async {
-    final emails = splitEmails(_emails.text);
-    if (emails.isEmpty) return;
+    final people = splitPeople(_emails.text);
+    if (people.emails.isEmpty && people.handles.isEmpty) return;
     setState(() {
       _adding = true;
       _addResult = null;
     });
     try {
-      final r = await _api.addByEmail(d.group.id, emails);
+      final r = await _api.addPeople(d.group.id, emails: people.emails, kcHandles: people.handles);
       final parts = <String>[
         if (r.added.isNotEmpty) 'Added ${r.added.map((m) => m.displayName).join(', ')}.',
+        if (r.pending.isNotEmpty) '${r.pending.join(', ')} will join when they sign up.',
         if (r.alreadyMembers.isNotEmpty)
           '${r.alreadyMembers.length} already ${r.alreadyMembers.length == 1 ? 'is a member' : 'are members'}.',
-        if (r.notFound.isNotEmpty)
-          'No account for ${r.notFound.join(', ')} — send them the invite link instead.',
+        if (r.alreadyPending.isNotEmpty)
+          '${r.alreadyPending.join(', ')} ${r.alreadyPending.length == 1 ? 'is' : 'are'} already waiting to sign up.',
       ];
+      final something = r.added.isNotEmpty || r.pending.isNotEmpty;
       setState(() {
-        _addResult = parts.join(' ');
-        _addFailed = r.added.isEmpty;
+        _addResult = parts.isEmpty ? 'Nobody new to add.' : parts.join(' ');
+        _addFailed = !something;
       });
-      if (r.added.isNotEmpty) _emails.clear();
+      if (something) _emails.clear();
       _refresh();
     } catch (e) {
       setState(() {
@@ -216,8 +215,9 @@ class _GroupMembersTabState extends ConsumerState<GroupMembersTab> {
                         keyboardType: TextInputType.emailAddress,
                         autocorrect: false,
                         decoration: const InputDecoration(
-                          labelText: 'Email addresses',
-                          hintText: 'name@example.com, …',
+                          labelText: 'Emails or KingsChat handles',
+                          hintText: 'name@example.com, @handle, …',
+                          helperText: 'Anyone without an account joins when they sign up.',
                         ),
                         onSubmitted: (_) => _add(),
                       ),
