@@ -267,6 +267,18 @@ export async function signInWithKcTokens(tokens: {
     console.warn('[kc-signin] saveKcTokens/indexKcHandle failed', persistErr);
   }
 
+  // Groups that added this handle (or a verified email of theirs) before
+  // they had an account take them in now. Best-effort, like the above:
+  // claimPendingFor never throws, and the list of groups claims again.
+  if (kcUsername) {
+    try {
+      const { claimPendingFor } = await import('@/lib/groupPeople');
+      await claimPendingFor(await cc.users.getUser(user!.id));
+    } catch (claimErr) {
+      console.warn('[kc-signin] claiming pending group places failed', claimErr);
+    }
+  }
+
   let ticket = '';
   try {
     const res = await cc.signInTokens.createSignInToken({

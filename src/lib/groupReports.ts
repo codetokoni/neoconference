@@ -1,12 +1,15 @@
 // src/lib/groupReports.ts
 //
-// What happened in a group meeting: who was invited, who came and for how
-// long, who never came, and how the calling went.
+// What happened in a meeting: who was invited, who came and for how long, who
+// never came, and how the calling went. Built for group meetings and, since
+// History shows them too, for any other meeting (group: null).
 //
 // Everything comes from the meeting's own records — its invitations
-// (neo:event:<eid>:invited), call log (neo:event:<eid>:calls) and attendance
-// journal — never from who is in the group today, so someone who has since
-// left the group is still in the reports of the meetings they were part of.
+// (neo:event:<eid>:invited; for a meeting outside a group, its role
+// assignments: emails, accounts and KingsChat handles it was shared with),
+// call log (neo:event:<eid>:calls) and attendance journal — never from who is
+// in the group today, so someone who has since left the group is still in the
+// reports of the meetings they were part of.
 //
 //   neo:report:<eid>   JSON   the built report of a meeting that ended, cached
 //
@@ -52,8 +55,10 @@ export interface MeetingReport {
   eventId: string;
   slug: string;
   title: string;
-  group: { id: string; name: string };
-  kind: "scheduled" | "now" | "call";
+  /** The group it was a meeting of; null for a meeting outside any group. */
+  group: { id: string; name: string } | null;
+  /** "meeting" for a meeting outside any group. */
+  kind: "scheduled" | "now" | "call" | "meeting";
   state: NeoEvent["state"];
   hosts: string[];
   /** ISO: when it was meant to start, if it was scheduled. */
@@ -91,9 +96,32 @@ export interface MeetingReport {
 export interface ReportDeps {
   /** Whether the meeting was recorded, and a page members can open for it. */
   recording(ev: NeoEvent): Promise<{ recorded: boolean; url: string | null }>;
+  /** Account emails for user ids, where the meeting's records have none. */
+  emails?(userIds: string[]): Promise<Map<string, string>>;
+  /** Accounts for KingsChat handles a meeting was shared with. */
+  kcUsers?(handles: string[]): Promise<Map<string, string>>;
 }
 
 const defaultDeps: ReportDeps = {
+  async emails(userIds) {
+    try {
+      const { membersById } = await import("@/lib/groupPeople");
+      const { found } = await membersById(userIds);
+      return new Map(found.filter((m) => m.email).map((m) => [m.userId, m.email!]));
+    } catch (err) {
+      console.warn("[reports] could not look up emails", err);
+      return new Map();
+    }
+  },
+  async kcUsers(handles) {
+    try {
+      const { clerkIdsForKcHandles } = await import("@/lib/kcHandle");
+      return await clerkIdsForKcHandles(handles);
+    } catch (err) {
+      console.warn("[reports] could not look up KingsChat handles", err);
+      return new Map();
+    }
+  },
   async recording(ev) {
     try {
       const { eventReplayVideos, replayOpen } = await import("@/lib/replayRecordings");
@@ -180,18 +208,41 @@ function attendedMsOf(row: AttendanceReportRow, endMs: number): number {
 /** Build a meeting's report from its records. */
 export async function buildMeetingReport(eid: string, now: number = Date.now()): Promise<MeetingReport | null> {
   const ev = await eventStore.byId(eid);
-  if (!ev?.groupId || !ev.groupMeeting) return null;
+  if (!ev) return null;
+  const inGroup = Boolean(ev.groupId && ev.groupMeeting);
 
   const [group, rows, invited, calls, chat, roles, members, recording] = await Promise.all([
-    getGroup(ev.groupId),
+    inGroup ? getGroup(ev.groupId!) : Promise.resolve(null),
     fetchAttendanceReport(ev),
     listInvited(ev.id),
     getCalls(ev.id),
     chatStore.list(ev.id).catch(() => []),
     getMeetingParticipants(ev.id, ev).catch(() => []),
-    listMembers(ev.groupId).catch(() => []),
+    inGroup ? listMembers(ev.groupId!).catch(() => []) : Promise.resolve([]),
     deps.recording(ev),
   ]);
+  // A meeting outside a group has no invitation list of its own: who it was
+  // shared with is in its role assignments (email invites, accounts given a
+  // role, KingsChat handles), so those count as invited. Not the owner.
+  if (!inGroup) {
+    const handles = roles
+      .filter((r) => r.role !== "owner" && r.userId.startsWith("kc:"))
+      .map((r) => r.userId.slice(3));
+    const kcIds = handles.length && deps.kcUsers ? await deps.kcUsers(handles) : new Map<string, string>();
+    for (const r of roles) {
+      if (r.role === "owner") continue;
+      const handle = r.userId.startsWith("kc:") ? r.userId.slice(3) : null;
+      const key = handle ? kcIds.get(handle) ?? r.userId : r.userId;
+      if (invited.has(key)) continue;
+      invited.set(key, {
+        source: "extra",
+        addedBy: r.assignedBy ?? "",
+        addedAt: r.assignedAt,
+        ...(handle && !kcIds.has(handle) ? { name: `@${handle}` } : {}),
+        ...(r.emails?.[0] ? { email: r.emails[0] } : {}),
+      });
+    }
+  }
   const endMs = ev.endedAt ? Date.parse(ev.endedAt) : NaN;
   const memberName = new Map(members.map((m) => [m.userId, m.name]));
 
@@ -223,6 +274,20 @@ export async function buildMeetingReport(eid: string, now: number = Date.now()):
     if (row.email) byEmail.set(row.email.toLowerCase(), key);
   }
 
+  // Someone who joined from the app has no email in the attendance journal;
+  // their account has one. Filled in before invitations are matched, so a
+  // person invited by email who came is not also listed as absent.
+  const noEmail = Array.from(people.values()).filter((p) => p.userId && !p.email).map((p) => p.userId!);
+  if (noEmail.length && deps.emails) {
+    const found = await deps.emails(noEmail);
+    for (const p of people.values()) {
+      const email = p.userId && !p.email ? found.get(p.userId) : undefined;
+      if (!email) continue;
+      p.email = email;
+      byEmail.set(email.toLowerCase(), p.key);
+    }
+  }
+
   // Everyone who was asked to.
   for (const [key, entry] of invited) {
     const isEmail = key.includes("@");
@@ -233,7 +298,9 @@ export async function buildMeetingReport(eid: string, now: number = Date.now()):
     }
     people.set(key, {
       key,
-      ...(isEmail ? {} : { userId: key }),
+      // Not every other key is an account: "kc:<handle>" is someone who has
+      // not signed in with KingsChat yet.
+      ...(!isEmail && CLERK_USER_ID.test(key) ? { userId: key } : {}),
       name: entry.name || memberName.get(key) || (isEmail ? key : "Member"),
       email: entry.email || (isEmail ? key : ""),
       invited: true,
@@ -280,8 +347,8 @@ export async function buildMeetingReport(eid: string, now: number = Date.now()):
     eventId: ev.id,
     slug: ev.slug,
     title: ev.name,
-    group: { id: ev.groupId, name: group?.name ?? "A group that no longer exists" },
-    kind: ev.groupMeeting.kind,
+    group: inGroup ? { id: ev.groupId!, name: group?.name ?? "A group that no longer exists" } : null,
+    kind: inGroup ? ev.groupMeeting!.kind : "meeting",
     state: ev.state,
     hosts,
     scheduledStart: ev.scheduledAt ?? null,
@@ -463,7 +530,9 @@ export async function listMyReports(
     if (!ev || !isEnded(ev)) continue;
     const report = await getMeetingReport(eid, now);
     const mine = report && ownRow(report, uid, emails);
-    if (!report || !mine) continue;
+    // "My meetings" are group meetings, as they were before reports covered
+    // any meeting.
+    if (!report?.group || !mine) continue;
     items.push({
       eventId: eid,
       title: report.title,
@@ -481,7 +550,8 @@ export async function listMyReports(
 /** One of the person's own meetings in detail, or null if it is not theirs. */
 export async function myMeetingDetail(uid: string, emails: string[], eid: string, now: number = Date.now()) {
   const report = await getMeetingReport(eid, now);
-  if (!report) return null;
+  // Group meetings only, as listMyReports.
+  if (!report?.group) return null;
   const mine = ownRow(report, uid, emails);
   if (!mine) return null;
   return {

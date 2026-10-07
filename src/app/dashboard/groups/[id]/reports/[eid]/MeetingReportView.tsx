@@ -92,7 +92,7 @@ export default function MeetingReportView({
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-10 space-y-8">
         <div>
           <Link href={`/dashboard/groups/${encodeURIComponent(groupId)}`} className="text-xs text-white/50 hover:text-white transition">
-            ← {report.group.name}
+            ← {report.group?.name ?? "Group"}
           </Link>
           <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
             <div className="min-w-0">

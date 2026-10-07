@@ -12,6 +12,8 @@ import { createGroupMeetings, cleanMeetingFields, type CreateMeetingDeps } from 
 import { ringAttempt, respondToRing, __setKingsChatSender } from "@/lib/ringEngine";
 import { recordAttendance, ATTENDANCE_COLUMNS } from "@/lib/attendance";
 import { eventStore } from "@/lib/eventStore";
+import { assignMeetingRole } from "@/lib/meeting-roles";
+import type { NeoEvent } from "@/types/event";
 import {
   buildMeetingReport, getMeetingReport, listGroupReports, listMyReports, myMeetingDetail, reportsInRange,
   missedCallsOf, __setReportDeps,
@@ -92,7 +94,7 @@ const leave = (eid: string, userId: string, name: string, ts: number) =>
     assert.equal(r.summary.firstToJoin, "Olu");
     assert.equal(r.summary.lastToLeave, "Olu");
     assert.equal(r.durationMin, 60);
-    assert.equal(r.group.name, "Choir");
+    assert.equal(r.group?.name, "Choir");
     assert.ok(r.hosts.includes("Olu") && r.hosts.includes("Hana"));
     assert.equal(r.summary.recordingUrl, "/replay/x");
   });
@@ -200,6 +202,71 @@ const leave = (eid: string, userId: string, name: string, ts: number) =>
     const expected = reports.flatMap((r) => r.participants.map((p) => [r.title, p.name, p.status === "present" ? "Present" : "Absent"]));
     assert.deepEqual(rows, expected);
   });
+
+  console.log("a meeting outside any group");
+
+  {
+    const S = Date.now() - 2 * 24 * 60 * MIN;
+    const solo = await eventStore.create({
+      id: "ev_solo_report", slug: "solo-report", name: "Bible study", ownerUserId: "user_sol", ownerName: "Sol",
+      state: "ended", startedAt: new Date(S).toISOString(), endedAt: new Date(S + 30 * MIN).toISOString(),
+      createdAt: new Date(S - MIN).toISOString(), roles: [],
+    } as unknown as NeoEvent);
+    const sol = { userId: "user_sol", emails: [], isPlatformAdmin: false, role: "owner" as const, isOwner: true, reason: "owner" as const };
+    // Shared with: an email (its owner comes from the app, so attendance has
+    // no email), a KingsChat handle someone signed in with, and one nobody has.
+    await assignMeetingRole(solo.id, "invitee@example.com", "participant", sol);
+    await assignMeetingRole(solo.id, { userId: "kc:came" }, "participant", sol);
+    await assignMeetingRole(solo.id, { userId: "kc:nobody" }, "participant", sol);
+    await recordAttendance(solo.id, { action: "join", userId: "user_sol", name: "Sol", source: "webhook", ts: S });
+    await recordAttendance(solo.id, { action: "join", userId: "user_mailer", name: "Mae", source: "webhook", ts: S + MIN });
+    await recordAttendance(solo.id, { action: "join", userId: "user_came", name: "Kemi", source: "webhook", ts: S + 2 * MIN });
+    await recordAttendance(solo.id, { action: "join", userId: null, name: "Visitor", source: "beacon", ts: S + 3 * MIN });
+    await recordAttendance(solo.id, { action: "leave", userId: "user_sol", name: "Sol", source: "webhook", ts: S + 30 * MIN });
+
+    __setReportDeps({
+      recording: async () => ({ recorded: false, url: null }),
+      emails: async (ids) => new Map(ids.filter((i) => i === "user_mailer").map((i) => [i, "invitee@example.com"])),
+      kcUsers: async (handles) => new Map(handles.filter((h) => h === "came").map((h) => [h, "user_came"])),
+    });
+    const r = (await buildMeetingReport(solo.id))!;
+    __setReportDeps({ recording: async () => ({ recorded: true, url: "/replay/x" }) });
+
+    await t("a meeting outside a group has a report: no group, its own kind, its time", () => {
+      assert.equal(r.group, null);
+      assert.equal(r.kind, "meeting");
+      assert.equal(r.durationMin, 30);
+      assert.equal(r.summary.recorded, false);
+    });
+
+    await t("someone invited by email who came from the app is matched by their account's email, not listed twice", () => {
+      const mae = r.participants.filter((p) => p.email === "invitee@example.com");
+      assert.equal(mae.length, 1);
+      assert.equal(mae[0].userId, "user_mailer");
+      assert.equal(mae[0].status, "present");
+      assert.equal(mae[0].invited, true);
+    });
+
+    await t("a KingsChat invite is matched to whoever signed in with that handle", () => {
+      const kemi = r.participants.find((p) => p.userId === "user_came")!;
+      assert.equal(kemi.invited, true);
+      assert.equal(kemi.status, "present");
+    });
+
+    await t("a KingsChat handle nobody has signed in with is invited and absent, with no account", () => {
+      const nobody = r.participants.find((p) => p.key === "kc:nobody")!;
+      assert.equal(nobody.name, "@nobody");
+      assert.equal(nobody.userId, undefined);
+      assert.equal(nobody.status, "absent");
+      assert.equal(r.summary.invited, 3);
+      assert.equal(r.summary.attended, 4);
+      assert.equal(r.summary.absent, 1);
+    });
+
+    await t("My meeting reports stay group meetings only", async () => {
+      assert.equal(await myMeetingDetail("user_came", [], solo.id), null);
+    });
+  }
 
   console.log(`\n${n} checks passed`);
 })().catch((err) => {

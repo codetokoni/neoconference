@@ -4,7 +4,15 @@
 // Server-only (Clerk backend API); the group store itself stays pure.
 
 import { clerkClient, currentUser } from "@clerk/nextjs/server";
-import { GROUP_LIMITS, type MemberLimit, type NewMember } from "@/lib/groupStore";
+import {
+  GROUP_LIMITS,
+  claimPendingMemberships,
+  pendingKeyFor,
+  type Group,
+  type MemberLimit,
+  type NewMember,
+} from "@/lib/groupStore";
+import { clerkIdsForKcHandles } from "@/lib/kcHandle";
 import type { CreateMeetingDeps } from "@/lib/groupMeetings";
 import { checkLifetimeCap, getPlanForUserId, getPlanLimits, incrementMeetingsCreated } from "@/lib/plan";
 
@@ -14,7 +22,12 @@ type ClerkUserLike = {
   lastName?: string | null;
   username?: string | null;
   primaryEmailAddressId?: string | null;
-  emailAddresses?: Array<{ id: string; emailAddress: string }>;
+  emailAddresses?: Array<{
+    id: string;
+    emailAddress: string;
+    verification?: { status?: string | null } | null;
+  }>;
+  publicMetadata?: unknown;
 };
 
 function primaryEmail(u: ClerkUserLike): string | undefined {
@@ -59,6 +72,52 @@ export async function membersByEmail(
     for (const e of u.emailAddresses || []) matched.add(e.emailAddress.toLowerCase());
   }
   return { found, missing: wanted.filter((e) => !matched.has(e)) };
+}
+
+/**
+ * Accounts for KingsChat handles (normalized). A handle nobody has signed in
+ * with is reported missing, as is one whose account has since gone.
+ */
+export async function membersByKcHandle(
+  handles: string[]
+): Promise<{ found: NewMember[]; missing: string[] }> {
+  const wanted = Array.from(new Set(handles));
+  if (wanted.length === 0) return { found: [], missing: [] };
+  const ids = await clerkIdsForKcHandles(wanted);
+  const { found } = await membersById(Array.from(new Set(ids.values())));
+  const have = new Set(found.map((m) => m.userId));
+  return { found, missing: wanted.filter((h) => !have.has(ids.get(h) ?? "")) };
+}
+
+/**
+ * Make good on group places held for this person: their verified email
+ * addresses and the KingsChat handle they signed in with (publicMetadata,
+ * which only the server writes). Never throws — a sign-in or a list of groups
+ * must not fail over it. Returns the groups they joined.
+ */
+export async function claimPendingFor(u: ClerkUserLike): Promise<Group[]> {
+  try {
+    const keys: string[] = [];
+    for (const e of u.emailAddresses || []) {
+      if (e.verification?.status !== "verified") continue;
+      const key = pendingKeyFor("email", e.emailAddress);
+      if (key) keys.push(key);
+    }
+    const handle = (u.publicMetadata as { kingschat?: { username?: string } } | undefined)?.kingschat?.username;
+    const kcKey = handle ? pendingKeyFor("kc", handle) : null;
+    if (kcKey) keys.push(kcKey);
+    if (keys.length === 0) return [];
+    return await claimPendingMemberships(memberFromClerkUser(u), keys);
+  } catch (err) {
+    console.warn("[groupPeople] claiming pending memberships failed", err);
+    return [];
+  }
+}
+
+/** claimPendingFor() for whoever is signed in. */
+export async function claimPendingForCaller(): Promise<Group[]> {
+  const u = await currentUser().catch(() => null);
+  return u ? claimPendingFor(u) : [];
 }
 
 /** Accounts for Clerk user ids; ids with no account are reported missing. */
