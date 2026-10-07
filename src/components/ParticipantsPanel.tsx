@@ -5,6 +5,7 @@ import { useParticipants, useLocalParticipant } from '@livekit/components-react'
 import AddGroupParticipants from '@/components/groups/AddGroupParticipants';
 import GroupCallingPanel from '@/components/groups/GroupCallingPanel';
 import AddRoomPeopleToGroup from '@/components/groups/AddRoomPeopleToGroup';
+import RoomAddToGroup from '@/components/groups/RoomAddToGroup';
 import { userIdOfIdentity } from '@/lib/roomPeople';
 
 /**
@@ -320,6 +321,13 @@ export default function ParticipantsPanel({
       {isHost && slug ? (
         <AddRoomPeopleToGroup
           slug={slug}
+          meId={userIdOfIdentity(localIdentity)}
+          people={remote.map((p) => ({ userId: userIdOfIdentity(p.identity), name: p.name || '' }))}
+        />
+      ) : null}
+      {/* Any meeting: these people, or anyone by KingsChat handle or email, into a group. */}
+      {isHost ? (
+        <RoomAddToGroup
           meId={userIdOfIdentity(localIdentity)}
           people={remote.map((p) => ({ userId: userIdOfIdentity(p.identity), name: p.name || '' }))}
         />
