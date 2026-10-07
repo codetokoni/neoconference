@@ -13,9 +13,8 @@ import {
 } from "@/lib/pushStore";
 import { addNotification, listNotifications, markRead, unreadCount, MAX_NOTIFICATIONS } from "@/lib/notificationStore";
 import { noticePayload, pushOptionsFor, notifyInvitees, joinUrl } from "@/lib/groupNotify";
-import { createGroup } from "@/lib/groupStore";
+import { createGroup, getMember } from "@/lib/groupStore";
 import { createGroupMeetings, cleanMeetingFields, inviteesOf, type CreateMeetingDeps } from "@/lib/groupMeetings";
-import { getMember } from "@/lib/groupStore";
 
 delete process.env.KV_REST_API_URL;
 delete process.env.KV_REST_API_TOKEN;

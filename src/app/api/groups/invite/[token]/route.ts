@@ -10,10 +10,9 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { countMembers, getGroup, getInvite, getMember, redeemInvite, GROUP_INVITE_TTL_SECONDS } from "@/lib/groupStore";
+import { countMembers, getGroup, getInvite, getMember, listMembers, redeemInvite, GROUP_INVITE_TTL_SECONDS } from "@/lib/groupStore";
 import { groupErrorResponse } from "@/lib/groupAuthz";
 import { currentMember, memberLimitFor } from "@/lib/groupPeople";
-import { listMembers } from "@/lib/groupStore";
 import { ringNewMembers } from "@/lib/ringEngine";
 
 export const runtime = "nodejs";
