@@ -23,6 +23,22 @@ String? createdSlug(Object? body) {
   return null;
 }
 
+const _nameMissing = 'Give the meeting a name.';
+
+/// /api/events/create's refusals that come without a sentence of their own.
+/// The website shows these codes as they are; the others (the plan cap,
+/// the plan gates) carry a `message`, which ApiException already prefers.
+const _createMessages = <String, String>{
+  'name_required': _nameMissing,
+  'invalid_json': "The meeting's details didn't reach the server intact. Try again.",
+  'unauthenticated': 'Your sign-in has expired. Sign out and sign in again.',
+};
+
+/// What to say when creating a meeting was refused: a sentence for a code
+/// the route answers bare, otherwise what the app says for a failed action.
+String createMeetingErrorText(ApiException error) =>
+    _createMessages[error.code] ?? describeActionError(error);
+
 /// Creating a meeting from the phone.
 ///
 /// Calls the same /api/events/create the website's form does, so the rules
@@ -55,7 +71,16 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
   }
 
   Future<void> _create() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+    final valid = _formKey.currentState?.validate() ?? false;
+    // Checked on the controller as well as through the form. The fields sit
+    // in a lazy list, and scrolling down to this button disposes the name
+    // field, leaving the form nothing to validate: on a phone (build 3208)
+    // the empty name went to the server, and its code came back on screen.
+    if (_name.text.trim().isEmpty) {
+      setState(() => _error = _nameMissing);
+      return;
+    }
+    if (!valid) return;
     FocusScope.of(context).unfocus();
     setState(() {
       _busy = true;
@@ -106,7 +131,7 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
         );
         return;
       }
-      setState(() => _error = e.message);
+      setState(() => _error = createMeetingErrorText(e));
     } catch (e) {
       setState(() {
         _busy = false;
