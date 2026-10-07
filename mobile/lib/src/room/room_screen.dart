@@ -555,7 +555,7 @@ class _InMeetingState extends State<_InMeeting> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => ParticipantsSheet(slug: widget.slug),
+      builder: (_) => ParticipantsSheet(slug: widget.slug, title: widget.title),
     );
   }
 

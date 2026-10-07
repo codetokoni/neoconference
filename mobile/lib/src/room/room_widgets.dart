@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../groups/add_to_group_sheet.dart';
 import '../groups/group_calling_panel.dart';
 import '../design/brand.dart';
 import '../design/components.dart';
@@ -717,14 +718,29 @@ Future<void> _confirmRemove(
   if (yes == true) await controller.moderate(p.identity, 'kick');
 }
 
+/// The people in a meeting as candidates for a group: signed-in people only
+/// (a LiveKit identity is "userId#nonce"; one person on two devices is one
+/// candidate), none ticked.
+List<GroupCandidate> roomCandidates(Iterable<({String identity, String name})> people) {
+  final seen = <String>{};
+  return [
+    for (final p in people)
+      if (p.identity.split('#').first case final uid when uid.startsWith('user_') && seen.add(uid))
+        GroupCandidate(name: p.name.isNotEmpty ? p.name : uid, detail: 'In the meeting', userId: uid, attended: true),
+  ];
+}
+
 /// Who is in the meeting.
 ///
 /// Read from LiveKit rather than from a roster the server sent: the people
 /// on this list are the people whose media this device is actually
 /// connected to, which is the only list that cannot be out of date.
 class ParticipantsSheet extends ConsumerWidget {
-  const ParticipantsSheet({super.key, required this.slug});
+  const ParticipantsSheet({super.key, required this.slug, this.title = ''});
   final String slug;
+
+  /// The meeting's title: the suggested name for a group made from it.
+  final String title;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -793,6 +809,29 @@ class ParticipantsSheet extends ConsumerWidget {
                 ],
               ),
             ),
+            // Any meeting, in a group or not: put people from here, or by
+            // KingsChat handle or email, into one of your groups or a new one.
+            if (state.canManage)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: FilledButton.tonalIcon(
+                  onPressed: () async {
+                    final message = await showAddToGroupSheet(
+                      context,
+                      people: roomCandidates([
+                        for (final person in others) (identity: person.identity, name: person.name),
+                      ]),
+                      suggestedName: title.trim().isEmpty ? 'New group' : title.trim(),
+                    );
+                    if (message != null && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+                    }
+                  },
+                  icon: const Icon(Icons.group_add_rounded, size: 18),
+                  label: const Text('Add people to a group'),
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                ),
+              ),
             if (state.canManage)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
