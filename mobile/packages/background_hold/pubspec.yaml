@@ -1,0 +1,18 @@
+name: background_hold
+description: Keeps the app's process running for a few seconds of work started from a notification, where the phone would otherwise freeze it.
+publish_to: none
+version: 1.0.0
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: app.neoconference.background_hold
+        pluginClass: BackgroundHoldPlugin

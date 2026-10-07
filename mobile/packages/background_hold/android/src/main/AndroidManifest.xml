@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+
+    <application>
+        <!-- A few seconds of work after a notification button: "shortService"
+             needs no further permission and Android ends it after 3 min. -->
+        <service
+            android:name=".HoldService"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
+    </application>
+</manifest>

@@ -73,6 +73,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.13.1"
+  background_hold:
+    dependency: "direct main"
+    description:
+      path: "packages/background_hold"
+      relative: true
+    source: path
+    version: "1.0.0"
   boolean_selector:
     dependency: transitive
     description:
