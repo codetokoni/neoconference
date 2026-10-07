@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse, type NextRequest } from 'next/server';
-import { kv } from '@vercel/kv';
+import { kv } from '@/lib/kv';
 import { RESERVED_SHORT_URL_SLUGS } from '@/lib/reservedSlugs';
 import {
   SESSION_COOKIE,

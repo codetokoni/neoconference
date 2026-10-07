@@ -20,7 +20,7 @@
 //
 // Pure module: no Next, no HTTP. Safe from routes, tests, background jobs.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 
 const RETENTION_SECONDS = 30 * 24 * 60 * 60; // 30 days — same order as the roles hash
 

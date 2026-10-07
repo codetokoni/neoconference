@@ -28,7 +28,7 @@
 //
 // No Clerk and no Next here; the Clerk-backed gates arrive as `deps`.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import { eventStore, generateId, generateQrSeed, generateSlug } from "@/lib/eventStore";
 import { hashMeetingPassword } from "@/lib/eventPassword";
 import { assignMeetingRole } from "@/lib/meeting-roles";

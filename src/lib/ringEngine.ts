@@ -20,7 +20,7 @@
 //
 // Everything takes `now`, so tests run on a fake clock.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import { randomBytes } from "node:crypto";
 import { eventStore } from "@/lib/eventStore";
 import { getGroup, getMember } from "@/lib/groupStore";

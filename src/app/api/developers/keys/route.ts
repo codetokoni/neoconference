@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { kv } from '@vercel/kv';
+import { kv } from '@/lib/kv';
 import { randomBytes, randomUUID } from 'crypto';
 import { currentPlan, hashKey, type ApiKeyRecord, type ApiPlan } from '@/lib/apiAuth';
 

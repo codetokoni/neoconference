@@ -30,7 +30,7 @@
 // helper lives here too so browsers and tests never disagree with the
 // server on what "time left" means.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 
 const TTL_SECONDS = 24 * 60 * 60;
 

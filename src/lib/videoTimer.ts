@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 
 /**
  * Segment / countdown timer for the programme feed.

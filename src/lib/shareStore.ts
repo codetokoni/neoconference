@@ -4,7 +4,7 @@
 // Keys:
 //   neo:share:<token>  -> { key, ownerUserId, label, createdAt, expiresAt }
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import crypto from "node:crypto";
 
 export type ShareRecord = {

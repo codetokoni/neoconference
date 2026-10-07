@@ -21,7 +21,7 @@
 //
 // Pure module: no Clerk, no Next, no HTTP.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import { generateId } from "@/lib/eventStore";
 import { inviteStore } from "@/lib/inviteStore";
 import {

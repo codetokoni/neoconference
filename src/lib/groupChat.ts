@@ -14,7 +14,7 @@
 // (a fresh link is signed each time they are read, so old messages never
 // carry dead links).
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import { randomBytes } from "node:crypto";
 import { MAX_TEXT_LEN } from "@/lib/chatStore";
 import { GroupError, type GroupMember } from "@/lib/groupStore";

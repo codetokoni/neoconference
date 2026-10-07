@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import { SIMULCAST_MAIN, featuredKey, type FeaturedState } from "@/lib/simulcast";
 
 export const runtime = "nodejs";

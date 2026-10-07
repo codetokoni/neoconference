@@ -8,7 +8,7 @@
 // on every one.
 
 import { RoomServiceClient } from "livekit-server-sdk";
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import { eventStore } from "@/lib/eventStore";
 import {
   sweepStaleMeetings,

@@ -6,7 +6,7 @@
 //
 // Keys: neo:chat:<eventId> -> ChatMessage[] JSON (newest last, capped at MAX)
 
-import { kv } from '@vercel/kv';
+import { kv } from '@/lib/kv';
 import type { ChatMessage } from '@/types/event';
 
 const PREFIX = 'neo:chat:';

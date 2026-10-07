@@ -14,7 +14,7 @@
 // VAPID_SUBJECT it is simply unavailable and every send reports that.
 
 import { createHash } from "node:crypto";
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 import webpush from "web-push";
 import { isFcmConfigured, sendFcm } from "@/lib/fcmStore";
 

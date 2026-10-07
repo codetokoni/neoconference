@@ -6,7 +6,7 @@
 //
 // Falls back to an in-memory Map per-process when Vercel KV is not configured.
 
-import { kv } from '@vercel/kv';
+import { kv } from '@/lib/kv';
 import type { InviteToken } from '@/types/event';
 
 const TOKEN_PREFIX = 'neo:invite:';

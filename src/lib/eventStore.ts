@@ -10,7 +10,7 @@
 // When KV env vars are missing (preview/local), falls back to an in-process
 // Map so the app still runs and the developer sees clear console warnings.
 
-import { kv } from '@vercel/kv';
+import { kv } from '@/lib/kv';
 import type { NeoEvent } from '@/types/event';
 import { deleteAllMeetingRoles } from '@/lib/meeting-roles';
 import { withoutSupersededSlugs } from '@/lib/slugWinners';

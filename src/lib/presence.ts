@@ -9,7 +9,7 @@
 // people already in the meeting, and to tell people in another meeting that
 // a call is waiting instead of ringing over it.
 
-import { kv } from "@vercel/kv";
+import { kv } from "@/lib/kv";
 
 export const PRESENCE_TTL_SECONDS = 90;
 

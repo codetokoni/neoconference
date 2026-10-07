@@ -8,14 +8,14 @@
 //   neo:sessions:<userId>                -> Set<tokenHash>  (logout-everywhere + listing)
 //   neo:session-device:<userId>:<fp>     -> tokenHash       (one session per device)
 //
-// EDGE-SAFE ON PURPOSE. This module uses only Web Crypto and @vercel/kv's HTTP
-// client, so the exact same code runs in Edge middleware and in Node route
+// EDGE-SAFE ON PURPOSE. This module uses only Web Crypto and the Upstash HTTP
+// client in @/lib/kv, so the exact same code runs in Edge middleware and in Node route
 // handlers. Do not add `node:crypto` or any Node-only import here.
 //
 // Falls back to an in-memory Map per-process when Vercel KV is not configured,
 // matching inviteStore/chatStore behaviour for local development.
 
-import { kv } from '@vercel/kv';
+import { kv } from '@/lib/kv';
 
 const SESSION_PREFIX = 'neo:session:';
 const INDEX_PREFIX = 'neo:sessions:';
