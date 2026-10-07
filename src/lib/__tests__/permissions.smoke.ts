@@ -55,7 +55,7 @@ t("anonymous holds nothing, not even participant permissions", () => {
   assert.deepEqual(grantsFor(a), []);
 });
 
-t("moderator moderates (mute + muteAll) but cannot kick, dispatch captions, end, or record", () => {
+t("moderator moderates (mute + muteAll) and records, but cannot kick, dispatch captions, or end", () => {
   const a = actor("x", ["mod@example.com"]);
   assert.equal(can(a, "participant:mute"), true);
   assert.equal(can(a, "participant:muteAll"), true);   // FRS §5.1 is ambiguous; product decision to include moderator
@@ -64,7 +64,9 @@ t("moderator moderates (mute + muteAll) but cannot kick, dispatch captions, end,
   assert.equal(can(a, "participant:kick"), false);
   assert.equal(can(a, "captions:dispatch"), false);
   assert.equal(can(a, "meeting:end"), false);
-  assert.equal(can(a, "recording:start"), false);
+  assert.equal(can(a, "recording:start"), true);   // #272: a cohost runs the meeting, recording included
+  assert.equal(can(a, "recording:stop"), true);
+  assert.equal(can(a, "recording:delete"), false); // owner only: it destroys the artifact
 });
 
 t("host runs the meeting but cannot delete or bill it", () => {
