@@ -217,7 +217,7 @@ export default function HiddenVideosBadge({
                       title={
                         canRestoreGlobally
                           ? 'Show this video again'
-                          : 'Only a host or cohost can restore a globally hidden video'
+                          : 'Only a host or moderator can restore a globally hidden video'
                       }
                     >
                       {busyId === e.id ? '…' : 'Show'}

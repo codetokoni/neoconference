@@ -145,7 +145,7 @@ class SampleParticipant {
   String get roleLabel => switch (role) {
         SampleRole.owner => 'Owner',
         SampleRole.host => 'Host',
-        SampleRole.cohost => 'Co-host',
+        SampleRole.cohost => 'Moderator',
         SampleRole.speaker => 'Speaker',
         SampleRole.attendee => 'Attendee',
       };
@@ -269,7 +269,7 @@ final sampleNotifications = <SampleNotification>[
     unread: true,
   ),
   SampleNotification(
-    title: 'You were made a co-host',
+    title: 'You were made a moderator',
     body: 'Design critique — mobile release',
     at: sampleNow.subtract(const Duration(days: 1)),
     icon: NeoNotificationIcon.host,
