@@ -33,9 +33,14 @@ class MeetingPermissions {
   bool get canEndForEveryone => isHost;
   bool get canManageWaitingRoom => canModerate;
   bool get canMuteOthers => canModerate;
-  bool get canRemoveOthers => canModerate;
+
+  /// Host rank: `participant:kick` on the server, and the live room offers
+  /// Remove to hosts only (`canModerateOthers`).
+  bool get canRemoveOthers => isHost;
   bool get canChangeRoles => isHost;
-  bool get canLockMeeting => isHost || isCohost;
+
+  /// Host rank: the lock route needs `meeting:edit`.
+  bool get canLockMeeting => isHost;
 
   String get label => switch (role) {
         SampleRole.owner => 'Owner',
