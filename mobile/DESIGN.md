@@ -87,16 +87,18 @@ cannot be enforced in one place and forgotten in another.
 
 | | Owner | Host | Co-host | Attendee |
 |---|---|---|---|---|
-| Mute / remove others | ✓ | ✓ | ✓ | |
+| Mute others | ✓ | ✓ | ✓ | |
 | Waiting room | ✓ | ✓ | ✓ | |
-| Lock meeting | ✓ | ✓ | ✓ | |
 | Recording | ✓ | ✓ | ✓ | |
+| Remove others | ✓ | ✓ | | |
+| Lock meeting | ✓ | ✓ | | |
 | Change roles | ✓ | ✓ | | |
 | End for everyone | ✓ | ✓ | | |
 
 There is one tier between host and attendee. The server stores it as
 `moderator` and sends it to clients as `cohost` (`src/lib/permissions.ts`);
-it can record (#272). An earlier draft of this table had a separate
+it can record (#272), but Remove (`participant:kick`) and Lock
+(`meeting:edit`) are host rank. An earlier draft of this table had a separate
 Moderator who could not record — the server never had that role, and it
 was removed from the showcase.
 
