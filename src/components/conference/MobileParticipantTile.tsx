@@ -24,10 +24,10 @@ import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 interface MobileParticipantTileProps {
   participant: Participant;
   localIsHost: boolean;
-  /** Host rank (wire role 'host', which covers the owner). Remove is host
-   *  rank on the server (participant:kick; FRS §1.3), while localIsHost
-   *  also covers a cohost. */
-  localCanRemove?: boolean;
+  /** Host rank (wire role 'host', which covers the owner). Changing roles
+   *  and Remove are host rank on the server (role:grant, role:revoke,
+   *  participant:kick; FRS §1.3), while localIsHost also covers a cohost. */
+  localIsHostRank?: boolean;
   /** Whether the local viewer is the actual event owner — controls the
    *  Make Host action gate in the long-press menu (FRS §1.1). */
   localIsOwner?: boolean;
@@ -95,7 +95,7 @@ const BURST_DURATION = 2500;
 function MobileParticipantTileInner({
   participant,
   localIsHost,
-  localCanRemove = false,
+  localIsHostRank = false,
   localIsOwner = false,
   participantIsHost,
   slug,
@@ -688,34 +688,38 @@ function MobileParticipantTileInner({
                   onClick={muteEveryoneElse}
                 />
 
-                <MenuSection label="Role" />
-                {localIsOwner && (
-                  <MenuBtn
-                    label="Make Host"
-                    disabled={pending !== null}
-                    loading={pending === 'role:host'}
-                    onClick={() => assignRole('host')}
-                  />
-                )}
-                <MenuBtn
-                  label="Make Moderator"
-                  disabled={pending !== null}
-                  loading={pending === 'role:moderator'}
-                  onClick={() => assignRole('moderator')}
-                />
-                {/* Only surfaces when the target actually holds an elevated
-                    role right now — otherwise there's nothing to demote. */}
-                {targetIsElevated && (
-                  <MenuBtn
-                    label="Demote to Participant"
-                    disabled={pending !== null}
-                    loading={pending === 'role:participant'}
-                    onClick={() => assignRole('participant')}
-                  />
-                )}
-
-                {(localCanRemove || localIsOwner) && (
+                {/* Roles and Remove are host rank on the server (role:grant,
+                    role:revoke, participant:kick); a cohost would only get
+                    a 403. HostTileMenu and ParticipantsPanel gate them the
+                    same way. */}
+                {(localIsHostRank || localIsOwner) && (
                   <>
+                    <MenuSection label="Role" />
+                    {localIsOwner && (
+                      <MenuBtn
+                        label="Make Host"
+                        disabled={pending !== null}
+                        loading={pending === 'role:host'}
+                        onClick={() => assignRole('host')}
+                      />
+                    )}
+                    <MenuBtn
+                      label="Make Moderator"
+                      disabled={pending !== null}
+                      loading={pending === 'role:moderator'}
+                      onClick={() => assignRole('moderator')}
+                    />
+                    {/* Only surfaces when the target actually holds an elevated
+                        role right now — otherwise there's nothing to demote. */}
+                    {targetIsElevated && (
+                      <MenuBtn
+                        label="Demote to Participant"
+                        disabled={pending !== null}
+                        loading={pending === 'role:participant'}
+                        onClick={() => assignRole('participant')}
+                      />
+                    )}
+
                     <MenuSection label="Danger" />
                     <MenuBtn
                       label="Remove from room"
@@ -822,7 +826,7 @@ export const MobileParticipantTile = React.memo(
     prev.participant.isMicrophoneEnabled === next.participant.isMicrophoneEnabled &&
     prev.participant.isCameraEnabled === next.participant.isCameraEnabled &&
     prev.localIsHost === next.localIsHost &&
-    prev.localCanRemove === next.localCanRemove &&
+    prev.localIsHostRank === next.localIsHostRank &&
     prev.localIsOwner === next.localIsOwner &&
     prev.participantIsHost === next.participantIsHost &&
     prev.slug === next.slug &&
