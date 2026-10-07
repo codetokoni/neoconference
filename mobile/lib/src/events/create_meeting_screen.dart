@@ -23,13 +23,14 @@ String? createdSlug(Object? body) {
   return null;
 }
 
-const _nameMissing = 'Give the meeting a name.';
+/// What Create and Schedule say when the meeting has no name.
+const meetingNameMissing ='Give the meeting a name.';
 
 /// /api/events/create's refusals that come without a sentence of their own.
 /// The website shows these codes as they are; the others (the plan cap,
 /// the plan gates) carry a `message`, which ApiException already prefers.
 const _createMessages = <String, String>{
-  'name_required': _nameMissing,
+  'name_required': meetingNameMissing,
   'invalid_json': "The meeting's details didn't reach the server intact. Try again.",
   'unauthenticated': 'Your sign-in has expired. Sign out and sign in again.',
 };
@@ -77,7 +78,7 @@ class _CreateMeetingScreenState extends ConsumerState<CreateMeetingScreen> {
     // field, leaving the form nothing to validate: on a phone (build 3208)
     // the empty name went to the server, and its code came back on screen.
     if (_name.text.trim().isEmpty) {
-      setState(() => _error = _nameMissing);
+      setState(() => _error = meetingNameMissing);
       return;
     }
     if (!valid) return;
