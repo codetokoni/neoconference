@@ -35,6 +35,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # translationLanguages.smoke.ts starts the translation worker's SSE
+      # server, which has its own package.json (it ships in its own image).
+      - name: Install translation worker dependencies
+        run: npm ci --prefix translation-worker
+
       - name: Run server smoke tests
         run: npm run test:smoke
 

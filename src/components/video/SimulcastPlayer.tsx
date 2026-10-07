@@ -13,6 +13,7 @@ import {
   channelsForRoom,
   channelTrackIdsForRoom,
   hlsUrl,
+  machineChannelsForRoom,
   videoChannelForRoom,
   type FeaturedState,
   type SimulcastChannel,
@@ -95,9 +96,20 @@ export default function SimulcastPlayer({
   const channels = useMemo<SimulcastChannel[]>(() => channelsForRoom(room), [room]);
   const videoChannel = useMemo(() => videoChannelForRoom(room), [room]);
   const channelTrackIds = useMemo(() => channelTrackIdsForRoom(room), [room]);
+
+  // The translation worker (NEXT_PUBLIC_TRANSLATION_SSE) captions the
+  // programme into every DeepL language, read aloud by the browser. The
+  // booths above keep their buttons; the rest are "More languages".
+  const translationEnabled =
+    typeof process !== "undefined" &&
+    Boolean(process.env.NEXT_PUBLIC_TRANSLATION_SSE);
+  const machineChannels = useMemo<SimulcastChannel[]>(
+    () => (translationEnabled ? machineChannelsForRoom(room) : []),
+    [room, translationEnabled],
+  );
   const channelById = useCallback(
-    (id: string) => channelByIdInList(id, channels),
-    [channels],
+    (id: string) => channelByIdInList(id, channels) ?? channelByIdInList(id, machineChannels),
+    [channels, machineChannels],
   );
 
   const [active, setActive] = useState(videoChannel.id);
@@ -334,9 +346,6 @@ export default function SimulcastPlayer({
    *     in which case every non-source language becomes selectable and
    *     the SSE overlay speaks the translated captions.
    */
-  const translationEnabled =
-    typeof process !== "undefined" &&
-    Boolean(process.env.NEXT_PUBLIC_TRANSLATION_SSE);
   const live = useMemo(() => {
     const s = new Set<string>(serverLive);
     liveTrackIds.forEach((id) => s.add(id));
@@ -345,9 +354,10 @@ export default function SimulcastPlayer({
       // selectable — no translation for it. Every other channel opens
       // up to translation-driven captions.
       for (const c of channels) if (!c.video) s.add(c.id);
+      for (const c of machineChannels) s.add(c.id);
     }
     return s;
-  }, [serverLive, liveTrackIds, translationEnabled, channels]);
+  }, [serverLive, liveTrackIds, translationEnabled, channels, machineChannels]);
 
   /** If the selected booth drops off air, fall back to the floor. */
   useEffect(() => {
@@ -538,6 +548,15 @@ export default function SimulcastPlayer({
     video.muted = muted;
     video.volume = floorLevel;
 
+    // A language with no booth has no stream to load: the browser reads
+    // its captions aloud (TranslationOverlay), over the floor set above.
+    if (channelById(active)?.machine) {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      return;
+    }
+
     let cancelled = false;
 
     (async () => {
@@ -572,7 +591,7 @@ export default function SimulcastPlayer({
       hlsAudio.current?.destroy();
       hlsAudio.current = null;
     };
-  }, [mode, active, muted, videoChannel.id, floorLevel]);
+  }, [mode, active, muted, videoChannel.id, floorLevel, channelById]);
 
   const unmute = useCallback(() => setMuted(false), []);
 
@@ -822,7 +841,13 @@ export default function SimulcastPlayer({
           </div>
 
           <div style={onAir ? { opacity: 0.45, pointerEvents: "none" } : undefined}>
-            <ChannelRail channels={channels} live={live} active={active} onSelect={setActive} />
+            <ChannelRail
+              channels={channels}
+              more={machineChannels}
+              live={live}
+              active={active}
+              onSelect={setActive}
+            />
           </div>
 
           {/* Floor-level slider. Only relevant when a translation is

@@ -4,16 +4,21 @@ import type { SimulcastChannel } from "@/lib/simulcast";
 
 export default function ChannelRail({
   channels,
+  more = [],
   live,
   active,
   onSelect,
 }: {
   channels: SimulcastChannel[];
+  /** Languages without a booth, captioned by the translation worker. A
+   *  hundred-odd of them, so a list to pick from rather than buttons. */
+  more?: SimulcastChannel[];
   live: Set<string>;
   active: string;
   onSelect: (id: string) => void;
 }) {
   const liveCount = channels.filter((c) => live.has(c.id)).length;
+  const moreActive = more.find((c) => c.id === active);
 
   return (
     <div className="flex flex-col gap-2">
@@ -56,6 +61,27 @@ export default function ChannelRail({
           );
         })}
       </div>
+
+      {more.length > 0 && (
+        <label className="mt-1 flex flex-col gap-1.5">
+          <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
+            More languages · machine translated
+          </span>
+          <select
+            value={moreActive ? moreActive.id : ""}
+            onChange={(e) => e.target.value && onSelect(e.target.value)}
+            style={moreActive ? { borderColor: moreActive.color } : undefined}
+            className="w-full rounded-lg border border-white/10 bg-[#0B1319] px-3 py-2.5 text-sm text-white outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 [&>option]:bg-[#0B1319]"
+          >
+            <option value="">Choose from {more.length} languages…</option>
+            {more.map((c) => (
+              <option key={c.id} value={c.id} lang={c.lang}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
     </div>
   );
 }

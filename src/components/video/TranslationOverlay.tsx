@@ -90,8 +90,13 @@ export default function TranslationOverlay({
     // Best-effort voice pick. Browsers vary in what they ship; if we
     // don't find one matching the lang, the default voice speaks — the
     // pronunciation is off but the words land.
+    // A code with a script or region ("zh-hant") falls back to its
+    // language, since voices are tagged zh-TW / zh-CN.
     const voices = synth.getVoices();
-    const match = voices.find((v) => v.lang.toLowerCase().startsWith(line.lang));
+    const base = line.lang.split("-")[0];
+    const match =
+      voices.find((v) => v.lang.toLowerCase().startsWith(line.lang)) ??
+      voices.find((v) => v.lang.toLowerCase().startsWith(base));
     if (match) utter.voice = match;
     utter.rate = 1.05;
     utter.pitch = 1;
