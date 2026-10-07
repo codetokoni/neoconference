@@ -25,7 +25,7 @@ import { randomBytes } from "node:crypto";
 import { eventStore } from "@/lib/eventStore";
 import { getGroup, getMember } from "@/lib/groupStore";
 import { inviteesOf, listGroupMeetings } from "@/lib/groupMeetings";
-import { getPresence } from "@/lib/presence";
+import { getPresence, PRESENCE_TTL_SECONDS, type Presence } from "@/lib/presence";
 import { sendPush, topicFor, type PushPayload } from "@/lib/pushStore";
 import { addNotification } from "@/lib/notificationStore";
 import { joinUrl, whenText } from "@/lib/groupNotify";
@@ -49,6 +49,31 @@ export interface CallRecord {
   ringId: string;
   /** KingsChat fallback already sent for this meeting. */
   kcSent: boolean;
+  /** Epoch ms of their latest join, while 'joined'. */
+  joinedAt?: number;
+}
+
+/**
+ * What the Calling panel shows: the stored status, except that someone who
+ * joined and has since gone is 'left' — and may be rung again. Gone means
+ * no presence in this meeting (src/lib/presence.ts: the room says so every
+ * 60 s and on leaving). A join in the last PRESENCE_TTL_SECONDS counts as
+ * here, so nobody shows as gone before their first heartbeat lands.
+ * Never stored: 'joined' stays settled, so the automatic rounds leave
+ * someone who walked out alone; only the host's Ring again reaches them.
+ */
+export type ShownCallStatus = CallStatus | "left";
+
+export function shownStatus(
+  c: Pick<CallRecord, "status" | "joinedAt">,
+  presence: Presence | null,
+  eid: string,
+  now: number
+): ShownCallStatus {
+  if (c.status !== "joined") return c.status;
+  if (presence?.eventId === eid) return "joined";
+  if (c.joinedAt !== undefined && now - c.joinedAt < PRESENCE_TTL_SECONDS * 1000) return "joined";
+  return "left";
 }
 
 /** How long a ring lasts on someone's screen. */
@@ -90,6 +115,7 @@ function parseCall(raw: unknown): CallRecord | null {
     lastAttemptAt: typeof r.lastAttemptAt === "number" ? r.lastAttemptAt : 0,
     ringId: typeof r.ringId === "string" ? r.ringId : "",
     kcSent: r.kcSent === true,
+    ...(typeof r.joinedAt === "number" ? { joinedAt: r.joinedAt } : {}),
   };
 }
 
@@ -220,7 +246,7 @@ export async function ringAttempt(
 
     const presence = await getPresence(uid, now);
     if (presence?.eventId === ev.id) {
-      await setCall(eid, uid, { ...c, status: "joined" });
+      await setCall(eid, uid, { ...c, status: "joined", joinedAt: now });
       continue;
     }
     if (c.attempts >= maxAttempts) continue;
@@ -358,12 +384,18 @@ export async function ringNewMembers(gid: string, userIds: string[], now: number
   return rung;
 }
 
-/** "Ring again": these people start over, as if never rung. */
+/**
+ * "Ring again": these people start over, as if never rung — including
+ * someone who joined and has since left (see shownStatus). Anyone still in
+ * the meeting is left alone.
+ */
 export async function ringAgain(eid: string, userIds: string[], now: number = Date.now()): Promise<RingRound> {
   const calls = await getCalls(eid);
   for (const uid of userIds) {
     const c = calls.get(uid);
-    if (c && c.status !== "joined") await setCall(eid, uid, { ...c, status: "missed", attempts: 0 });
+    if (!c) continue;
+    if (c.status === "joined" && shownStatus(c, await getPresence(uid, now), eid, now) === "joined") continue;
+    await setCall(eid, uid, { ...c, status: "missed", attempts: 0, joinedAt: undefined });
   }
   return ringAttempt(eid, { only: userIds, now, round: 1 });
 }
@@ -396,11 +428,13 @@ export async function respondToRing(
  * Someone's join was recorded (src/lib/attendance.ts). If they were being
  * called into this meeting, the calling stops. One read for anyone else.
  */
-export async function markJoinedIfCalled(eid: string, uid: string): Promise<boolean> {
+export async function markJoinedIfCalled(eid: string, uid: string, at: number = Date.now()): Promise<boolean> {
   const c = await getCall(eid, uid);
-  if (!c || c.status === "joined") return false;
-  await setCall(eid, uid, { ...c, status: "joined" });
-  return true;
+  if (!c) return false;
+  // A rejoin moves the join time on too, so someone back from leaving
+  // counts as here before their first heartbeat (see shownStatus).
+  await setCall(eid, uid, { ...c, status: "joined", joinedAt: at });
+  return c.status !== "joined";
 }
 
 /* -------------------------------------------------------------------------- */

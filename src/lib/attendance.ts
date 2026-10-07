@@ -89,7 +89,7 @@ export async function recordAttendance(
       console.warn("[attendance] KV write failed", err);
     }
   }
-  if (enriched.action === "join" && enriched.userId) await afterJoin(eventId, enriched.userId);
+  if (enriched.action === "join" && enriched.userId) await afterJoin(eventId, enriched.userId, enriched.ts);
 }
 
 /**
@@ -99,11 +99,11 @@ export async function recordAttendance(
  * the app's — comes through here. Loaded only when needed, and never allowed
  * to fail the attendance write it follows.
  */
-async function afterJoin(eventId: string, userId: string): Promise<void> {
+async function afterJoin(eventId: string, userId: string, at: number): Promise<void> {
   const uid = userId.split("#")[0];
   try {
     const { markJoinedIfCalled } = await import("@/lib/ringEngine");
-    await markJoinedIfCalled(eventId, uid);
+    await markJoinedIfCalled(eventId, uid, at);
   } catch (err) {
     console.warn("[attendance] could not update call status", err);
   }

@@ -168,8 +168,8 @@ Group roles, highest first: **Owner > Host > Moderator > Member**. The "Permissi
 | GET | /api/events/{id}/participants | group:read | — | `{ eventId, groupId, kind, canAdd, candidates }` |
 | POST | /api/events/{id}/participants | group:participants:manage (Moderator) | `{ userIds?, emails? }` | `{ ok, added, notified }`; 409 unless live/scheduled |
 | POST | /api/events/{id}/call-response | invited | `{ action: "answer"\|"decline", ringId? }` | `{ ok, status, roomUrl? }` |
-| POST | /api/events/{id}/ring | group:participants:manage | `{ userIds }` | `{ ok, rung, busy }` |
-| GET | /api/events/{id}/calls | group:participants:manage | — | `{ eventId, maxAttempts, people }` |
+| POST | /api/events/{id}/ring | group:participants:manage | `{ userIds }` | `{ ok, rung, busy }`; skips anyone still in the meeting |
+| GET | /api/events/{id}/calls | group:participants:manage | — | `{ eventId, maxAttempts, people }`; each `status`: not_called, ringing, answered, joined, left (joined, since gone), declined, missed, busy |
 
 ### Reports
 
