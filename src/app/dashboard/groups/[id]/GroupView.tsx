@@ -9,6 +9,7 @@ import type { Group, GroupActivity, GroupCapabilities, GroupMember, PendingMembe
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
 import GroupIcon from "../GroupIcon";
 import UpgradeHint from "@/components/groups/UpgradeHint";
+import { splitPeople } from "@/components/groups/AddToGroupDialog";
 import GroupActions, { roomHref } from "./GroupActions";
 import MeetingsTab from "./MeetingsTab";
 import ReportsTab from "./ReportsTab";
@@ -375,11 +376,13 @@ function MembersTab({
   const [dialogBusy, setDialogBusy] = useState(false);
   const [dialogErr, setDialogErr] = useState<string | null>(null);
 
-  async function addByEmail(e: React.FormEvent) {
+  // Emails and KingsChat handles, several at once. Anyone with no account yet
+  // is kept in the group, pending, and joins when they sign up.
+  async function addPeople(e: React.FormEvent) {
     e.preventDefault();
-    const value = email.trim();
-    if (!value) {
-      setAddMsg({ kind: "err", text: "Enter an email address to add." });
+    const { emails, handles } = splitPeople(email);
+    if (emails.length === 0 && handles.length === 0) {
+      setAddMsg({ kind: "err", text: "Enter an email address or KingsChat handle to add." });
       return;
     }
     setAdding(true);
@@ -388,19 +391,38 @@ function MembersTab({
       const res = await fetch(`/api/groups/${encodeURIComponent(group.id)}/members`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ emails: [value] }),
+        body: JSON.stringify({
+          ...(emails.length ? { emails } : {}),
+          ...(handles.length ? { kcHandles: handles } : {}),
+          pending: true,
+        }),
       });
       if (!res.ok) {
         setAddMsg({ kind: "err", text: await groupErrorFrom(res) });
         return;
       }
-      const data = (await res.json()) as { added: GroupMember[]; alreadyMembers: string[] };
-      if (data.added.length > 0) {
-        setAddMsg({ kind: "ok", text: `Added ${data.added.map((m) => m.name).join(", ")}.` });
+      const data = (await res.json()) as {
+        added: GroupMember[];
+        alreadyMembers: string[];
+        pending?: PendingMember[];
+        alreadyPending?: string[];
+      };
+      const label = (p: PendingMember) => (p.kind === "kc" ? `@${p.value}` : p.value);
+      const waiting = data.pending ?? [];
+      const parts = [
+        data.added.length ? `Added ${data.added.map((m) => m.name).join(", ")}.` : "",
+        waiting.length ? `${waiting.map(label).join(", ")} will join when they sign up.` : "",
+        data.alreadyMembers.length
+          ? data.alreadyMembers.length === 1
+            ? "1 is already in this group."
+            : `${data.alreadyMembers.length} are already in this group.`
+          : "",
+        data.alreadyPending?.length ? `${data.alreadyPending.length} already waiting to sign up.` : "",
+      ].filter(Boolean);
+      setAddMsg({ kind: "ok", text: parts.length ? parts.join(" ") : "Nobody new to add." });
+      if (data.added.length || waiting.length) {
         setEmail("");
         router.refresh();
-      } else {
-        setAddMsg({ kind: "ok", text: "They are already in this group." });
       }
     } catch {
       setAddMsg({ kind: "err", text: groupErrorMessage(null) });
@@ -522,19 +544,20 @@ function MembersTab({
     <div className="space-y-6">
       {capabilities.manageMembers ? (
         <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 space-y-4">
-          <form onSubmit={addByEmail} className="space-y-2">
+          <form onSubmit={addPeople} className="space-y-2">
             <label htmlFor="add-member-email" className="text-xs uppercase tracking-widest text-slate-400">
-              Add member
+              Add members
             </label>
             <div className="flex flex-col sm:flex-row gap-2">
               <input
                 id="add-member-email"
-                type="email"
+                type="text"
                 inputMode="email"
                 autoComplete="off"
+                autoCapitalize="none"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com"
+                placeholder="name@example.com, @handle"
                 className={inputClass}
               />
               <button
@@ -545,7 +568,10 @@ function MembersTab({
                 {adding ? "Adding…" : "Add"}
               </button>
             </div>
-            <p className="text-xs text-slate-400">They need a NeoConference account with this email.</p>
+            <p className="text-xs text-slate-400">
+              Emails or KingsChat handles, several at once. Anyone without a NeoConference account yet joins when they
+              sign up.
+            </p>
             {addMsg ? (
               <p className={"text-xs " + (addMsg.kind === "ok" ? "text-emerald-300" : "text-rose-300")}>{addMsg.text}</p>
             ) : null}

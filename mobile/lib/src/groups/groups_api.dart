@@ -85,11 +85,6 @@ class GroupsApi {
     await api.delete('/api/groups/${_id(id)}', {'confirmName': confirmName});
   }
 
-  Future<AddMembersResult> addByEmail(String id, List<String> emails) async {
-    final body = await api.post('/api/groups/${_id(id)}/members', {'emails': emails}) as Map;
-    return AddMembersResult.fromJson(body);
-  }
-
   /// Adds people by their account (someone met in a meeting, whose email
   /// this person may not know).
   Future<AddMembersResult> addByUserId(String id, List<String> userIds) async {
