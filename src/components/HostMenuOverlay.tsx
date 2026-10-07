@@ -25,8 +25,8 @@ export default function HostMenuOverlay({
    *  another host). Also unlocks the same role/moderation surface for
    *  a real owner whose LiveKit metadata hasn't reported "host" yet. */
   isOwner?: boolean;
-  /** Wire-format role. Threaded through to HostTileMenu so the §5.2
-   *  "Mute everyone else" option is gated on owner+host. */
+  /** Wire-format role. Threaded through to HostTileMenu so roles and
+   *  Remove are gated on owner+host. */
   roomRole?: string;
   slug: string;
 }) {

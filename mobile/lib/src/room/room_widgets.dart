@@ -634,13 +634,16 @@ class HostControlsSheet extends ConsumerWidget {
                                   p.isMuted ? 'requestUnmuteAudio' : 'muteAudio',
                                 ),
                               ),
-                              IconButton(
-                                tooltip: 'Remove from meeting',
-                                icon: Icon(Icons.person_remove,
-                                    color: palette.danger),
-                                onPressed: () =>
-                                    _confirmRemove(context, controller, p, name),
-                              ),
+                              // Remove is host rank (participant:kick); a
+                              // moderator would only get a 403.
+                              if (state.canModerateOthers)
+                                IconButton(
+                                  tooltip: 'Remove from meeting',
+                                  icon: Icon(Icons.person_remove,
+                                      color: palette.danger),
+                                  onPressed: () =>
+                                      _confirmRemove(context, controller, p, name),
+                                ),
                             ],
                           ),
                         );
@@ -775,7 +778,8 @@ class ParticipantsSheet extends ConsumerWidget {
                       // out. With Remove only under More -> Host controls,
                       // a host on a real phone looked here, found nothing,
                       // and the person stayed in the meeting.
-                      onRemove: state.canManage
+                      // Host rank only (participant:kick), as above.
+                      onRemove: state.canModerateOthers
                           ? () => _confirmRemove(
                                 context,
                                 controller,
