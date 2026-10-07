@@ -1,7 +1,7 @@
 // src/app/api/livekit/captions/dispatch/route.ts
 //
 // Dispatches the captions-worker (deployed on Railway) into a LiveKit room
-// when a host or co-host enables live captions. Idempotent: if a dispatch
+// when a host enables live captions. Idempotent: if a dispatch
 // already exists for the room+agent we return the existing one.
 //
 // The actual transcription gate is enforced by the worker itself via the
@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { AgentDispatchClient } from 'livekit-server-sdk';
 import { eventStore } from '@/lib/eventStore';
-import { assertOwnerOrAdmin } from '@/lib/roles';
+import { authorize } from '@/lib/authz';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -45,18 +45,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'room_required' }, { status: 400 });
   }
 
-  // Authorize: only event owner, app-wide admin, or a host/cohost role
-  // assignment on this event may dispatch the worker. Mirrors the
-  // role-resolution logic in /api/events/role.
+  // Authorize: captions:dispatch, host rank — the web's CC toggle and the
+  // app's switch are host-only too. This used to be assertOwnerOrAdmin,
+  // which let a cohost in (moderator rank) yet read only event.roles[], so a
+  // host promoted in the room (their role is in the hash) was refused.
   try {
     const ev = await eventStore.bySlug(eventSlug);
     if (!ev) {
       return NextResponse.json({ error: 'event_not_found' }, { status: 404 });
     }
-    const check = await assertOwnerOrAdmin(ev, userId, { allowHostlike: true });
-    if (!check.ok) {
-      return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-    }
+    const gate = await authorize(ev, 'captions:dispatch');
+    if (!gate.ok) return gate.response;
   } catch (e) {
     console.error('[captions/dispatch] event lookup failed', e);
     return NextResponse.json({ error: 'event_lookup_failed' }, { status: 500 });
