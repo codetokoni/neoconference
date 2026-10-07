@@ -16,6 +16,7 @@ import { isMeetingRole } from "@/lib/permissions";
 import {
   addMembers,
   leaveGroup,
+  listMembers,
   removeMember,
   setRole,
   transferOwnership,
@@ -28,7 +29,6 @@ import {
   requireGroupPermission,
 } from "@/lib/groupAuthz";
 import { memberLimitFor, membersByEmail, membersById } from "@/lib/groupPeople";
-import { listMembers } from "@/lib/groupStore";
 import { ringNewMembers } from "@/lib/ringEngine";
 
 export const runtime = "nodejs";

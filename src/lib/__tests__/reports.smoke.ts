@@ -10,14 +10,13 @@ import {
 } from "@/lib/groupStore";
 import { createGroupMeetings, cleanMeetingFields, type CreateMeetingDeps } from "@/lib/groupMeetings";
 import { ringAttempt, respondToRing, __setKingsChatSender } from "@/lib/ringEngine";
-import { recordAttendance } from "@/lib/attendance";
+import { recordAttendance, ATTENDANCE_COLUMNS } from "@/lib/attendance";
 import { eventStore } from "@/lib/eventStore";
 import {
   buildMeetingReport, getMeetingReport, listGroupReports, listMyReports, myMeetingDetail, reportsInRange,
   missedCallsOf, __setReportDeps,
 } from "@/lib/groupReports";
 import { meetingWorkbook, rangeWorkbook } from "@/lib/groupReportXlsx";
-import { ATTENDANCE_COLUMNS } from "@/lib/attendance";
 
 delete process.env.KV_REST_API_URL;
 delete process.env.KV_REST_API_TOKEN;

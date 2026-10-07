@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useLocalParticipant, useRoomContext } from "@livekit/components-react";
+import { useLocalParticipant, useRoomContext, type LocalUserChoices } from "@livekit/components-react";
 import { RoomEvent } from "livekit-client";
-import type { LocalUserChoices } from "@livekit/components-react";
 
 /**
  * Applies prejoin mute choices once the local participant is connected.
