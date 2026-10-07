@@ -2,9 +2,12 @@ import "dotenv/config";
 import { createClient, LiveTranscriptionEvents, LiveClient } from "@deepgram/sdk";
 import { spawnAudio, type FfmpegAudio } from "./ffmpeg.js";
 import { translate } from "./deepl.js";
+import { TRANSLATION_LANGUAGES, deeplTarget } from "./languages.js";
 import {
+  acceptLangs,
   broadcast,
   clearTranscript,
+  listenedLangs,
   onFirstSubscriberForRoom,
   onLastSubscriberForRoom,
   recordTranscript,
@@ -39,11 +42,21 @@ const AMS_HTTP = required("AMS_HTTP"); // e.g. "https://ingest.streamlab.cloud/L
 const DEEPGRAM_KEY = required("DEEPGRAM_API_KEY");
 const DEEPL_KEY = required("DEEPL_API_KEY");
 const SSE_PORT = Number(process.env.SSE_PORT ?? "8080");
-const TARGET_LANGS = (process.env.TARGET_LANGS ?? "fr,es,pt,ar")
-  .split(",")
-  .map((s) => s.trim().toLowerCase())
-  .filter(Boolean);
+// Which languages to offer: "*" (or unset) for every DeepL language in
+// languages.ts, or a comma list to offer only those.
+const TARGET_LANGS = targetLangs(process.env.TARGET_LANGS);
 const SOURCE_LANG = (process.env.SOURCE_LANG ?? "en").toLowerCase();
+
+function targetLangs(raw: string | undefined): string[] {
+  const all = TRANSLATION_LANGUAGES.map((l) => l.code);
+  const list = (raw ?? "*").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  if (list.length === 0 || list.includes("*")) return all;
+  for (const l of list) {
+    if (!deeplTarget(l)) console.error(`[worker] TARGET_LANGS: no DeepL target for "${l}", ignored`);
+  }
+  return list.filter((l) => deeplTarget(l));
+}
+const TARGET_SET = new Set(TARGET_LANGS);
 // How long to keep a room's pipeline warm after its last subscriber
 // disconnects. Long enough to survive brief reloads/tab switches
 // without paying reconnection latency; short enough that a truly
@@ -105,10 +118,13 @@ async function translateAndBroadcast(
     console.log(`[out][${room}][${SOURCE_LANG}] ${cleaned}`);
   }
 
-  // Fan out to every target language in parallel. If any DeepL call
-  // fails, log and drop — the others still land.
+  // Fan out, in parallel, to the languages someone in this room is
+  // listening to right now — not every language on offer, which would
+  // bill DeepL for a hundred-odd translations of each sentence. If any
+  // DeepL call fails, log and drop — the others still land.
+  const langs = listenedLangs(room).filter((l) => l !== SOURCE_LANG && TARGET_SET.has(l));
   await Promise.all(
-    TARGET_LANGS.map(async (lang) => {
+    langs.map(async (lang) => {
       try {
         const translated = await translate(
           DEEPL_KEY,
@@ -273,9 +289,10 @@ function stopPipeline(room: string): void {
   console.log(`[worker][${room}] stopped`);
 }
 
+acceptLangs((lang) => lang === SOURCE_LANG || TARGET_SET.has(lang));
 startSseServer(SSE_PORT);
 console.log(
-  `[worker] multi-room, langs=${TARGET_LANGS.join(",")} source=${SOURCE_LANG} idleGrace=${IDLE_GRACE_MS}ms`,
+  `[worker] multi-room, ${TARGET_LANGS.length} langs (${TARGET_LANGS.slice(0, 8).join(",")}${TARGET_LANGS.length > 8 ? ",…" : ""}) source=${SOURCE_LANG} idleGrace=${IDLE_GRACE_MS}ms`,
 );
 
 onFirstSubscriberForRoom((room) => {

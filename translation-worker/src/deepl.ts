@@ -7,6 +7,8 @@
  * can share one key across both surfaces.
  */
 
+import { deeplTarget } from "./languages.js";
+
 const FREE_SUFFIX = ":fx";
 
 function baseUrl(apiKey: string): string {
@@ -15,23 +17,16 @@ function baseUrl(apiKey: string): string {
     : "https://api.deepl.com";
 }
 
-// DeepL uses uppercase codes; PT-BR / PT-PT are separate. Map the
-// language slugs we use in the app to what DeepL expects.
-const DEEPL_LANG: Record<string, string> = {
-  fr: "FR",
-  es: "ES",
-  pt: "PT-BR",
-  ar: "AR",
-  en: "EN-US",
-};
-
 export async function translate(
   apiKey: string,
   text: string,
   targetLang: string,
   sourceLang = "EN",
 ): Promise<string> {
-  const target = DEEPL_LANG[targetLang.toLowerCase()] ?? targetLang.toUpperCase();
+  // The app's codes map to DeepL's in languages.ts (PT-BR / PT-PT and the
+  // two Chinese scripts are separate targets there).
+  const target = deeplTarget(targetLang);
+  if (!target) throw new Error(`no DeepL target for "${targetLang}"`);
   const body = new URLSearchParams({
     text,
     source_lang: sourceLang,

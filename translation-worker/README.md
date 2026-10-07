@@ -1,8 +1,9 @@
 # neo-translation-worker
 
 Pulls the programme audio of any NeoConference room from AMS via HLS,
-transcribes with Deepgram Live, translates each utterance into every
-configured target language via DeepL, and broadcasts the results over
+transcribes with Deepgram Live, translates each utterance via DeepL into
+the languages someone in that room is listening to (any of the DeepL
+languages in src/languages.ts), and broadcasts the results over
 Server-Sent Events. Clients (`/video/dashboard`, `/video/join`)
 subscribe and speak the captions with browser TTS.
 
@@ -44,7 +45,7 @@ been started yet (that happens on first subscriber):
 
 ```
 [sse] listening on :8080
-[worker] multi-room, langs=fr,es,pt,ar source=en idleGrace=60000ms
+[worker] multi-room, 115 langs (ace,af,sq,ar,an,hy,as,ay,…) source=en idleGrace=60000ms
 ```
 
 The first time someone opens `/video/join?room=neoconf` and the

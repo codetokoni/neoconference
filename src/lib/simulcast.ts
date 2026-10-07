@@ -1,3 +1,5 @@
+import { TRANSLATION_LANGUAGES } from "./translationLanguages";
+
 export type ChannelId = string;
 
 export interface SimulcastChannel {
@@ -13,6 +15,11 @@ export interface SimulcastChannel {
   color: string;
   /** True for the stream that carries the picture */
   video?: boolean;
+  /**
+   * True for a language with no interpreter booth: no AMS stream behind
+   * it, only the translation worker's captions, read aloud by the browser.
+   */
+  machine?: boolean;
 }
 
 export interface ChatMessage {
@@ -68,6 +75,32 @@ export function channelsForRoom(room = SIMULCAST_MAIN): SimulcastChannel[] {
     id: `${room}${suffix}`,
     ...rest,
   }));
+}
+
+/**
+ * Every other language the translation worker captions into (DeepL), for
+ * the player's "More languages" list. Not AMS streams: their ids
+ * (`<room>-t-<code>`) are never subscribed to or polled, so the studio
+ * console and /api/video/status keep to the booths above. English is the
+ * floor; Português is the booth (Brazilian), so neither Portuguese entry
+ * is repeated here.
+ */
+export function machineChannelsForRoom(room = SIMULCAST_MAIN): SimulcastChannel[] {
+  const booths = new Set(CHANNEL_TEMPLATE.map((c) => c.lang));
+  return TRANSLATION_LANGUAGES.filter((l) => !booths.has(l.code) && l.code !== "pt-br")
+    .slice()
+    .sort((a, b) => a.label.localeCompare(b.label))
+    .map((l) => ({
+      id: `${room}-t-${l.code}`,
+      // English first, for a list in alphabetical order; the language's
+      // own name after it, for the person looking for theirs.
+      label: l.native === l.label ? l.label : `${l.label} · ${l.native}`,
+      // Chat keeps four characters of it.
+      code: l.code === "zh-hant" ? "ZHTW" : l.code.toUpperCase(),
+      lang: l.code,
+      color: "#5E7684",
+      machine: true,
+    }));
 }
 
 export function videoChannelForRoom(room = SIMULCAST_MAIN): SimulcastChannel {

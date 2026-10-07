@@ -54,6 +54,30 @@ function subKey(room: string, lang: string): Key {
   return `${room}:${lang}`;
 }
 
+// Which languages may be subscribed to. Set by the supervisor, which knows
+// the source language and what DeepL offers; everything until then.
+let langAccepted: (lang: string) => boolean = () => true;
+
+/** Refuse a subscription (404) to a language this worker can't produce. */
+export function acceptLangs(fn: (lang: string) => boolean): void {
+  langAccepted = fn;
+}
+
+/**
+ * The languages someone is listening to in a room right now. The supervisor
+ * translates into these only: with a hundred-odd languages on offer,
+ * translating every sentence into all of them would bill DeepL for every
+ * language whether or not anyone picked it.
+ */
+export function listenedLangs(room: string): string[] {
+  const prefix = room + ":";
+  const out: string[] = [];
+  for (const [k, set] of subs) {
+    if (set.size > 0 && k.startsWith(prefix)) out.push(k.slice(prefix.length));
+  }
+  return out;
+}
+
 /** Broadcast one line to every subscriber of that (room, lang). */
 export function broadcast(room: string, line: Line): void {
   const k = subKey(room, line.lang);
@@ -158,6 +182,12 @@ export function startSseServer(port: number): void {
       }
       const room = decodeURIComponent(m[1]);
       const lang = decodeURIComponent(m[2]).toLowerCase();
+      if (!langAccepted(lang)) {
+        res.statusCode = 404;
+        res.setHeader("Content-Type", "text/plain");
+        res.end(`no translation into "${lang}"\n`);
+        return;
+      }
       const k = subKey(room, lang);
 
       res.statusCode = 200;
