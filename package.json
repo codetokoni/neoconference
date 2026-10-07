@@ -9,7 +9,6 @@
     "lint": "next lint",
     "test:smoke": "node scripts/run-smoke.mjs",
     "test:e2e": "playwright test --grep-invert \"@postdeploy\"",
-    "test:smoke": "node scripts/smoke.mjs",
     "test:e2e:ui": "playwright test --ui",
     "check:deploy": "node scripts/check-deploy.mjs",
     "test:postdeploy": "playwright test --grep \"@postdeploy\""
