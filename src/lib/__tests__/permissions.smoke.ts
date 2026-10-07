@@ -55,16 +55,26 @@ t("anonymous holds nothing, not even participant permissions", () => {
   assert.deepEqual(grantsFor(a), []);
 });
 
-t("moderator moderates (mute + muteAll) but cannot kick, dispatch captions, end, or record", () => {
+t("moderator moderates (mute + muteAll) and records, but cannot kick, dispatch captions, or end", () => {
   const a = actor("x", ["mod@example.com"]);
   assert.equal(can(a, "participant:mute"), true);
   assert.equal(can(a, "participant:muteAll"), true);   // FRS §5.1 is ambiguous; product decision to include moderator
   assert.equal(can(a, "waitingRoom:admit"), true);
   assert.equal(can(a, "timer:manage"), true);
+  // A cohost runs the meeting, recording included (#272): the Record
+  // button is theirs on the web and in the app. Deleting one is not.
+  assert.equal(can(a, "recording:start"), true);
+  assert.equal(can(a, "recording:stop"), true);
+  assert.equal(can(a, "recording:read"), true);
+  assert.equal(can(a, "recording:delete"), false);
   assert.equal(can(a, "participant:kick"), false);
   assert.equal(can(a, "captions:dispatch"), false);
   assert.equal(can(a, "meeting:end"), false);
-  assert.equal(can(a, "recording:start"), false);
+});
+
+t("a participant cannot record", () => {
+  assert.equal(can(actor("user_speaker"), "recording:start"), false);
+  assert.equal(can(actor(null), "recording:start"), false);
 });
 
 t("host runs the meeting but cannot delete or bill it", () => {
