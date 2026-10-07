@@ -277,9 +277,14 @@ class RoomState {
     this.streamingAllowed = true,
     this.liveStream,
     this.liveOn,
+    this.mediaRequest,
   });
 
   final JoinPhase phase;
+
+  /// A host or moderator asking this person to unmute or turn their camera
+  /// on, waiting for an answer. Null when nobody is asking.
+  final MediaRequest? mediaRequest;
   final String? message;
 
   /// host | cohost | speaker | viewer | attendee | guest
@@ -505,6 +510,8 @@ class RoomState {
     bool clearLiveStream = false,
     String? liveOn,
     bool clearLiveOn = false,
+    MediaRequest? mediaRequest,
+    bool clearMediaRequest = false,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
@@ -570,7 +577,31 @@ class RoomState {
         streamingAllowed: streamingAllowed ?? this.streamingAllowed,
         liveStream: clearLiveStream ? null : (liveStream ?? this.liveStream),
         liveOn: clearLiveOn ? null : (liveOn ?? this.liveOn),
+        mediaRequest: clearMediaRequest ? null : (mediaRequest ?? this.mediaRequest),
       );
+}
+
+/// "Please unmute" or "please turn your camera on", from a host or moderator
+/// (`/api/livekit/moderate` → `{type: 'media_request', kind, to, fromName}`).
+@immutable
+class MediaRequest {
+  const MediaRequest({required this.video, required this.fromName});
+
+  /// Camera; false for the microphone.
+  final bool video;
+  final String fromName;
+
+  /// The request in a data packet, or null if it is not one for [myIdentity]
+  /// (the server addresses it to one person; the web checks `to` as well).
+  static MediaRequest? fromPayload(Map<String, dynamic> p, {String? myIdentity}) {
+    if (p['type'] != 'media_request') return null;
+    final kind = p['kind'];
+    if (kind != 'audio' && kind != 'video') return null;
+    final to = p['to'];
+    if (to is String && to.isNotEmpty && myIdentity != null && to != myIdentity) return null;
+    final from = p['fromName'];
+    return MediaRequest(video: kind == 'video', fromName: from is String && from.trim().isNotEmpty ? from.trim() : 'The host');
+  }
 }
 
 /// Joining a meeting and everything that happens inside it.
@@ -1624,6 +1655,17 @@ class RoomController extends StateNotifier<RoomState> {
       return;
     }
 
+    // A host or moderator asked this person to unmute or turn their camera
+    // on. Only ever a question: nothing is switched on until they answer
+    // Allow (answerMediaRequest), as the web's MediaRequestPrompt. The app
+    // used to have no case for this, so the request reached the phone and
+    // vanished.
+    if (payload['type'] == 'media_request') {
+      final request = MediaRequest.fromPayload(payload, myIdentity: room.localParticipant?.identity);
+      if (request != null) state = state.copyWith(mediaRequest: request);
+      return;
+    }
+
     switch (event.topic) {
       case Topics.chat:
         final line = ChatLine.fromJson(payload);
@@ -1698,6 +1740,24 @@ class RoomController extends StateNotifier<RoomState> {
     await me.setCameraEnabled(!me.isCameraEnabled());
     _syncLocalMedia();
   }
+
+  /// The answer to a host's "please unmute" / "please turn your camera on":
+  /// [request] is the one that was shown. Allow switches it on if it is off;
+  /// anything else just closes the question. A newer request that arrived
+  /// meanwhile stays, to be asked next.
+  Future<void> answerMediaRequest(MediaRequest request, {required bool allow}) async {
+    if (identical(state.mediaRequest, request)) state = state.copyWith(clearMediaRequest: true);
+    if (!allow) return;
+    if (request.video) {
+      if (!state.cameraOn) await toggleCamera();
+    } else {
+      if (!state.micOn) await toggleMic();
+    }
+  }
+
+  /// A data packet as LiveKit would deliver it.
+  @visibleForTesting
+  void receiveData(DataReceivedEvent event) => _onData(event);
 
   /// Flips between the front and back camera.
   ///
