@@ -115,7 +115,7 @@ void main() {
 
     expect(find.text('Testneo'), findsWidgets);
     expect(find.text('@pastorchris'), findsOneWidget);
-    expect(find.text('Cohost'), findsOneWidget);
+    expect(find.text('Moderator'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(SwitchListTile, 'Waiting room'));
     await tester.pumpAndSettle();
@@ -154,7 +154,7 @@ void main() {
     expect(jsonDecode(revoke.body), {'handle': 'pastorchris'});
   });
 
-  testWidgets('adding a cohost says the KingsChat message did not go', (tester) async {
+  testWidgets('adding a moderator says the KingsChat message did not go', (tester) async {
     tall(tester);
     await tester.pumpWidget(app(const ManageMeetingScreen(slug: 'testneo')));
     await tester.pumpAndSettle();
@@ -246,7 +246,7 @@ void main() {
 
   test('an invite says whether the KingsChat message went', () {
     expect(inviteOutcome('ada', 'host', asked: false, sent: false), '@ada is now a host.');
-    expect(inviteOutcome('ada', 'moderator', asked: true, sent: true), '@ada is now a cohost, and was told on KingsChat.');
+    expect(inviteOutcome('ada', 'moderator', asked: true, sent: true), '@ada is now a moderator, and was told on KingsChat.');
     expect(
       inviteOutcome('ada', 'moderator', asked: true, sent: false, reason: 'recipient_never_signed_in'),
       contains('No KingsChat message was sent'),

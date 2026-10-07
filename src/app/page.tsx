@@ -112,7 +112,7 @@ export default async function Home() {
           <ShowcaseCard
             badge="Host"
             title="You stay in control"
-            desc="Let people in from the waiting room, add hosts and cohosts by their KingsChat handle, and mute or remove anyone."
+            desc="Let people in from the waiting room, add hosts and moderators by their KingsChat handle, and mute or remove anyone."
             href="/dashboard/new"
           />
           <ShowcaseCard
@@ -200,7 +200,7 @@ export default async function Home() {
           <Feature title="HD recording" desc="One tap to record. Files are kept in secure cloud storage to download any time. On Pro and above." icon={<IconRec />} />
           <Feature title="Live participants" desc="Real-time roster with active speaker highlighting and presence dots." icon={<IconUsers />} />
           <Feature title="On your phone" desc="Works in any phone browser, and the NeoConference app for Android opens meeting links straight in the app." icon={<IconPhone />} />
-          <Feature title="Sign in with KingsChat" desc="Use your KingsChat account to sign in, and add hosts and cohosts by their KingsChat handle." icon={<IconSpark />} />
+          <Feature title="Sign in with KingsChat" desc="Use your KingsChat account to sign in, and add hosts and moderators by their KingsChat handle." icon={<IconSpark />} />
         </div>
       </section>
 

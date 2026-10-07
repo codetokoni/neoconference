@@ -56,7 +56,7 @@ class HistoryScreen extends ConsumerWidget {
                 icon: Icons.lock_outline_rounded,
                 title: 'No access to recordings',
                 message: 'Recordings are available to the meeting owner, host '
-                    'and co-hosts.',
+                    'and moderators.',
               )
             else if (!listed)
               const NeoEmptyState(

@@ -68,7 +68,7 @@ class HandleRole {
   /// 'host' or 'moderator' (shown as Cohost, as on the web).
   final String role;
 
-  String get label => role == 'host' ? 'Host' : role == 'moderator' ? 'Cohost' : role;
+  String get label => role == 'host' ? 'Host' : role == 'moderator' ? 'Moderator' : role;
 }
 
 /// One of a meeting's recordings (GET /api/recordings?eventSlug=).

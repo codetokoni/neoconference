@@ -250,7 +250,7 @@ void main() {
   });
 
   group('RoomState', () {
-    test('only a host or co-host sees host controls', () {
+    test('only a host or moderator sees host controls', () {
       for (final role in ['host', 'cohost']) {
         expect(RoomState(role: role).canManage, isTrue, reason: role);
       }

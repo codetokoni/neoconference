@@ -195,7 +195,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static String _label(SampleRole role) => switch (role) {
         SampleRole.owner => 'Owner',
         SampleRole.host => 'Host',
-        SampleRole.cohost => 'Co-host',
+        SampleRole.cohost => 'Moderator',
         SampleRole.speaker => 'Speaker',
         SampleRole.attendee => 'Attendee',
       };

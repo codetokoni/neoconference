@@ -345,7 +345,7 @@ class _ManageMeetingScreenState extends ConsumerState<ManageMeetingScreen> {
               title: const Text('Waiting room'),
               subtitle: Text(
                 m.waitingRoomEnabled
-                    ? 'People wait for you to let them in. Hosts and cohosts go straight in.'
+                    ? 'People wait for you to let them in. Hosts and moderators go straight in.'
                     : 'Anyone with the link comes straight in.',
                 style: TextStyle(color: p.textMuted),
               ),
@@ -420,7 +420,7 @@ class _ManageMeetingScreenState extends ConsumerState<ManageMeetingScreen> {
     final p = NeoTheme.of(context);
     final roles = _roles;
     return NeoSection(
-      title: 'Hosts & cohosts',
+      title: 'Hosts & moderators',
       action: TextButton.icon(
         icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
         label: const Text('Add'),
@@ -436,7 +436,7 @@ class _ManageMeetingScreenState extends ConsumerState<ManageMeetingScreen> {
                     ? Padding(
                         padding: const EdgeInsets.all(NeoSpace.lg),
                         child: Text(
-                          'No one yet. Add a KingsChat handle to make someone a host or cohost — '
+                          'No one yet. Add a KingsChat handle to make someone a host or moderator — '
                           'they skip the waiting room and can help run the meeting.',
                           style: TextStyle(color: p.textMuted),
                         ),
@@ -469,7 +469,7 @@ class _ManageMeetingScreenState extends ConsumerState<ManageMeetingScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setLocal) => AlertDialog(
-          title: const Text('Add host or cohost'),
+          title: const Text('Add host or moderator'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -483,7 +483,7 @@ class _ManageMeetingScreenState extends ConsumerState<ManageMeetingScreen> {
               SegmentedButton<String>(
                 segments: const [
                   ButtonSegment(value: 'host', label: Text('Host')),
-                  ButtonSegment(value: 'moderator', label: Text('Cohost')),
+                  ButtonSegment(value: 'moderator', label: Text('Moderator')),
                 ],
                 selected: {role},
                 onSelectionChanged: (s) => setLocal(() => role = s.first),
@@ -842,7 +842,7 @@ class ManageMeetingButton extends StatelessWidget {
 /// with KingsChat cannot be messaged — and saying "done" then would leave
 /// the host waiting for a person who was never told.
 String inviteOutcome(String handle, String role, {required bool asked, required bool sent, String? reason}) {
-  final given = '@$handle is now ${role == 'host' ? 'a host' : 'a cohost'}';
+  final given = '@$handle is now ${role == 'host' ? 'a host' : 'a moderator'}';
   if (!asked) return '$given.';
   if (sent) return '$given, and was told on KingsChat.';
   final why = switch (reason) {
@@ -867,7 +867,7 @@ String manageErrorMessage(Object e) {
           'pin_too_short' => 'The PIN needs at least 4 digits.',
           'invalid_name' => 'Give the meeting a name up to 200 characters.',
           'invalid_scheduledAt' => 'That date and time could not be read.',
-          'invalid_role' || 'missing_handle' || 'missing_fields' => 'Enter a KingsChat handle and pick Host or Cohost.',
+          'invalid_role' || 'missing_handle' || 'missing_fields' => 'Enter a KingsChat handle and pick Host or Moderator.',
           'ai_not_configured' => 'AI summaries are not set up on this server.',
           'no_content' => 'There is nothing to summarise yet — no transcript or chat.',
           'ai_failed' || 'empty_summary' => 'The AI could not write a summary just now. Try again.',

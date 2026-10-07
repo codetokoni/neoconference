@@ -31,7 +31,7 @@ Nothing here was invented where the site already had an answer.
 | Dark palette | `globals.css` `:root` custom properties | `NeoPalette.dark`, verbatim |
 | App icon | `src/app/icon.png`, `apple-icon.png` | reference for the mark's proportions |
 | Voice | `src/app/page.tsx` — "Meetings reimagined. Cinematic. Instant. Yours." | welcome screen copy |
-| Role names | `src/types/event.ts` | Host, Co-host, Speaker, Attendee |
+| Role names | `src/lib/permissions.ts` | Owner, Host, Moderator, Attendee |
 
 The **light palette is derived, not lifted** — the site is dark-only. Its
 foregrounds were chosen for contrast rather than by lightening the dark
@@ -85,7 +85,7 @@ reconnecting, and meeting ended are all built and reachable from
 One table, `MeetingPermissions`, consulted by every sheet — so a permission
 cannot be enforced in one place and forgotten in another.
 
-| | Owner | Host | Co-host | Attendee |
+| | Owner | Host | Moderator | Attendee |
 |---|---|---|---|---|
 | Mute others | ✓ | ✓ | ✓ | |
 | Waiting room | ✓ | ✓ | ✓ | |
@@ -95,12 +95,13 @@ cannot be enforced in one place and forgotten in another.
 | Change roles | ✓ | ✓ | | |
 | End for everyone | ✓ | ✓ | | |
 
-There is one tier between host and attendee. The server stores it as
-`moderator` and sends it to clients as `cohost` (`src/lib/permissions.ts`);
-it can record (#272), but Remove (`participant:kick`) and Lock
-(`meeting:edit`) are host rank. An earlier draft of this table had a separate
-Moderator who could not record — the server never had that role, and it
-was removed from the showcase.
+There is one tier between host and attendee, called **Moderator** on every
+screen (web and app). The server stores it as `moderator` and sends it to
+clients as `cohost` (`src/lib/permissions.ts`); those values are never shown.
+A moderator can record (#272) and mute anyone, but Remove
+(`participant:kick`), Lock (`meeting:edit`) and roles are host rank. An earlier
+draft of this table had a Moderator below a separate Co-host who could not
+record — the server never had that split, and it was removed.
 
 ---
 

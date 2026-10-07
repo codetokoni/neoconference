@@ -110,7 +110,7 @@ const introPages = <IntroPage>[
   IntroPage(
     icon: Icons.admin_panel_settings_rounded,
     title: 'You run the room',
-    body: 'Let people in from the waiting room, add hosts and cohosts by their '
+    body: 'Let people in from the waiting room, add hosts and moderators by their '
         'KingsChat handle, and mute or remove anyone.',
     spectrumIndex: 7,
   ),

@@ -50,7 +50,7 @@ export default function InviteSpeakers({ eventId }: { eventId: string }) {
       <textarea
         value={emails}
         onChange={(e) => setEmails(e.target.value)}
-        placeholder="speaker@example.com, cohost@example.com"
+        placeholder="speaker@example.com, moderator@example.com"
         rows={3}
         className="w-full bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-cyan-400/60 focus:outline-none"
       />

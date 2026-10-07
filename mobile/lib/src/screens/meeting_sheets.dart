@@ -45,7 +45,7 @@ class MeetingPermissions {
   String get label => switch (role) {
         SampleRole.owner => 'Owner',
         SampleRole.host => 'Host',
-        SampleRole.cohost => 'Co-host',
+        SampleRole.cohost => 'Moderator',
         SampleRole.speaker => 'Speaker',
         SampleRole.attendee => 'Attendee',
       };
@@ -180,7 +180,7 @@ class ParticipantsSheet extends StatelessWidget {
             if (perms.canChangeRoles)
               ListTile(
                 leading: const Icon(Icons.shield_moon_rounded),
-                title: const Text('Make co-host'),
+                title: const Text('Make Moderator'),
                 onTap: () => Navigator.pop(sheetContext),
               ),
             if (perms.canRemoveOthers)
@@ -539,7 +539,7 @@ class HostControlsSheet extends StatelessWidget {
                     _Toggle(
                       icon: Icons.mic_off_rounded,
                       title: 'Mute everyone',
-                      subtitle: 'Hosts and co-hosts are not muted',
+                      subtitle: 'Hosts and moderators are not muted',
                       onTap: () {},
                     ),
                     _Toggle(

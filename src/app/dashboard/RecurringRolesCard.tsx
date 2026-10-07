@@ -30,7 +30,7 @@ interface RoleItem {
 
 const ROLE_LABEL: Record<RoleValue, string> = {
   host: 'Host',
-  moderator: 'Cohost',
+  moderator: 'Moderator',
 };
 
 /** Human-readable label for a stored identifier. `kc:pastorchris` renders
@@ -56,7 +56,7 @@ function inviteText(item: RoleItem, siteUrl: string): string {
 export default function RecurringRolesCard() {
   const [items, setItems] = useState<RoleItem[] | null>(null);
   const [identifier, setIdentifier] = useState('');
-  const [role, setRole] = useState<RoleValue>('moderator'); // default = Cohost
+  const [role, setRole] = useState<RoleValue>('moderator'); // default = Moderator
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

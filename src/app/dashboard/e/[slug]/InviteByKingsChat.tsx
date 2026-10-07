@@ -21,7 +21,7 @@ type Role = 'host' | 'moderator';
 
 const ROLE_LABEL: Record<Role, string> = {
   host: 'Host',
-  moderator: 'Cohost',
+  moderator: 'Moderator',
 };
 
 type Outcome = {
@@ -237,7 +237,7 @@ export default function InviteByKingsChat({
                     @{p.handle}
                   </span>
                   <span className="shrink-0 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-cyan-100">
-                    {p.role === 'moderator' ? 'Cohost' : 'Host'}
+                    {p.role === 'moderator' ? 'Moderator' : 'Host'}
                   </span>
                   <button
                     type="button"
