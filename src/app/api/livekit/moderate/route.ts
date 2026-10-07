@@ -2,9 +2,10 @@
 // Host-only moderation: mute audio, mute video, remove a remote participant,
 // or send an "ask to unmute" data message.
 //
-// Auth model: caller must be the event owner (role "host") OR have role "cohost"
-// in event.roles. This mirrors the client-side check used by /api/events/role.
-// "kick" additionally needs participant:kick, which is host rank.
+// Auth model: authorize() from @/lib/authz, so a role granted in the room (the
+// role hash) counts as well as one in event.roles[]. "kick" needs
+// participant:kick (host rank); every other action needs participant:mute
+// (moderator rank, i.e. cohost and up).
 //
 // Role administration (makeCohost / demoteToAttendee) lives on the RBAC-aware
 // /api/events/[id]/roles route instead, so writes land in the Redis membership
@@ -20,8 +21,8 @@ import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { RoomServiceClient } from "livekit-server-sdk";
 import { eventStore } from "@/lib/eventStore";
-import { assertOwnerOrAdmin } from "@/lib/roles";
 import { authorize } from "@/lib/authz";
+import { removeMeetingRole } from "@/lib/meeting-roles";
 import type { RoleAssignment } from "@/types/event";
 
 export const runtime = "nodejs";
@@ -54,25 +55,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 
-  // ---- Authz: owner, app-wide admin, or cohost on this event ----
+  // ---- Authz ----
   const ev = await eventStore.bySlug(slug);
   if (!ev) {
     return NextResponse.json({ error: "event_not_found" }, { status: 404 });
   }
 
-  const check = await assertOwnerOrAdmin(ev, userId, { allowCohost: true });
-  if (!check.ok) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
-
-  // Removing someone is host rank (participant:kick; FRS §1.3: a cohost
-  // must not remove participants). The check above is participant:mute,
-  // moderator rank, so on its own it let a cohost who called this route
-  // directly remove anyone the UI never offered them.
-  if (action === "kick") {
-    const gate = await authorize(ev, "participant:kick");
-    if (!gate.ok) return gate.response;
-  }
+  // Removing someone is host rank (participant:kick; FRS §1.3: a cohost must
+  // not remove participants). The rest is moderator rank. This used to be
+  // assertOwnerOrAdmin, which reads only event.roles[], so anyone promoted
+  // in the room — their role is in the hash — was refused every action here.
+  const gate = await authorize(ev, action === "kick" ? "participant:kick" : "participant:mute");
+  if (!gate.ok) return gate.response;
 
   // Self-moderation prevention: hosts can\'t kick/mute themselves through this
   // endpoint (use the local toggles instead).
@@ -106,6 +100,12 @@ export async function POST(req: Request) {
         }
       } catch {
         // Non-fatal: persistence failure should not prevent the live action.
+      }
+      // Roles granted in the room live in the hash, not event.roles[].
+      try {
+        await removeMeetingRole(ev.id, identity);
+      } catch {
+        // Non-fatal, as above.
       }
       await svc.removeParticipant(slug, identity);
       return NextResponse.json({ ok: true, action: "kick" });
