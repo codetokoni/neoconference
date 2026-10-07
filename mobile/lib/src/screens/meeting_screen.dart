@@ -69,11 +69,6 @@ class _MeetingScreenState extends State<MeetingScreen> {
       widget.myRole == SampleRole.host ||
       widget.myRole == SampleRole.cohost;
 
-  /// Recording is offered to the owner, host and co-hosts, and never to a
-  /// moderator. A moderator admits, mutes and removes; making a permanent
-  /// copy of the room is a different kind of authority.
-  bool get _canRecord => _canManage;
-
   @override
   Widget build(BuildContext context) {
     if (_ended) {
@@ -116,7 +111,7 @@ class _MeetingScreenState extends State<MeetingScreen> {
                   fullHeight: true,
                   builder: (_) => ParticipantsSheet(myRole: widget.myRole),
                 ),
-                openHostControls: _canManage || _canRecord
+                openHostControls: _canManage
                     ? () => neoSheet(
                           context,
                           fullHeight: true,

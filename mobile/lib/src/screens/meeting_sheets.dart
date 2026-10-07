@@ -12,10 +12,10 @@ import '../mock/sample_data.dart';
 /// *offered*: the server checks every one of these again, and a client that
 /// hid a button would not have enforced anything.
 ///
-/// Moderator is deliberately not Co-host. It can keep order — mute, remove,
-/// admit, lower hands — and cannot record, rename the meeting, or end it
-/// for everyone. Recording creates a durable artefact of other people's
-/// faces and voices, which is an owner-and-host decision.
+/// There is one tier between host and attendee, as on the server: Co-host,
+/// stored there as `moderator` (src/lib/permissions.ts). A co-host records
+/// too — the server lets them since #272, and a separate Moderator who
+/// could not was a role the product never had.
 class MeetingPermissions {
   const MeetingPermissions(this.role);
 
@@ -24,11 +24,10 @@ class MeetingPermissions {
   bool get isOwner => role == SampleRole.owner;
   bool get isHost => role == SampleRole.host || isOwner;
   bool get isCohost => role == SampleRole.cohost;
-  bool get isModerator => role == SampleRole.moderator;
 
-  bool get canModerate => isHost || isCohost || isModerator;
+  bool get canModerate => isHost || isCohost;
 
-  /// Owner, Host and Co-host only. Never Moderator.
+  /// Owner, Host and Co-host.
   bool get canRecord => isHost || isCohost;
 
   bool get canEndForEveryone => isHost;
@@ -42,7 +41,6 @@ class MeetingPermissions {
         SampleRole.owner => 'Owner',
         SampleRole.host => 'Host',
         SampleRole.cohost => 'Co-host',
-        SampleRole.moderator => 'Moderator',
         SampleRole.speaker => 'Speaker',
         SampleRole.attendee => 'Attendee',
       };
@@ -460,11 +458,7 @@ class MoreSheet extends StatelessWidget {
   }
 }
 
-/// The controls only an owner, host, co-host or moderator sees.
-///
-/// Recording is absent for a Moderator — not greyed out, absent. Showing a
-/// disabled control that someone will never be able to use is an invitation
-/// to keep trying.
+/// The controls only an owner, host or co-host sees.
 class HostControlsSheet extends StatelessWidget {
   const HostControlsSheet({super.key, required this.role});
 
@@ -560,7 +554,6 @@ class HostControlsSheet extends StatelessWidget {
                 ),
               ),
 
-              // The gate this whole class exists to demonstrate.
               if (perms.canRecord)
                 NeoSection(
                   title: 'Recording',
@@ -576,14 +569,6 @@ class HostControlsSheet extends StatelessWidget {
                       ),
                     ],
                   ),
-                )
-              else
-                NeoBanner(
-                  icon: Icons.info_outline_rounded,
-                  tone: NeoBannerTone.info,
-                  message:
-                      'Recording is available to the owner, host and '
-                      'co-hosts.',
                 ),
 
               if (perms.canEndForEveryone) ...[

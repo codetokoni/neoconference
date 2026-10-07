@@ -162,14 +162,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   SampleRole.owner,
                   SampleRole.host,
                   SampleRole.cohost,
-                  SampleRole.moderator,
                   SampleRole.attendee,
                 ])
                   _Row(
                     title: 'Join as ${_label(role)}',
-                    subtitle: role == SampleRole.moderator
-                        ? 'No recording controls'
-                        : null,
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => MeetingScreen(
@@ -200,7 +196,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         SampleRole.owner => 'Owner',
         SampleRole.host => 'Host',
         SampleRole.cohost => 'Co-host',
-        SampleRole.moderator => 'Moderator',
         SampleRole.speaker => 'Speaker',
         SampleRole.attendee => 'Attendee',
       };
