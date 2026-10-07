@@ -1139,6 +1139,11 @@ class RoomController extends StateNotifier<RoomState> {
         if (_disposed) return;
         _reconnectWatchdog.settled();
         debugPrint('[neo-room] disconnected: ${e.reason}');
+        // Out of the meeting, however it happened. The controller lives on
+        // behind "The meeting has ended" (or a rejoin), and its heartbeat
+        // went on telling the server this phone was in the meeting — so
+        // other group calls skipped it as busy. A rejoin starts it again.
+        MeetingHeartbeat.instance.stop(slug);
         // The host who ended it gets no "The meeting has ended" screen:
         // they are leaving, and the screen closes behind them.
         final drop = _endingForAll ? null : describeDrop(e.reason);
@@ -1248,6 +1253,7 @@ class RoomController extends StateNotifier<RoomState> {
     // the "you are in a meeting" notification up over the disconnected
     // screen.
     unawaited(MeetingPresence.instance.end());
+    MeetingHeartbeat.instance.stop(slug);
     _lastDrop = drop;
     state = state.copyWith(
       phase: JoinPhase.failed,
