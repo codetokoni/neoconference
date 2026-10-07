@@ -85,22 +85,20 @@ reconnecting, and meeting ended are all built and reachable from
 One table, `MeetingPermissions`, consulted by every sheet — so a permission
 cannot be enforced in one place and forgotten in another.
 
-| | Owner | Host | Co-host | Moderator | Attendee |
-|---|---|---|---|---|---|
-| Mute / remove others | ✓ | ✓ | ✓ | ✓ | |
-| Waiting room | ✓ | ✓ | ✓ | ✓ | |
-| Lock meeting | ✓ | ✓ | ✓ | | |
-| **Recording** | ✓ | ✓ | ✓ | **✗** | |
-| Change roles | ✓ | ✓ | | | |
-| End for everyone | ✓ | ✓ | | | |
+| | Owner | Host | Co-host | Attendee |
+|---|---|---|---|---|
+| Mute / remove others | ✓ | ✓ | ✓ | |
+| Waiting room | ✓ | ✓ | ✓ | |
+| Lock meeting | ✓ | ✓ | ✓ | |
+| Recording | ✓ | ✓ | ✓ | |
+| Change roles | ✓ | ✓ | | |
+| End for everyone | ✓ | ✓ | | |
 
-A Moderator sees no recording controls **at all** — not greyed out, absent,
-with a line explaining who does have them. A disabled control someone can
-never enable is an invitation to keep trying.
-
-> **Backend gap:** the product has no `moderator` role. `src/types/event.ts`
-> defines host, cohost, speaker, viewer, attendee. Moderator is modelled in
-> the UI only and needs adding server-side before it means anything.
+There is one tier between host and attendee. The server stores it as
+`moderator` and sends it to clients as `cohost` (`src/lib/permissions.ts`);
+it can record (#272). An earlier draft of this table had a separate
+Moderator who could not record — the server never had that role, and it
+was removed from the showcase.
 
 ---
 
@@ -165,7 +163,6 @@ should be read as evidence that they work:
 - No scheduling endpoint. `POST /api/events/create` takes no `scheduledAt`
   from the app, and the schedule screen does not persist.
 - No notifications backend: no push registration, no notification store.
-- `moderator` role, as above.
 - Recording playback: `egress/stop` returns a 24h presigned URL; there is no
   durable per-recording fetch for the history screen.
 - **Inbound LiveKit data is broken on Flutter** (upstream

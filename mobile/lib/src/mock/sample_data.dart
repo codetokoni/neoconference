@@ -119,7 +119,7 @@ final sampleRecent = <SampleMeeting>[
 
 /// Roles as the product defines them (src/types/event.ts), plus owner,
 /// which is the event's creator rather than a role assignment.
-enum SampleRole { owner, host, cohost, moderator, speaker, attendee }
+enum SampleRole { owner, host, cohost, speaker, attendee }
 
 class SampleParticipant {
   const SampleParticipant({
@@ -146,7 +146,6 @@ class SampleParticipant {
         SampleRole.owner => 'Owner',
         SampleRole.host => 'Host',
         SampleRole.cohost => 'Co-host',
-        SampleRole.moderator => 'Moderator',
         SampleRole.speaker => 'Speaker',
         SampleRole.attendee => 'Attendee',
       };
