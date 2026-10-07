@@ -5,6 +5,7 @@ import '../core/load_error.dart';
 import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
+import 'full_screen_calls.dart';
 import 'group_models.dart';
 import 'group_screen.dart';
 import 'groups_api.dart';
@@ -54,6 +55,7 @@ class GroupsScreen extends ConsumerWidget {
                 style: TextStyle(color: p.textMuted),
               ),
               const SizedBox(height: NeoSpace.lg),
+              const FullScreenCallsBanner(),
               if (groups.hasError && list == null)
                 NeoBanner(
                   icon: Icons.cloud_off_rounded,

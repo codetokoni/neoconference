@@ -133,6 +133,15 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(null)
                     }
+                    // Android 14+ lets someone switch off an app's
+                    // full-screen notifications, and some phones (ColorOS)
+                    // ship with it off: a call then arrives as a banner.
+                    "canFullScreen" -> {
+                        val ok = Build.VERSION.SDK_INT < 34 ||
+                            getSystemService(android.app.NotificationManager::class.java).canUseFullScreenIntent()
+                        result.success(ok)
+                    }
+                    "openFullScreenSettings" -> result.success(openFullScreenSettings())
                     else -> result.notImplemented()
                 }
             }
@@ -222,6 +231,32 @@ class MainActivity : FlutterActivity() {
      * on the next switch, and blocking a meeting on a permission dialog
      * would be worse than routing to the earpiece once.
      */
+    /**
+     * The switch for this app's full-screen notifications, or its
+     * notification settings where a phone has no page for that alone.
+     */
+    private fun openFullScreenSettings(): Boolean {
+        val pkg = android.net.Uri.parse("package:$packageName")
+        val pages = buildList {
+            if (Build.VERSION.SDK_INT >= 34) {
+                add(android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkg))
+            }
+            add(
+                android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName),
+            )
+        }
+        for (page in pages) {
+            try {
+                startActivity(page)
+                return true
+            } catch (e: android.content.ActivityNotFoundException) {
+                // Try the next.
+            }
+        }
+        return false
+    }
+
     private fun ensureBluetooth(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
         val granted = ContextCompat.checkSelfPermission(
