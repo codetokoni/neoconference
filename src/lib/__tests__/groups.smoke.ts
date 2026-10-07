@@ -10,6 +10,7 @@ import {
   createGroup, getGroup, getMember, listMembers, listGroupsForUser, listActivity,
   addMembers, removeMember, setRole, transferOwnership, leaveGroup, updateGroup, deleteGroup,
   createInvite, getInvite, redeemInvite,
+  addPendingMembers, listPendingMembers, removePendingMember, claimPendingMemberships, pendingLabel,
   canChangeGroupRole, canManageGroupMember, assignableGroupRoles, groupCapabilities, decideGroupAccess,
   GroupError, GROUP_INVITE_TTL_SECONDS, PlanMemberLimitError,
 } from "@/lib/groupStore";
@@ -245,6 +246,71 @@ const EVENT = {
     assert.equal(await getMember(g.id, HOST), null);
     assert.equal((await listGroupsForUser(MEMBER)).length, 0);
     assert.deepEqual(await listActivity(g.id), []);
+  });
+
+  console.log("groups: pending members");
+
+  const pg = await createGroup({ name: "Pending" }, person("user_p_owner"), [], { cap: 4 });
+  const pOwner = actor("user_p_owner", "owner");
+
+  await t("people with no account are kept pending, once each, by email or KingsChat handle", async () => {
+    const r = await addPendingMembers(pg.id, [{ kind: "email", value: " New@Example.com " }, { kind: "kc", value: "Ada" }], pOwner, { cap: 4 });
+    assert.deepEqual(r.pending.map((p) => p.key), ["email:new@example.com", "kc:ada"]);
+    assert.deepEqual(r.pending.map(pendingLabel), ["new@example.com", "@ada"]);
+    const again = await addPendingMembers(pg.id, [{ kind: "kc", value: "ada" }], pOwner, { cap: 4 });
+    assert.deepEqual(again, { pending: [], alreadyPending: ["kc:ada"] });
+    assert.equal((await listPendingMembers(pg.id)).length, 2);
+    assert.ok((await listActivity(pg.id)).some((a) => a.type === "member_invited" && a.detail.includes("@ada")));
+  });
+
+  await t("a Member cannot add pending people; a Moderator can", async () => {
+    await refuses("insufficient_rank", 403, () => addPendingMembers(pg.id, [{ kind: "kc", value: "x" }], actor(MEMBER, "participant")));
+    await addPendingMembers(pg.id, [{ kind: "kc", value: "mo" }], actor("user_p_mod", "moderator"), { cap: 4 });
+    await removePendingMember(pg.id, "kc:mo", pOwner);
+  });
+
+  await t("pending places count toward the member limit, for members and invite links too", async () => {
+    // Owner + 2 pending = 3 of 4.
+    await addMembers(pg.id, [person("user_p_1")], pOwner, { cap: 4 });
+    await assert.rejects(() => addMembers(pg.id, [person("user_p_2")], pOwner, { cap: 4 }), /too_many_members/);
+    await assert.rejects(() => addPendingMembers(pg.id, [{ kind: "email", value: "more@example.com" }], pOwner, { cap: 4 }), /too_many_members/);
+    const { token } = await createInvite(pg.id, "user_p_owner");
+    await assert.rejects(() => redeemInvite(token, person("user_p_3"), Date.now(), { cap: 4 }), /too_many_members/);
+  });
+
+  await t("signing in with that email or handle turns the places into memberships", async () => {
+    const joined = await claimPendingMemberships({ userId: "user_new", name: "New", email: "new@example.com" }, ["email:new@example.com"]);
+    assert.deepEqual(joined.map((g) => g.id), [pg.id]);
+    const m = await getMember(pg.id, "user_new");
+    assert.equal(m?.role, "participant");
+    assert.equal(m?.addedBy, "user_p_owner");
+    assert.deepEqual((await listPendingMembers(pg.id)).map((p) => p.key), ["kc:ada"]);
+    // Claiming again does nothing: the place is gone.
+    assert.deepEqual(await claimPendingMemberships({ userId: "user_new", name: "New" }, ["email:new@example.com"]), []);
+    assert.ok((await listActivity(pg.id)).some((a) => a.type === "member_joined" && a.detail.includes("new@example.com")));
+  });
+
+  await t("someone already in the group who claims keeps their role, and the place is cleared", async () => {
+    await addPendingMembers(pg.id, [{ kind: "kc", value: "owner_kc" }], pOwner, { cap: 5 });
+    assert.deepEqual(await claimPendingMemberships(person("user_p_owner"), ["kc:owner_kc"]), []);
+    assert.equal((await getMember(pg.id, "user_p_owner"))?.role, "owner");
+    assert.ok(!(await listPendingMembers(pg.id)).some((p) => p.key === "kc:owner_kc"));
+  });
+
+  await t("a pending place can be taken back, and then nobody is waiting for it", async () => {
+    await refuses("insufficient_rank", 403, () => removePendingMember(pg.id, "kc:ada", actor(MEMBER, "participant")));
+    await refuses("not_found", 404, () => removePendingMember(pg.id, "kc:nobody", pOwner));
+    await removePendingMember(pg.id, "kc:ada", pOwner);
+    assert.deepEqual(await listPendingMembers(pg.id), []);
+    assert.deepEqual(await claimPendingMemberships(person("user_ada_kc"), ["kc:ada"]), []);
+    assert.equal(await getMember(pg.id, "user_ada_kc"), null);
+  });
+
+  await t("deleting a group lets go of its pending places", async () => {
+    const gone = await createGroup({ name: "Gone" }, person("user_g_owner"));
+    await addPendingMembers(gone.id, [{ kind: "email", value: "late@example.com" }], actor("user_g_owner", "owner"));
+    await deleteGroup(gone.id);
+    assert.deepEqual(await claimPendingMemberships(person("user_late_2"), ["email:late@example.com"]), []);
   });
 
   console.log(`\n${n} checks passed`);

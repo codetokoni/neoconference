@@ -1,6 +1,7 @@
 // src/app/api/groups/[id]/route.ts
 //
-// GET    — the group, its members, recent activity and what the caller may do.
+// GET    — the group, its members, recent activity and what the caller may do;
+//          for those who manage members, also who is pending sign-up.
 // PATCH  — change name, description, icon or settings (group:settings, Owner).
 // DELETE — delete the group (group:delete, Owner). The body must repeat the
 //          group's name: { confirmName }, the same words the screen asks for.
@@ -8,7 +9,14 @@
 // Outside the group, every method answers 404 (src/lib/groupAuthz.ts).
 
 import { NextResponse } from "next/server";
-import { groupCapabilities, deleteGroup, listActivity, listMembers, updateGroup } from "@/lib/groupStore";
+import {
+  groupCapabilities,
+  deleteGroup,
+  listActivity,
+  listMembers,
+  listPendingMembers,
+  updateGroup,
+} from "@/lib/groupStore";
 import { listGroupMeetings } from "@/lib/groupMeetings";
 import {
   groupErrorResponse,
@@ -27,19 +35,23 @@ export async function GET(_req: Request, ctx: Ctx) {
   const gate = await requireGroupPermission(id, "group:read");
   if (!gate.ok) return gate.response;
 
-  const [members, activity, upcoming] = await Promise.all([
+  const capabilities = groupCapabilities(gate.actor);
+  const [members, activity, upcoming, pending] = await Promise.all([
     listMembers(id),
     listActivity(id, 50),
     listGroupMeetings(id, gate.member.userId, "upcoming"),
+    // Whose places are held for them: only for those who can add and remove.
+    capabilities.manageMembers ? listPendingMembers(id) : Promise.resolve([]),
   ]);
   const next = upcoming.items[0] ?? null;
   return NextResponse.json(
     {
       group: gate.group,
       members,
+      pending,
       activity,
       me: { userId: gate.member.userId, role: gate.member.role },
-      capabilities: groupCapabilities(gate.actor),
+      capabilities,
       nextMeeting: next && { id: next.id, slug: next.slug, title: next.title, start: next.start, state: next.state },
     },
     { headers: { "cache-control": "no-store" } }

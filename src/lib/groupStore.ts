@@ -10,6 +10,13 @@
 //   neo:group:<gid>:activity     list   newest first, capped at 200
 //   neo:user:<uid>:groups        set    group ids the user belongs to
 //   neo:groupinvite:<token>      JSON   { gid, createdBy, createdAt }, 72 h TTL
+//   neo:group:<gid>:pending      hash   "email:<addr>" | "kc:<handle>" -> { addedBy, addedAt }
+//   neo:pending-member:<key>     set    group ids waiting for that email / handle
+//
+// Pending members are people added by email or KingsChat handle before they
+// have an account. They count toward the member limit, and become Members the
+// first time someone signs in with that verified email or KingsChat handle
+// (claimPendingMemberships).
 //
 // Roles use the meeting ladder from permissions.ts: owner > host > moderator >
 // participant ("Member" on screen). Every ordering question is answered there;
@@ -84,7 +91,9 @@ export type GroupActivityType =
   | "call_started"
   | "meeting_updated"
   | "meeting_cancelled"
-  | "participants_added";
+  | "participants_added"
+  | "member_invited"
+  | "invite_cancelled";
 
 export interface GroupActivity {
   /** Epoch ms. */
@@ -106,6 +115,19 @@ export interface NewMember {
   userId: string;
   name: string;
   email?: string;
+}
+
+/** Someone added by email or KingsChat handle who has no account yet. */
+export interface PendingMember {
+  /** "email:<lowercased address>" or "kc:<lowercased handle>". */
+  key: string;
+  kind: "email" | "kc";
+  /** The address or handle, lowercased. */
+  value: string;
+  /** Clerk userId of whoever added them. */
+  addedBy: string | null;
+  /** Epoch ms. */
+  addedAt: number;
 }
 
 export const DEFAULT_GROUP_SETTINGS: GroupSettings = { retryIntervalMin: 3, maxAttempts: 5 };
@@ -158,6 +180,11 @@ export class PlanMemberLimitError extends GroupError {
   constructor(public readonly limit: MemberLimit) {
     super("plan_member_limit", 403);
   }
+}
+
+/** The refusal for going over `limit`: the plan's, or the hard cap. */
+export function memberLimitError(limit: MemberLimit): GroupError {
+  return overLimit(limit);
 }
 
 function overLimit(limit: MemberLimit): GroupError {
@@ -364,6 +391,8 @@ const membersKey = (gid: string) => `neo:group:${gid}:members`;
 const activityKey = (gid: string) => `neo:group:${gid}:activity`;
 const userGroupsKey = (uid: string) => `neo:user:${uid}:groups`;
 const inviteKey = (token: string) => `neo:groupinvite:${token}`;
+const pendingKey = (gid: string) => `neo:group:${gid}:pending`;
+const pendingIndexKey = (key: string) => `neo:pending-member:${key}`;
 
 function isKvConfigured(): boolean {
   return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
@@ -376,6 +405,8 @@ const memMembers = new Map<string, Map<string, GroupMember>>();
 const memActivity = new Map<string, GroupActivity[]>();
 const memUserGroups = new Map<string, Set<string>>();
 const memInvites = new Map<string, GroupInvite>();
+const memPending = new Map<string, Map<string, PendingMember>>();
+const memPendingIndex = new Map<string, Set<string>>();
 
 let warned = false;
 function warnOnce(): void {
@@ -705,6 +736,8 @@ export async function deleteGroup(gid: string): Promise<boolean> {
   // Its chat goes with it. Loaded here: groupChat uses this module.
   const { deleteGroupChat } = await import("@/lib/groupChat");
   await deleteGroupChat(gid);
+  // Nobody signing up later should land in a group that is gone.
+  for (const p of await listPendingMembers(gid)) await dropPending(gid, p.key);
   if (!isKvConfigured()) {
     for (const m of members) memUserGroups.get(m.userId)?.delete(gid);
     memMembers.delete(gid);
@@ -812,7 +845,8 @@ export async function addMembers(
     have.add(clean.userId);
     added.push({ ...clean, role: "participant", joinedAt: now, addedBy: actor.userId });
   }
-  if (existing.length + added.length > limit.cap) throw overLimit(limit);
+  // People waiting to sign up hold their places too.
+  if (existing.length + (await countPending(gid)) + added.length > limit.cap) throw overLimit(limit);
   await writeMembers(gid, added);
   for (const m of added) {
     await appendActivity(gid, { ts: now, actorId: actor.userId, type: "member_added", detail: `Added ${m.name}` });
@@ -951,11 +985,184 @@ export async function redeemInvite(
   const existing = await getMember(group.id, clean.userId);
   if (existing) return { group, member: existing, alreadyMember: true };
 
-  if ((await countMembers(group.id)) + 1 > limit.cap) throw overLimit(limit);
+  if ((await countMembers(group.id)) + (await countPending(group.id)) + 1 > limit.cap) throw overLimit(limit);
   const member: GroupMember = { ...clean, role: "participant", joinedAt: now, addedBy: null };
   await writeMembers(group.id, [member]);
   await appendActivity(group.id, { ts: now, actorId: clean.userId, type: "member_joined", detail: `${clean.name} joined with an invite link` });
   return { group, member, alreadyMember: false };
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Pending members                                                            */
+/* -------------------------------------------------------------------------- */
+
+/** The store key for an email or KingsChat handle, or null if it is unusable. */
+export function pendingKeyFor(kind: "email" | "kc", value: string): string | null {
+  const v = value.trim().toLowerCase();
+  if (!v || v.length > 254) return null;
+  return `${kind}:${v}`;
+}
+
+/** How a pending member reads on screen and in the activity log. */
+export function pendingLabel(p: Pick<PendingMember, "kind" | "value">): string {
+  return p.kind === "kc" ? `@${p.value}` : p.value;
+}
+
+function parsePending(key: string, raw: unknown): PendingMember | null {
+  const o = parseObject(raw);
+  const sep = key.indexOf(":");
+  const kind = key.slice(0, sep);
+  const value = key.slice(sep + 1);
+  if (!o || (kind !== "email" && kind !== "kc") || !value) return null;
+  return {
+    key,
+    kind,
+    value,
+    addedBy: typeof o.addedBy === "string" && o.addedBy ? o.addedBy : null,
+    addedAt: typeof o.addedAt === "number" ? o.addedAt : 0,
+  };
+}
+
+/** Everyone waiting to sign up, oldest first. */
+export async function listPendingMembers(gid: string): Promise<PendingMember[]> {
+  let list: PendingMember[];
+  if (!isKvConfigured()) {
+    list = Array.from(memPending.get(gid)?.values() ?? []);
+  } else {
+    const raw = (await kv.hgetall(pendingKey(gid))) as Record<string, unknown> | null;
+    list = Object.entries(raw ?? {})
+      .map(([key, v]) => parsePending(key, v))
+      .filter((p): p is PendingMember => p !== null);
+  }
+  return list.sort((a, b) => a.addedAt - b.addedAt);
+}
+
+export async function countPending(gid: string): Promise<number> {
+  if (!isKvConfigured()) return memPending.get(gid)?.size ?? 0;
+  return kv.hlen(pendingKey(gid));
+}
+
+async function getPending(gid: string, key: string): Promise<PendingMember | null> {
+  if (!isKvConfigured()) return memPending.get(gid)?.get(key) ?? null;
+  const raw = await kv.hget(pendingKey(gid), key);
+  return raw == null ? null : parsePending(key, raw);
+}
+
+async function writePending(gid: string, p: PendingMember): Promise<void> {
+  if (!isKvConfigured()) {
+    let bucket = memPending.get(gid);
+    if (!bucket) memPending.set(gid, (bucket = new Map()));
+    bucket.set(p.key, p);
+    let index = memPendingIndex.get(p.key);
+    if (!index) memPendingIndex.set(p.key, (index = new Set()));
+    index.add(gid);
+    return;
+  }
+  await kv.hset(pendingKey(gid), { [p.key]: JSON.stringify({ addedBy: p.addedBy, addedAt: p.addedAt }) });
+  await kv.sadd(pendingIndexKey(p.key), gid);
+}
+
+async function dropPending(gid: string, key: string): Promise<void> {
+  if (!isKvConfigured()) {
+    memPending.get(gid)?.delete(key);
+    memPendingIndex.get(key)?.delete(gid);
+    return;
+  }
+  await kv.hdel(pendingKey(gid), key);
+  await kv.srem(pendingIndexKey(key), gid);
+}
+
+async function pendingGroupIds(key: string): Promise<string[]> {
+  if (!isKvConfigured()) return Array.from(memPendingIndex.get(key) ?? []);
+  return ((await kv.smembers(pendingIndexKey(key))) as unknown[]).map(String);
+}
+
+/**
+ * Add people who have no account yet, by email or KingsChat handle. The caller
+ * has already checked that no account matches; this only records them. Same
+ * rank as adding a Member, and they hold a place under the member limit.
+ */
+export async function addPendingMembers(
+  gid: string,
+  entries: Array<{ kind: "email" | "kc"; value: string }>,
+  actor: Actor,
+  limit: MemberLimit = DEFAULT_MEMBER_LIMIT
+): Promise<{ pending: PendingMember[]; alreadyPending: string[] }> {
+  await requireGroup(gid);
+  if (!canManageGroupMember(actor, "participant")) throw new GroupError("insufficient_rank", 403);
+
+  const have = new Set((await listPendingMembers(gid)).map((p) => p.key));
+  const pending: PendingMember[] = [];
+  const alreadyPending: string[] = [];
+  const now = Date.now();
+  for (const e of entries) {
+    const key = pendingKeyFor(e.kind, e.value);
+    if (!key) throw new GroupError("invalid_member");
+    if (have.has(key)) {
+      alreadyPending.push(key);
+      continue;
+    }
+    have.add(key);
+    pending.push({ key, kind: e.kind, value: key.slice(e.kind.length + 1), addedBy: actor.userId, addedAt: now });
+  }
+  if (pending.length === 0) return { pending, alreadyPending };
+  if ((await countMembers(gid)) + have.size > limit.cap) throw overLimit(limit);
+
+  for (const p of pending) await writePending(gid, p);
+  for (const p of pending) {
+    await appendActivity(gid, {
+      ts: now,
+      actorId: actor.userId,
+      type: "member_invited",
+      detail: `Added ${pendingLabel(p)}, who joins on signing up`,
+    });
+  }
+  return { pending, alreadyPending };
+}
+
+/** Take back an addition for someone who has not signed up yet. */
+export async function removePendingMember(gid: string, key: string, actor: Actor): Promise<PendingMember> {
+  await requireGroup(gid);
+  if (!canManageGroupMember(actor, "participant")) throw new GroupError("insufficient_rank", 403);
+  const p = await getPending(gid, key);
+  if (!p) throw new GroupError("not_found", 404);
+  await dropPending(gid, key);
+  await appendActivity(gid, { actorId: actor.userId, type: "invite_cancelled", detail: `Removed ${pendingLabel(p)}` });
+  return p;
+}
+
+/**
+ * Turn someone's pending places into memberships, now that they have signed
+ * in. `keys` are what they proved they own — verified emails and the
+ * KingsChat handle they signed in with — as pendingKeyFor() makes them. The
+ * caller is responsible for that proof. Returns the groups they joined.
+ */
+export async function claimPendingMemberships(
+  person: NewMember,
+  keys: string[],
+  now: number = Date.now()
+): Promise<Group[]> {
+  const me = cleanNewMember(person);
+  const joined: Group[] = [];
+  for (const key of new Set(keys)) {
+    for (const gid of await pendingGroupIds(key)) {
+      const entry = await getPending(gid, key);
+      const group = entry ? await getGroup(gid) : null;
+      if (entry && group && !(await getMember(gid, me.userId))) {
+        // Their place was held under the limit already, so no check here.
+        await writeMembers(gid, [{ ...me, role: "participant", joinedAt: now, addedBy: entry.addedBy }]);
+        await appendActivity(gid, {
+          ts: now,
+          actorId: me.userId,
+          type: "member_joined",
+          detail: `${me.name} joined (added as ${pendingLabel(entry)} before signing up)`,
+        });
+        joined.push(group);
+      }
+      await dropPending(gid, key);
+    }
+  }
+  return joined;
 }
 
 /* -------------------------------------------------------------------------- */

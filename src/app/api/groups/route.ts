@@ -16,7 +16,7 @@ import { eventStore } from "@/lib/eventStore";
 import { createGroup, listGroupsForUser, GROUP_LIMITS, type NewMember } from "@/lib/groupStore";
 import { groupErrorResponse, invalidBody, readJsonObject } from "@/lib/groupAuthz";
 import { eventAttendees, hasAttendance, selectAttendees } from "@/lib/groupAttendees";
-import { currentMember, memberLimitFor } from "@/lib/groupPeople";
+import { claimPendingForCaller, currentMember, memberLimitFor } from "@/lib/groupPeople";
 import { unreadChatCount } from "@/lib/groupChat";
 
 export const runtime = "nodejs";
@@ -25,6 +25,9 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const { userId } = await getIdentity();
   if (!userId) return unauthorized();
+  // Places held for this person by email or KingsChat handle before they had
+  // an account become memberships now, so those groups are in the list.
+  await claimPendingForCaller();
   const rows = await listGroupsForUser(userId);
   // Chat messages from others since this person last read the group's chat,
   // as the web's list shows them (the phone app has no server page to read).

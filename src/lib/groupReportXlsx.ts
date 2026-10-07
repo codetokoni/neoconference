@@ -69,7 +69,7 @@ export async function meetingWorkbook(report: MeetingReport): Promise<ArrayBuffe
   const s = report.summary;
   const lines: Array<[string, string | number]> = [
     ["Meeting", report.title],
-    ["Group", report.group.name],
+    ["Group", report.group?.name ?? "—"],
     ["Host(s)", report.hosts.join(", ")],
     ["Scheduled start", iso(report.scheduledStart)],
     ["Actual start", iso(report.actualStart)],
