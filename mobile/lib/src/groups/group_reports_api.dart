@@ -46,6 +46,9 @@ class ReportPerson {
   const ReportPerson({
     required this.name,
     required this.present,
+    this.key = '',
+    this.userId,
+    this.invited = false,
     this.email = '',
     this.declined = false,
     this.joinedAt,
@@ -57,6 +60,15 @@ class ReportPerson {
   });
 
   final String name;
+
+  /// The report's key for them: an account id, a lowercased email,
+  /// `kc:<handle>` for a KingsChat handle nobody has signed in with yet, or
+  /// `name:<name>` for a guest.
+  final String key;
+
+  /// Their account, when they have one.
+  final String? userId;
+  final bool invited;
   final String email;
   final bool present;
   final bool declined;
@@ -67,8 +79,18 @@ class ReportPerson {
   final int callAttempts;
   final int missedCalls;
 
+  /// The KingsChat handle they were invited by, if that is all there is.
+  String? get kcHandle => key.startsWith('kc:') ? key.substring(3) : null;
+
+  /// Something a group can be given for them: an account, an email or a
+  /// KingsChat handle. A guest known only by name has none.
+  bool get addable => userId != null || email.isNotEmpty || kcHandle != null;
+
   factory ReportPerson.fromJson(Map<String, dynamic> j) => ReportPerson(
         name: j['name'] as String? ?? '',
+        key: j['key'] as String? ?? '',
+        userId: j['userId'] as String?,
+        invited: j['invited'] == true,
         email: j['email'] as String? ?? '',
         present: j['status'] == 'present',
         declined: j['declined'] == true,
@@ -105,6 +127,8 @@ class MeetingReport {
     this.recordingUrl,
     this.recorded = false,
     this.aiSummary,
+    this.chatMessages = 0,
+    this.inGroup = true,
   });
 
   final String eventId;
@@ -129,11 +153,17 @@ class MeetingReport {
   final String? recordingUrl;
   final bool recorded;
   final String? aiSummary;
+  final int chatMessages;
+
+  /// A meeting of a group; false for any other meeting (History).
+  final bool inGroup;
 
   factory MeetingReport.fromJson(Map<String, dynamic> j) {
     final s = j['summary'] is Map ? j['summary'] as Map : const {};
     final g = j['group'] is Map ? j['group'] as Map : const {};
     return MeetingReport(
+      inGroup: j['group'] is Map,
+      chatMessages: _int(s['chatMessages']),
       eventId: j['eventId'] as String? ?? '',
       slug: j['slug'] as String? ?? '',
       title: j['title'] as String? ?? '',
@@ -232,6 +262,24 @@ String attendedText(int ms) {
   if (min < 1) return ms > 0 ? 'under a minute' : '—';
   if (min < 60) return '$min min';
   return '${min ~/ 60} h ${(min % 60).toString().padLeft(2, '0')} min';
+}
+
+/// Any meeting's report (`/api/events/<id>/report`), for History: in a group
+/// or not. Hosts and the owner of the meeting only, as its spreadsheet.
+class EventReportsApi {
+  const EventReportsApi(this.api);
+  final ApiClient api;
+
+  static String _id(String id) => Uri.encodeComponent(id);
+
+  Future<MeetingReport> report(String eventId) async {
+    final body = await api.get('/api/events/${_id(eventId)}/report') as Map;
+    return MeetingReport.fromJson(body['report'] as Map<String, dynamic>);
+  }
+
+  /// The meeting's attendance spreadsheet.
+  Future<({List<int> bytes, String filename, String mimeType})> xlsx(String eventId) =>
+      api.getBytes('/api/events/${_id(eventId)}/attendance', fallbackName: 'attendance.xlsx');
 }
 
 class GroupReportsApi {
