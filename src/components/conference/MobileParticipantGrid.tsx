@@ -34,6 +34,16 @@ function isHostRole(p: Participant | undefined | null): boolean {
   }
 }
 
+/** Host rank only: wire role 'host' covers owner and host, not cohost. */
+function isHostRank(p: Participant | undefined | null): boolean {
+  if (!p?.metadata) return false;
+  try {
+    return JSON.parse(p.metadata)?.role === 'host';
+  } catch {
+    return false;
+  }
+}
+
 // Adaptive density (mobile only — this whole component is gated to <640px).
 // 1   → 1 col, 16:9 (fullscreen-ish solo)
 // 2   → 1 col, 16:9 (stacked landscape, big faces for 1-on-1)
@@ -212,6 +222,7 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
               <MobileParticipantTile
                 participant={p}
                 localIsHost={localIsHost}
+                localCanRemove={isHostRank(localParticipant)}
                 localIsOwner={isOwner}
                 participantIsHost={isHostRole(p)}
                 slug={slug}
