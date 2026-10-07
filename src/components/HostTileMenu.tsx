@@ -41,7 +41,7 @@ export function HostTileMenu({
    *  may appoint a Host (FRS §1.1). */
   isOwner?: boolean;
   /** Wire-format role — 'host' covers owner+host after toLegacyRole. Used to
-   *  gate the FRS §5.2 "Mute everyone else" option, which is Owner+Host only. */
+   *  gate the host-rank items: roles and Remove. */
   roomRole?: string;
   /** Wire-format role of the target this menu is opened on, read from
    *  LiveKit metadata by HostMenuOverlay. Used to conditionally show
@@ -60,7 +60,8 @@ export function HostTileMenu({
   const [error, setError] = useState<string | null>(null);
 
   const isSelf = localParticipant?.identity === participantIdentity;
-  const canMuteOthers = roomRole === 'host';
+  // Roles and Remove are host rank on the server (role:grant, participant:kick).
+  const isHostRank = roomRole === 'host';
   const targetIsElevated = targetRole === 'host' || targetRole === 'cohost';
 
   const assignRole = useCallback(
@@ -401,7 +402,10 @@ export function HostTileMenu({
             </>
           )}
 
-          {showHostActions && canMuteOthers && (
+          {/* participant:muteAll is moderator rank (a product decision, see
+              permissions.smoke.ts), so a moderator gets it too, as on the
+              mobile tile menu and in the app. */}
+          {showHostActions && (
             <MenuItem
               label="Mute everyone else"
               icon="MA"
@@ -415,7 +419,7 @@ export function HostTileMenu({
               for host+ and target-aware Demote. Same server route as the
               ParticipantsPanel role controls (/api/events/[id]/roles), so
               the rank ladder is enforced identically. */}
-          {showHostActions && canMuteOthers && (
+          {showHostActions && isHostRank && (
             <>
               <div
                 style={{
@@ -459,9 +463,8 @@ export function HostTileMenu({
           {/* FRS §1.3: Moderator must NOT remove participants. Server already
               refuses (participant:kick at RANK.host after PR #68 catalog fix);
               this gate is the UI half so a Moderator doesn't see a button
-              that will silently 403. canMuteOthers doubles as the "host+
-              only" gate here — same rank threshold. */}
-          {showHostActions && canMuteOthers && (!confirmKick ? (
+              that will silently 403. */}
+          {showHostActions && isHostRank && (!confirmKick ? (
             <MenuItem
               label="Remove from room"
               icon="X"

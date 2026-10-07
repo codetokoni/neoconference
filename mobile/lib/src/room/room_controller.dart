@@ -435,8 +435,10 @@ class RoomState {
 
   bool get canManage => role == 'host' || role == 'cohost';
 
-  /// Mute, camera off, roles and remove: host rank on the server, as the
-  /// web's tile menu has it. A moderator is not offered what would 403.
+  /// Roles and Remove: host rank on the server (role:grant, participant:kick),
+  /// as the web's menus have it. A moderator is not offered what would 403.
+  /// Muting someone is moderator rank (participant:mute), so it is
+  /// [canManage].
   bool get canModerateOthers => role == 'host';
   /// Whether the meeting is being recorded, as far as anyone can tell.
   ///

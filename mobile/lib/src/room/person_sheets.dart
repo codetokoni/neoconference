@@ -8,12 +8,13 @@ import 'room_controller.dart';
 
 /// What can be done to one person, opened by holding their tile.
 ///
-/// Pin, for everyone. Then, for a host, the web's tile menu, item for item
-/// and with its rules: every action is
-/// host rank on the server (the sheet is only offered to a host), Make Host
-/// is the owner's alone (FRS §1.1), and Demote only appears for someone who
-/// is a host or moderator. The owner is never offered to be demoted or
-/// removed. The server checks the role again on each of them.
+/// Pin, for everyone. Then the web's tile menu, item for item and with its
+/// rules: a host or moderator can mute, turn off a camera, ask to unmute and
+/// mute everyone else (moderator rank on the server); only a host gets roles
+/// and Remove (host rank), Make Host is the owner's alone (FRS §1.1), and
+/// Demote only appears for someone who is a host or moderator. The owner is
+/// never offered to be demoted or removed. The server checks the role again
+/// on each of them.
 class PersonActionsSheet extends ConsumerWidget {
   const PersonActionsSheet({super.key, required this.slug, required this.person});
 
@@ -74,7 +75,7 @@ class PersonActionsSheet extends ConsumerWidget {
                 Navigator.pop(context);
                 controller.togglePin(person.id);
               }),
-            if (state.canModerateOthers && !person.isMe) ..._hostActions(context, state, controller, run, item),
+            if (state.canManage && !person.isMe) ..._hostActions(context, state, controller, run, item),
             const SizedBox(height: 8),
           ],
         ),
@@ -82,7 +83,10 @@ class PersonActionsSheet extends ConsumerWidget {
     );
   }
 
-  /// What only a host can do to someone else.
+  /// What a host or moderator can do to someone else. Muting and asking are
+  /// moderator rank on the server (participant:mute); roles and Remove are
+  /// host rank (role:grant, participant:kick), so a moderator is not offered
+  /// what would 403.
   List<Widget> _hostActions(
     BuildContext context,
     RoomState state,
@@ -103,7 +107,7 @@ class PersonActionsSheet extends ConsumerWidget {
                 () => run(() => controller.moderate(person.id, 'requestCameraOn'))),
             item(Icons.volume_off_rounded, 'Mute everyone else',
                 () => run(() => controller.muteEveryone(except: person.id))),
-            if (!person.owner) ...[
+            if (state.canModerateOthers && !person.owner) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
                 child: Text(
