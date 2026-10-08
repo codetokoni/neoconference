@@ -16,6 +16,13 @@ test("pages the app needs, or cannot do, stay open on Android", () => {
   for (const p of ["/app/auth", "/support", "/e/falf/replay", "/embed/falf", "/admin/events", "/sign-out"]) {
     expect(gateExempt(p), p).toBe(true);
   }
+  // The live-event broadcast: the app has no participant-code join or
+  // programme player, so these stay on the website (reported 8 Oct 2026).
+  for (const p of ["/video/join", "/video/dashboard", "/video/room", "/video/studio"]) {
+    expect(gateExempt(p, "?room=neoconf"), p).toBe(true);
+  }
+  // …but not a meeting whose short link merely starts with "video".
+  expect(gateExempt("/videos")).toBe(false);
   // The app's KingsChat sign-in falls back through /sign-in with a ticket.
   expect(gateExempt("/sign-in", "?__clerk_ticket=abc")).toBe(true);
   // Anything the app itself opened.

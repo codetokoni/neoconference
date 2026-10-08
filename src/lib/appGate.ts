@@ -28,13 +28,17 @@ export function isAndroid(userAgent: string | null | undefined): boolean {
  *   /e/<slug>/replay the app does not play recordings
  *   /embed/*         a meeting shown inside someone else's website
  *   /admin/*         operators' tools, which the app does not have
+ *   /video/*         the live-event broadcast (join with a participant
+ *                    code, the programme player, its dashboard and
+ *                    studio); the app has none of it, so sending an
+ *                    Android visitor there to the app stranded them
  *   /sign-out        must run its clean-up whatever the device
  * and any page the app itself opened (?from=app), or a sign-in carrying a
  * ticket from the app's own sign-in.
  */
 export function gateExempt(pathname: string, search = ""): boolean {
   const p = pathname.replace(/\/+$/, "") || "/";
-  if (/^\/(app|embed|admin)(\/|$)/.test(p)) return true;
+  if (/^\/(app|embed|admin|video)(\/|$)/.test(p)) return true;
   if (p === "/support" || p === "/sign-out") return true;
   if (/^\/e\/[^/]+\/replay$/.test(p)) return true;
   const q = new URLSearchParams(search);
