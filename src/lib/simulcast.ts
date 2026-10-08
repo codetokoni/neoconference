@@ -1,4 +1,4 @@
-import { TRANSLATION_LANGUAGES } from "./translationLanguages";
+import { POPULAR_TRANSLATION_CODES, TRANSLATION_LANGUAGES } from "./translationLanguages";
 
 export type ChannelId = string;
 
@@ -101,6 +101,26 @@ export function machineChannelsForRoom(room = SIMULCAST_MAIN): SimulcastChannel[
       color: "#5E7684",
       machine: true,
     }));
+}
+
+/** How many of the More languages get a button of their own. */
+export const TOP_MACHINE_COUNT = 10;
+
+/**
+ * More languages as the rail shows them: the most picked ones as buttons,
+ * in the order POPULAR_TRANSLATION_CODES ranks them (the meeting
+ * translator's quick picks too), and the rest in the list, alphabetical.
+ */
+export function splitMachineChannels(more: SimulcastChannel[]): {
+  top: SimulcastChannel[];
+  rest: SimulcastChannel[];
+} {
+  const byLang = new Map(more.map((c) => [c.lang, c]));
+  const top = POPULAR_TRANSLATION_CODES.map((code) => byLang.get(code))
+    .filter((c): c is SimulcastChannel => Boolean(c))
+    .slice(0, TOP_MACHINE_COUNT);
+  const topIds = new Set(top.map((c) => c.id));
+  return { top, rest: more.filter((c) => !topIds.has(c.id)) };
 }
 
 export function videoChannelForRoom(room = SIMULCAST_MAIN): SimulcastChannel {

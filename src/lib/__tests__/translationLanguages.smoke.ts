@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { TRANSLATION_LANGUAGES } from "../translationLanguages";
-import { channelsForRoom, machineChannelsForRoom } from "../simulcast";
+import { channelsForRoom, machineChannelsForRoom, splitMachineChannels } from "../simulcast";
 import {
   TRANSLATION_LANGUAGES as WORKER_LANGUAGES,
   deeplTarget as workerTarget,
@@ -76,6 +76,22 @@ async function main() {
     const english = more.map((c) => c.label.split(" · ")[0]);
     assert.deepEqual(english, [...english].sort((a, b) => a.localeCompare(b)));
     assert.ok(more.some((c) => c.label === "Swahili · Kiswahili"));
+  });
+
+  await t("the ten most picked get buttons, in rank order; the rest stay in the list", () => {
+    const more = machineChannelsForRoom("neoconf");
+    const { top, rest } = splitMachineChannels(more);
+    assert.deepEqual(
+      top.map((c) => c.lang),
+      ["de", "it", "nl", "ja", "ko", "zh", "hi", "ru", "tr", "pl"],
+    );
+    // Every language exactly once, buttons or list.
+    assert.equal(top.length + rest.length, more.length);
+    const topIds = new Set(top.map((c) => c.id));
+    assert.ok(rest.every((c) => !topIds.has(c.id)));
+    const english = rest.map((c) => c.label.split(" · ")[0]);
+    assert.deepEqual(english, [...english].sort((a, b) => a.localeCompare(b)));
+    assert.ok(rest.some((c) => c.lang === "sw"), "Swahili is in the list");
   });
 
   await t("the worker's SSE server refuses a language it can't produce and tracks who hears what", async () => {
