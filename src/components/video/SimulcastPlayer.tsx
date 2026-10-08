@@ -470,14 +470,19 @@ export default function SimulcastPlayer({
   }, [live, active, videoChannel.id]);
 
   /* ---- fall back to HLS if WebRTC never reaches playing ----
-     "waiting" means AMS says no stream exists yet, so HLS would 404 too:
-     stay on WebRTC and let the reconnect loop pick the feed up. ---- */
+     "waiting" means AMS has no stream on the room's group. Usually nothing
+     is on and HLS would 404 too, so stay on WebRTC and let the reconnect
+     loop pick the feed up — unless the status poll says the programme
+     stream itself is live: it can be, outside the group (8 Oct 2026),
+     and then its HLS plays. ---- */
+  const programmeLive = serverLive.has(videoChannel.id);
   useEffect(() => {
     if (mode !== "webrtc") return;
-    if (state === "playing" || state === "waiting") return;
+    if (state === "playing") return;
+    if (state === "waiting" && !programmeLive) return;
     const t = setTimeout(() => setMode("hls"), WEBRTC_TIMEOUT_MS);
     return () => clearTimeout(t);
-  }, [mode, state]);
+  }, [mode, state, programmeLive]);
 
   /* ---- once the feed goes off air, go back to preferring WebRTC ---- */
   useEffect(() => {
