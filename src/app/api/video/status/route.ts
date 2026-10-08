@@ -3,6 +3,8 @@ import { kv } from "@/lib/kv";
 import {
   fetchSubtracks,
   isBroadcasting,
+  isSurelyBroadcasting,
+  videoChannelForRoom,
   SIMULCAST_MAIN,
   SIMULCAST_CHANNELS,
   featuredKey,
@@ -32,6 +34,17 @@ export async function GET(req: Request) {
     const liveIds = new Set(
       subs.filter((b) => b.status === "broadcasting").map((b) => b.streamId),
     );
+
+    // The programme can be live outside the room's group: on 8 Oct 2026
+    // vMix/OBS was pushing <room>-video over RTMP with no
+    // mainTrackStreamId while <room>-room sat "finished", so the group
+    // had no subtracks and every viewer was told the broadcast hadn't
+    // started. Ask about the programme stream itself; the player then
+    // plays it over HLS.
+    const videoId = videoChannelForRoom(room).id;
+    if (!liveIds.has(videoId) && (await isSurelyBroadcasting(videoId))) {
+      liveIds.add(videoId);
+    }
 
     // Self-heal the room's AMS broadcast objects (wrapper + video
     // subtrack) if AMS has GC'd them. `subs` being empty is the same

@@ -254,6 +254,26 @@ export async function fetchSubtracks(main = SIMULCAST_MAIN): Promise<AmsBroadcas
  * does not evict a valid pointer. A 404 or a status field that is not
  * "broadcasting" are the only signals we treat as a definite no.
  */
+/**
+ * Whether AMS reports this stream as broadcasting, strictly: false on a
+ * 404, an error or no answer. For reporting a stream live, where guessing
+ * "yes" would put ON AIR over nothing (isBroadcasting below guesses yes,
+ * which suits clearing a pointer only when AMS is sure).
+ */
+export async function isSurelyBroadcasting(streamId: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${AMS_REST}/broadcasts/${encodeURIComponent(streamId)}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!r.ok) return false;
+    const b = (await r.json()) as AmsBroadcast;
+    return b?.status === "broadcasting";
+  } catch {
+    return false;
+  }
+}
+
 export async function isBroadcasting(streamId: string): Promise<boolean> {
   try {
     const r = await fetch(
