@@ -23,6 +23,12 @@ test("pages the app needs, or cannot do, stay open on Android", () => {
   }
   // …but not a meeting whose short link merely starts with "video".
   expect(gateExempt("/videos")).toBe(false);
+  // Signing in on the way to an operator page under /video/ (the
+  // middleware sends a signed-out visitor there with redirect_url).
+  const back = encodeURIComponent("https://www.neoconference.app/video/room/moderate?room=neoconf");
+  expect(gateExempt("/sign-in", `?redirect_url=${back}`)).toBe(true);
+  expect(gateExempt("/sign-in/factor-one", `?redirect_url=${back}`)).toBe(true);
+  expect(gateExempt("/sign-up", "?redirect_url=%2Fvideo%2Frooms")).toBe(true);
   // The app's KingsChat sign-in falls back through /sign-in with a ticket.
   expect(gateExempt("/sign-in", "?__clerk_ticket=abc")).toBe(true);
   // Anything the app itself opened.
@@ -33,6 +39,10 @@ test("everything else on Android asks for the app", () => {
   for (const p of ["/", "/falf", "/e/falf", "/room/falf", "/dashboard", "/pricing", "/sign-in", "/explore"]) {
     expect(gateExempt(p), p).toBe(false);
   }
+  // A sign-in going anywhere else, or to /video/ on someone else's site.
+  expect(gateExempt("/sign-in", "?redirect_url=%2Fdashboard")).toBe(false);
+  expect(gateExempt("/sign-in", "?redirect_url=" + encodeURIComponent("https://evil.test/video/join"))).toBe(false);
+  expect(gateExempt("/sign-in", "?redirect_url=%2Fvideos")).toBe(false);
 });
 
 test("a meeting page opens that meeting in the app", () => {

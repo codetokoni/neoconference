@@ -33,6 +33,7 @@ export function isAndroid(userAgent: string | null | undefined): boolean {
  *                    studio); the app has none of it, so sending an
  *                    Android visitor there to the app stranded them
  *   /sign-out        must run its clean-up whatever the device
+ *   /sign-in, /sign-up  when they lead back to a /video/ page
  * and any page the app itself opened (?from=app), or a sign-in carrying a
  * ticket from the app's own sign-in.
  */
@@ -44,7 +45,24 @@ export function gateExempt(pathname: string, search = ""): boolean {
   const q = new URLSearchParams(search);
   if (q.get("from") === "app") return true;
   if (q.has("__clerk_ticket")) return true;
+  // Signing in (or up) on the way to a /video/ page: the operator pages
+  // need a signed-in account, and the middleware sends a signed-out
+  // visitor to /sign-in?redirect_url=<page>. Gating that sent an Android
+  // operator to the AppStore from every one of them (8 Oct 2026).
+  if (/^\/sign-(in|up)(\/|$)/.test(p) && headsForVideo(q.get("redirect_url"))) return true;
   return false;
+}
+
+/** A redirect_url that lands on one of this site's /video/ pages. */
+function headsForVideo(target: string | null): boolean {
+  if (!target) return false;
+  try {
+    const u = new URL(target, "https://www.neoconference.app");
+    if (!/^(www\.)?neoconference\.app$/.test(u.hostname)) return false;
+    return /^\/video(\/|$)/.test(u.pathname);
+  } catch {
+    return false;
+  }
 }
 
 /**
