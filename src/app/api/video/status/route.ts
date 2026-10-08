@@ -11,7 +11,10 @@ import {
   type FeaturedState,
 } from "@/lib/simulcast";
 import { roomMainTrack } from "@/lib/participantCodes";
-import { ensureRoomBroadcastsInBackground } from "@/lib/amsMainTrack";
+import {
+  ensureRoomBroadcastsInBackground,
+  relinkVideoSubtrackInBackground,
+} from "@/lib/amsMainTrack";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,6 +47,10 @@ export async function GET(req: Request) {
     const videoId = videoChannelForRoom(room).id;
     if (!liveIds.has(videoId) && (await isSurelyBroadcasting(videoId))) {
       liveIds.add(videoId);
+      // And put it back in the group, so the next poll's WebRTC plays it
+      // (an encoder reconnecting drops the link again; this keeps undoing
+      // that).
+      relinkVideoSubtrackInBackground(room);
     }
 
     // Self-heal the room's AMS broadcast objects (wrapper + video

@@ -150,6 +150,65 @@ export function ensureRoomBroadcastsInBackground(
 }
 
 /**
+ * Put a live `<room>-video` back into the room's group.
+ *
+ * Creating it with `mainTrackStreamId` (ensureVideoSubtrack) only works
+ * before the publisher connects: when vMix/OBS reconnects, AMS 3.0 makes
+ * the stream afresh with no main track, and the create call then answers
+ * "already exists" and changes nothing. That left the programme outside
+ * the group on 8 Oct 2026, so the group had nothing to play over WebRTC.
+ * AMS's own call for this — add a subtrack to a main track — fixes it
+ * live without interrupting the stream (done by hand that morning first).
+ *
+ * Only acts on a stream that is broadcasting and not already linked.
+ * Never throws.
+ */
+export async function relinkVideoSubtrack(room: string): Promise<EnsureResult> {
+  const videoId = videoChannelForRoom(room).id;
+  const main = roomMainTrack(room);
+  try {
+    const r = await fetch(`${AMS_REST}/broadcasts/${encodeURIComponent(videoId)}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!r.ok) return { ok: false, created: false, reason: `HTTP ${r.status}` };
+    const b = (await r.json()) as { status?: string; mainTrackStreamId?: string | null };
+    if (b.status !== "broadcasting" || b.mainTrackStreamId === main) {
+      return { ok: true, created: false };
+    }
+    // The wrapper has to exist for AMS to take the subtrack.
+    await ensureMainTrackWrapper(room);
+    const add = await fetch(
+      `${AMS_REST}/broadcasts/${encodeURIComponent(main)}/subtrack?id=${encodeURIComponent(videoId)}`,
+      { method: "POST", cache: "no-store", signal: AbortSignal.timeout(4000) },
+    );
+    const body = (await add.json().catch(() => null)) as { success?: boolean; message?: string } | null;
+    if (add.ok && body?.success) return { ok: true, created: true };
+    return { ok: false, created: false, reason: `HTTP ${add.status} ${body?.message ?? ""}`.trim() };
+  } catch (e) {
+    return { ok: false, created: false, reason: (e as Error).message };
+  }
+}
+
+const lastRelinkAt = new Map<string, number>();
+
+/** relinkVideoSubtrack, fire-and-forget, at most once per 30 s per room. */
+export function relinkVideoSubtrackInBackground(room: string): void {
+  const now = Date.now();
+  if (now - (lastRelinkAt.get(room) ?? 0) < RETRY_MS) return;
+  lastRelinkAt.set(room, now);
+  void relinkVideoSubtrack(room).then((res) => {
+    if (res.created) {
+      // eslint-disable-next-line no-console
+      console.log(`[amsMainTrack] relinked ${room}-video into ${roomMainTrack(room)}`);
+    } else if (!res.ok) {
+      // eslint-disable-next-line no-console
+      console.warn(`[amsMainTrack] failed to relink video for ${room}: ${res.reason}`);
+    }
+  });
+}
+
+/**
  * Kept for backward compatibility with existing callers. Prefer
  * ensureRoomBroadcastsInBackground for new code.
  */
