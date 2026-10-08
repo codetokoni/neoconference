@@ -116,11 +116,24 @@ export interface SimulcastPlayerProps {
   /** Room slug — governs which mainTrack is subscribed and which
    *  language subtracks are named. Defaults to the app's default room. */
   room?: string;
+  /**
+   * Languages are locked: the viewer hears the floor and is told how to
+   * unlock the rest (the join page, until a participant code is accepted).
+   */
+  languagesLocked?: string;
+  /**
+   * The first tap or key press anywhere on the page starts the sound, not
+   * only one on the player. Browsers allow sound only after one; there is
+   * no mute afterwards.
+   */
+  soundOnFirstTap?: boolean;
 }
 
 export default function SimulcastPlayer({
   showChat = true,
   room = SIMULCAST_MAIN,
+  languagesLocked,
+  soundOnFirstTap = false,
 }: SimulcastPlayerProps = {}) {
   // Channels are keyed by the room slug so a second event's streaming
   // link plays that event's programme, not the default's.
@@ -714,6 +727,25 @@ export default function SimulcastPlayer({
     getAudioCtx()?.resume().catch(() => {});
   }, [volumeLocked, getAudioCtx]);
 
+  // The join page starts the sound on the first tap anywhere: typing a
+  // code or tapping the page counts, not only the player. A click and a
+  // key press are what browsers (iOS included) accept for starting sound.
+  useEffect(() => {
+    if (!soundOnFirstTap || !muted) return;
+    const start = () => unmute();
+    document.addEventListener("click", start);
+    document.addEventListener("keydown", start);
+    return () => {
+      document.removeEventListener("click", start);
+      document.removeEventListener("keydown", start);
+    };
+  }, [soundOnFirstTap, muted, unmute]);
+
+  // Locked languages: whoever is listening hears the floor.
+  useEffect(() => {
+    if (languagesLocked) setActive(videoChannel.id);
+  }, [languagesLocked, videoChannel.id]);
+
   const statusLabel =
     mode === "hls"
       ? "HLS fallback"
@@ -960,15 +992,30 @@ export default function SimulcastPlayer({
             )}
           </div>
 
-          <div style={onAir ? { opacity: 0.45, pointerEvents: "none" } : undefined}>
-            <ChannelRail
-              channels={channels}
-              more={machineChannels}
-              live={live}
-              active={active}
-              onSelect={setActive}
-            />
-          </div>
+          {languagesLocked ? (
+            <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-none text-white/50" aria-hidden="true">
+                <rect x="4" y="11" width="16" height="10" rx="2" />
+                <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+              </svg>
+              <span className="flex flex-col leading-tight">
+                <small className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-white/45">
+                  Audio channel · {videoChannel.label}
+                </small>
+                <span className="text-sm text-white/75">{languagesLocked}</span>
+              </span>
+            </div>
+          ) : (
+            <div style={onAir ? { opacity: 0.45, pointerEvents: "none" } : undefined}>
+              <ChannelRail
+                channels={channels}
+                more={machineChannels}
+                live={live}
+                active={active}
+                onSelect={setActive}
+              />
+            </div>
+          )}
 
           {/* Floor-level slider. Only relevant when a translation is
               picked — no reason to show it while the floor IS the
