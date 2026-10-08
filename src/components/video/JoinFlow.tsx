@@ -34,6 +34,9 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [slot, setSlot] = useState<Slot | null>(null);
+  // A code was accepted on this visit. Unlocks the languages, and keeps
+  // them unlocked after Leave: the code is what's asked for, not the camera.
+  const [unlocked, setUnlocked] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -72,6 +75,7 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
           setError(j.error ?? "That code did not work.");
           return;
         }
+        setUnlocked(true);
         setSlot({
           slot: j.slot,
           name: j.name,
@@ -135,7 +139,15 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
           full-width on mobile, then side-by-side with the join / slot
           panel on lg+ so both are visible at once without scrolling. */}
       <div className="min-w-0">
-        <SimulcastPlayer room={room} showChat={false} />
+        {/* The programme plays for everyone, sound starting on the first
+            tap anywhere, with no mute. Everything else on the page — the
+            languages, going on camera — needs the code first. */}
+        <SimulcastPlayer
+          room={room}
+          showChat={false}
+          soundOnFirstTap
+          languagesLocked={unlocked ? undefined : "Enter your code to choose a language."}
+        />
       </div>
 
       <div className="flex flex-col gap-4">
@@ -150,7 +162,8 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
             </span>
             <h2 className="text-xl font-bold tracking-tight text-white">Enter your code</h2>
             <p className="max-w-[46ch] text-sm text-white/60">
-              It is on your invitation. Your camera turns on only after you press Join.
+              It is on your invitation. It unlocks the languages and joining with your
+              camera; your camera turns on only after you press Join.
             </p>
           </div>
 
