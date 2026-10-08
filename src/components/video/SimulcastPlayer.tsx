@@ -122,6 +122,13 @@ export interface SimulcastPlayerProps {
    */
   languagesLocked?: string;
   /**
+   * The picture is locked: the sound plays, the video doesn't, and this
+   * says how to unlock it (the join page, until a code is accepted). On
+   * WebRTC the video track is never attached; on HLS, where the same
+   * element carries the floor's sound, it is hidden.
+   */
+  pictureLocked?: string;
+  /**
    * The first tap or key press anywhere on the page starts the sound, not
    * only one on the player. Browsers allow sound only after one; there is
    * no mute afterwards.
@@ -133,6 +140,7 @@ export default function SimulcastPlayer({
   showChat = true,
   room = SIMULCAST_MAIN,
   languagesLocked,
+  pictureLocked,
   soundOnFirstTap = false,
 }: SimulcastPlayerProps = {}) {
   // Channels are keyed by the room slug so a second event's streaming
@@ -477,24 +485,36 @@ export default function SimulcastPlayer({
   useEffect(() => {
     const el = videoRef.current;
     if (!el || mode !== "webrtc") return;
+    // Locked: the picture never reaches the page (the floor's sound comes
+    // from its own <audio> element on WebRTC, so nothing is lost).
+    if (pictureLocked) {
+      if (el.srcObject) el.srcObject = null;
+      return;
+    }
     if (videoStream && el.srcObject !== videoStream) {
       el.srcObject = videoStream;
       el.play().catch(() => {
         /* autoplay policy: stays muted until the viewer taps */
       });
     }
-  }, [videoStream, mode]);
+  }, [videoStream, mode, pictureLocked]);
 
   /* ---- featured participant: bind its own media ---- */
   useEffect(() => {
     const el = featVideoRef.current;
     if (!el) return;
+    // A featured participant's picture is locked with the programme's;
+    // their voice still plays (featAudioRef).
+    if (pictureLocked) {
+      if (el.srcObject) el.srcObject = null;
+      return;
+    }
     if (featStream && el.srcObject !== featStream) {
       el.srcObject = featStream;
       el.play().catch(() => {});
     }
     if (!featStream) el.srcObject = null;
-  }, [featStream]);
+  }, [featStream, pictureLocked]);
 
   useEffect(() => {
     const el = featAudioRef.current;
@@ -775,7 +795,7 @@ export default function SimulcastPlayer({
               autoPlay
               muted
               className="h-full w-full object-contain"
-              style={onAir ? { visibility: "hidden" } : undefined}
+              style={onAir || pictureLocked ? { visibility: "hidden" } : undefined}
             />
 
             {/* Featured participant replaces the programme picture while on air.
@@ -786,7 +806,7 @@ export default function SimulcastPlayer({
               autoPlay
               muted
               className="absolute inset-0 h-full w-full object-contain"
-              style={{ display: onAir ? "block" : "none" }}
+              style={{ display: onAir && !pictureLocked ? "block" : "none" }}
             />
             <audio ref={featAudioRef} autoPlay muted />
 
@@ -844,7 +864,7 @@ export default function SimulcastPlayer({
                 country come from the roster meta captured at feature
                 time, so this is a zero-network overlay: the info is
                 already in `featured`. */}
-            {onAir && featured && (
+            {onAir && featured && !pictureLocked && (
               <div className="pointer-events-none absolute inset-x-4 bottom-4 z-10 flex flex-col gap-1 rounded-md border-l-[3px] border-l-emerald-400 bg-gradient-to-r from-black/85 via-black/70 to-transparent px-4 py-2.5 sm:inset-x-6 sm:bottom-6 sm:max-w-[52ch] sm:px-5 sm:py-3">
                 <div className="flex flex-wrap items-baseline gap-x-2">
                   <span className="text-lg font-bold uppercase tracking-wide text-white sm:text-xl">
@@ -903,6 +923,8 @@ export default function SimulcastPlayer({
               {statusLabel}
             </span>
 
+            {/* Nothing to see full screen while the picture is locked. */}
+            {!pictureLocked && (
             <button
               type="button"
               onClick={toggleFullscreen}
@@ -926,6 +948,7 @@ export default function SimulcastPlayer({
                 </svg>
               )}
             </button>
+            )}
 
             <div className="absolute bottom-3 left-3 flex items-center gap-3 rounded-md border border-white/15 bg-black/70 px-3 py-1.5 backdrop-blur">
               <span className="h-5 w-2 rounded-sm" style={{ background: activeChannel.color }} />
@@ -962,6 +985,16 @@ export default function SimulcastPlayer({
                 muted={muted || Boolean(audioStreams[active])}
                 onSpeaking={setVoiceSpeaking}
               />
+            )}
+
+            {pictureLocked && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black px-6 text-center">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/60" aria-hidden="true">
+                  <rect x="4" y="11" width="16" height="10" rx="2" />
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                </svg>
+                <p className="max-w-[34ch] text-sm text-white/80">{pictureLocked}</p>
+              </div>
             )}
 
             {muted && (

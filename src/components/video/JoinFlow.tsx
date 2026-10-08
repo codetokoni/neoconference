@@ -139,13 +139,14 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
           full-width on mobile, then side-by-side with the join / slot
           panel on lg+ so both are visible at once without scrolling. */}
       <div className="min-w-0">
-        {/* The programme plays for everyone, sound starting on the first
+        {/* The programme's sound plays for everyone, starting on the first
             tap anywhere, with no mute. Everything else on the page — the
-            languages, going on camera — needs the code first. */}
+            picture, the languages, going on camera — needs the code first. */}
         <SimulcastPlayer
           room={room}
           showChat={false}
           soundOnFirstTap
+          pictureLocked={unlocked ? undefined : "Listen now. Enter your code to see the video."}
           languagesLocked={unlocked ? undefined : "Enter your code to choose a language."}
         />
       </div>
@@ -162,8 +163,8 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
             </span>
             <h2 className="text-xl font-bold tracking-tight text-white">Enter your code</h2>
             <p className="max-w-[46ch] text-sm text-white/60">
-              It is on your invitation. It unlocks the languages and joining with your
-              camera; your camera turns on only after you press Join.
+              It is on your invitation. It unlocks the video, the languages and joining
+              with your camera; your camera turns on only after you press Join.
             </p>
           </div>
 
