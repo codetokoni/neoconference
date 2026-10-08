@@ -13,7 +13,7 @@ import {
 import { roomMainTrack } from "@/lib/participantCodes";
 import {
   ensureRoomBroadcastsInBackground,
-  relinkVideoSubtrackInBackground,
+  relinkVideoSubtrackThrottled,
 } from "@/lib/amsMainTrack";
 
 export const runtime = "nodejs";
@@ -49,8 +49,8 @@ export async function GET(req: Request) {
       liveIds.add(videoId);
       // And put it back in the group, so the next poll's WebRTC plays it
       // (an encoder reconnecting drops the link again; this keeps undoing
-      // that).
-      relinkVideoSubtrackInBackground(room);
+      // that). Awaited: work left running after the response never runs.
+      await relinkVideoSubtrackThrottled(room);
     }
 
     // Self-heal the room's AMS broadcast objects (wrapper + video
