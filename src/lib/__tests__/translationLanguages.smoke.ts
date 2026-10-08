@@ -16,7 +16,16 @@ import {
   TRANSLATION_LANGUAGES as WORKER_LANGUAGES,
   deeplTarget as workerTarget,
 } from "../../../translation-worker/src/languages";
-import { acceptLangs, listenedLangs, startSseServer } from "../../../translation-worker/src/sse";
+// The worker's SSE server is loaded at run time, not imported: its module
+// needs `cors`, which only the worker's own package installs, and the site's
+// production build type-checks this file. A static import here failed every
+// Vercel build from #474 to #477 ("Cannot find module 'cors'").
+type WorkerSse = {
+  acceptLangs: (fn: (lang: string) => boolean) => void;
+  listenedLangs: (room: string) => string[];
+  startSseServer: (port: number) => void;
+};
+const WORKER_SSE = "../../../translation-worker/src/sse";
 
 let n = 0;
 const t = async (name: string, fn: () => void | Promise<void>) => {
@@ -70,8 +79,9 @@ async function main() {
   });
 
   await t("the worker's SSE server refuses a language it can't produce and tracks who hears what", async () => {
+    const { acceptLangs, listenedLangs, startSseServer }: WorkerSse = await import(WORKER_SSE);
     acceptLangs((lang) => lang === "en" || workerTarget(lang) !== null);
-    const server = await listen();
+    const server = await listen(startSseServer);
     const port = (server.address() as AddressInfo).port;
     try {
       // A language nobody translates into: 404 before any stream opens.
@@ -104,7 +114,7 @@ async function main() {
 }
 
 /** startSseServer on a free port. It keeps no handle, so find it by listening. */
-function listen(): Promise<http.Server> {
+function listen(startSseServer: (port: number) => void): Promise<http.Server> {
   return new Promise((resolve) => {
     const realListen = http.Server.prototype.listen;
     http.Server.prototype.listen = function (this: http.Server, ...args: unknown[]) {
