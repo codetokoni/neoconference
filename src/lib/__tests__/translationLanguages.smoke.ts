@@ -78,12 +78,12 @@ async function main() {
     assert.ok(more.some((c) => c.label === "Swahili · Kiswahili"));
   });
 
-  await t("the ten most picked get buttons, in rank order; the rest stay in the list", () => {
+  await t("ten languages get buttons, Hausa and Igbo among them; the rest stay in the list", () => {
     const more = machineChannelsForRoom("neoconf");
     const { top, rest } = splitMachineChannels(more);
     assert.deepEqual(
       top.map((c) => c.lang),
-      ["de", "it", "nl", "ja", "ko", "zh", "hi", "ru", "tr", "pl"],
+      ["de", "it", "ha", "ja", "ko", "zh", "hi", "ru", "tr", "ig"],
     );
     // Every language exactly once, buttons or list.
     assert.equal(top.length + rest.length, more.length);
@@ -91,7 +91,7 @@ async function main() {
     assert.ok(rest.every((c) => !topIds.has(c.id)));
     const english = rest.map((c) => c.label.split(" · ")[0]);
     assert.deepEqual(english, [...english].sort((a, b) => a.localeCompare(b)));
-    assert.ok(rest.some((c) => c.lang === "sw"), "Swahili is in the list");
+    for (const l of ["sw", "nl", "pl"]) assert.ok(rest.some((c) => c.lang === l), `${l} is in the list`);
   });
 
   await t("the worker's SSE server refuses a language it can't produce and tracks who hears what", async () => {
