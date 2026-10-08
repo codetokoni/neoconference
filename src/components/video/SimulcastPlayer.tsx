@@ -739,6 +739,11 @@ export default function SimulcastPlayer({
     if (videoRef.current) videoRef.current.volume = floorNow;
   }, [mode, active, muted, videoChannel.id, floorNow]);
 
+  // Nothing on air: AMS has no stream on the group and the status poll
+  // doesn't see the programme either. When it does, the player is on its
+  // way to HLS, and saying "not started" over a live programme was wrong.
+  const notStarted = mode === "webrtc" && state === "waiting" && !videoStream && !programmeLive;
+
   const unmute = useCallback(() => {
     setMuted(false);
     if (!volumeLocked) return;
@@ -1007,7 +1012,7 @@ export default function SimulcastPlayer({
               />
             )}
 
-            {pictureLocked && (
+            {pictureLocked && !notStarted && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black px-6 text-center">
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/60" aria-hidden="true">
                   <rect x="4" y="11" width="16" height="10" rx="2" />
@@ -1030,7 +1035,7 @@ export default function SimulcastPlayer({
               </button>
             )}
 
-            {mode === "webrtc" && state === "waiting" && !videoStream && (
+            {notStarted && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/75 text-center">
                 <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/60">
                   The broadcast has not started
