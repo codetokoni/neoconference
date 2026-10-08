@@ -192,20 +192,25 @@ export async function relinkVideoSubtrack(room: string): Promise<EnsureResult> {
 
 const lastRelinkAt = new Map<string, number>();
 
-/** relinkVideoSubtrack, fire-and-forget, at most once per 30 s per room. */
-export function relinkVideoSubtrackInBackground(room: string): void {
+/**
+ * relinkVideoSubtrack at most once per 30 s per room (per instance).
+ * Awaited, not fired and forgotten: Vercel ends a function once its
+ * response is sent, so a background promise never reached AMS (the first
+ * version of this, #486, relinked nothing in production). Only runs while
+ * the programme is outside its group; three calls of at most 4 s each.
+ */
+export async function relinkVideoSubtrackThrottled(room: string): Promise<void> {
   const now = Date.now();
   if (now - (lastRelinkAt.get(room) ?? 0) < RETRY_MS) return;
   lastRelinkAt.set(room, now);
-  void relinkVideoSubtrack(room).then((res) => {
-    if (res.created) {
-      // eslint-disable-next-line no-console
-      console.log(`[amsMainTrack] relinked ${room}-video into ${roomMainTrack(room)}`);
-    } else if (!res.ok) {
-      // eslint-disable-next-line no-console
-      console.warn(`[amsMainTrack] failed to relink video for ${room}: ${res.reason}`);
-    }
-  });
+  const res = await relinkVideoSubtrack(room);
+  if (res.created) {
+    // eslint-disable-next-line no-console
+    console.log(`[amsMainTrack] relinked ${room}-video into ${roomMainTrack(room)}`);
+  } else if (!res.ok) {
+    // eslint-disable-next-line no-console
+    console.warn(`[amsMainTrack] failed to relink video for ${room}: ${res.reason}`);
+  }
 }
 
 /**
