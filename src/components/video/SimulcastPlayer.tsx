@@ -129,9 +129,10 @@ export interface SimulcastPlayerProps {
    */
   pictureLocked?: string;
   /**
-   * The first tap or key press anywhere on the page starts the sound, not
-   * only one on the player. Browsers allow sound only after one; there is
-   * no mute afterwards.
+   * Sound without asking: no "Tap to unmute", no mute. The player starts
+   * with sound on; where the browser refuses sound before the visitor has
+   * touched the page (Chrome usually, iOS always), it plays silently and
+   * the first tap, click or key press anywhere brings the sound in.
    */
   soundOnFirstTap?: boolean;
 }
@@ -165,7 +166,9 @@ export default function SimulcastPlayer({
   );
 
   const [active, setActive] = useState(videoChannel.id);
-  const [muted, setMuted] = useState(true);
+  // Sound without asking starts unmuted; a browser that refuses it rejects
+  // play(), which drops this back to muted until the first tap.
+  const [muted, setMuted] = useState(!soundOnFirstTap);
 
   // Floor level when a translation is picked. Persisted per viewer
   // via localStorage — a listener who has settled on their preferred
@@ -747,19 +750,31 @@ export default function SimulcastPlayer({
     getAudioCtx()?.resume().catch(() => {});
   }, [volumeLocked, getAudioCtx]);
 
-  // The join page starts the sound on the first tap anywhere: typing a
-  // code or tapping the page counts, not only the player. A click and a
-  // key press are what browsers (iOS included) accept for starting sound.
+  // Sound without asking: the first tap, click or key press anywhere on the
+  // page — typing a code counts — is the gesture browsers want before
+  // sound. Once, whether or not the sound was refused: it also resumes an
+  // AudioContext iOS left suspended and restarts anything left paused.
   useEffect(() => {
-    if (!soundOnFirstTap || !muted) return;
-    const start = () => unmute();
-    document.addEventListener("click", start);
-    document.addEventListener("keydown", start);
-    return () => {
-      document.removeEventListener("click", start);
-      document.removeEventListener("keydown", start);
-    };
-  }, [soundOnFirstTap, muted, unmute]);
+    if (!soundOnFirstTap) return;
+    const events = ["click", "keydown", "touchend"] as const;
+    const stop = () => events.forEach((e) => document.removeEventListener(e, start));
+    function start() {
+      stop();
+      unmute();
+      audioCtxRef.current?.resume().catch(() => {});
+      const els = [
+        ...Object.values(audioRefs.current),
+        videoRef.current,
+        featAudioRef.current,
+        fallbackAudioRef.current,
+      ];
+      for (const el of els) {
+        if (el && el.paused && (el.srcObject || el.currentSrc)) el.play().catch(() => {});
+      }
+    }
+    events.forEach((e) => document.addEventListener(e, start));
+    return stop;
+  }, [soundOnFirstTap, unmute]);
 
   // Locked languages: whoever is listening hears the floor.
   useEffect(() => {
@@ -997,7 +1012,8 @@ export default function SimulcastPlayer({
               </div>
             )}
 
-            {muted && (
+            {/* Sound without asking shows no prompt: the first touch anywhere does it. */}
+            {muted && !soundOnFirstTap && (
               <button
                 type="button"
                 onClick={unmute}
