@@ -1,14 +1,16 @@
 import { NextRequest } from 'next/server';
 import { requireApiKey, ApiError } from '@/lib/apiAuth';
 import { apiSuccess, apiFailure } from '@/lib/apiResponse';
-import { getEvent } from '@/lib/ncService';
+import { eventStore } from '@/lib/eventStore';
+import { apiEvent } from '@/lib/apiShapes';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/v1/events/:slug
- * Retrieve a single event and its replay status.
+ * One of the key owner's events. A renamed event is still found by its old
+ * slug. Anyone else's answers 404, as one that doesn't exist does.
  */
 export async function GET(
   req: NextRequest,
@@ -16,23 +18,11 @@ export async function GET(
 ) {
   try {
     const { ctx, rate } = await requireApiKey(req);
-    const event = await getEvent(params.slug);
-    if (!event || event.ownerUserId !== ctx.key.ownerUserId) {
+    const ev = await eventStore.bySlug(params.slug);
+    if (!ev || ev.ownerUserId !== ctx.key.ownerUserId) {
       throw new ApiError(404, 'not_found', 'Event not found.');
     }
-    return apiSuccess(
-      {
-        slug: event.slug,
-        title: event.title,
-        visibility: event.visibility,
-        createdAt: event.createdAt,
-        replayReady: event.replayReady,
-        replayUrl: event.replayReady
-          ? `https://www.neoconference.app/e/${event.slug}/replay`
-          : null,
-      },
-      rate
-    );
+    return apiSuccess(apiEvent(ev), rate);
   } catch (err) {
     return apiFailure(err);
   }

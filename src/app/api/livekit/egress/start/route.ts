@@ -3,37 +3,11 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { authorize } from "@/lib/authz";
-import { getPlanForUserId, getPlanLimits, isAdminUserId } from "@/lib/plan";
-import {
-  recordedSeconds,
-  recordingAllowance,
-  rememberEgressOwner,
-  usageMonth,
-} from "@/lib/recordingUsage";
-import {
-  EgressClient,
-  EncodedFileType,
-  EncodedFileOutput,
-  S3Upload,
-} from "livekit-server-sdk";
+import { rememberEgressOwner } from "@/lib/recordingUsage";
+import { recordingGate, startRoomRecording } from "@/lib/roomRecording";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function requiredEnv(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
-}
-
-// Sanitize a path segment so it can safely sit inside an S3/R2 object key.
-// Allows letters, digits, dot, dash, underscore. Everything else -> '-'.
-function sanitizeSegment(s: string): string {
-  return (s || '')
-    .replace(/[^A-Za-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'x';
-}
 
 export async function POST(req: Request) {
   try {
@@ -65,142 +39,36 @@ export async function POST(req: Request) {
     // for the participant cap in the token route. The UI hides Record on
     // other plans, but only this refuses it — the app, or anyone calling
     // the route, used to record on Free. No owner reads as Free, the same
-    // fallback the token route puts in the room's metadata.
-    const ownerPlan = ev.ownerUserId ? await getPlanForUserId(ev.ownerUserId) : "free";
-    if (!getPlanLimits(ownerPlan).recording) {
-      return NextResponse.json(
-        {
-          error: "plan_upgrade_required",
-          feature: "recording",
-          plan: ownerPlan,
-          message:
-            "Recording is on the Pro plan and above. The meeting's owner can upgrade at neoconference.app/pricing.",
-        },
-        { status: 402 }
-      );
-    }
-
-    // Recording hours per month (Pro 10, Business 50), counted against the
-    // owner when each recording finishes (lib/recordingUsage). Operators are
-    // exempt, as they are from the plan's other limits.
+    // fallback the token route puts in the room's metadata. Recording hours
+    // per month (Pro 10, Business 50) are counted against the owner when
+    // each recording finishes (lib/recordingUsage); operators are exempt.
+    // The same rules record an API meeting (lib/roomRecording).
     const owner = ev.ownerUserId || "";
-    const exempt = owner ? await isAdminUserId(owner) : false;
-    const allowance = exempt
-      ? ({ allowed: true } as const)
-      : recordingAllowance(
-          getPlanLimits(ownerPlan).recordingHoursPerMonth,
-          await recordedSeconds(owner, usageMonth(Date.now())),
-          ownerPlan.charAt(0).toUpperCase() + ownerPlan.slice(1),
-          Date.now()
-        );
-    if (!allowance.allowed) {
+    const allowed = await recordingGate(owner);
+    if (!allowed.ok) {
       return NextResponse.json(
-        {
-          error: "recording_hours_used",
-          feature: "recording",
-          plan: ownerPlan,
-          message: allowance.message,
-        },
+        { error: allowed.code, feature: "recording", plan: allowed.plan, message: allowed.message },
         { status: 402 }
       );
     }
 
-    const apiKey = requiredEnv("LIVEKIT_API_KEY");
-    const apiSecret = requiredEnv("LIVEKIT_API_SECRET");
-    const wsUrl = requiredEnv("NEXT_PUBLIC_LIVEKIT_URL");
-
-    // Convert wss:// -> https:// for the egress client base URL.
-    const httpUrl = wsUrl.replace(/^ws/, "http");
-
-    const s3AccessKey = requiredEnv("S3_ACCESS_KEY");
-    const s3SecretKey = requiredEnv("S3_SECRET_KEY");
-    const s3Endpoint = requiredEnv("S3_ENDPOINT");
-    const s3Bucket = requiredEnv("S3_BUCKET");
-    const s3Region = process.env.S3_REGION || "auto";
-
-    const timestamp = new Date()
-      .toISOString()
-      .slice(0, 19)
-      .replace(/[:T]/g, "-");
-
-    // NOTE: Object key is namespaced by the user who started the recording.
-    // The recordings list/delete/rename APIs enforce that the authenticated
-    // user's key prefix must match this layout, so users only ever see their
-    // own recordings on the dashboard.
-    const userSeg = sanitizeSegment(userId);
-    const roomSeg = sanitizeSegment(room);
-    const basepath = `recordings/${userSeg}/${roomSeg}/${timestamp}`;
-    const filepath = `${basepath}.mp4`;
-    // Audio sidecar is an audio-only MP4 container (AAC), so .m4a is the
-    // correct extension. audioOnly is passed via the third SDK arg below,
-    // not as a field on the output wrapper.
-    const audioFilepath = `${basepath}.m4a`;
-
-    const s3Upload = new S3Upload({
-      accessKey: s3AccessKey,
-      secret: s3SecretKey,
-      bucket: s3Bucket,
-      region: s3Region,
-      endpoint: s3Endpoint,
-      forcePathStyle: true,
-    });
-
-    const fileOutput = new EncodedFileOutput({
-      fileType: EncodedFileType.MP4,
-      filepath,
-      output: { case: "s3", value: s3Upload },
-    });
-
-    const audioFileOutput = new EncodedFileOutput({
-      fileType: EncodedFileType.MP4,
-      filepath: audioFilepath,
-      output: { case: "s3", value: s3Upload },
-    });
-
-    const egressClient = new EgressClient(httpUrl, apiKey, apiSecret);
-
-    // Run the video and audio-only egress requests in parallel. The video
-    // call is required; the audio sidecar is best-effort. If the audio
-    // egress fails (LiveKit rejects, network blip, quota), we log and
-    // continue with video-only — the recording UX matches today.
-    const [videoSettled, audioSettled] = await Promise.allSettled([
-      egressClient.startRoomCompositeEgress(room, fileOutput, {
-        layout: "grid",
-      }),
-      egressClient.startRoomCompositeEgress(room, audioFileOutput, {
-        audioOnly: true,
-      }),
-    ]);
-
-    if (videoSettled.status === "rejected") {
-      throw videoSettled.reason;
-    }
-    const info = videoSettled.value;
-
-    let audioEgressId: string | null = null;
-    let audioFilepathOut: string | null = null;
-    if (audioSettled.status === "fulfilled") {
-      audioEgressId = audioSettled.value.egressId ?? null;
-      audioFilepathOut = audioFilepath;
-    } else {
-      console.warn(
-        "[egress/start] audio sidecar failed; continuing video-only",
-        audioSettled.reason,
-      );
-    }
+    // Files go in the folder of whoever pressed Record: the recordings
+    // list/delete/rename APIs check that prefix, so users only ever see
+    // their own recordings on the dashboard.
+    const started = await startRoomRecording({ room, recorderUserId: userId });
 
     // The video egress is the one whose length counts (the audio sidecar
     // runs alongside it and is not counted twice).
-    if (owner && !exempt) await rememberEgressOwner(info.egressId, owner);
+    if (owner && !allowed.exempt) await rememberEgressOwner(started.egressId, owner);
 
     return NextResponse.json({
-      egressId: info.egressId,
-      filepath,
-      audioEgressId,
-      audioFilepath: audioFilepathOut,
+      egressId: started.egressId,
+      filepath: started.filepath,
+      audioEgressId: started.audioEgressId,
+      audioFilepath: started.audioFilepath,
       startedAt: Date.now(),
       // Near the monthly cap: said when the recording starts.
-      ...("warning" in allowance && allowance.warning ? { warning: allowance.warning } : {}),
+      ...(allowed.warning ? { warning: allowed.warning } : {}),
     });
   } catch (e) {
     console.error("egress/start failed", e);

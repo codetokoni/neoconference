@@ -5,17 +5,13 @@ import {
   AccessToken,
   type CreateOptions,
 } from 'livekit-server-sdk';
-import {
-  S3Client,
-  ListObjectsV2Command,
-  GetObjectCommand,
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 /**
- * Service layer shared by the /api/v1 public routes. Wraps LiveKit room
- * control, KV-backed meeting/event storage and R2 recording listing so the
- * route handlers stay thin. Reuses the same env vars as the web app.
+ * Service layer for the /api/v1 meetings: LiveKit room control and the
+ * KV-backed meeting records, so the route handlers stay thin. Events and
+ * recordings come from the website's own stores (lib/apiShapes.ts); the
+ * copies that used to be here read keys nothing wrote. Reuses the same env
+ * vars as the web app.
  */
 
 export interface Meeting {
@@ -27,22 +23,6 @@ export interface Meeting {
   maxParticipants: number;
   status: 'open' | 'ended';
   metadata?: Record<string, unknown>;
-}
-
-export interface EventRecord {
-  slug: string;
-  title: string;
-  ownerUserId: string;
-  createdAt: number;
-  visibility: 'public' | 'unlisted';
-  replayReady: boolean;
-}
-
-export interface Recording {
-  key: string;
-  meetingId: string;
-  sizeBytes: number;
-  lastModified: string;
 }
 
 function livekitUrl(): string {
@@ -60,28 +40,6 @@ function roomClient(): RoomServiceClient {
   }
   const httpUrl = url.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:');
   return new RoomServiceClient(httpUrl, key, secret);
-}
-
-function r2Client(): { client: S3Client; bucket: string } {
-  const {
-    S3_ACCESS_KEY,
-    S3_SECRET_KEY,
-    S3_ENDPOINT,
-    S3_BUCKET,
-    S3_REGION,
-  } = process.env;
-  if (!S3_ACCESS_KEY || !S3_SECRET_KEY || !S3_ENDPOINT || !S3_BUCKET) {
-    throw new Error('Storage (S3/R2) environment is not configured.');
-  }
-  const client = new S3Client({
-    region: S3_REGION || 'auto',
-    endpoint: S3_ENDPOINT,
-    credentials: {
-      accessKeyId: S3_ACCESS_KEY,
-      secretAccessKey: S3_SECRET_KEY,
-    },
-  });
-  return { client, bucket: S3_BUCKET };
 }
 
 function slugify(name: string): string {
@@ -179,35 +137,4 @@ export async function createJoinToken(input: {
     url: livekitUrl(),
     expiresAt: Math.floor(Date.now() / 1000) + ttlSeconds,
   };
-}
-
-export async function listEvents(ownerUserId: string): Promise<EventRecord[]> {
-  const slugs = await kv.smembers(`events:user:${ownerUserId}`);
-  if (!slugs.length) return [];
-  const rows = await Promise.all(slugs.map((s) => kv.get<EventRecord>(`event:${s}`)));
-  return rows
-    .filter((e): e is EventRecord => Boolean(e))
-    .sort((a, b) => b.createdAt - a.createdAt);
-}
-
-export async function getEvent(slug: string): Promise<EventRecord | null> {
-  return (await kv.get<EventRecord>(`event:${slug}`)) ?? null;
-}
-
-export async function listRecordings(meetingId: string): Promise<Recording[]> {
-  const { client, bucket } = r2Client();
-  const out = await client.send(
-    new ListObjectsV2Command({ Bucket: bucket, Prefix: `recordings/${meetingId}/` })
-  );
-  return (out.Contents ?? []).map((o) => ({
-    key: o.Key!,
-    meetingId,
-    sizeBytes: o.Size ?? 0,
-    lastModified: (o.LastModified ?? new Date()).toISOString(),
-  }));
-}
-
-export async function signRecordingUrl(key: string, expiresIn = 3600): Promise<string> {
-  const { client, bucket } = r2Client();
-  return getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn });
 }

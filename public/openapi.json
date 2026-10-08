@@ -222,6 +222,71 @@
           "404": {
             "$ref": "#/components/responses/NotFound"
           }
+        },
+        "description": "The meeting's recordings, newest first: each one's video and its audio-only copy, with download links that work for an hour. Files appear once a recording is stopped."
+      },
+      "post": {
+        "tags": [
+          "Recordings"
+        ],
+        "summary": "Start recording",
+        "description": "Start recording the meeting. Needs the owner's plan to include recording (Pro and above), within its hours this month, and someone in the meeting.",
+        "responses": {
+          "201": {
+            "description": "Recording started.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingStarted"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "plan_upgrade_required or recording_hours_used.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "description": "meeting_ended, or recording_not_started (nobody has joined yet).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Recordings"
+        ],
+        "summary": "Stop recording",
+        "description": "Stop every recording running in the meeting. Ending the meeting stops them too.",
+        "responses": {
+          "200": {
+            "description": "How many recordings were stopped.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingsStopped"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
         }
       }
     },
@@ -245,7 +310,8 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
-        }
+        },
+        "description": "Your events — the meetings you made on neoconference.app — newest first."
       }
     },
     "/events/{slug}": {
@@ -271,6 +337,41 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EventEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "description": "One of your events. A renamed event is still found by its old slug."
+      }
+    },
+    "/events/{slug}/recordings": {
+      "parameters": [
+        {
+          "name": "slug",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "Recordings"
+        ],
+        "summary": "List an event's recordings",
+        "description": "Recordings made with Record on the website, by you or a host, with download links that work for an hour.",
+        "responses": {
+          "200": {
+            "description": "The event's recordings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingList"
                 }
               }
             }
@@ -434,31 +535,69 @@
       },
       "Event": {
         "type": "object",
+        "description": "A meeting made on neoconference.app.",
         "properties": {
           "slug": {
-            "type": "string"
+            "type": "string",
+            "example": "sunday-service"
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "example": "Sunday Service"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "scheduled",
+              "waiting",
+              "live",
+              "ended"
+            ]
           },
           "visibility": {
             "type": "string",
             "enum": [
               "public",
-              "unlisted"
+              "unlisted",
+              "private"
             ]
           },
-          "createdAt": {
-            "type": "integer"
+          "url": {
+            "type": "string",
+            "description": "Where people join it.",
+            "example": "https://www.neoconference.app/e/sunday-service"
           },
-          "replayReady": {
-            "type": "boolean"
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scheduledAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           },
           "replayUrl": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The public replay page, when the owner leaves replays on."
           }
         }
       },
@@ -485,20 +624,34 @@
         "type": "object",
         "properties": {
           "key": {
-            "type": "string"
+            "type": "string",
+            "example": "recordings/user_2abc/sunday-service/2026-10-01-09-10-00.mp4"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "video",
+              "audio"
+            ],
+            "description": "The grid video, or its audio-only copy."
           },
           "sizeBytes": {
             "type": "integer"
           },
-          "lastModified": {
-            "type": "string",
+          "recordedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "downloadUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "A signed link to the file."
           },
           "downloadUrlExpiresIn": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Seconds the link works for (3600)."
           }
         }
       },
@@ -509,6 +662,40 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Recording"
+            }
+          }
+        }
+      },
+      "RecordingStarted": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "recordingId": {
+                "type": "string"
+              },
+              "startedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "warning": {
+                "type": "string",
+                "description": "Present when the plan's recording hours are nearly used."
+              }
+            }
+          }
+        }
+      },
+      "RecordingsStopped": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "stopped": {
+                "type": "integer"
+              }
             }
           }
         }
