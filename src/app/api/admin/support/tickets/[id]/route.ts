@@ -43,7 +43,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     listAssignees(),
   ]);
   const emails = [t.email, ...(account.found ? [account.email] : [])];
-  const history = ticketsForAccount(all, account.userId ?? t.userId, emails).map((x) => ({
+  const related = ticketsForAccount(all, account.userId ?? t.userId, emails);
+  // An anonymised ticket (deleted account) matches nothing, not even itself.
+  if (!related.some((x) => x.id === t.id)) related.unshift(t);
+  const history = related.map((x) => ({
     id: x.id,
     number: x.number,
     subject: x.subject,
