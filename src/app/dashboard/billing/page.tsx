@@ -24,6 +24,7 @@ import { isAdmin } from "@/lib/roles";
 import {
   getCurrentPlan,
   getPlanLimits,
+  getPlanLimitsForUserId,
   type Plan,
 } from "@/lib/plan";
 import { listUserPayments, type PaymentRecord } from "@/lib/paymentsStore";
@@ -93,7 +94,9 @@ export default async function BillingPage() {
   const plan = (await getCurrentPlan()) ?? "free";
   const planExpiresAt = readPlanExpiresAt(user?.publicMetadata);
   const remainingDays = daysUntil(planExpiresAt);
-  const limits = getPlanLimits(plan);
+  // The limits this account actually has: a subscription's own (its plan
+  // version, add-ons, custom terms), not only its tier's defaults.
+  const { limits } = await getPlanLimitsForUserId(userId!);
 
   const payments = await listUserPayments(userId!, 50);
 

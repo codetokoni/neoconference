@@ -72,6 +72,8 @@ const isPublicRoute = createRouteMatcher([
   // session.
   '/api/billing/espees/return',
   '/api/billing/espees/fail',
+  // The plan catalog /pricing reads (src/lib/billing): /pricing is public.
+  '/api/billing/plans',
   '/api/events/(.*)/checkout',
   '/api/invites/(.*)',
   // A group invite link opened before signing in: the landing page and its

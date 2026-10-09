@@ -20,6 +20,8 @@ export const SECTIONS: Section[] = [
   { label: "Groups", href: "/admin/groups", permission: "users:read", group: "Platform" },
   { label: "Meetings", href: "/admin/events", permission: "events:read", group: "Platform" },
   { label: "Metrics", href: "/admin/metrics", permission: "analytics:read", group: "Platform" },
+  { label: "Plans & pricing", href: "/admin/plans", permission: "plans:read", group: "Billing" },
+  { label: "Subscriptions", href: "/admin/subscriptions", permission: "plans:read", group: "Billing" },
   { label: "Tickets", href: "/admin/support", permission: "support:read", group: "Support" },
   { label: "Help centre", href: "/admin/help", permission: "support:read", group: "Support" },
   { label: "Administrators", href: "/admin/team", permission: "admins:read", group: "Access" },
