@@ -25,6 +25,8 @@ import {
 } from '@/lib/transcribe';
 import { eventStore } from '@/lib/eventStore';
 import { authorize } from '@/lib/authz';
+import { getPlanForUserId } from '@/lib/plan';
+import { featureDecision, featureRefusal } from '@/lib/platform/features';
 import { asReported, TRANSCRIBE_NOT_SET_UP } from '@/lib/transcribeNotSetUp';
 import { attachTranscriptToEvent } from '@/lib/transcriptArtifact';
 import { publicOrigin } from '@/lib/publicOrigin';
@@ -72,13 +74,19 @@ export async function POST(req: NextRequest) {
   // Without it the finished transcript was never recorded on the meeting,
   // so its chapters, downloads and replay never saw it.
   const eventSlug = (body.eventSlug || '').trim() || slugFromRecordingKey(recordingKey) || '';
+  // Feature controls (admin) apply to the meeting's owner, or to the caller
+  // when there is no meeting.
+  let billedTo = userId;
   if (eventSlug) {
     const ev = await eventStore.bySlug(eventSlug);
     if (ev) {
       const gate = await authorize(ev, 'summary:generate');
       if (!gate.ok) return gate.response;
+      if (ev.ownerUserId) billedTo = ev.ownerUserId;
     }
   }
+  const transcription = await featureDecision('transcription', { userId: billedTo, plan: await getPlanForUserId(billedTo) });
+  if (!transcription.enabled) return featureRefusal(transcription);
 
   if (!isTranscribeConfigured()) {
     return NextResponse.json(

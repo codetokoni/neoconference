@@ -18,6 +18,8 @@ import {
 import { getPlanLimitsForUserId, isAdminUserId } from "@/lib/plan";
 import { recordedSeconds, recordingAllowance, usageMonth } from "@/lib/recordingUsage";
 import { sanitizeSegment } from "@/lib/eventRecordings";
+import { featureDecision } from "@/lib/platform/features";
+import { featureRefusalMessage } from "@/lib/platform/model";
 
 function requiredEnv(name: string): string {
   const v = process.env[name];
@@ -39,7 +41,7 @@ export type RecordingGate =
   | { ok: true; exempt: boolean; warning?: string }
   | {
       ok: false;
-      code: "plan_upgrade_required" | "recording_hours_used";
+      code: "plan_upgrade_required" | "recording_hours_used" | "feature_disabled";
       plan: string;
       message: string;
     };
@@ -51,7 +53,13 @@ export type RecordingGate =
  */
 export async function recordingGate(ownerUserId: string): Promise<RecordingGate> {
   const { plan, limits } = await getPlanLimitsForUserId(ownerUserId);
-  if (!limits.recording) {
+  // Feature controls (admin): off everywhere or for this account beats the
+  // plan; an account allowed it records whatever the plan says.
+  const feature = await featureDecision("recording", { userId: ownerUserId, plan, planAllows: limits.recording });
+  if (!feature.enabled && feature.source !== "plan_default") {
+    return { ok: false, code: "feature_disabled", plan, message: featureRefusalMessage(feature) };
+  }
+  if (!feature.enabled) {
     return {
       ok: false,
       code: "plan_upgrade_required",
