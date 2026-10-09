@@ -13,7 +13,7 @@ const globRe = (pattern) => {
   const escaped = pattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"));
   return new RegExp("^" + escaped.join(".*") + "$");
 };
-export const kv = {
+const base = {
   async get(k) { return store.has(k) ? de(store.get(k)) : null; },
   async set(k, v, opts) {
     if (opts?.nx && store.has(k)) return null;
@@ -21,12 +21,14 @@ export const kv = {
     return "OK";
   },
   async del(...ks) { let n = 0; for (const k of ks) if (store.delete(k)) n++; return n; },
-  async sadd(k, ...m) { const s = store.get(k) ?? sets(); m.forEach((x) => s.add(x)); store.set(k, s); return m.length; },
+  // As Redis: how many members were new.
+  async sadd(k, ...m) { const s = store.get(k) ?? sets(); const before = s.size; m.forEach((x) => s.add(x)); store.set(k, s); return s.size - before; },
   // As Redis: how many were actually there to remove.
   async srem(k, ...m) { const s = store.get(k) ?? sets(); let n = 0; m.forEach((x) => { if (s.delete(x)) n++; }); store.set(k, s); return n; },
   async smembers(k) { return [...(store.get(k) ?? [])].map(de); },
   async sismember(k, m) { return (store.get(k) ?? sets()).has(m) ? 1 : 0; },
   async incr(k) { const n = (store.get(k) ?? 0) + 1; store.set(k, n); return n; },
+  async scard(k) { return (store.get(k) ?? sets()).size; },
   async expire() { return 1; },
   async hget(k, f) { const v = (store.get(k) ?? {})[f]; return v == null ? null : de(v); },
   async hset(k, o) { store.set(k, { ...(store.get(k) ?? {}), ...o }); return 1; },
@@ -73,3 +75,18 @@ export const kv = {
   // One pass: every match and cursor "0" (done).
   async scan(_cursor, opts = {}) { const re = globRe(opts.match ?? "*"); return ["0", [...store.keys()].filter((k) => re.test(k))]; },
 };
+
+// globalThis.__kvFault = (method, args) => "fail" | "hang" | undefined lets a
+// test make KV refuse or never answer, to prove a caller survives it.
+export const kv = new Proxy(base, {
+  get(target, prop) {
+    const fn = target[prop];
+    if (typeof fn !== "function") return fn;
+    return (...args) => {
+      const fault = globalThis.__kvFault?.(prop, args);
+      if (fault === "fail") return Promise.reject(new Error("kv: unavailable (test)"));
+      if (fault === "hang") return new Promise(() => {});
+      return fn.apply(target, args);
+    };
+  },
+});

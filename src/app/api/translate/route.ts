@@ -21,6 +21,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { deeplTarget } from "@/lib/translationLanguages";
+import { activity } from "@/lib/activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -123,6 +124,7 @@ export async function POST(req: Request) {
   const first = translations[0];
   const translated = typeof first?.text === "string" ? first.text : "";
   if (!translated) return bad("provider_empty_response", 502);
+  await activity.record("translation.used", { userId, props: { target: targetShort.slice(0, 12) }, oncePerHour: `${userId}|${targetShort}` });
 
   return NextResponse.json({
     translated,

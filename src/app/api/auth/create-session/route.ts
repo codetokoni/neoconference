@@ -5,7 +5,8 @@
 // with a ticket). Called by <SessionBootstrap /> once the Clerk session loads.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { auth, clerkClient } from '@clerk/nextjs/server';
+import { activity } from '@/lib/activity';
 import {
   SESSION_COOKIE,
   createSession,
@@ -17,6 +18,14 @@ import {
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+/** "Android app", "Chrome on Windows"… — enough to read a log, not a fingerprint. */
+function deviceLabel(ua: string): string {
+  if (/NeoConference|Dart\//i.test(ua)) return 'app';
+  const os = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iOS' : /Windows/i.test(ua) ? 'Windows' : /Mac OS/i.test(ua) ? 'macOS' : /Linux/i.test(ua) ? 'Linux' : 'other';
+  const browser = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'browser';
+  return `${browser} on ${os}`;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,6 +59,12 @@ export async function POST(request: NextRequest) {
       userAgent,
       clerkSessionId: sessionId ?? null,
     });
+
+    // A new device session is a sign-in; the first one ever seen for this
+    // account is also its sign-up (on Clerk's creation day). Neither can fail
+    // the sign-in.
+    await activity.record('auth.sign_in', { userId, props: { device: deviceLabel(userAgent) } });
+    await activity.noteUser(userId, async () => (await (await clerkClient()).users.getUser(userId)).createdAt);
 
     // The token goes out ONLY as an httpOnly cookie. Returning it in the JSON
     // body would expose it to any script on the page and defeat httpOnly.

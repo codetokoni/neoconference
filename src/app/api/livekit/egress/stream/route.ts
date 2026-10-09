@@ -20,6 +20,7 @@ import { eventStore } from "@/lib/eventStore";
 import { authorize } from "@/lib/authz";
 import { errorMessage } from "@/lib/errorMessage";
 import { getPlanLimitsForUserId, isAdminUserId } from "@/lib/plan";
+import { activity } from "@/lib/activity";
 import {
   destinationProblem,
   destinationStatus,
@@ -172,6 +173,7 @@ export async function POST(req: Request) {
       startedAt: prev.startedAt || state.startedAt,
       updatedAt: state.startedAt,
     }));
+    await activity.record("livestream.started", { userId, account: ev.ownerUserId, props: { eventId: ev.id, destinations: destinations.length } });
     return NextResponse.json({ ok: true, ...state });
   } catch (e) {
     console.error("[egress/stream] start failed", e);

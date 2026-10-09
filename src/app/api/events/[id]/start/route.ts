@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { authorize } from "@/lib/authz";
+import { activity } from "@/lib/activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,5 +58,6 @@ export async function POST(
     updatedAt: now,
   }));
 
+  await activity.record("meeting.started", { userId, props: { eventId: ev.id, by: "host", restart: ev.state === "ended" } });
   return NextResponse.json({ ok: true, event: next });
 }
