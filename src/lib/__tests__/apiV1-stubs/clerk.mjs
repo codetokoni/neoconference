@@ -1,6 +1,6 @@
 // Clerk: who is signed in (globalThis.__who, session globalThis.__sid) and
 // each user in globalThis.__users = { [id]: { plan?, role?, emails?, unverified?, first?, last?,
-// banned?, createdAt?, lastSignInAt?, password?, primary?, metadata? } }.
+// banned?, createdAt?, lastSignInAt?, password?, primary?, metadata?, locked? } }.
 // `emails` are verified addresses; `unverified` are on the account but not verified.
 // Clerk sessions in globalThis.__clerkSessions = { [userId]: [{ id, status }] }.
 export * from "real:clerk";
@@ -36,7 +36,7 @@ function toUser(id) {
     primaryEmailAddress: primary,
     primaryEmailAddressId: primary?.id ?? null,
     banned: !!u.banned,
-    locked: false,
+    locked: !!u.locked,
     createdAt: u.createdAt ?? 1_700_000_000_000,
     lastSignInAt: u.lastSignInAt ?? null,
     lastActiveAt: u.lastSignInAt ?? null,
