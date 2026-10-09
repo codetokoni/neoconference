@@ -45,6 +45,8 @@ const base = {
   },
   async lpush(k, ...vals) { const l = store.get(k) ?? []; for (const v of vals) l.unshift(structuredClone(v)); store.set(k, l); return l.length; },
   async lrange(k, start, end) { const l = store.get(k) ?? []; return l.slice(start, end === -1 ? undefined : end + 1).map(de); },
+  // As Redis with count 0: remove every element equal to value.
+  async lrem(k, _count, value) { const l = store.get(k) ?? []; const keep = l.filter((x) => JSON.stringify(x) !== JSON.stringify(value)); store.set(k, keep); return l.length - keep.length; },
   async ltrim(k, start, end) { const l = store.get(k) ?? []; store.set(k, l.slice(start, end === -1 ? undefined : end + 1)); return "OK"; },
   // Sorted sets: a Map member -> score. zrange follows Upstash's byScore
   // form: (min, max) ascending, or with rev (max, min) descending; bounds may

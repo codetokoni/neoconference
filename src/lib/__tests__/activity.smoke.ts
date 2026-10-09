@@ -638,6 +638,35 @@ async function main() {
     assert.ok(older.every((e) => e.ts < all[1].ts));
   });
 
+  console.log("data governance (phase 11)");
+  await t("forgetting a user removes their list and every raw line about them; counters stay", async () => {
+    // A guest's join in their meeting names them only as the account charged.
+    await act.record("meeting.joined", { account: "user_free", props: { guest: true } });
+    const joinsBefore = await dayCount(today(), "meeting.joined");
+    assert.ok((await act.listActivity({ user: "user_free" })).total >= 1);
+    const r = await act.forgetUserActivity("user_free");
+    assert.ok(r.removed >= 2, JSON.stringify(r));
+    assert.deepEqual(await act.listUserActivity("user_free"), []);
+    assert.equal((await act.listActivity({ user: "user_free" })).total, 0);
+    assert.equal(await dayCount(today(), "meeting.joined"), joinsBefore, "counts are not records");
+    assert.ok((await act.listActivity({ user: "user_pro" })).total >= 1, "nobody else's lines");
+  });
+
+  await t("purging raw activity before a day drops older day logs and trims each person's list", async () => {
+    assert.equal((await act.listUserActivity("user_j1")).length, 1);
+    await act.record("upload", { userId: "user_mix", ts: T("2026-08-03T12:00:00Z"), props: { bytes: 1 } });
+    await act.record("upload", { userId: "user_mix", ts: T("2026-08-05T12:00:00Z"), props: { bytes: 1 } });
+    const r = await act.purgeRawActivityBefore("2026-08-04");
+    assert.ok(r.days >= 1 && r.userEntries >= 1, JSON.stringify(r));
+    assert.equal(await kv.get(act.K.log("2026-08-03")), null);
+    assert.equal((await kv.lrange(act.K.log("2026-08-04"), 0, -1)).length > 0, true);
+    assert.deepEqual(await act.listUserActivity("user_j1"), []);
+    assert.equal((await act.listUserActivity("user_j2")).length, 1);
+    assert.deepEqual(((await kv.lrange(act.K.user("user_mix"), 0, -1)) as unknown as { ts: number }[]).map((e) => new Date(e.ts).toISOString().slice(0, 10)), ["2026-08-05"], "a list straddling the cutoff keeps only its newer part");
+    assert.equal(await counter("2026-08-03", "meeting.joined|23"), 1, "counters stay");
+    await assert.rejects(act.purgeRawActivityBefore("yesterday"));
+  });
+
   finished = true;
   console.log(`\n${n} checks passed`);
   process.exit(0);
