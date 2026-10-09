@@ -630,7 +630,10 @@ async function main() {
     assert.equal((await groups.getGroup(club2.id))?.name, "Chess");
     assert.ok((await groups.listGroupsForUser("user_dave")).some((s) => s.group.id === club2.id));
     assert.ok(g.__objects.some((o) => o.key === rkey));
-    assert.equal((await lastAudit("data.trash.restore")).targetType, "recording");
+    // One audit entry per restored item. They are written in trash-id order, and items deleted in the
+    // same millisecond differ only by a random suffix, so compare the set, not which came last.
+    const restoredAudit = (await audit.listAdminAudit({ action: "data.trash.restore", limit: 3 })).items;
+    assert.deepEqual(restoredAudit.map((e) => e.targetType).sort(), ["group", "meeting", "recording"]);
   });
 
   await t("restore is refused when something took its place, and once the restore window has passed", async () => {
