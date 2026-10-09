@@ -135,7 +135,16 @@ export interface SimulcastPlayerProps {
    * the first tap, click or key press anywhere brings the sound in.
    */
   soundOnFirstTap?: boolean;
+  /**
+   * Speaker to play through (an audiooutput deviceId; "" = system
+   * default). Applied with setSinkId where the browser has it (Chrome,
+   * Edge, Firefox 116+); ignored elsewhere, where the system's output is
+   * used.
+   */
+  sinkId?: string;
 }
+
+type SinkCapable = { setSinkId?: (id: string) => Promise<void>; sinkId?: string };
 
 export default function SimulcastPlayer({
   showChat = true,
@@ -143,7 +152,10 @@ export default function SimulcastPlayer({
   languagesLocked,
   pictureLocked,
   soundOnFirstTap = false,
+  sinkId,
 }: SimulcastPlayerProps = {}) {
+  const sinkIdRef = useRef(sinkId);
+  sinkIdRef.current = sinkId;
   // Channels are keyed by the room slug so a second event's streaming
   // link plays that event's programme, not the default's.
   const channels = useMemo<SimulcastChannel[]>(() => channelsForRoom(room), [room]);
@@ -258,6 +270,10 @@ export default function SimulcastPlayer({
         : undefined;
     if (!Ctx) return null;
     audioCtxRef.current = new Ctx();
+    // The boosted translation and the iPhone floor play through Web Audio,
+    // not an element: point it at the chosen speaker too.
+    const sink = sinkIdRef.current;
+    if (sink !== undefined) (audioCtxRef.current as AudioContext & SinkCapable).setSinkId?.(sink).catch(() => {});
     return audioCtxRef.current;
   }, []);
 
@@ -676,6 +692,23 @@ export default function SimulcastPlayer({
       }
     });
   }, [active, muted, audioStreams, mode, onAir, videoChannel.id, wireBoost, floorNow, volumeLocked, wireFloor]);
+
+  /* ---- the chosen speaker, on every element that can make sound ----
+     Re-applied as elements come and go (a booth going on air adds one). */
+  useEffect(() => {
+    if (sinkId === undefined) return;
+    const els: (HTMLMediaElement | null)[] = [
+      ...Object.values(audioRefs.current),
+      featAudioRef.current,
+      fallbackAudioRef.current,
+      videoRef.current,
+    ];
+    for (const el of els) {
+      const e = el as (HTMLMediaElement & SinkCapable) | null;
+      if (e?.setSinkId && e.sinkId !== sinkId) e.setSinkId(sinkId).catch(() => {});
+    }
+    (audioCtxRef.current as (AudioContext & SinkCapable) | null)?.setSinkId?.(sinkId).catch(() => {});
+  }, [sinkId, audioStreams, mode, onAir]);
 
   /* ---- optional: stop receiving the languages nobody is listening to ---- */
   useEffect(() => {
