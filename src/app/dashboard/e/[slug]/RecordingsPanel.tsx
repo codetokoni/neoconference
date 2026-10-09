@@ -100,7 +100,7 @@ export default function RecordingsPanel({ prefix }: Props) {
         body: JSON.stringify({ key, label }),
       });
       const j = await r.json();
-      if (!r.ok) throw new Error(j?.error || "failed");
+      if (!r.ok) throw new Error(j?.message || j?.error || "failed");
       const url = `${window.location.origin}/share/${j.share.token}`;
       try {
         await navigator.clipboard.writeText(url);
