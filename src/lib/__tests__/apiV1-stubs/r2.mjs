@@ -23,6 +23,8 @@ export async function putObject(key, body, contentType) {
   const list = objects().filter((o) => o.key !== key);
   list.push({ key, size: body.length, lastModified: new Date(Date.now()).toISOString(), body: Buffer.from(body), contentType });
   globalThis.__objects = list;
+  // And what was uploaded as, in globalThis.__r2Puts (key -> { type, bytes }).
+  (globalThis.__r2Puts ??= new Map()).set(key, { type: contentType, bytes: body.length });
 }
 export async function getObjectBytes(key) {
   const b = bytes().get(key);
@@ -34,6 +36,7 @@ export async function getObjectBytes(key) {
 }
 export async function deleteObject(key) {
   bytes().delete(key);
+  globalThis.__r2Puts?.delete(key);
   globalThis.__objects = objects().filter((o) => o.key !== key);
 }
 export async function renameObject(from, to) {

@@ -2,11 +2,14 @@ import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import HomeHeroCTAs from "./HomeHeroCTAs";
 import HomeFinalCTAs from "./HomeFinalCTAs";
+import { getPlatformSettings } from "@/lib/platform/settings";
 import { POPULAR_TRANSLATION_CODES, TRANSLATION_LANGUAGES as ALL_TRANSLATION_LANGUAGES } from "@/lib/translationLanguages";
 
 export default async function Home() {
   const { userId } = await auth();
   const signedIn = !!userId;
+  // Name and contacts from the admin settings.
+  const { branding, contacts } = await getPlatformSettings();
 
   return (
     <div className="relative overflow-hidden">
@@ -225,8 +228,15 @@ export default async function Home() {
             <Link href="/openapi.json" className="hover:text-cyan-200 transition-colors">API Reference</Link>
             <Link href="/pricing" className="hover:text-cyan-200 transition-colors">Pricing</Link>
             <Link href="/dashboard/developers" className="hover:text-cyan-200 transition-colors">Developers</Link>
+            <Link href="/support" className="hover:text-cyan-200 transition-colors">Support</Link>
+            {contacts.links.map((l) => (
+              <a key={l.url} href={l.url} className="hover:text-cyan-200 transition-colors" rel="noopener noreferrer">{l.label}</a>
+            ))}
+            {contacts.supportEmail && (
+              <a href={`mailto:${contacts.supportEmail}`} className="hover:text-cyan-200 transition-colors">{contacts.supportEmail}</a>
+            )}
           </div>
-          © {new Date().getFullYear()} NeoConference — Crafted for premium real-time experiences.
+          © {new Date().getFullYear()} {branding.platformName} — Crafted for premium real-time experiences.
         </footer>
     </div>
   );

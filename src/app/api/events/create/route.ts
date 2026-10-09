@@ -14,6 +14,7 @@ import { streamlab } from '@/lib/streamlab';
 import { hsmoh } from '@/lib/hsmoh';
 import { checkLifetimeCap, incrementMeetingsCreated, getPlanLimitsForUserId } from '@/lib/plan';
 import { hashMeetingPassword } from '@/lib/eventPassword';
+import { featureDecision, featureRefusal } from '@/lib/platform/features';
 import type { NeoEvent, RoleAssignment } from '@/types/event';
 import { activity } from '@/lib/activity';
 
@@ -136,7 +137,9 @@ export async function POST(req: NextRequest) {
   const uniqueLanguages = Array.from(new Set(languages));
   if (uniqueLanguages.length > 0) {
     const { plan: ownerPlan, limits: ownerLimits } = await getPlanLimitsForUserId(userId);
-    if (!ownerLimits.translation) {
+    const translation = await featureDecision('translation', { userId, plan: ownerPlan, planAllows: ownerLimits.translation });
+    if (!translation.enabled && translation.source !== 'plan_default') return featureRefusal(translation);
+    if (!translation.enabled) {
       return NextResponse.json(
         {
           error: 'plan_upgrade_required',
@@ -156,7 +159,9 @@ export async function POST(req: NextRequest) {
   if (body.enableStream) {
     try {
       const { plan: ownerPlan, limits: ownerLimits } = await getPlanLimitsForUserId(userId);
-      if (!ownerLimits.livestream) {
+      const livestream = await featureDecision('livestream', { userId, plan: ownerPlan, planAllows: ownerLimits.livestream });
+      if (!livestream.enabled && livestream.source !== 'plan_default') return featureRefusal(livestream);
+      if (!livestream.enabled) {
         return NextResponse.json(
           {
             error: 'plan_upgrade_required',

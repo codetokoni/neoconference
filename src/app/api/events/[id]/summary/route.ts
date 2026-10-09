@@ -15,6 +15,8 @@ import { chatStore } from "@/lib/chatStore";
 import { eventTranscripts } from "@/lib/eventRecordings";
 import { SUMMARY_INSTRUCTIONS, plainSummary, summaryContext } from "@/lib/meetingSummary";
 import { isR2Configured } from "@/lib/r2";
+import { getPlanForUserId } from "@/lib/plan";
+import { featureDecision, featureRefusal } from "@/lib/platform/features";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,6 +50,10 @@ export async function POST(
   if (!checkPost.ok) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
+  // Feature controls (admin), for the meeting's owner.
+  const owner = ev.ownerUserId || userId;
+  const aiSummary = await featureDecision("ai_summary", { userId: owner, plan: await getPlanForUserId(owner) });
+  if (!aiSummary.enabled) return featureRefusal(aiSummary);
 
   if (!aiAvailable()) {
     return NextResponse.json(

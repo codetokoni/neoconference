@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     if (!allowed.ok) {
       return NextResponse.json(
         { error: allowed.code, feature: "recording", plan: allowed.plan, message: allowed.message },
-        { status: 402 }
+        { status: allowed.code === "feature_disabled" ? 403 : 402 }
       );
     }
 
