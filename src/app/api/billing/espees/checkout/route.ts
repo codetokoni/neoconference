@@ -20,6 +20,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { initiatePayment, type BillingCycle } from "@/lib/espees";
 import { createPendingPayment, attachPaymentRef, generateNonce } from "@/lib/billingStore";
 import { APP_LINK, isAppCallback } from "@/lib/app-callback";
+import { gatewayEnabled } from "@/lib/finance/settings";
 import { quoteCheckout } from "@/lib/billing/checkout";
 import { isOwnerEmailList } from "@/lib/admin/owner";
 
@@ -41,6 +42,10 @@ export async function POST(req: Request): Promise<Response> {
     if (!userId) {
           return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
     }
+  // An administrator can switch plan payments off in Billing settings.
+  if (!(await gatewayEnabled("espees"))) {
+    return NextResponse.json({ error: "payments_paused", message: "Plan payments are paused at the moment. Try again later." }, { status: 503 });
+  }
 
   let body: unknown;
     try {

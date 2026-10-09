@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { readPendingPayment, updatePaymentStatus } from "@/lib/billingStore";
 import { isAppCallback, redirectToApp } from "@/lib/app-callback";
+import { recordFailedCheckout } from "@/lib/finance/failures";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +30,11 @@ export async function GET(req: Request): Promise<Response> {
     try {
       const record = await readPendingPayment(nonce);
       returnTo = record?.returnTo;
+      // Only the first fail redirect of a still-pending checkout is a failed
+      // payment; a repeat, or one after it was paid, is not.
+      if (record?.status === "pending") {
+        await recordFailedCheckout(record, { country: req.headers.get("x-vercel-ip-country") });
+      }
     } catch {
       // Non-fatal: fall through to the web redirect.
     }

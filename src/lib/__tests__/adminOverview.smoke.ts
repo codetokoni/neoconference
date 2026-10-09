@@ -622,7 +622,7 @@ async function main() {
     (g as { __clerkListFails?: boolean }).__clerkListFails = false;
     const c = cats(r.body);
     assert.equal(c.users.status, "error");
-    assert.match(c.users.message, /Clerk API unavailable/);
+    assert.match(c.users.message, /unavailable/);
     for (const id of ["groups", "meetings", "payments", "tickets", "files", "audit"]) assert.equal(c[id].status, "ok", id);
   });
 

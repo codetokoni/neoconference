@@ -12,6 +12,8 @@ import { fmtTime, useAdmin, type ApiResult } from "../../AdminApi";
 import { Badge, Confirm, Empty, Loading, Notice, PageHeader, Panel, btn, field } from "../../ui";
 import { statusBadges, type UserRow } from "../users-client";
 import { SUPPORT_CHANGED } from "../../AdminShell";
+import { ACTIVITY_TYPES } from "@/lib/activityTypes";
+import type { ActivityEvent } from "@/lib/activity";
 
 type Email = { id: string; address: string; verified: boolean; status: string | null; primary: boolean };
 type Note = { id: string; ts: number; byEmail: string; text: string };
@@ -58,6 +60,7 @@ type Detail = {
     devices: { id: string; userAgent: string | null; ip: string | null; lastActivityAt: number; createdAt: number }[] | null;
   };
   audit: AuditEntry[] | null;
+  activity: ActivityEvent[] | null;
   notes: Note[];
   deletion: { requestedAt: number; deleteAfter: number; requestedByEmail: string; reason: string; due: boolean } | null;
   suspension: { at: number; byEmail: string; reason: string } | null;
@@ -800,6 +803,39 @@ export default function UserClient({ id }: { id: string }) {
               )}
             </div>
           </div>
+        </Section>
+      )}
+
+      {d.activity && (
+        <Section title="Activity">
+          {d.activity.length === 0 ? (
+            <p className="text-sm text-zinc-500">Nothing recorded yet. The activity log keeps 90 days.</p>
+          ) : (
+            <ul className="divide-y divide-white/5 text-sm">
+              {d.activity.map((e) => (
+                <li key={e.id} className="py-1.5">
+                  <span className="text-zinc-200">{ACTIVITY_TYPES[e.type]?.label ?? e.type}</span>{" "}
+                  <span className="text-zinc-400">· {fmtTime(e.ts)}</span>
+                  {e.severity !== "info" && (
+                    <>
+                      {" "}
+                      <Badge tone={e.severity === "error" ? "red" : "amber"}>{e.severity}</Badge>
+                    </>
+                  )}
+                  {e.props && (
+                    <span className="block truncate text-xs text-zinc-500">
+                      {Object.entries(e.props)
+                        .map(([k, v]) => `${k}=${v}`)
+                        .join(" · ")}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          <Link href={`/admin/logs?source=activity&user=${encodeURIComponent(u.id)}&from=${new Date(Date.now() - 89 * 86_400_000).toISOString().slice(0, 10)}`} className="mt-2 inline-block text-xs text-cyan-300 hover:underline">
+            Search all of it in Logs →
+          </Link>
         </Section>
       )}
 

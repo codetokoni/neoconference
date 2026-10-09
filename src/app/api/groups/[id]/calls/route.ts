@@ -17,6 +17,7 @@ import {
   requireGroupPermission,
 } from "@/lib/groupAuthz";
 import { meetingGates, siteOrigin } from "@/lib/groupPeople";
+import { activity } from "@/lib/activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,6 +66,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       { kingschat: false, inApp: false, push: false }
     );
     await ringNow(ev.id, { except: gate.member.userId });
+    await activity.record("group.call", { userId: gate.member.userId, props: { groupId: id, eventId: ev.id, invited: (userIds as string[]).length } });
     return NextResponse.json(
       {
         ok: true,

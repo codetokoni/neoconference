@@ -18,6 +18,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
 import { createCheckoutSession, isStripeConfigured } from '@/lib/stripe';
+import { gatewayEnabled } from '@/lib/finance/settings';
 
 export const runtime = 'nodejs';
 
@@ -25,6 +26,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (!isStripeConfigured()) {
     return NextResponse.json(
       { error: 'stripe_unconfigured', message: 'STRIPE_SECRET_KEY is not set on the server.' },
+      { status: 503 }
+    );
+  }
+  // An administrator can switch ticket payments off in Billing settings.
+  if (!(await gatewayEnabled('stripe'))) {
+    return NextResponse.json(
+      { error: 'payments_paused', message: 'Ticket payments are paused at the moment. Try again later.' },
       { status: 503 }
     );
   }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import SessionManager from "@/components/SessionManager";
 import CallAlertsButton from "@/components/notifications/CallAlertsButton";
+import NotificationPrefs from "@/components/notifications/NotificationPrefs";
 
 export const metadata: Metadata = {
   title: "Account & security — NeoConference",
@@ -41,6 +42,16 @@ export default function SettingsPage() {
           </p>
         </div>
         <CallAlertsButton />
+      </section>
+
+      <section id="notifications" className="mt-10 scroll-mt-20 space-y-4">
+        <div>
+          <h2 className="text-lg font-medium text-cyan-100">Notifications</h2>
+          <p className="mt-1 text-sm text-zinc-400">
+            Choose which optional messages you get from NeoConference, and where.
+          </p>
+        </div>
+        <NotificationPrefs />
       </section>
     </div>
   );

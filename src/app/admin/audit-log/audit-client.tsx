@@ -35,6 +35,8 @@ const ACTIONS = [
   ["user.", "Users"],
   ["event.", "Meetings"],
   ["ops.", "Operations"],
+  ["comms.", "Announcements"],
+  ["template.", "Email templates"],
 ] as const;
 
 const PAGE = 50;

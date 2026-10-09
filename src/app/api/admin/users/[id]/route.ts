@@ -37,6 +37,7 @@ import { listGroupsForUser } from "@/lib/groupStore";
 import { listUserPayments } from "@/lib/paymentsStore";
 import { getActiveSessions } from "@/lib/sessionStore";
 import { isMailConfigured } from "@/lib/mail";
+import { listUserActivity } from "@/lib/activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,7 +66,7 @@ export async function GET(req: Request, { params }: Params) {
   const lastMonth = usageMonth(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), 0));
 
   const client = await clerkClient();
-  const [tags, deletion, suspension, notes, support, mine, hosted, attended, recThis, recLast, groups, payments, clerkSessions, devices, audit, role] =
+  const [tags, deletion, suspension, notes, support, mine, hosted, attended, recThis, recLast, groups, payments, clerkSessions, devices, audit, role, activity] =
     await Promise.all([
       getTags(uid),
       getDeletion(uid),
@@ -84,6 +85,8 @@ export async function GET(req: Request, { params }: Params) {
       // Anywhere the id appears: actions on the account, and group changes that name them.
       can(g.ctx, "audit:read") ? listAdminAudit({ q: uid, limit: 100 }) : Promise.resolve(null),
       member ? getRole(member.roleId) : Promise.resolve(null),
+      // What they did (src/lib/activity.ts): analytics:read.
+      can(g.ctx, "analytics:read") ? soft("activity", listUserActivity(uid, { limit: 50 })) : Promise.resolve(null),
     ]);
 
   const row = summarize(user, { member, tags, deletion });
@@ -158,6 +161,7 @@ export async function GET(req: Request, { params }: Params) {
       devices,
     },
     audit: audit?.items ?? null,
+    activity,
     notes,
     deletion: deletion ? { ...deletion, due: deletion.deleteAfter <= now } : null,
     suspension: user.banned ? suspension : null,
