@@ -11,13 +11,13 @@ import {
   SIMULCAST_MAIN,
   channelById as channelByIdInList,
   channelsForRoom,
-  channelTrackIdsForRoom,
   hlsUrl,
   machineChannelsForRoom,
   videoChannelForRoom,
   type FeaturedState,
   type SimulcastChannel,
 } from "@/lib/simulcast";
+import { PHASE_TEXT, RESTART_EVERY_MS, STALL_MS, shouldRestart, viewerPhase } from "@/lib/viewerPhase";
 
 // `channelByIdInList` is the exported helper; imported under an alias so the
 // local callback below can be named `channelById` for readability.
@@ -148,7 +148,8 @@ export default function SimulcastPlayer({
   // link plays that event's programme, not the default's.
   const channels = useMemo<SimulcastChannel[]>(() => channelsForRoom(room), [room]);
   const videoChannel = useMemo(() => videoChannelForRoom(room), [room]);
-  const channelTrackIds = useMemo(() => channelTrackIdsForRoom(room), [room]);
+  // The interpreter booths: audio only, from the room's group.
+  const boothIds = useMemo(() => channels.filter((c) => !c.video).map((c) => c.id), [channels]);
 
   // The translation worker (NEXT_PUBLIC_TRANSLATION_SSE) captions the
   // programme into every DeepL language, read aloud by the browser. The
@@ -206,6 +207,13 @@ export default function SimulcastPlayer({
   const [serverLive, setServerLive] = useState<Set<string>>(new Set());
   const [viewers, setViewers] = useState(0);
   const [featured, setFeatured] = useState<FeaturedState | null>(null);
+  // The one stream every viewer of this room watches, as the server
+  // assigns it (src/lib/videoBroadcaster.ts). Until the first answer, the
+  // room's programme feed — the server's own default.
+  const [broadcasterId, setBroadcasterId] = useState(() => videoChannelForRoom(room).id);
+  const [broadcasterLive, setBroadcasterLive] = useState(false);
+  const [statusKnown, setStatusKnown] = useState(false);
+  const [playBlocked, setPlayBlocked] = useState(false);
   const [timer, setTimer] = useState<{
     label: string;
     durationMs: number;
@@ -348,8 +356,42 @@ export default function SimulcastPlayer({
   // opened cleanly then sat on "Waiting for the feed" forever. Sibling
   // bug to #197 in a different file.
   const mainTrack = useMemo(() => roomMainTrack(room), [room]);
-  const { state, videoStream, audioStreams, liveTrackIds, setTrackEnabled, restart } =
-    useAmsMultitrack(mainTrack, mode === "webrtc", channelTrackIds);
+
+  // The picture and the floor's sound: the broadcaster's own stream id,
+  // played on its own connection. Participant cameras publish into the
+  // room's group too, and taking "the video" from the group put whichever
+  // camera arrived last on everyone's screen — another centre's stage, or a
+  // black frame. Played directly, nothing but the broadcaster can arrive,
+  // and it plays even when its encoder is outside the group.
+  const prog = useAmsMultitrack(broadcasterId, mode === "webrtc");
+  // The booths' audio from the group, asked for by name, only while one is
+  // on air. Its video tracks are never used.
+  const boothsOnAir = useMemo(() => boothIds.some((id) => serverLive.has(id)), [boothIds, serverLive]);
+  const booths = useAmsMultitrack(mainTrack, mode === "webrtc" && boothsOnAir, boothIds);
+
+  const state = prog.state;
+  const videoStream = prog.videoStream;
+  const progAudio = useMemo(() => Object.values(prog.audioStreams)[0] ?? null, [prog.audioStreams]);
+  // Floor English is the broadcaster's sound, under the floor channel's id
+  // so the language mixing below treats it as the floor.
+  const audioStreams = useMemo<Record<string, MediaStream>>(() => {
+    const out: Record<string, MediaStream> = {};
+    for (const id of boothIds) if (booths.audioStreams[id]) out[id] = booths.audioStreams[id];
+    if (progAudio) out[videoChannel.id] = progAudio;
+    return out;
+  }, [boothIds, booths.audioStreams, progAudio, videoChannel.id]);
+  const liveTrackIds = useMemo(() => {
+    const ids = booths.liveTrackIds.filter((id) => boothIds.includes(id));
+    if (videoStream || progAudio) ids.push(videoChannel.id);
+    return ids;
+  }, [booths.liveTrackIds, boothIds, videoStream, progAudio, videoChannel.id]);
+  const setTrackEnabled = booths.setTrackEnabled;
+  const restartProg = prog.restart;
+  const restartBooths = booths.restart;
+  const restart = useCallback(() => {
+    restartProg();
+    restartBooths();
+  }, [restartProg, restartBooths]);
 
   /**
    * A featured participant is played on its OWN connection, straight to their
@@ -391,6 +433,14 @@ export default function SimulcastPlayer({
           ),
         );
         setViewers(j.viewers ?? 0);
+        const b = j.broadcaster as { streamId?: string; live?: boolean } | null | undefined;
+        if (b && typeof b.streamId === "string" && b.streamId.startsWith(`${room}-`)) {
+          setBroadcasterId(b.streamId);
+          setBroadcasterLive(Boolean(b.live));
+        } else {
+          setBroadcasterLive(false);
+        }
+        setStatusKnown(true);
         setFeatured((prev) => {
           const next = (j.featured ?? null) as FeaturedState | null;
           if (prev?.streamId === next?.streamId) return prev;
@@ -401,11 +451,20 @@ export default function SimulcastPlayer({
       }
     };
     tick();
-    const t = setInterval(tick, 15000);
+    // Faster while off air, so a viewer who arrived early is on the
+    // broadcast within seconds of it starting.
+    const t = setInterval(tick, broadcasterLive ? 15000 : 5000);
     return () => {
       stopped = true;
       clearInterval(t);
     };
+  }, [room, broadcasterLive]);
+
+  // A new room starts from nothing known about it.
+  useEffect(() => {
+    setBroadcasterId(videoChannelForRoom(room).id);
+    setBroadcasterLive(false);
+    setStatusKnown(false);
   }, [room]);
 
   // Programme-feed timer. Polled every 5s so an operator setting a
@@ -454,6 +513,7 @@ export default function SimulcastPlayer({
   const live = useMemo(() => {
     const s = new Set<string>(serverLive);
     liveTrackIds.forEach((id) => s.add(id));
+    if (broadcasterLive) s.add(videoChannel.id);
     if (translationEnabled) {
       // Floor / source channel still needs a real broadcast to be
       // selectable — no translation for it. Every other channel opens
@@ -462,7 +522,7 @@ export default function SimulcastPlayer({
       for (const c of machineChannels) s.add(c.id);
     }
     return s;
-  }, [serverLive, liveTrackIds, translationEnabled, channels, machineChannels]);
+  }, [serverLive, liveTrackIds, translationEnabled, channels, machineChannels, broadcasterLive, videoChannel.id]);
 
   /** If the selected booth drops off air, fall back to the floor. */
   useEffect(() => {
@@ -475,7 +535,7 @@ export default function SimulcastPlayer({
      loop pick the feed up — unless the status poll says the programme
      stream itself is live: it can be, outside the group (8 Oct 2026),
      and then its HLS plays. ---- */
-  const programmeLive = serverLive.has(videoChannel.id);
+  const programmeLive = broadcasterLive;
   useEffect(() => {
     if (mode !== "webrtc") return;
     if (state === "playing") return;
@@ -501,10 +561,14 @@ export default function SimulcastPlayer({
     }
     if (videoStream && el.srcObject !== videoStream) {
       el.srcObject = videoStream;
-      el.play().catch(() => {
-        /* autoplay policy: stays muted until the viewer taps */
-      });
+      el.play().then(
+        () => setPlayBlocked(false),
+        // Even muted autoplay can be refused (iOS Low Power Mode, some
+        // in-app browsers): say so with a button, never a black box.
+        () => setPlayBlocked(true),
+      );
     }
+    if (!videoStream && el.srcObject) el.srcObject = null;
   }, [videoStream, mode, pictureLocked]);
 
   /* ---- featured participant: bind its own media ---- */
@@ -635,7 +699,7 @@ export default function SimulcastPlayer({
     el.srcObject = null;
 
     (async () => {
-      const src = hlsUrl(videoChannel.id);
+      const src = hlsUrl(broadcasterId);
       if (el.canPlayType("application/vnd.apple.mpegurl")) {
         el.src = src;
       } else {
@@ -646,7 +710,10 @@ export default function SimulcastPlayer({
         h.attachMedia(el);
         hlsVideo.current = h;
       }
-      el.play().catch(() => {});
+      el.play().then(
+        () => setPlayBlocked(false),
+        () => setPlayBlocked(true),
+      );
     })();
 
     return () => {
@@ -654,7 +721,7 @@ export default function SimulcastPlayer({
       hlsVideo.current?.destroy();
       hlsVideo.current = null;
     };
-  }, [mode, videoChannel.id]);
+  }, [mode, broadcasterId]);
 
   /* ---- HLS fallback: the language audio, kept near the picture ---- */
   useEffect(() => {
@@ -742,7 +809,110 @@ export default function SimulcastPlayer({
   // Nothing on air: AMS has no stream on the group and the status poll
   // doesn't see the programme either. When it does, the player is on its
   // way to HLS, and saying "not started" over a live programme was wrong.
-  const notStarted = mode === "webrtc" && state === "waiting" && !videoStream && !programmeLive;
+  /* ---- is the broadcaster's picture actually arriving? ----
+     A subscription can "succeed" and deliver nothing: the track stays
+     muted, or the element never advances. While the server says the
+     broadcaster is live, no frames for STALL_MS restarts the connection
+     (at most every RESTART_EVERY_MS) instead of leaving a black box. The
+     track's mute state works even while the picture is locked and the
+     element has no source. ---- */
+  const [hasPicture, setHasPicture] = useState(false);
+  const [stalled, setStalled] = useState(false);
+  const [everPlayed, setEverPlayed] = useState(false);
+  const lastFrameRef = useRef(Date.now());
+  const lastRestartRef = useRef(0);
+  const lastTimeRef = useRef(-1);
+  useEffect(() => {
+    setEverPlayed(false);
+    lastFrameRef.current = Date.now();
+  }, [broadcasterId]);
+  useEffect(() => {
+    const check = () => {
+      const now = Date.now();
+      let frames = false;
+      if (mode === "hls") {
+        const el = videoRef.current;
+        frames = !!el && el.readyState >= 2 && !el.paused;
+      } else {
+        const track = videoStream?.getVideoTracks()[0];
+        frames = !!track && track.readyState === "live" && !track.muted;
+        const el = videoRef.current;
+        if (frames && el && el.srcObject === videoStream && !el.paused) {
+          // Unlocked and playing: the element must also be moving.
+          if (el.currentTime !== lastTimeRef.current) lastTimeRef.current = el.currentTime;
+          else if (el.readyState < 2) frames = false;
+        }
+      }
+      if (frames) {
+        lastFrameRef.current = now;
+        setHasPicture(true);
+        setStalled(false);
+        setEverPlayed(true);
+        return;
+      }
+      setHasPicture(false);
+      setStalled(broadcasterLive && now - lastFrameRef.current >= STALL_MS && state !== "connecting");
+      if (
+        mode === "webrtc" &&
+        shouldRestart({
+          now,
+          lastFrameAt: lastFrameRef.current,
+          lastRestartAt: lastRestartRef.current,
+          live: broadcasterLive,
+          connected: state === "playing",
+        })
+      ) {
+        lastRestartRef.current = now;
+        restartProg();
+      }
+    };
+    check();
+    const t = setInterval(check, 2000);
+    return () => clearInterval(t);
+  }, [mode, videoStream, broadcasterLive, state, restartProg]);
+
+  // Back to the tab, or back online: browsers pause or throttle background
+  // media, and a phone that slept may hold a dead connection.
+  useEffect(() => {
+    const onBack = () => {
+      if (document.visibilityState !== "visible") return;
+      const el = videoRef.current;
+      if (el && el.paused && (el.srcObject || el.currentSrc)) el.play().catch(() => setPlayBlocked(true));
+      const now = Date.now();
+      if (now - lastFrameRef.current > STALL_MS && now - lastRestartRef.current > RESTART_EVERY_MS) {
+        lastRestartRef.current = now;
+        restartProg();
+      }
+    };
+    document.addEventListener("visibilitychange", onBack);
+    window.addEventListener("online", onBack);
+    return () => {
+      document.removeEventListener("visibilitychange", onBack);
+      window.removeEventListener("online", onBack);
+    };
+  }, [restartProg]);
+
+  const phase = onAir
+    ? "playing"
+    : viewerPhase({
+        statusKnown,
+        broadcasterLive,
+        conn: state,
+        hasPicture,
+        everPlayed,
+        stalled,
+        playBlocked: playBlocked && !pictureLocked,
+      });
+  const notStarted = phase === "waiting";
+  const watchLive = useCallback(() => {
+    const el = videoRef.current;
+    el?.play().then(
+      () => setPlayBlocked(false),
+      () => setPlayBlocked(true),
+    );
+    setMuted(false);
+    audioCtxRef.current?.resume().catch(() => {});
+  }, []);
 
   const unmute = useCallback(() => {
     setMuted(false);
@@ -792,15 +962,15 @@ export default function SimulcastPlayer({
   }, [languagesLocked, videoChannel.id]);
 
   const statusLabel =
-    mode === "hls"
-      ? "HLS fallback"
-      : state === "playing"
-        ? "WebRTC · low latency"
-        : state === "waiting"
-          ? "Waiting for the feed"
-          : state === "reconnecting"
-            ? "Reconnecting…"
-            : "Connecting…";
+    phase === "waiting"
+      ? "Off air"
+      : phase === "reconnecting"
+        ? "Reconnecting…"
+        : phase === "connecting"
+          ? "Connecting…"
+          : mode === "hls"
+            ? "HLS · fallback"
+            : "WebRTC · low latency";
 
   return (
     <div className="overflow-hidden rounded-xl border border-white/10 bg-[#101A20] shadow-2xl">
@@ -820,7 +990,10 @@ export default function SimulcastPlayer({
               autoPlay
               muted
               className="h-full w-full object-contain"
-              style={onAir || pictureLocked ? { visibility: "hidden" } : undefined}
+              data-stream-id={broadcasterId}
+              data-phase={phase}
+              onPlaying={() => setPlayBlocked(false)}
+              style={onAir || pictureLocked || (phase !== "playing" && phase !== "blocked") ? { visibility: "hidden" } : undefined}
             />
 
             {/* Featured participant replaces the programme picture while on air.
@@ -1022,32 +1195,61 @@ export default function SimulcastPlayer({
               </div>
             )}
 
-            {/* Sound without asking shows no prompt: the first touch anywhere does it. */}
-            {muted && !soundOnFirstTap && (
+            {(phase === "waiting" || phase === "connecting" || phase === "reconnecting") && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black px-6 text-center"
+              >
+                {phase !== "waiting" && (
+                  <span aria-hidden="true" className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white/80" />
+                )}
+                <p className="max-w-[40ch] text-sm font-medium text-white/85">{PHASE_TEXT[phase]}</p>
+                {phase === "waiting" && (
+                  <p className="max-w-[44ch] text-xs text-white/50">It starts here by itself as soon as the host goes live.</p>
+                )}
+                {phase === "reconnecting" && (
+                  <button
+                    type="button"
+                    onClick={restart}
+                    className="rounded-md border border-white/20 px-4 py-2 text-sm text-white/80 transition hover:bg-white/10"
+                  >
+                    Try again now
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* The browser wants a tap before it plays: one clear button. */}
+            {phase === "blocked" && (
               <button
                 type="button"
-                onClick={unmute}
-                className="absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[2px]"
+                onClick={watchLive}
+                className="absolute inset-0 z-20 flex items-center justify-center bg-black/55"
               >
-                <span className="rounded-full bg-white/95 px-5 py-2.5 text-sm font-semibold text-neutral-900">
-                  Tap to unmute
+                <span className="rounded-full bg-white/95 px-6 py-3 text-base font-semibold text-neutral-900">
+                  &#9654; Watch live
                 </span>
               </button>
             )}
-
-            {notStarted && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/75 text-center">
-                <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/60">
-                  The broadcast has not started
-                </p>
-                <button
-                  type="button"
-                  onClick={restart}
-                  className="rounded-md border border-white/20 px-4 py-2 text-sm text-white/80 transition hover:bg-white/10"
-                >
-                  Try again
-                </button>
-              </div>
+            {/* Sound refused until a tap. With sound-without-asking the first
+                tap anywhere still does it; the button says so plainly. */}
+            {phase !== "blocked" && muted && (soundOnFirstTap ? !notStarted : phase === "playing") && (
+              <button
+                type="button"
+                onClick={unmute}
+                className={
+                  soundOnFirstTap
+                    ? "absolute bottom-14 left-1/2 z-20 -translate-x-1/2 rounded-full bg-white/95 px-5 py-2 text-sm font-semibold text-neutral-900 shadow-lg"
+                    : "absolute inset-0 z-20 flex items-center justify-center bg-black/45 backdrop-blur-[2px]"
+                }
+              >
+                {soundOnFirstTap ? (
+                  "Enable audio"
+                ) : (
+                  <span className="rounded-full bg-white/95 px-5 py-2.5 text-sm font-semibold text-neutral-900">Enable audio</span>
+                )}
+              </button>
             )}
           </div>
 
