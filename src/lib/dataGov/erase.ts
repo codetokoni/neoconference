@@ -428,7 +428,7 @@ export const ERASE_STEPS: EraseStep[] = [
     label: "Subscription (removed) and its history (kept as a billing record, detached)",
     covers: ["kv.subscriptions"],
     run: async (p, dry) => {
-      if (dry) return ((await getSubscription(p.uid)) ? 1 : 0) + (await getHistory(p.uid, 1000)).length;
+      if (dry) return ((await getSubscription(p.uid)) ? 1 : 0) + (await getHistory(p.uid, 500)).length;
       return (await forgetSubscriptionUser(p.uid)).removed;
     },
   },

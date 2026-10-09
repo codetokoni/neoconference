@@ -268,7 +268,7 @@ const SECTIONS: Section[] = [
     run: async (uid) => {
       const sub = await getSubscription(uid);
       // Who changed it: "you" or "an administrator" — not which one.
-      const history = (await getHistory(uid, 200)).map((h) => ({
+      const history = (await getHistory(uid, 500)).map((h) => ({
         at: iso(h.ts),
         action: h.action,
         by: h.by.userId === uid ? "you" : "an administrator",
