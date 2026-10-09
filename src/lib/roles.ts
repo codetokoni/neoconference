@@ -1,8 +1,8 @@
 import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
 import type { RoleAssignment } from "@/types/event";
 import { can, resolveRole, type Actor } from "@/lib/permissions";
-import { isOwnerEmailList } from "@/lib/admin/owner";
-import { getMember } from "@/lib/admin/store";
+import { isOwnerEmailList, type ClerkEmailish } from "@/lib/admin/owner";
+import { getMember, getRole } from "@/lib/admin/store";
 
 export type Role = "admin" | "staff" | "user";
 
@@ -43,6 +43,27 @@ export function isAdmin(email: string | null | undefined): boolean {
   const target = email.trim().toLowerCase();
   if (!target) return false;
   return getAdminEmails().includes(target);
+}
+
+/**
+ * Whether this account may act as owner of other people's meetings — the
+ * `isPlatformAdmin` that permissions.ts resolveRole turns into owner rank.
+ * The owner always may. An administrator may when their active record's
+ * role grants events:write; a role with only events:read (Analyst, Support)
+ * or a suspended or removed record may not. An ADMIN_EMAILS admin with no
+ * record yet counts as the Super admin src/lib/admin/context.ts adopts them
+ * as on their first visit to the admin area.
+ */
+export async function hasMeetingAdminPower(
+  userId: string,
+  emailAddresses: ClerkEmailish[] | null | undefined
+): Promise<boolean> {
+  if (isOwnerEmailList(emailAddresses)) return true;
+  const member = await getMember(userId).catch(() => null);
+  if (!member) return (emailAddresses ?? []).some((e) => isAdmin(e.emailAddress));
+  if (member.status !== "active") return false;
+  const role = await getRole(member.roleId).catch(() => null);
+  return !!role?.permissions.includes("events:write");
 }
 
 /** True iff the signed-in user's primary/verified emails include an ADMIN_EMAILS entry. */
@@ -173,7 +194,7 @@ export async function assertOwnerOrAdmin(
   const actor: Actor = resolveRole(event, {
     userId,
     emails,
-    isPlatformAdmin: emails.some((e) => isAdmin(e)),
+    isPlatformAdmin: await hasMeetingAdminPower(userId, u?.emailAddresses),
   });
 
   const permission =

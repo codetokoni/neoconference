@@ -14,9 +14,7 @@
 
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { isAdmin } from "@/lib/roles";
-import { isOwnerEmailList } from "@/lib/admin/owner";
-import { getMember } from "@/lib/admin/store";
+import { hasMeetingAdminPower } from "@/lib/roles";
 import { eventStore } from "@/lib/eventStore";
 import { appendAuditEntry } from "@/lib/auditLog";
 import type { NeoEvent } from "@/types/event";
@@ -55,14 +53,10 @@ export async function getIdentity(): Promise<Identity> {
   if (!userId) return { userId: null, emails: [], isPlatformAdmin: false };
   const u = await currentUser().catch(() => null);
   const emails = (u?.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
-  if (isOwnerEmailList(u?.emailAddresses)) return { userId, emails, isPlatformAdmin: true };
-  // An ADMIN_EMAILS admin whose administrator record was suspended or removed
-  // in the admin area loses platform-admin standing on meetings too.
-  let isPlatformAdmin = emails.some((e) => isAdmin(e));
-  if (isPlatformAdmin) {
-    const member = await getMember(userId).catch(() => null);
-    if (member && member.status !== "active") isPlatformAdmin = false;
-  }
+  // Owner rank on other people's meetings follows the administrator's role:
+  // the owner, or an active admin whose role grants events:write. Suspended,
+  // removed and read-only (events:read) administrators get none.
+  const isPlatformAdmin = await hasMeetingAdminPower(userId, u?.emailAddresses);
   return { userId, emails, isPlatformAdmin };
 }
 
