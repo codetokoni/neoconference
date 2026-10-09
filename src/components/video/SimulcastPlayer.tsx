@@ -142,6 +142,13 @@ export interface SimulcastPlayerProps {
    * used.
    */
   sinkId?: string;
+  /**
+   * "display": the picture alone, filling its container — no frame, no
+   * language rail, no fullscreen button or technical labels; only the
+   * brief status messages and a small "Enable audio". For pages that are
+   * mostly a screen (the moderator display). Default "full".
+   */
+  variant?: "full" | "display";
 }
 
 type SinkCapable = { setSinkId?: (id: string) => Promise<void>; sinkId?: string };
@@ -153,7 +160,9 @@ export default function SimulcastPlayer({
   pictureLocked,
   soundOnFirstTap = false,
   sinkId,
+  variant = "full",
 }: SimulcastPlayerProps = {}) {
+  const display = variant === "display";
   const sinkIdRef = useRef(sinkId);
   sinkIdRef.current = sinkId;
   // Channels are keyed by the room slug so a second event's streaming
@@ -1006,13 +1015,13 @@ export default function SimulcastPlayer({
             : "WebRTC · low latency";
 
   return (
-    <div className="overflow-hidden rounded-xl border border-white/10 bg-[#101A20] shadow-2xl">
-      <div className={showChat ? "grid lg:grid-cols-[minmax(0,1fr)_320px]" : ""}>
-        <div className="flex min-w-0 flex-col gap-4 p-4">
+    <div className={display ? "h-full w-full bg-black" : "overflow-hidden rounded-xl border border-white/10 bg-[#101A20] shadow-2xl"}>
+      <div className={display ? "h-full" : showChat ? "grid lg:grid-cols-[minmax(0,1fr)_320px]" : ""}>
+        <div className={display ? "h-full" : "flex min-w-0 flex-col gap-4 p-4"}>
           <div
             ref={videoBoxRef}
             className={
-              isFullscreen
+              isFullscreen || display
                 ? "relative h-full w-full overflow-hidden bg-black"
                 : "relative aspect-video overflow-hidden rounded-lg border border-white/10 bg-black"
             }
@@ -1132,7 +1141,8 @@ export default function SimulcastPlayer({
             {/* language audio for HLS mode */}
             <audio ref={fallbackAudioRef} />
 
-            <div className="absolute left-3 top-3 flex items-center gap-2">
+            {/* A display page draws its own on-air line in its top bar. */}
+            <div className="absolute left-3 top-3 flex items-center gap-2" style={display ? { display: "none" } : undefined}>
               {live.size > 0 ? (
                 <span className="inline-flex items-center gap-1.5 rounded bg-red-600 px-2 py-1 font-mono text-[10.5px] tracking-[0.14em] text-white">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
@@ -1150,12 +1160,14 @@ export default function SimulcastPlayer({
               )}
             </div>
 
+            {!display && (
             <span className="absolute bottom-3 right-3 rounded border border-white/15 bg-black/60 px-2 py-1 font-mono text-[10.5px] text-white/70">
               {statusLabel}
             </span>
+            )}
 
             {/* Nothing to see full screen while the picture is locked. */}
-            {!pictureLocked && (
+            {!pictureLocked && !display && (
             <button
               type="button"
               onClick={toggleFullscreen}
@@ -1181,7 +1193,10 @@ export default function SimulcastPlayer({
             </button>
             )}
 
-            <div className="absolute bottom-3 left-3 flex items-center gap-3 rounded-md border border-white/15 bg-black/70 px-3 py-1.5 backdrop-blur">
+            <div
+              className="absolute bottom-3 left-3 flex items-center gap-3 rounded-md border border-white/15 bg-black/70 px-3 py-1.5 backdrop-blur"
+              style={display ? { display: "none" } : undefined}
+            >
               <span className="h-5 w-2 rounded-sm" style={{ background: activeChannel.color }} />
               <span className="flex flex-col leading-tight">
                 <small className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-white/50">
@@ -1267,17 +1282,17 @@ export default function SimulcastPlayer({
             )}
             {/* Sound refused until a tap. With sound-without-asking the first
                 tap anywhere still does it; the button says so plainly. */}
-            {phase !== "blocked" && muted && (soundOnFirstTap ? !notStarted : phase === "playing") && (
+            {phase !== "blocked" && muted && (soundOnFirstTap || display ? !notStarted : phase === "playing") && (
               <button
                 type="button"
                 onClick={unmute}
                 className={
-                  soundOnFirstTap
+                  soundOnFirstTap || display
                     ? "absolute bottom-14 left-1/2 z-20 -translate-x-1/2 rounded-full bg-white/95 px-5 py-2 text-sm font-semibold text-neutral-900 shadow-lg"
                     : "absolute inset-0 z-20 flex items-center justify-center bg-black/45 backdrop-blur-[2px]"
                 }
               >
-                {soundOnFirstTap ? (
+                {soundOnFirstTap || display ? (
                   "Enable audio"
                 ) : (
                   <span className="rounded-full bg-white/95 px-5 py-2.5 text-sm font-semibold text-neutral-900">Enable audio</span>
@@ -1286,7 +1301,7 @@ export default function SimulcastPlayer({
             )}
           </div>
 
-          {languagesLocked ? (
+          {display ? null : languagesLocked ? (
             <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-none text-white/50" aria-hidden="true">
                 <rect x="4" y="11" width="16" height="10" rx="2" />
@@ -1317,7 +1332,7 @@ export default function SimulcastPlayer({
               so a listener's preferred mix follows them across
               sessions. Also hidden while a participant is on air —
               the floor is silenced by featuring in that case. */}
-          {active !== videoChannel.id && !onAir && (
+          {!display && active !== videoChannel.id && !onAir && (
             <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
               <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/60">
                 Floor
@@ -1337,14 +1352,14 @@ export default function SimulcastPlayer({
               </span>
             </div>
           )}
-          {onAir && (
+          {onAir && !display && (
             <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-amber-400/80">
               Language channels resume when the programme returns
             </p>
           )}
         </div>
 
-        {showChat && <LiveChat room={room} code={activeChannel.code} />}
+        {showChat && !display && <LiveChat room={room} code={activeChannel.code} />}
       </div>
     </div>
   );
