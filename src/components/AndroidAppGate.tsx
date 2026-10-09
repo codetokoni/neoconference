@@ -15,6 +15,7 @@ import {
   DOWNLOADED_KEY,
   appOpenUrl,
   gateExempt,
+  gateOffers,
   isAndroid,
   meetingSlugFromPath,
   shouldAutoOpen,
@@ -52,7 +53,11 @@ export default function AndroidAppGate() {
   useEffect(() => {
     if (!isAndroid(navigator.userAgent)) return setShow(false);
     const search = window.location.search;
-    if (new URLSearchParams(search).get("from") === "app") write(() => sessionStorage, FROM_APP_KEY);
+    if (new URLSearchParams(search).get("from") === "app") {
+      write(() => sessionStorage, FROM_APP_KEY);
+      // Opened from inside the app: it is installed on this phone.
+      write(() => localStorage, DOWNLOADED_KEY);
+    }
     if (read(() => sessionStorage, FROM_APP_KEY)) return setShow(false);
     if (gateExempt(pathname, search)) return setShow(false);
     const meeting = meetingSlugFromPath(pathname, search);
@@ -103,19 +108,18 @@ export default function AndroidAppGate() {
             ? "This meeting opens in the NeoConference app on Android. Live translation, captions and every meeting tool are there."
             : "On Android, NeoConference is an app. Live translation, captions and every meeting tool are there."}
       </p>
-      <div className={"mt-8 flex w-full max-w-sm gap-3 " + (returning ? "flex-col-reverse" : "flex-col")}>
+      <div className="mt-8 flex w-full max-w-sm flex-col gap-3">
+        {/* Asked only the first time: once downloaded, only "open". */}
+        {gateOffers(returning).download && (
         <a
           href={APP_STORE_URL}
           // Remembered, so the next visit opens the app instead of asking.
           onClick={() => write(() => localStorage, DOWNLOADED_KEY)}
-          className={
-            returning
-              ? "rounded-2xl border border-white/15 px-6 py-3 text-sm font-semibold text-white/70"
-              : "rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-500 px-6 py-4 text-base font-semibold text-slate-900 shadow-[0_0_30px_-8px_rgba(34,211,238,0.6)]"
-          }
+          className="rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-500 px-6 py-4 text-base font-semibold text-slate-900 shadow-[0_0_30px_-8px_rgba(34,211,238,0.6)]"
         >
-          {returning ? "Download the app again" : "Download from LoveWorld AppStore"}
+          Download from LoveWorld AppStore
         </a>
+        )}
         <a
           href={appOpenUrl(slug)}
           // Opening it from here also says they have it.

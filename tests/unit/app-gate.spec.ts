@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { APP_STORE_URL, appOpenUrl, gateExempt, isAndroid, meetingSlugFromPath, shouldAutoOpen } from "../../src/lib/appGate";
+import { APP_STORE_URL, appOpenUrl, gateExempt, gateOffers, isAndroid, meetingSlugFromPath, shouldAutoOpen } from "../../src/lib/appGate";
 
 /**
  * Android phones are asked to use the app (LoveWorld AppStore); iPhones and
@@ -71,4 +71,12 @@ test("a phone that downloaded the app opens it, once per tab", () => {
   expect(shouldAutoOpen(true, true)).toBe(false);
   // Never downloaded: the download screen.
   expect(shouldAutoOpen(false, false)).toBe(false);
+});
+
+test("download is offered only the first time; after that only opening the app", () => {
+  expect(gateOffers(false)).toEqual({ download: true, open: true });
+  // Downloaded before (or opened from the app): no download button again.
+  expect(gateOffers(true)).toEqual({ download: false, open: true });
+  // …and opening still reaches the store on a phone where the app is missing.
+  expect(appOpenUrl(null)).toContain("S.browser_fallback_url=" + encodeURIComponent(APP_STORE_URL));
 });
