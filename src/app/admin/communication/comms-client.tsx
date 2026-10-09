@@ -349,7 +349,7 @@ function Compose({ onSent }: { onSent: (id: string) => void }) {
                 ["filter", "By plan, status or sign-up date"],
                 ["groups", "Members of groups"],
                 ["users", "Specific people"],
-                ["everyone", "Everyone"],
+                ["everyone", "Everyone (not suspended)"],
               ] as const
             ).map(([k, l]) => (
               <label key={k} className="flex items-center gap-2 text-sm text-zinc-200">
