@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAmsMultitrack } from "./useAmsMultitrack";
 import BrandMark from "../BrandMark";
 
@@ -83,14 +83,36 @@ export default function Spotlight({ spot, onClose, onPrev, onNext }: SpotlightPr
   const condition = spot.meta?.condition;
   const country = spot.meta?.country;
 
+  // The ID chip and the controls fade out when nobody moves the mouse or
+  // presses a key for a moment, leaving the video (with the logo and the
+  // name card) alone on screen; any movement brings them back.
+  const [idle, setIdle] = useState(false);
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout>;
+    const wake = () => {
+      setIdle(false);
+      clearTimeout(t);
+      t = setTimeout(() => setIdle(true), 2500);
+    };
+    wake();
+    const events = ["pointermove", "pointerdown", "keydown", "touchstart"] as const;
+    events.forEach((e) => window.addEventListener(e, wake, { passive: true }));
+    return () => {
+      clearTimeout(t);
+      events.forEach((e) => window.removeEventListener(e, wake));
+    };
+  }, []);
+  const fade = "transition-opacity duration-300 " + (idle ? "pointer-events-none opacity-0" : "opacity-100");
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black">
-      <video ref={ref} playsInline autoPlay className="h-full w-full object-contain" />
+    <div className={"fixed inset-0 z-[100] flex items-center justify-center bg-black" + (idle ? " cursor-none" : "")}>
+      {/* The camera fills the screen (cropped at the edges if its shape differs). */}
+      <video ref={ref} playsInline autoPlay className="h-full w-full object-cover" />
 
       {/* Full screen hides the site header: the logo stays on top. */}
       <BrandMark className="absolute left-4 top-4 z-10" />
 
-      <span className="pointer-events-none absolute left-4 top-[4.25rem] rounded-md border border-white/15 bg-black/70 px-3 py-1.5 font-mono text-xs text-white/80 backdrop-blur">
+      <span data-spot-chrome className={fade + " pointer-events-none absolute left-4 top-[4.25rem] rounded-md border border-white/15 bg-black/70 px-3 py-1.5 font-mono text-xs text-white/80 backdrop-blur"}>
         {spot.streamId}
         {spot.code ? ` · ${spot.code}` : ""}
       </span>
@@ -98,7 +120,7 @@ export default function Spotlight({ spot, onClose, onPrev, onNext }: SpotlightPr
       {/* Keyboard hint sits under the top-right controls so a
           first-time viewer sees it immediately. Only shows the
           arrow-key half when the parent actually wired navigation. */}
-      <div className="absolute right-4 top-4 flex items-center gap-2">
+      <div data-spot-chrome className={fade + " absolute right-4 top-4 flex items-center gap-2"}>
         <span className="pointer-events-none rounded-md border border-white/15 bg-black/70 px-3 py-1.5 font-mono text-[10.5px] uppercase tracking-[0.14em] text-white/60 backdrop-blur">
           esc close{(onPrev || onNext) ? " · ← prev · → next" : ""}
         </span>
