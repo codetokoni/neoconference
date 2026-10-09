@@ -24,6 +24,7 @@ export const SECTIONS: Section[] = [
   { label: "Roles", href: "/admin/roles", permission: "admins:read", group: "Access" },
   { label: "Audit log", href: "/admin/audit-log", permission: "audit:read", group: "Access" },
   { label: "Security", href: "/admin/security", permission: null, group: "Access" },
+  { label: "Automation", href: "/admin/automation", permission: "ops:read", group: "Operations" },
 ];
 
 export default function AdminShell({ me, children }: { me: PublicAdminContext; children: ReactNode }) {
