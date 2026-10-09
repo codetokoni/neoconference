@@ -49,6 +49,7 @@ import {
   type Subscription,
 } from "@/lib/billing/model";
 import { getAddOn, getPlan, getVersion, listCoupons } from "@/lib/billing/store";
+import { recordSubscriptionChange } from "@/lib/activityBilling";
 
 const subKey = (u: string) => `neo:sub:${u}`;
 const histKey = (u: string) => `neo:sub:h:${u}`;
@@ -135,6 +136,7 @@ async function persist(sub: Subscription, entry: Omit<SubHistoryEntry, "ts">, be
   else await kv.zrem(BY_END, sub.userId);
   if (sub.endedAt) await kv.zadd(ENDED, { score: sub.endedAt, member: sub.userId });
   else await kv.zrem(ENDED, sub.userId);
+  await recordSubscriptionChange(entry.action, before, sub, entry.by);
 }
 
 /**

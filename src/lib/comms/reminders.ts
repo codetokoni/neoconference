@@ -147,21 +147,34 @@ async function person(uid: string): Promise<{ email: string; name: string }> {
 }
 
 /**
+ * For callers other than the events (an automation rule on a schedule):
+ * `rule` replaces the Communication → Reminders setting for this call;
+ * `dryRun` answers what it would do ("would_send:<pct>", "already_sent",
+ * "below", …) without claiming or sending. The neo:comms:rem:* claim is the
+ * only one, so an event and a rule never both send the same threshold.
+ */
+export interface ReminderOpts {
+  rule?: ReminderRule;
+  dryRun?: boolean;
+}
+
+/**
  * After a meeting is counted against a lifetime cap. Never throws: a
  * reminder must not stand in the way of creating a meeting.
  */
-export async function meetingCapReminder(uid: string, used: number, cap: number, plan: string): Promise<string> {
+export async function meetingCapReminder(uid: string, used: number, cap: number, plan: string, opts: ReminderOpts = {}): Promise<string> {
   try {
     if (!uid || cap <= 0) return "no_cap";
-    const cfg = await getReminderConfig();
-    if (!cfg.meetings.enabled) return "off";
-    const t = crossed(cfg.meetings.thresholds, Math.round((used / cap) * 100));
+    const rule = opts.rule ? cleanRule(opts.rule, { ...defaultReminderConfig().meetings, enabled: true }) : (await getReminderConfig()).meetings;
+    if (!rule.enabled) return "off";
+    const t = crossed(rule.thresholds, Math.round((used / cap) * 100));
     if (t == null) return "below";
+    if (opts.dryRun) return (await kv.get(`neo:comms:rem:${uid}:meetings:${t}`)) != null ? "already_sent" : `would_send:${t}`;
     if ((await kv.set(`neo:comms:rem:${uid}:meetings:${t}`, "1", { nx: true })) !== "OK") return "already_sent";
     // A higher threshold sent covers the lower ones.
-    for (const lower of cfg.meetings.thresholds.filter((x) => x < t)) await kv.set(`neo:comms:rem:${uid}:meetings:${lower}`, "1");
+    for (const lower of rule.thresholds.filter((x) => x < t)) await kv.set(`neo:comms:rem:${uid}:meetings:${lower}`, "1");
     const who = await person(uid);
-    const res = await deliver(uid, cfg.meetings, "reminder.meetings", {
+    const res = await deliver(uid, rule, "reminder.meetings", {
       name: who.name,
       email: who.email,
       used,
@@ -179,11 +192,11 @@ export async function meetingCapReminder(uid: string, used: number, cap: number,
 }
 
 /** After a finished recording is counted. Never throws. */
-export async function recordingReminder(uid: string, now = Date.now()): Promise<string> {
+export async function recordingReminder(uid: string, now = Date.now(), opts: ReminderOpts = {}): Promise<string> {
   try {
     if (!uid) return "no_owner";
-    const cfg = await getReminderConfig();
-    if (!cfg.recording.enabled) return "off";
+    const rule = opts.rule ? cleanRule(opts.rule, { ...defaultReminderConfig().recording, enabled: true }) : (await getReminderConfig()).recording;
+    if (!rule.enabled) return "off";
     // The plan's own limits, or the snapshot a managed subscription set (billing).
     const { plan, limits } = await getPlanLimitsForUserId(uid);
     const capHours = limits.recordingHoursPerMonth;
@@ -191,15 +204,16 @@ export async function recordingReminder(uid: string, now = Date.now()): Promise<
     const month = usageMonth(now);
     const used = await recordedSeconds(uid, month);
     const pct = Math.round((used / (capHours * 3600)) * 100);
-    const t = crossed(cfg.recording.thresholds, pct);
+    const t = crossed(rule.thresholds, pct);
     if (t == null) return "below";
+    if (opts.dryRun) return (await kv.get(`neo:comms:rem:${uid}:recording:${month}:${t}`)) != null ? "already_sent" : `would_send:${t}`;
     if ((await kv.set(`neo:comms:rem:${uid}:recording:${month}:${t}`, "1", { nx: true, ex: 40 * 24 * 3600 })) !== "OK") return "already_sent";
-    for (const lower of cfg.recording.thresholds.filter((x) => x < t)) {
+    for (const lower of rule.thresholds.filter((x) => x < t)) {
       await kv.set(`neo:comms:rem:${uid}:recording:${month}:${lower}`, "1", { ex: 40 * 24 * 3600 });
     }
     const who = await person(uid);
     const h = used / 3600;
-    const res = await deliver(uid, cfg.recording, "reminder.recording", {
+    const res = await deliver(uid, rule, "reminder.recording", {
       name: who.name,
       email: who.email,
       usedHours: h >= 10 ? h.toFixed(0) : h.toFixed(1),

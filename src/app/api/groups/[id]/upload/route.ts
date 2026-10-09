@@ -15,6 +15,7 @@ import { requireGroupPermission } from "@/lib/groupAuthz";
 import { refuseUpload, uploadRule } from "@/lib/content/limits";
 import { storedMime } from "@/lib/content/model";
 import { indexUpload, indexUploadFailed } from "@/lib/content/files";
+import { activity } from "@/lib/activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +54,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: "upload_failed" }, { status: 502 });
   }
   await indexUpload(indexed);
+  await activity.record("upload", { userId: gate.member.userId, account: gate.member.userId, props: { where: "group", groupId: id, bytes: file.size, mime } });
   return NextResponse.json({
     ok: true,
     attachment: {

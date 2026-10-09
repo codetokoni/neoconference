@@ -58,7 +58,10 @@ export async function notifyTicketReceived(t: Ticket, origin: string): Promise<S
 
 /** A public reply from support: email, and the bell for an account. */
 export async function notifyTicketReply(t: Ticket, body: string, agentName: string, origin: string) {
-  const mail = await sendTicketMail("support.reply", t, { ...ticketVars(t, origin), agentName, body });
+  // An anonymised ticket (deleted account) has no address left to write to.
+  const mail: SendMailResult = !t.email
+    ? { ok: false, error: "no_email" }
+    : await sendTicketMail("support.reply", t, { ...ticketVars(t, origin), agentName, body });
   let bell = false;
   if (t.userId) {
     try {
