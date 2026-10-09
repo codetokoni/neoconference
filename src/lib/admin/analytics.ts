@@ -4,7 +4,8 @@
 // Two kinds of source, and the page labels which is which:
 //
 //   - the activity log (src/lib/activity.ts): sign-ups, sign-ins, active
-//     users, joins, recordings, features, API calls, purchases, downgrades.
+//     users, joins, recordings, features, API calls, purchases, cancellations,
+//     plans ending (from the subscription records' changes).
 //     Exists from the deploy that added it; nothing earlier.
 //   - stores that kept their own history: meetings and their minutes
 //     (eventStore), real plans (Clerk publicMetadata.plan).
@@ -48,8 +49,8 @@ import { isOwnerEmailList, type ClerkEmailish } from "@/lib/admin/owner";
 import { isAdmin as isEnvAdmin } from "@/lib/roles";
 import type { NeoEvent } from "@/types/event";
 
-/** Where an account's row links. Phase 2's account page, once it is on main. */
-export const accountHref = (id: string) => `/admin/logs?user=${encodeURIComponent(id)}`;
+/** Where an account's row links: its page in the admin (/admin/users/[id]). */
+export const accountHref = (id: string) => `/admin/users/${encodeURIComponent(id)}`;
 
 export type FigureKey =
   | "signUps"
@@ -64,6 +65,7 @@ export type FigureKey =
   | "apiCalls"
   | "purchases"
   | "conversions"
+  | "cancellations"
   | "downgrades"
   | "failedAdminSignIns";
 
@@ -106,7 +108,8 @@ export interface AnalyticsReport {
   daily: Record<string, number[]>;
   retention: Cohort[];
   conversion: { conversions: number; purchases: number; revenueEsp: number; perSignUp: number | null; byFromPlan: Record<string, number> };
-  cancellations: { total: number; previous: number; byFromPlan: Record<string, number> };
+  /** Cancellations requested, and plans that ended (back to Free), with the plan they left. */
+  cancellations: { cancelled: number; previousCancelled: number; ended: number; previousEnded: number; endedByPlan: Record<string, number> };
   features: Array<{ type: string; label: string; count: number; previous: number; change: number | null }>;
   accounts: AccountRow[];
   plans: Array<{ plan: string; owners: number; meetings: number }>;
@@ -304,7 +307,8 @@ export async function buildAnalytics(p: Period, opts: { now?: number } = {}): Pr
     fig("apiCalls", "Developer API calls", count(cur, "api.call"), count(prev, "api.call"), "log", { kind: "accounts", sort: "apiCalls" }),
     fig("purchases", "Plan purchases", count(cur, "plan.purchased"), count(prev, "plan.purchased"), "log", { kind: "logs", type: "plan.purchased" }),
     fig("conversions", "Free → paid", splitTotals(cur, "plan.purchased").free ?? 0, splitTotals(prev, "plan.purchased").free ?? 0, "log", { kind: "logs", type: "plan.purchased" }),
-    fig("downgrades", "Downgrades / ended plans", count(cur, "plan.downgraded"), count(prev, "plan.downgraded"), "log", { kind: "logs", type: "plan.downgraded" }),
+    fig("cancellations", "Cancellations", count(cur, "plan.cancelled"), count(prev, "plan.cancelled"), "log", { kind: "logs", type: "plan.cancelled" }),
+    fig("downgrades", "Plans ended", count(cur, "plan.downgraded"), count(prev, "plan.downgraded"), "log", { kind: "logs", type: "plan.downgraded" }),
     fig("failedAdminSignIns", "Failed admin sign-ins", count(cur, "admin.sign_in_failed"), count(prev, "admin.sign_in_failed"), "log", { kind: "logs", type: "admin.sign_in_failed" }),
   ];
 
@@ -317,6 +321,7 @@ export async function buildAnalytics(p: Period, opts: { now?: number } = {}): Pr
     recordingHours: series(cur.sums["recording.finished"], p.days).map((s) => round1(s / 3600)),
     apiCalls: series(cur.counts["api.call"], p.days),
     purchases: series(cur.counts["plan.purchased"], p.days),
+    cancellations: series(cur.counts["plan.cancelled"], p.days),
     downgrades: series(cur.counts["plan.downgraded"], p.days),
   };
 
@@ -329,9 +334,11 @@ export async function buildAnalytics(p: Period, opts: { now?: number } = {}): Pr
     byFromPlan: splitTotals(cur, "plan.purchased"),
   };
   const cancellations = {
-    total: count(cur, "plan.downgraded"),
-    previous: count(prev, "plan.downgraded"),
-    byFromPlan: splitTotals(cur, "plan.downgraded"),
+    cancelled: count(cur, "plan.cancelled"),
+    previousCancelled: count(prev, "plan.cancelled"),
+    ended: count(cur, "plan.downgraded"),
+    previousEnded: count(prev, "plan.downgraded"),
+    endedByPlan: splitTotals(cur, "plan.downgraded"),
   };
 
   const features = Object.entries(ACTIVITY_TYPES)

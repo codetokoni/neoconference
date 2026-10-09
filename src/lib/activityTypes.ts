@@ -42,5 +42,7 @@ export const ACTIVITY_TYPES: Record<string, TypeDef> = {
   "group.call": { label: "Group call", feature: true },
   upload: { label: "File upload", feature: true, amount: "bytes", accountMetric: { metric: "uploadBytes", amount: "bytes" } },
   "plan.purchased": { label: "Plan purchased", splitBy: "from", amount: "amountEsp" },
-  "plan.downgraded": { label: "Plan downgraded or ended", splitBy: "from" },
+  "plan.cancelled": { label: "Plan cancelled", splitBy: "from" },
+  "plan.downgraded": { label: "Plan ended (back to Free)", splitBy: "from" },
+  "plan.changed": { label: "Plan changed by an administrator", splitBy: "action" },
 };

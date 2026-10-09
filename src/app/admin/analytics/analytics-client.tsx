@@ -198,7 +198,7 @@ export default function AnalyticsClient() {
             <DailyBars title="Adoption" days={data.days} series={[{ label: "Sign-ups", values: data.daily.signUps }, { label: "Active users (UTC day)", values: data.daily.activeDaily, avg: true }]} />
             <DailyBars title="Meetings" days={data.days} series={[{ label: "Created", values: data.daily.meetings }, { label: "Joins", values: data.daily.joins }]} />
             <DailyBars title="Meeting minutes" days={data.days} series={[{ label: "Minutes", values: data.daily.meetingMinutes }]} />
-            <DailyBars title="Plans" days={data.days} series={[{ label: "Purchases", values: data.daily.purchases }, { label: "Downgrades / ended", values: data.daily.downgrades }]} />
+            <DailyBars title="Plans" days={data.days} series={[{ label: "Purchases", values: data.daily.purchases }, { label: "Cancellations", values: data.daily.cancellations }, { label: "Plans ended", values: data.daily.downgrades }]} />
           </div>
 
           {signUps && (
@@ -362,23 +362,28 @@ export default function AnalyticsClient() {
                   <dd className="text-xs text-zinc-500">{data.conversion.revenueEsp.toLocaleString()} ESP</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-zinc-400">Downgrades / plans ended</dt>
+                  <dt className="text-xs text-zinc-400">Cancellations</dt>
                   <dd className="text-xl font-semibold text-white">
-                    <Link href={logsHref("plan.downgraded", p.query)} className="hover:underline">
-                      {data.cancellations.total}
+                    <Link href={logsHref("plan.cancelled", p.query)} className="hover:underline">
+                      {data.cancellations.cancelled}
                     </Link>
                   </dd>
-                  <dd className="text-xs text-zinc-500">was {data.cancellations.previous} the period before</dd>
+                  <dd className="text-xs text-zinc-500">was {data.cancellations.previousCancelled} the period before</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-zinc-400">Ended plans by tier</dt>
-                  <dd className="text-xs text-zinc-300">
-                    {Object.entries(data.cancellations.byFromPlan).map(([k, v]) => `${k}: ${v}`).join(" · ") || "—"}
+                  <dt className="text-xs text-zinc-400">Plans ended</dt>
+                  <dd className="text-xl font-semibold text-white">
+                    <Link href={logsHref("plan.downgraded", p.query)} className="hover:underline">
+                      {data.cancellations.ended}
+                    </Link>
+                  </dd>
+                  <dd className="text-xs text-zinc-500">
+                    {Object.entries(data.cancellations.endedByPlan).map(([k, v]) => `${k}: ${v}`).join(" · ") || "—"} · was {data.cancellations.previousEnded}
                   </dd>
                 </div>
               </dl>
               <p className="mt-3 text-xs text-zinc-500">
-                Purchases are counted when eSpees returns the buyer; plans ending are counted by the daily expiry sweep. Neither existed in the log before it began.
+                From the subscription records’ changes: a purchase when eSPees returns the buyer, a cancellation when an administrator cancels, a plan ending at the daily sweep — counted from the day the log began. Each account’s full record is under Billing → Subscriptions.
               </p>
             </Panel>
           </div>

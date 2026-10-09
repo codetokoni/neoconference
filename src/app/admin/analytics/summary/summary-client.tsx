@@ -109,7 +109,7 @@ export default function SummaryClient() {
           <section>
             <h2 className="mb-1 font-semibold text-white">Conversion and cancellations</h2>
             <p>
-              Free → paid: <b>{data.conversion.conversions}</b> · all purchases: <b>{data.conversion.purchases}</b> ({data.conversion.revenueEsp.toLocaleString()} ESP) · plans ended or downgraded: <b>{data.cancellations.total}</b> (previous period {data.cancellations.previous}).
+              Free → paid: <b>{data.conversion.conversions}</b> · all purchases: <b>{data.conversion.purchases}</b> ({data.conversion.revenueEsp.toLocaleString()} ESP) · cancellations: <b>{data.cancellations.cancelled}</b> (previous period {data.cancellations.previousCancelled}) · plans ended: <b>{data.cancellations.ended}</b> (previous period {data.cancellations.previousEnded}).
             </p>
           </section>
 

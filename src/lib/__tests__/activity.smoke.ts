@@ -111,6 +111,8 @@ async function main() {
     v1events: await import("../../app/api/v1/events/route"),
     espees: await import("../../app/api/billing/espees/return/route"),
     downgrade: await import("../../app/api/cron/downgrade-expired-plans/route"),
+    subscription: await import("../../app/api/admin/subscriptions/[userId]/route"),
+    userPage: await import("../../app/api/admin/users/[id]/route"),
   };
 
   const jar: Record<string, string> = {};
@@ -119,7 +121,7 @@ async function main() {
   async function raw(
     who: string | null,
     handler: unknown,
-    opts: { method?: string; body?: unknown; rawBody?: string; query?: string; headers?: Record<string, string>; path?: string } = {},
+    opts: { method?: string; body?: unknown; rawBody?: string; query?: string; headers?: Record<string, string>; path?: string; params?: Record<string, string> } = {},
   ): Promise<Response> {
     g.__who = who ?? undefined;
     const headers: Record<string, string> = { "content-type": "application/json", ...(opts.headers ?? {}) };
@@ -129,7 +131,7 @@ async function main() {
       headers,
       body: opts.rawBody ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body)),
     });
-    const res = await (handler as Handler)(req as never, { params: {} });
+    const res = await (handler as Handler)(req as never, { params: opts.params ?? {} });
     const m = res.headers.get("set-cookie")?.match(/neo_admin_mfa=([^;]*)/);
     if (who && m) jar[who] = decodeURIComponent(m[1]);
     return res;
@@ -335,6 +337,18 @@ async function main() {
     assert.equal(d.body.downgraded, 1, JSON.stringify(d.body));
     const [x] = await act.listUserActivity("user_lapsed");
     assert.deepEqual([x.type, x.props?.from, x.props?.reason], ["plan.downgraded", "business", "expired"]);
+  });
+
+  await t("subscription records: an administrator's cancellation, then the daily sweep ending the plan", async () => {
+    const c = await call("user_owner", R.subscription.POST, { method: "POST", params: { userId: "user_buyer" }, body: { action: "cancel", when: "period_end" } });
+    assert.equal(c.status, 200, JSON.stringify(c.body));
+    const [x] = await act.listUserActivity("user_buyer");
+    assert.deepEqual([x.type, x.props?.from, x.props?.ends, x.props?.by], ["plan.cancelled", "pro", "period_end", "owner@example.com"]);
+    const { sweepDue } = await import("../billing/subscriptions");
+    const swept = await sweepDue(Date.now() + 40 * DAY);
+    assert.ok(swept.expired >= 1, JSON.stringify(swept));
+    const [y] = await act.listUserActivity("user_buyer");
+    assert.deepEqual([y.type, y.props?.from, y.props?.reason], ["plan.downgraded", "pro", "cancelled"]);
   });
 
   await t("a wrong authenticator code is a failed admin sign-in (warning) in the activity log", async () => {
@@ -602,6 +616,14 @@ async function main() {
   });
 
   console.log("contract for the account page (phase 2)");
+  await t("the account page lists the person's activity, for administrators with analytics:read", async () => {
+    const an = await call("user_owner", R.userPage.GET, { params: { id: "user_pro" } });
+    assert.equal(an.status, 200, JSON.stringify(an.body));
+    assert.ok(an.body.activity.some((e: { type: string }) => e.type === "meeting.created"));
+    const sup = await call("user_sup", R.userPage.GET, { params: { id: "user_pro" } });
+    assert.equal(sup.status, 200);
+    assert.equal(sup.body.activity, null, "Support has users:read but not analytics:read");
+  });
   await t("listUserActivity: newest first, limit and before", async () => {
     const all = await act.listUserActivity("user_pro");
     assert.ok(all.length >= 5);
