@@ -8,25 +8,15 @@
 // half lives in authz.ts recordDecision().
 
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
-import { isAdmin } from "@/lib/roles";
+import { requireAdmin } from "@/lib/admin/context";
 import { listRecentAuditEntries } from "@/lib/auditLog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  const u = await currentUser().catch(() => null);
-  const emails = (u?.emailAddresses || []).map(
-    (e: { emailAddress: string }) => e.emailAddress.toLowerCase()
-  );
-  if (!emails.some((e) => isAdmin(e))) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const g = await requireAdmin(req, "audit:read");
+  if (!g.ok) return g.response;
 
   const raw = new URL(req.url).searchParams.get("limit");
   const parsed = raw ? parseInt(raw, 10) : NaN;

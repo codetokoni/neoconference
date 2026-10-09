@@ -20,7 +20,8 @@
 import { NextResponse } from 'next/server';
 import { clerkClient } from '@clerk/nextjs/server';
 import { kv } from '@/lib/kv';
-import { requireRole } from '@/lib/roles';
+import { actorOf, requireAdmin } from '@/lib/admin/context';
+import { recordAdminAction } from '@/lib/admin/audit';
 import { eventStore } from '@/lib/eventStore';
 
 export const runtime = 'nodejs';
@@ -29,10 +30,9 @@ export const dynamic = 'force-dynamic';
 const OWNER_KEY = 'neo:owner:';
 
 export async function POST(req: Request) {
-  const caller = await requireRole(['admin']);
-  if (!caller) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  }
+  const g = await requireAdmin(req, 'events:write');
+  if (!g.ok) return g.response;
+  const caller = g.ctx;
 
   let body: { slug?: unknown; id?: unknown; newOwnerEmail?: unknown; self?: unknown };
   try {
@@ -141,6 +141,15 @@ export async function POST(req: Request) {
   } catch {
     // Same — in-memory mode has no KV.
   }
+
+  await recordAdminAction(actorOf(g.ctx), req, {
+    action: 'event.transfer',
+    targetType: 'event',
+    targetId: ev.id,
+    targetLabel: ev.name || ev.slug,
+    before: { ownerUserId: oldOwnerUserId },
+    after: { ownerUserId: newOwnerUserId, ownerEmail: resolvedEmail },
+  });
 
   return NextResponse.json({
     ok: true,

@@ -1,28 +1,13 @@
-import { redirect } from "next/navigation";
-import { getCurrentRole } from "@/lib/roles";
+import { pageAllows } from "@/lib/admin/context";
+import { NoAccess } from "./AdminShell";
 import AdminClient from "./admin-client";
-import AdminTabs from "./AdminTabs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// The /admin layout has already checked sign-in, administrator status and
+// two-factor; this page needs its own permission on top.
 export default async function AdminPage() {
-  const role = await getCurrentRole();
-  if (!role) redirect("/sign-in");
-  if (role !== "admin") {
-    return (
-      <main className="max-w-2xl mx-auto p-8">
-        <h1 className="text-2xl font-semibold mb-3">Access denied</h1>
-        <p className="text-sm text-zinc-600">
-          Your account role is <code className="px-1.5 py-0.5 rounded bg-zinc-100">{role}</code>. Only admins can view this page.
-        </p>
-      </main>
-    );
-  }
-  return (
-    <>
-      <AdminTabs />
-      <AdminClient />
-    </>
-  );
+  if (!(await pageAllows("users:read"))) return <NoAccess permission="users:read" />;
+  return <AdminClient />;
 }

@@ -15,6 +15,8 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdmin } from "@/lib/roles";
+import { isOwnerEmailList } from "@/lib/admin/owner";
+import { getMember } from "@/lib/admin/store";
 import { eventStore } from "@/lib/eventStore";
 import { appendAuditEntry } from "@/lib/auditLog";
 import type { NeoEvent } from "@/types/event";
@@ -53,7 +55,15 @@ export async function getIdentity(): Promise<Identity> {
   if (!userId) return { userId: null, emails: [], isPlatformAdmin: false };
   const u = await currentUser().catch(() => null);
   const emails = (u?.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
-  return { userId, emails, isPlatformAdmin: emails.some((e) => isAdmin(e)) };
+  if (isOwnerEmailList(u?.emailAddresses)) return { userId, emails, isPlatformAdmin: true };
+  // An ADMIN_EMAILS admin whose administrator record was suspended or removed
+  // in the admin area loses platform-admin standing on meetings too.
+  let isPlatformAdmin = emails.some((e) => isAdmin(e));
+  if (isPlatformAdmin) {
+    const member = await getMember(userId).catch(() => null);
+    if (member && member.status !== "active") isPlatformAdmin = false;
+  }
+  return { userId, emails, isPlatformAdmin };
 }
 
 /** Resolve the caller's standing on one event. Cheap to call; do it once per request. */

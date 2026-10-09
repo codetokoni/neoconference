@@ -19,17 +19,16 @@
 // finished. Sent as milliseconds; omit it for the default hour.
 
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/roles";
+import { actorOf, requireAdmin } from "@/lib/admin/context";
+import { recordAdminAction } from "@/lib/admin/audit";
 import { runMeetingSweep } from "@/lib/meetingSweep";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const caller = await requireRole(["admin"]);
-  if (!caller) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const g = await requireAdmin(req, "ops:write");
+  if (!g.ok) return g.response;
 
   let graceMs: number | undefined;
   try {
@@ -42,6 +41,12 @@ export async function POST(req: Request) {
   }
 
   const summary = await runMeetingSweep({ graceMs });
+  await recordAdminAction(actorOf(g.ctx), req, {
+    action: "ops.meeting_sweep",
+    targetType: "system",
+    after: summary as unknown as Record<string, unknown>,
+    outcome: summary.ok ? "ok" : "failed",
+  });
 
   // A failed LiveKit lookup changes nothing, and the caller should hear
   // about that as a failure rather than as "swept, found none".

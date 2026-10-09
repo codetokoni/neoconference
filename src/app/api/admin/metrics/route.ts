@@ -17,7 +17,7 @@
 //     limitation for this PR; flagged in the PR body.
 
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/roles";
+import { requireAdmin } from "@/lib/admin/context";
 import { eventStore } from "@/lib/eventStore";
 import type { NeoEvent } from "@/types/event";
 
@@ -217,10 +217,8 @@ function planBreakdownOf(
 }
 
 export async function GET(req: Request) {
-  const caller = await requireRole(["admin"]);
-  if (!caller) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const g = await requireAdmin(req, "analytics:read");
+  if (!g.ok) return g.response;
 
   const url = new URL(req.url);
   const rangeParam = url.searchParams.get("range");
