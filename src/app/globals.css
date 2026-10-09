@@ -409,3 +409,23 @@ body.neo-room-idle .lk-control-bar {
 :fullscreen [data-tile-role-badge] {
   top: 60px !important;
 }
+
+/* A meeting tile in full screen (double-click or its expand button): the
+   video covers the whole screen — no black bands, no padding or rounded
+   frame — and the logo, role badge and name plate sit over the video. */
+.lk-participant-tile:fullscreen {
+  padding: 0 !important;
+  gap: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #000 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+.lk-participant-tile:fullscreen video {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
