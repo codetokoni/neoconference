@@ -14,6 +14,7 @@
 
 import { NextResponse } from "next/server";
 import { runDispatch } from "@/lib/ringEngine";
+import { runCommsDispatch } from "@/lib/comms/sends";
 import { authorizedDispatch, dispatchRefusal } from "@/lib/dispatchAuth";
 
 export const runtime = "nodejs";
@@ -28,12 +29,18 @@ async function handle(req: Request) {
   }
   const started = Date.now();
   const result = await runDispatch(started);
+  // Announcements with recipients left (src/lib/comms/sends.ts). Its own
+  // failure must not cost the reminders and rings above their answer.
+  const comms = await runCommsDispatch(15_000).catch((err) => {
+    console.warn("[dispatch] comms failed", err);
+    return { processed: [] };
+  });
   console.info(
     `[dispatch] ran=${result.ran} skipped=${result.skipped} errors=${result.errors}` +
       (result.chat ? ` chat_started=${result.chat.started} chat_ended=${result.chat.ended} open=${result.chat.open}` : "") +
-      `${result.locked ? " locked" : ""} ms=${Date.now() - started}`
+      `${result.locked ? " locked" : ""}${comms.processed.length ? ` comms=${comms.processed.length}` : ""} ms=${Date.now() - started}`
   );
-  return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
+  return NextResponse.json({ ...result, comms: comms.processed }, { headers: { "cache-control": "no-store" } });
 }
 
 export const POST = handle;

@@ -187,6 +187,9 @@ export async function incrementMeetingsCreated(userId: string): Promise<void> {
                             meetingsCreated: used + 1,
                   },
           });
+          // A note when the cap is near (off unless an administrator turned it on).
+          const { meetingCapReminder } = await import("@/lib/comms/reminders");
+          await meetingCapReminder(userId, used + 1, limits.lifetimeMeetingCap, plan);
     } catch (e) {
           // eslint-disable-next-line no-console
       console.error("[plan] incrementMeetingsCreated failed:", e);

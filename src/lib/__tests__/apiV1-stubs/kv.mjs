@@ -3,7 +3,7 @@ const store = (globalThis.__kvStore ??= new Map());
 const sets = () => new Set();
 export const kv = {
   async get(k) { return store.has(k) ? structuredClone(store.get(k)) : null; },
-  async set(k, v) { store.set(k, structuredClone(v)); return "OK"; },
+  async set(k, v, o) { if (o?.nx && store.has(k)) return null; store.set(k, structuredClone(v)); return "OK"; },
   async del(k) { return store.delete(k) ? 1 : 0; },
   async sadd(k, ...m) { const s = store.get(k) ?? sets(); m.forEach((x) => s.add(x)); store.set(k, s); return m.length; },
   async srem(k, ...m) { const s = store.get(k) ?? sets(); m.forEach((x) => s.delete(x)); store.set(k, s); return m.length; },
@@ -13,6 +13,7 @@ export const kv = {
   async expire() { return 1; },
   async hget(k, f) { return (store.get(k) ?? {})[f] ?? null; },
   async hset(k, o) { store.set(k, { ...(store.get(k) ?? {}), ...o }); return 1; },
+  async hsetnx(k, f, v) { const o = store.get(k) ?? {}; if (f in o) return 0; store.set(k, { ...o, [f]: structuredClone(v) }); return 1; },
   async hgetall(k) { const o = store.get(k); return o && Object.keys(o).length ? structuredClone(o) : null; },
   async hdel(k, ...fields) {
     const o = { ...(store.get(k) ?? {}) };

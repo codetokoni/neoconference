@@ -1,5 +1,5 @@
 // Clerk: who is signed in (globalThis.__who, session globalThis.__sid) and
-// each user in globalThis.__users = { [id]: { plan?, role?, emails?, unverified?, first? } }.
+// each user in globalThis.__users = { [id]: { plan?, role?, emails?, unverified?, first?, createdAt?, banned?, locked? } }.
 // `emails` are verified addresses; `unverified` are on the account but not verified.
 export * from "real:clerk";
 
@@ -28,6 +28,9 @@ function toUser(id) {
     publicMetadata,
     emailAddresses: list,
     primaryEmailAddress: list[0] ?? null,
+    createdAt: u.createdAt ?? 0,
+    banned: !!u.banned,
+    locked: !!u.locked,
   };
 }
 
@@ -50,6 +53,7 @@ export async function clerkClient() {
       },
       async getUserList(params = {}) {
         let ids = Object.keys(users());
+        if (params.userId?.length) ids = ids.filter((id) => params.userId.includes(id));
         if (params.emailAddress?.length) {
           const want = params.emailAddress.map((e) => e.toLowerCase());
           ids = ids.filter((id) => emailList(users()[id]).some((e) => want.includes(e.emailAddress.toLowerCase())));
