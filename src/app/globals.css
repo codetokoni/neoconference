@@ -403,3 +403,9 @@ body.neo-room-idle .lk-control-bar {
   text-decoration-color: rgba(103, 232, 249, 0.45);
   text-underline-offset: 2px;
 }
+
+/* Full screen: the logo (FullscreenBrand) takes the top-left corner; a
+   tile's role badge moves below it. */
+:fullscreen [data-tile-role-badge] {
+  top: 60px !important;
+}
