@@ -24,6 +24,8 @@ export const SECTIONS: Section[] = [
   { label: "Subscriptions", href: "/admin/subscriptions", permission: "plans:read", group: "Billing" },
   { label: "Communication", href: "/admin/communication", permission: "notifications:send", group: "Communication" },
   { label: "Email templates", href: "/admin/email-templates", permission: "notifications:send", group: "Communication" },
+  { label: "Tickets", href: "/admin/support", permission: "support:read", group: "Support" },
+  { label: "Help centre", href: "/admin/help", permission: "support:read", group: "Support" },
   { label: "Administrators", href: "/admin/team", permission: "admins:read", group: "Access" },
   { label: "Roles", href: "/admin/roles", permission: "admins:read", group: "Access" },
   { label: "Audit log", href: "/admin/audit-log", permission: "audit:read", group: "Access" },
