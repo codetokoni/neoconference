@@ -19,7 +19,7 @@ import { getHiddenEvent } from '@/lib/content/files';
 import { toPublicView, type NeoEvent, type PublicEventView } from '@/types/event';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { can, resolveRole } from '@/lib/permissions';
-import { isAdmin } from '@/lib/roles';
+import { hasMeetingAdminPower } from '@/lib/roles';
 import { eventReplayVideos, replayOpen, sizeLabel, type ReplayVideo } from '@/lib/replayRecordings';
 
 export const dynamic = 'force-dynamic';
@@ -72,7 +72,7 @@ async function canReadTranscript(event: NeoEvent): Promise<boolean> {
   const actor = resolveRole(event, {
     userId,
     emails,
-    isPlatformAdmin: emails.some((e) => isAdmin(e)),
+    isPlatformAdmin: await hasMeetingAdminPower(userId, u?.emailAddresses),
   });
   return can(actor, 'transcript:read', event.permissionOverrides);
 }

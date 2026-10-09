@@ -570,6 +570,19 @@ async function main() {
     assert.equal(txt.body.text, "hello world");
   });
 
+  await t("share links: only the recorder or someone who may read the meeting's recordings can make one", async () => {
+    const share = (who: string, key: string) => call(who, R.share.POST as unknown as Handler<unknown>, { method: "POST", body: { key } });
+    const stranger = await share("user_bob", videoKey);
+    assert.equal(stranger.status, 403, "someone else's recording of a meeting they have no role in");
+    assert.match(stranger.body.message!, /only share your own recordings/);
+    assert.equal((await share("user_bob", "recordings/user_bob/bob-room/2026-09-01-10-00-00.mp4")).status, 200, "your own folder");
+    assert.equal((await share("user_alice", "recordings/user_bob/alice-weekly/2026-10-02-10-00-00.mp4")).status, 200, "the meeting's owner may share a co-host's recording of it");
+    assert.equal((await share("user_bob", "recordings/user_bob/alice-weekly/../user_alice/x.mp4")).status, 400);
+    const chat = await share("user_alice", chatKey);
+    assert.equal(chat.status, 400);
+    assert.equal(chat.body.error, "not_shareable");
+  });
+
   await t("a shared file opens with content:read alone; a share link marks it shared", async () => {
     const sh = await call("user_alice", R.share.POST as unknown as Handler<unknown>, { method: "POST", body: { key: videoKey } });
     assert.equal(sh.status, 200, JSON.stringify(sh.body));

@@ -21,7 +21,7 @@ import { purgeAuditMonths } from "@/lib/admin/audit";
 import { listTickets, purgeTicketsClosedBefore } from "@/lib/support/tickets";
 import { purgeCommsLogBefore } from "@/lib/comms/forget";
 import { purgeRawActivityBefore } from "@/lib/activity";
-import { getBackup, listBackups } from "@/lib/ops/backup";
+import { deleteBackup, getBackup, listBackups } from "@/lib/ops/backup";
 
 export type PurgeCategory = Exclude<RetentionCategory, "accounts"> | "exports";
 
@@ -254,19 +254,19 @@ export const PURGES: PurgeDef[] = [
         .map((b) => ({ id: b.id, fingerprint: `${b.createdAt}:${b.sha256}`, bytes: b.bytes, view: { kind: b.kind, createdAt: b.createdAt, keys: b.keyCount, size: b.bytes } }));
     },
     remove: async (records) => {
-      // As the operations phase's own retention does it (src/lib/ops/backup.ts applyRetention):
-      // the R2 file, then the index entry.
+      // The operations phase's own delete (src/lib/ops/backup.ts deleteBackup): the R2 file,
+      // then the index entry. A file that would not delete keeps its entry, so the next purge retries it.
       let removed = 0;
       let bytes = 0;
       for (const r of records) {
         const b = await getBackup(r.id);
         if (!b) continue;
         try {
-          await deleteObject(b.r2Key);
+          if (!(await deleteBackup(r.id))) continue;
         } catch (err) {
-          console.warn("[data-purge] backup file delete failed", b.r2Key, err);
+          console.warn("[data-purge] backup delete failed", r.id, err);
+          continue;
         }
-        await kv.hdel("neo:ops:backups", b.id);
         removed++;
         bytes += b.bytes;
       }

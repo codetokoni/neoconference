@@ -21,7 +21,8 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
-import { isAdmin } from "@/lib/roles";
+import { hasMeetingAdminPower } from "@/lib/roles";
+import type { ClerkEmailish } from "@/lib/admin/owner";
 import { lastKnocks, noteKnock, refusalHolds, startsNewWait, stillWaiting } from "@/lib/waitingRoom";
 import { getMeetingRole, getMeetingRoleByEmail } from "@/lib/meeting-roles";
 import { admitInvitee } from "@/lib/groupMeetings";
@@ -33,6 +34,7 @@ export const dynamic = "force-dynamic";
 interface CallerInfo {
   userId: string;
   emails: string[];
+  emailAddresses: ClerkEmailish[];
   displayName: string;
 }
 
@@ -48,11 +50,11 @@ async function getCaller(): Promise<CallerInfo | null> {
     u?.username ||
     u?.primaryEmailAddress?.emailAddress ||
     userId;
-  return { userId, emails, displayName };
+  return { userId, emails, emailAddresses: u?.emailAddresses || [], displayName };
 }
 
 async function callerRole(ev: NeoEvent, caller: CallerInfo) {
-  const isAdminCaller = caller.emails.some((e) => isAdmin(e));
+  const isAdminCaller = await hasMeetingAdminPower(caller.userId, caller.emailAddresses);
   const ownerEmail = (ev.ownerEmail || "").toLowerCase();
   const isOwner =
     ev.ownerUserId === caller.userId ||
