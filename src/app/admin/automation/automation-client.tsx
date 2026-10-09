@@ -373,7 +373,7 @@ export default function AutomationClient() {
                 </div>
               </div>
               {preview && preview.ruleId === r.id && <PreviewPanel preview={preview} onClose={() => setPreview(null)} />}
-              {open === r.id && <History ruleId={r.id} />}
+              {open === r.id && <History key={r.state.lastRunAt ?? 0} ruleId={r.id} />}
             </Panel>
           ))}
         </div>
@@ -563,15 +563,15 @@ function Editor({
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label className={L}>
           Name
-          <input className={`${field} mt-1`} value={draft.name} maxLength={80} onChange={(e) => set({ name: e.target.value })} />
+          <input aria-label="Name" className={`${field} mt-1`} value={draft.name} maxLength={80} onChange={(e) => set({ name: e.target.value })} />
         </label>
         <label className={L}>
           Timezone
-          <input className={`${field} mt-1`} value={draft.timezone} onChange={(e) => set({ timezone: e.target.value })} placeholder="Africa/Lagos" />
+          <input aria-label="Timezone" className={`${field} mt-1`} value={draft.timezone} onChange={(e) => set({ timezone: e.target.value })} placeholder="Africa/Lagos" />
         </label>
         <label className={`${L} sm:col-span-2`}>
           Description
-          <input className={`${field} mt-1`} value={draft.description} maxLength={500} onChange={(e) => set({ description: e.target.value })} />
+          <input aria-label="Description" className={`${field} mt-1`} value={draft.description} maxLength={500} onChange={(e) => set({ description: e.target.value })} />
         </label>
       </div>
 
@@ -863,14 +863,14 @@ function Channels({ value, push, onChange }: { value: { email: boolean; inApp: b
     <fieldset className="text-xs text-zinc-400">
       <legend>Channels</legend>
       <label className="mr-3 inline-flex items-center gap-1">
-        <input type="checkbox" checked={value.email} onChange={(e) => onChange({ ...value, email: e.target.checked })} /> Email
+        <input type="checkbox" aria-label="Email" checked={value.email} onChange={(e) => onChange({ ...value, email: e.target.checked })} /> Email
       </label>
       <label className="mr-3 inline-flex items-center gap-1">
-        <input type="checkbox" checked={value.inApp} onChange={(e) => onChange({ ...value, inApp: e.target.checked })} /> Bell
+        <input type="checkbox" aria-label="Bell" checked={value.inApp} onChange={(e) => onChange({ ...value, inApp: e.target.checked })} /> Bell
       </label>
       {push && (
         <label className="inline-flex items-center gap-1">
-          <input type="checkbox" checked={!!value.push} onChange={(e) => onChange({ ...value, push: e.target.checked })} /> Push
+          <input type="checkbox" aria-label="Push" checked={!!value.push} onChange={(e) => onChange({ ...value, push: e.target.checked })} /> Push
         </label>
       )}
     </fieldset>
