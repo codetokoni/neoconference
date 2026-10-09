@@ -7,7 +7,12 @@ export type ConnState = "connecting" | "waiting" | "playing" | "reconnecting";
 
 export interface MultitrackResult {
   state: ConnState;
-  /** Most recent video track. Fine when a group carries exactly one. */
+  /**
+   * Most recent video track. Only meaningful when the stream played carries
+   * exactly one picture — a single stream id played on its own, as the
+   * player does for the broadcaster. Never use it on a group that
+   * participant cameras publish into: whichever camera arrives last wins.
+   */
   videoStream: MediaStream | null;
   /** Every video track, keyed by subtrack id — the control room needs all 50. */
   videoStreams: Record<string, MediaStream>;
@@ -72,7 +77,19 @@ export function useAmsMultitrack(
     [mainTrack],
   );
 
+  // Nothing from a previous stream id (another room, another broadcaster) or
+  // a previous enable may linger once this one changes.
+  const clearMedia = useCallback(() => {
+    setVideoStream(null);
+    setVideoStreams({});
+    setAudioStreams({});
+    setLiveTrackIds([]);
+    setActiveVideoKeys([]);
+  }, []);
+
   useEffect(() => {
+    clearMedia();
+    setState("connecting");
     if (!enabled || !mainTrack) return;
     deadRef.current = false;
     // The subtrack names, from the key this effect is keyed on rather than
@@ -165,6 +182,9 @@ export function useAmsMultitrack(
       };
 
       pc.ontrack = (e) => {
+        // A track from a connection already replaced (a reconnect, or a
+        // late event after teardown) must not reach the screen.
+        if (pcRef.current !== pc || deadRef.current) return;
         const mid = e.transceiver?.mid ?? "";
         const mapped = idMapRef.current[mid];
         const rawId = mapped || e.streams[0]?.id || `${e.track.kind}-${mid}`;
@@ -241,6 +261,9 @@ export function useAmsMultitrack(
     function connect() {
       if (deadRef.current) return;
       teardown();
+      // A new session starts empty: the old streams are dead, and keeping
+      // them would leave their last (or a black) frame up as if live.
+      clearMedia();
       setState((s) => (s === "playing" ? "reconnecting" : s));
 
       let ws: WebSocket;
@@ -366,7 +389,7 @@ export function useAmsMultitrack(
       if (retryRef.current) clearTimeout(retryRef.current);
       teardown();
     };
-  }, [mainTrack, enabled, nonce, trackKey]);
+  }, [mainTrack, enabled, nonce, trackKey, clearMedia]);
 
   return { state, videoStream, videoStreams, audioStreams, liveTrackIds, activeVideoKeys, setTrackEnabled, restart };
 }

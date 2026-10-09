@@ -6,6 +6,7 @@ import HealthStrip from "./HealthStrip";
 import RecordingPanel from "./RecordingPanel";
 import RosterPanel from "./RosterPanel";
 import TimerControl from "./TimerControl";
+import ViewerFeedPanel from "./ViewerFeedPanel";
 import { broadcastEndpointsForRoom } from "@/lib/broadcastUrls";
 import { roomLink } from "@/lib/simulcast";
 
@@ -233,6 +234,8 @@ export default function RoomHub({
         </div>
       </div>
       )}
+
+      {role === "admin" && <ViewerFeedPanel room={s.room} />}
 
       {role === "admin" && <RosterPanel room={s.room} />}
 

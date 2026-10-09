@@ -4,9 +4,9 @@ import {
   fetchSubtracks,
   isBroadcasting,
   isSurelyBroadcasting,
+  channelsForRoom,
   videoChannelForRoom,
   SIMULCAST_MAIN,
-  SIMULCAST_CHANNELS,
   featuredKey,
   type FeaturedState,
 } from "@/lib/simulcast";
@@ -15,6 +15,7 @@ import {
   ensureRoomBroadcastsInBackground,
   relinkVideoSubtrackThrottled,
 } from "@/lib/amsMainTrack";
+import { belongsToRoom, getBroadcaster } from "@/lib/videoBroadcaster";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,11 +29,16 @@ export async function GET(req: Request) {
   // the audience-facing dashboard reports `live: false` even when a
   // proper RTMP publisher (OBS, vMix) is pushing to <room>-video.
   const mainTrack = roomMainTrack(room);
+  // This room's own channels. This used to report the default room's
+  // (SIMULCAST_CHANNELS = neoconf-*) for every room, so on
+  // global-men-crusade the programme never read as live.
+  const channels = channelsForRoom(room);
 
   try {
-    const [subs, featuredRaw] = await Promise.all([
+    const [subs, featuredRaw, broadcaster] = await Promise.all([
       fetchSubtracks(mainTrack),
       kv.get<FeaturedState>(featuredKey(room)).catch(() => null),
+      getBroadcaster(room),
     ]);
     const liveIds = new Set(
       subs.filter((b) => b.status === "broadcasting").map((b) => b.streamId),
@@ -76,6 +82,8 @@ export async function GET(req: Request) {
     // timeout) would leave the pointer set forever and every viewer would
     // sit on a black picture behind an ON AIR badge that lies.
     let featured: FeaturedState | null = featuredRaw ?? null;
+    // Only this room's participants can be put on air in this room.
+    if (featured && !belongsToRoom(room, featured.streamId)) featured = null;
     if (featured) {
       const alive = await isBroadcasting(featured.streamId);
       if (!alive) {
@@ -84,6 +92,13 @@ export async function GET(req: Request) {
       }
     }
 
+    // The broadcaster every viewer plays. The programme was checked above;
+    // an assigned participant slot is asked about directly (participant
+    // streams may sit outside the group's subtrack list).
+    const broadcasterLive =
+      liveIds.has(broadcaster.streamId) ||
+      (broadcaster.streamId !== videoId && (await isSurelyBroadcasting(broadcaster.streamId)));
+
     return NextResponse.json(
       {
         ok: true,
@@ -91,14 +106,15 @@ export async function GET(req: Request) {
         live: liveIds.size > 0,
         viewers,
         featured,
-        channels: SIMULCAST_CHANNELS.map((c) => ({ id: c.id, live: liveIds.has(c.id) })),
-        // any booth publishing into the group but missing from SIMULCAST_CHANNELS
+        broadcaster: { ...broadcaster, live: broadcasterLive },
+        channels: channels.map((c) => ({ id: c.id, live: liveIds.has(c.id) })),
+        // any stream publishing into the group that is not one of this room's channels
         unknown: subs
           .filter(
             (b) =>
               b.status === "broadcasting" &&
               b.streamId !== mainTrack &&
-              !SIMULCAST_CHANNELS.some((c) => c.id === b.streamId),
+              !channels.some((c) => c.id === b.streamId),
           )
           .map((b) => b.streamId),
       },
@@ -114,6 +130,7 @@ export async function GET(req: Request) {
         channels: [],
         unknown: [],
         featured: null,
+        broadcaster: null,
         error: (e as Error).message,
       },
       { status: 200, headers: { "Cache-Control": "no-store" } },
