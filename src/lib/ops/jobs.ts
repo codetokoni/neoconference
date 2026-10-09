@@ -197,3 +197,17 @@ export function consecutiveFailures(runs: JobRun[]): number {
   }
   return n;
 }
+
+/**
+ * Set while an automation rule has taken a scheduled job over
+ * (src/lib/automation/runner.ts): JSON { ruleId, ruleName }, with a short
+ * TTL the automation dispatcher refreshes. cronRoute() skips the job's own
+ * scheduled run while it is set; if the dispatcher stops, it lapses and the
+ * cron runs again.
+ */
+export const jobReplacedKey = (name: string) => `neo:ops:job:replaced:${name}`;
+
+/** The rule that has taken `name` over, if any. */
+export async function jobReplacement(name: string): Promise<{ ruleId: string; ruleName: string } | null> {
+  return parseJson<{ ruleId: string; ruleName: string }>(await kv.get(jobReplacedKey(name)));
+}

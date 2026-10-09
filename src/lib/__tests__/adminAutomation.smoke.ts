@@ -104,6 +104,7 @@ async function main() {
     downgrade: await import("../../app/api/cron/downgrade-expired-plans/route"),
     espeesFail: await import("../../app/api/billing/espees/fail/route"),
     billingCron: await import("../../app/api/cron/billing-reminders/route"),
+    commsCron: await import("../../app/api/cron/comms/route"),
   };
 
   const jar: Record<string, string> = {};
@@ -392,6 +393,14 @@ async function main() {
     assert.equal(replaced.status, 200, JSON.stringify(replaced.body));
     assert.equal(replaced.body.skipped, "replaced_by_automation");
     assert.equal(g.__users.user_u4.plan, "pro", "the replaced cron did not run");
+    const skipped = (await jobs.listRuns("downgrade-expired-plans", 1))[0];
+    assert.equal(skipped.outcome, "skipped");
+    assert.equal(skipped.summary, "skipped (replaced by automation rule Trial expiry and plan changes)");
+    // A cron no rule has taken over runs as before.
+    const comms = await call(null, R.commsCron.GET, { headers: cronHeaders });
+    assert.equal(comms.status, 200, JSON.stringify(comms.body));
+    assert.notEqual(comms.body.skipped, "replaced_by_automation");
+    assert.equal((await jobs.listRuns("comms", 1))[0].outcome, "ok");
     const r = await ruleCall("user_owner", R.run.POST, "builtin_trial_expiry");
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.equal(g.__users.user_u4.plan, "free", "the rule ran the job");
@@ -512,6 +521,15 @@ async function main() {
     assert.match(open[0].title, /Monday report/);
     await ruleCall("user_owner", R.run.POST, id); // a third failure: still one alert
     assert.equal((await alerts.listAlerts({ status: "active" })).filter((a) => a.subject === id).length, 1);
+    // Raising the same source and subject again updates the open alert: no second alert, no second notice.
+    const open1 = (await alerts.listAlerts({ status: "active" })).find((a) => a.subject === id)!;
+    const again = await alerts.raiseAlert({ source: "automation", subject: id, title: open1.title, message: "still failing", url: "/admin/automation" });
+    assert.equal(again.id, open1.id);
+    assert.equal(again.occurrences, 2);
+    assert.equal((await alerts.listAlerts({ status: "active" })).filter((a) => a.subject === id).length, 1);
+    // The ops health check's own "a job keeps failing" rule leaves automation jobs to their rules.
+    await alerts.evaluateAlerts([], Date.now());
+    assert.equal((await alerts.listAlerts({ status: "active" })).filter((a) => a.subject === runner.jobName(id)).length, 0);
     mailFails = 0;
     const ok = await ruleCall("user_owner", R.run.POST, id);
     assert.equal(ok.body.run.outcome, "ok", JSON.stringify(ok.body));

@@ -242,7 +242,11 @@ async function findings(rule: AlertRule, results: ProbeResult[], now: number, ca
       break;
     }
     case "job_failures": {
-      const names = rule.target === "*" ? [...new Set([...JOBS.map((j) => j.name), ...(await once("jobs", jobNames))])] : [rule.target];
+      // Automation rules raise their own alert after their own threshold (raiseAlert below).
+      const names =
+        rule.target === "*"
+          ? [...new Set([...JOBS.map((j) => j.name), ...(await once("jobs", jobNames))])].filter((n) => !n.startsWith("automation:"))
+          : [rule.target];
       for (const name of names) {
         const runs = await listRuns(name, 20);
         const n = consecutiveFailures(runs);
@@ -331,4 +335,58 @@ export async function evaluateAlerts(results: ProbeResult[], now = Date.now()): 
 
 async function notifyFor(rule: AlertRule, alert: OpsAlert): Promise<NotifyResult> {
   return notifyOps({ title: `NeoConference ops: ${alert.title}`, body: alert.message, url: "/admin/ops/alerts" }, { email: rule.email, inApp: rule.inApp });
+}
+
+/* ------------------------- alerts raised by others ------------------------ */
+
+const RAISED_COOLDOWN_MIN = 360;
+
+/**
+ * An alert raised directly by another part of the platform (an automation
+ * rule that keeps failing), rather than found by an alert rule. One open
+ * alert per source and subject: raising it again while it is open only
+ * updates it. Notifies the owner and ops admins, at most once per
+ * RAISED_COOLDOWN_MIN for the same source and subject.
+ */
+export async function raiseAlert(a: { source: string; subject: string; title: string; message: string; url: string }, now = Date.now()): Promise<OpsAlert> {
+  const key = `${a.source}:${a.subject}`;
+  const openId = await kv.get(openKey(key));
+  const existing = openId ? await getAlert(String(openId)) : null;
+  if (existing && existing.status !== "resolved") {
+    const next: OpsAlert = { ...existing, lastSeenAt: now, occurrences: existing.occurrences + 1, title: a.title, message: a.message };
+    await saveAlert(next);
+    return next;
+  }
+  const lastNotified = Number((await kv.get(notifiedKey(key))) ?? 0);
+  const cooling = lastNotified > 0 && now - lastNotified < RAISED_COOLDOWN_MIN * MIN;
+  const alert: OpsAlert = {
+    id: newId("alert"),
+    ruleId: a.source,
+    kind: "job_failures",
+    subject: a.subject,
+    title: a.title,
+    message: a.message,
+    status: "open",
+    openedAt: now,
+    lastSeenAt: now,
+    occurrences: 1,
+    notified: false,
+    ...(cooling ? { suppressed: "cooldown" as const } : {}),
+  };
+  if (!cooling) {
+    alert.notifyResult = await notifyOps({ title: `NeoConference ops: ${a.title}`, body: a.message, url: a.url });
+    alert.notified = true;
+    await kv.set(notifiedKey(key), now, { ex: RAISED_COOLDOWN_MIN * 60 });
+  }
+  await saveAlert(alert);
+  await kv.set(openKey(key), alert.id);
+  await kv.lpush(ORDER, alert.id);
+  await kv.ltrim(ORDER, 0, ORDER_CAP - 1);
+  return alert;
+}
+
+/** Resolve the open alert raiseAlert() made for this source and subject, if there is one. */
+export async function resolveAlertFor(source: string, subject: string, by: string, resolution?: string): Promise<OpsAlert | null> {
+  const id = await kv.get(openKey(`${source}:${subject}`));
+  return id ? resolveAlert(String(id), by, resolution) : null;
 }
