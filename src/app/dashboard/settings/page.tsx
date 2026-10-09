@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import SessionManager from "@/components/SessionManager";
 import CallAlertsButton from "@/components/notifications/CallAlertsButton";
+import YourData from "@/components/account/YourData";
 import NotificationPrefs from "@/components/notifications/NotificationPrefs";
 
 export const metadata: Metadata = {
@@ -52,6 +53,16 @@ export default function SettingsPage() {
           </p>
         </div>
         <NotificationPrefs />
+      </section>
+
+      <section className="mt-10 space-y-4">
+        <div>
+          <h2 className="text-lg font-medium text-cyan-100">Your data</h2>
+          <p className="mt-1 text-sm text-zinc-400">
+            Get a copy of what NeoConference keeps about you, or delete your account.
+          </p>
+        </div>
+        <YourData />
       </section>
     </div>
   );

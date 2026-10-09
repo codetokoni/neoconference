@@ -18,6 +18,7 @@ import {
   updateGroup,
 } from "@/lib/groupStore";
 import { listGroupMeetings } from "@/lib/groupMeetings";
+import { groupTrashInput, tryMoveToTrash } from "@/lib/dataGov/trash";
 import {
   groupErrorResponse,
   invalidBody,
@@ -89,6 +90,12 @@ export async function DELETE(req: Request, ctx: Ctx) {
   if (!body || typeof body.confirmName !== "string") return invalidBody("confirmation_required");
   if (body.confirmName.trim() !== gate.group.name) return invalidBody("confirmation_mismatch");
 
+  // Keep a copy an administrator can restore for the trash period
+  // (src/lib/dataGov/trash.ts). To the members the group is gone as before.
+  await tryMoveToTrash(async () => {
+    const [members, pending] = await Promise.all([listMembers(id), listPendingMembers(id)]);
+    return groupTrashInput(gate.group, gate.member.userId, members.map((m) => m.userId), pending.map((p) => p.key), gate.member.userId);
+  });
   await deleteGroup(id);
   return NextResponse.json({ ok: true });
 }

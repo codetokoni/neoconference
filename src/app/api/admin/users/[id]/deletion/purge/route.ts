@@ -1,70 +1,59 @@
-// POST /api/admin/users/[id]/deletion/purge — "Delete now". users:delete
-// (sensitive: a fresh code).
+// POST /api/admin/users/[id]/deletion/purge — "Delete now" on the account
+// page. users:delete and data:delete (sensitive: a fresh code), and
+// { confirm: "delete" } typed by the administrator.
 //
-// Only for an account whose deletion was requested and whose retention
-// period is over. Refused while the account owns a group (transfer the group
-// first, on the Groups page). Then: removed from the groups it is a member
-// of, signed out everywhere, deleted in Clerk, and what the admin area kept
-// about it (notes, tags) is dropped. The audit trail keeps the record.
+// Only for an account whose deletion was requested and whose grace period is
+// over. Completion is the Data page's (src/lib/dataGov/actions.ts
+// completeDeletion): every place in the data map is deleted or anonymised,
+// R2 files removed, the Clerk user deleted last, and a deletion certificate
+// (counts, no personal data) written to the audit trail. Refused for the
+// owner, under legal hold, and while the account owns a group others are in
+// (hand it over first, on the Groups page).
 
 import { NextResponse } from "next/server";
-import { clerkClient } from "@clerk/nextjs/server";
 import { actorOf, requireAdmin } from "@/lib/admin/context";
-import { recordAdminAction } from "@/lib/admin/audit";
-import { fail } from "@/lib/admin/http";
-import { saveMember } from "@/lib/admin/store";
-import { forgetUser, getDeletion, loadTargetUser, primaryEmail, signOutEverywhere, summarize, targetGuard } from "@/lib/admin/users";
-import { adminRemoveMember, listGroupsForUser } from "@/lib/groupStore";
+import { fail, readJson } from "@/lib/admin/http";
+import { getDeletion, loadTargetUser, targetGuard } from "@/lib/admin/users";
+import { erasureBlockers } from "@/lib/dataGov/erase";
+import { DATA_JOBS, asJob, completeDeletion } from "@/lib/dataGov/actions";
+import { jobLockHolder } from "@/lib/ops/jobs";
+import type { DeletionRequest } from "@/lib/dataGov/requests";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const g = await requireAdmin(req, "users:delete");
+  const g = await requireAdmin(req, ["users:delete", "data:delete"]);
   if (!g.ok) return g.response;
   const t = await loadTargetUser(params.id);
   if ("response" in t) return t.response;
   const refused = await targetGuard(g.ctx, t.user, t.member);
   if (refused) return refused;
 
-  const deletion = await getDeletion(t.user.id);
-  if (!deletion) return fail("not_requested", "Request the deletion first; the account is removed only after the retention period.", 409);
+  const deletion = (await getDeletion(t.user.id)) as DeletionRequest | null;
+  if (!deletion) return fail("not_requested", "Request the deletion first; the account is removed only after the grace period.", 409);
   if (deletion.deleteAfter > Date.now()) {
-    return fail("retention_not_over", `The retention period runs until ${new Date(deletion.deleteAfter).toISOString()}.`, 409, {
+    return fail("retention_not_over", `The grace period runs until ${new Date(deletion.deleteAfter).toISOString()}.`, 409, {
       deleteAfter: deletion.deleteAfter,
     });
   }
-  const groups = await listGroupsForUser(t.user.id);
-  const owned = groups.filter((s) => s.role === "owner");
-  if (owned.length) {
-    return fail("owns_groups", "This account owns groups. Transfer them to another member first.", 409, {
-      groups: owned.map((s) => ({ id: s.group.id, name: s.group.name })),
-    });
+  const blockers = await erasureBlockers(t.user.id, t.user);
+  if (blockers.length) {
+    const b = blockers[0];
+    return fail(b.code, b.message, b.code === "owner_protected" ? 403 : 409, "groups" in b ? { groups: b.groups } : undefined);
   }
-
-  const snapshot = summarize(t.user, { member: t.member, deletion });
-  for (const s of groups) await adminRemoveMember(s.group.id, t.user.id, g.ctx.userId);
-  await signOutEverywhere(t.user.id);
-  const client = await clerkClient();
-  await client.users.deleteUser(t.user.id);
-  await forgetUser(t.user.id);
-  if (t.member && t.member.status !== "removed") await saveMember({ ...t.member, status: "removed", updatedAt: Date.now() });
-  await recordAdminAction(actorOf(g.ctx), req, {
-    action: "user.delete",
-    targetType: "user",
-    targetId: t.user.id,
-    targetLabel: primaryEmail(t.user),
-    before: {
-      name: snapshot.name,
-      email: snapshot.email,
-      plan: snapshot.plan,
-      createdAt: snapshot.createdAt,
-      groupsLeft: groups.map((s) => s.group.id),
-      requestedBy: deletion.requestedByEmail,
-      requestedAt: new Date(deletion.requestedAt).toISOString(),
-    },
-    after: { deleted: true },
-    note: deletion.reason,
-  });
-  return NextResponse.json({ ok: true });
+  const body = await readJson<{ confirm?: unknown }>(req);
+  if (typeof body?.confirm !== "string" || body.confirm.trim().toLowerCase() !== "delete") {
+    return fail("confirmation_required", 'Type "delete" to confirm.', 400);
+  }
+  // Through the job runner, under the same lock as the Data page's completions.
+  const actor = { ...actorOf(g.ctx), req };
+  if (await jobLockHolder(DATA_JOBS.deletions)) return fail("busy", "Another deletion is being completed right now. Try again in a moment.", 409);
+  const r = await asJob(DATA_JOBS.deletions, actor, () => completeDeletion(t.user.id, deletion, actor), (o) => (o.ok ? "1 account deleted" : "not deleted"));
+  if (!r.ok) {
+    if ("blockers" in r) return fail(r.blockers[0].code, r.blockers[0].message, 409);
+    return fail("erase_failed", `Deletion stopped part-way (${r.error}). The account is still there; try again.`, 500);
+  }
+  return NextResponse.json({ ok: true, certificate: { id: r.certificate.certificateId, removed: r.certificate.removed } });
 }

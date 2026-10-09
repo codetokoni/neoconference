@@ -20,7 +20,7 @@
 // cronRequestFor() — never over the network — and say who started it.
 
 import { NextRequest, NextResponse } from "next/server";
-import { runJob, type JobTrigger } from "@/lib/ops/jobs";
+import { jobReplacement, runJob, type JobTrigger } from "@/lib/ops/jobs";
 
 /** The check every cron route already makes: Bearer CRON_SECRET, or Vercel's cron header when no secret is set. */
 export function isCronRequest(req: Request): boolean {
@@ -78,6 +78,17 @@ export function cronRoute<R extends Request = NextRequest>(
     const trigger: JobTrigger = t && TRIGGERS.includes(t) ? t : "schedule";
     const actor = req.headers.get("x-neo-job-actor") || (trigger === "schedule" ? "vercel-cron" : "system");
     const retryOf = req.headers.get("x-neo-job-retry-of") || undefined;
+
+    // An automation rule has taken this job over: its scheduled run stands
+    // down (recorded, so the Jobs page says why). Runs started by hand, as a
+    // retry or by the rule itself are not affected.
+    if (trigger === "schedule") {
+      const by = await jobReplacement(name);
+      if (by) {
+        await runJob(name, async () => ({ ok: true, skipped: true, summary: `skipped (replaced by automation rule ${by.ruleName})` }), { trigger, actor });
+        return NextResponse.json({ ok: true, skipped: "replaced_by_automation", job: name, ruleId: by.ruleId });
+      }
+    }
 
     let response: Response | null = null;
     const result = await runJob(

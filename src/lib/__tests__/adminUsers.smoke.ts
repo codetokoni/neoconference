@@ -506,7 +506,7 @@ async function main() {
     assert.equal((await lastAudit("user.delete.cancel")).targetId, "user_plain");
   });
 
-  await t("after the retention period: refused while they own a group; then gone from Clerk, groups and KV, kept in the audit trail", async () => {
+  await t("after the retention period: refused while they own a group; then gone from Clerk, groups and KV, kept in the audit trail as a certificate", async () => {
     await stepUp("user_super");
     assert.equal((await call("user_super", R.purge.POST, { params: id("user_alice"), method: "POST" })).body.error, "not_requested");
     await call("user_super", R.notes.POST, { params: id("user_alice"), method: "POST", body: { text: "Leaving" } });
@@ -519,16 +519,20 @@ async function main() {
     // Hand the group to Dave on the Groups page.
     const tr = await call("user_super", R.groupOwner.POST, { params: { gid: aliceGroup.id }, method: "POST", body: { userId: "user_dave" } });
     assert.equal(tr.status, 200, JSON.stringify(tr.body));
-    const gone = await call("user_super", R.purge.POST, { params: id("user_alice"), method: "POST" });
+    // Phase 11: the typed confirmation is checked by the server too.
+    assert.equal((await call("user_super", R.purge.POST, { params: id("user_alice"), method: "POST" })).body.error, "confirmation_required");
+    const gone = await call("user_super", R.purge.POST, { params: id("user_alice"), method: "POST", body: { confirm: "delete" } });
     assert.equal(gone.status, 200, JSON.stringify(gone.body));
     assert.equal(g.__users.user_alice, undefined);
     assert.equal(await groups.getMember(aliceGroup.id, "user_alice"), null);
     assert.equal(g.__kvStore.has("neo:admin:user:user_alice:notes"), false);
     assert.equal((await call("user_super", R.user.GET, { params: id("user_alice") })).status, 404);
-    const e = await lastAudit("user.delete");
-    assert.equal(e.targetLabel, "alice@example.com");
-    assert.equal((e.before as { requestedBy: string }).requestedBy, "super@example.com");
-    assert.equal(e.note, "GDPR request");
+    // Phase 11: a deletion certificate — counts, when, by whom — with no personal data.
+    const e = await lastAudit("data.deletion.certificate");
+    assert.equal(e.targetId, "user_alice");
+    assert.equal(e.targetLabel, "deleted account");
+    assert.ok(!JSON.stringify(e).includes("alice@example.com"));
+    assert.equal((e.after as { removed: { clerk: number } }).removed.clerk, 1);
   });
 
   console.log("groups");

@@ -31,7 +31,11 @@ const notesKey = (uid: string) => `neo:admin:user:${uid}:notes`;
 const supportKey = (adminId: string) => `neo:admin:support:${adminId}`;
 const supportHistoryKey = (uid: string) => `neo:admin:user:${uid}:support`;
 
-/** How long a deleted account waits, suspended, before it can be removed for good. */
+/**
+ * How long a deleted account waits before it can be removed for good — the
+ * default. The period in force is the "Deleted accounts" retention setting
+ * (src/lib/dataGov/settings.ts), which new requests read.
+ */
 export const DELETION_RETENTION_DAYS = 30;
 export const DELETION_RETENTION_MS = DELETION_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 export const NOTES_MAX = 200;
