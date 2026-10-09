@@ -429,17 +429,17 @@ const maintenance: ActionImpl = {
 
 /* --------------------------------- purge --------------------------------- */
 
-
+/** Deleting is safe to repeat (what is gone stays gone), so the purge itself is the claim. */
 const purge: ActionImpl = {
-  claims: true,
+  claims: false,
   async plan(ctx) {
     const target = PURGE_TARGETS.find((p) => p.id === ctx.rule.action.target);
     if (!target) throw new Error(`No retention target "${ctx.rule.action.target}".`);
-    return { targets: await target.plan(ctx.now, ctx.rule.options.maxPerRun + 1) };
+    return target.plan(ctx.now);
   },
-  async perform(ctx, t) {
+  async batch(ctx, targets) {
     const target = PURGE_TARGETS.find((p) => p.id === ctx.rule.action.target)!;
-    return target.purge(t, ctx.actor);
+    return target.purge(targets, ctx.actor, ctx.now);
   },
 };
 

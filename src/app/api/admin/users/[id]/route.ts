@@ -28,7 +28,8 @@ import {
   targetGuard,
 } from "@/lib/admin/users";
 import { getRole } from "@/lib/admin/store";
-import { getPlanLimits } from "@/lib/planLimits";
+import { extendedLimits } from "@/lib/planLimits";
+import { getPlanLimitsForUserId } from "@/lib/plan";
 import { eventStore } from "@/lib/eventStore";
 import { listUserMeetings } from "@/lib/userMeetings";
 import { recordedSeconds, usageMonth } from "@/lib/recordingUsage";
@@ -66,7 +67,7 @@ export async function GET(req: Request, { params }: Params) {
   const lastMonth = usageMonth(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), 0));
 
   const client = await clerkClient();
-  const [tags, deletion, suspension, notes, support, mine, hosted, attended, recThis, recLast, groups, payments, clerkSessions, devices, audit, role, activity] =
+  const [tags, deletion, suspension, notes, support, mine, hosted, attended, recThis, recLast, groups, payments, clerkSessions, devices, audit, role, activity, enforced] =
     await Promise.all([
       getTags(uid),
       getDeletion(uid),
@@ -87,10 +88,13 @@ export async function GET(req: Request, { params }: Params) {
       member ? getRole(member.roleId) : Promise.resolve(null),
       // What they did (src/lib/activity.ts): analytics:read.
       can(g.ctx, "analytics:read") ? soft("activity", listUserActivity(uid, { limit: 50 })) : Promise.resolve(null),
+      // The limits enforced for this account: its subscription's own (version,
+      // add-ons, custom terms), not the tier's defaults.
+      soft("limits", getPlanLimitsForUserId(uid)),
     ]);
 
   const row = summarize(user, { member, tags, deletion });
-  const limits = getPlanLimits(row.plan);
+  const limits = enforced?.limits ?? extendedLimits(row.plan);
   const meta = (user.publicMetadata ?? {}) as Record<string, unknown>;
   const refusal = await targetGuard(g.ctx, user, member);
   const refusalBody = refusal ? ((await refusal.clone().json()) as { error: string; message: string }) : null;
@@ -123,6 +127,9 @@ export async function GET(req: Request, { params }: Params) {
       expired: row.planExpiresAt != null && row.planExpiresAt < now,
       lifetimeMeetingCap: limits.lifetimeMeetingCap,
       recordingHoursPerMonth: limits.recordingHoursPerMonth,
+      /** Everything enforced for the account; "tier" when its own could not be read. */
+      limits,
+      limitsSource: enforced ? "account" : "tier",
     },
     usage: {
       meetingsHosted: hosted?.length ?? null,
