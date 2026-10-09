@@ -41,6 +41,15 @@ const isPublicRoute = createRouteMatcher([
   // Help & support: the app's sign-in screen opens it for people who
   // cannot sign in, so it must not ask them to sign in first.
   '/support',
+  // The contact form works signed out (bot check and rate limits in the
+  // routes); GET of the ticket list checks sign-in itself. A ticket's page
+  // and API (/support/tickets/..., /api/support/tickets/<id>) stay behind
+  // sign-in. The help centre is public and meant to be indexed.
+  '/api/support/session',
+  '/api/support/tickets',
+  '/help',
+  '/help/(.*)',
+  '/api/help/suggest',
   '/e/(.*)',
   '/embed/(.*)',
   '/share/(.*)',
