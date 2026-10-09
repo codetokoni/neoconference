@@ -8,7 +8,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { AdminPermission } from "@/lib/admin/catalog";
 import type { PublicAdminContext } from "@/lib/admin/context";
 import { AdminProvider } from "./AdminApi";
@@ -17,9 +17,14 @@ type Section = { label: string; href: string; permission: AdminPermission | null
 
 export const SECTIONS: Section[] = [
   { label: "Users", href: "/admin", permission: "users:read", group: "Platform" },
+  { label: "Groups", href: "/admin/groups", permission: "users:read", group: "Platform" },
   { label: "Meetings", href: "/admin/events", permission: "events:read", group: "Platform" },
   { label: "Analytics", href: "/admin/analytics", permission: "analytics:read", group: "Platform" },
   { label: "Logs", href: "/admin/logs", permission: "analytics:read", group: "Platform" },
+  { label: "Plans & pricing", href: "/admin/plans", permission: "plans:read", group: "Billing" },
+  { label: "Subscriptions", href: "/admin/subscriptions", permission: "plans:read", group: "Billing" },
+  { label: "Tickets", href: "/admin/support", permission: "support:read", group: "Support" },
+  { label: "Help centre", href: "/admin/help", permission: "support:read", group: "Support" },
   { label: "Administrators", href: "/admin/team", permission: "admins:read", group: "Access" },
   { label: "Roles", href: "/admin/roles", permission: "admins:read", group: "Access" },
   { label: "Audit log", href: "/admin/audit-log", permission: "audit:read", group: "Access" },
@@ -30,7 +35,8 @@ export default function AdminShell({ me, children }: { me: PublicAdminContext; c
   const pathname = usePathname() || "";
   const visible = SECTIONS.filter((s) => !s.permission || me.permissions.includes(s.permission));
   const groups = [...new Set(visible.map((s) => s.group))];
-  const isActive = (href: string) => (href === "/admin" ? pathname === "/admin" : pathname === href || pathname.startsWith(href + "/"));
+  const isActive = (href: string) =>
+    href === "/admin" ? pathname === "/admin" || pathname.startsWith("/admin/users/") : pathname === href || pathname.startsWith(href + "/");
 
   const lock = async () => {
     await fetch("/api/admin/mfa/lock", { method: "POST" }).catch(() => undefined);
@@ -81,9 +87,71 @@ export default function AdminShell({ me, children }: { me: PublicAdminContext; c
             ))}
           </nav>
         </aside>
-        <div className="min-w-0 flex-1">{children}</div>
+        <div className="min-w-0 flex-1">
+          <SupportBanner pathname={pathname} />
+          {children}
+        </div>
       </div>
     </AdminProvider>
+  );
+}
+
+type OpenSupport = { userId: string; userEmail: string; userName: string; reason: string; expiresAt: number };
+
+/** Fired on window by a page that may have opened or ended a support session. */
+export const SUPPORT_CHANGED = "neo-admin-support-changed";
+
+/**
+ * While the administrator has a support session open on someone's account,
+ * every admin page says so, with a way back to that account and a way to
+ * end it. Checked on each page change and every minute.
+ */
+function SupportBanner({ pathname }: { pathname: string }) {
+  const [s, setS] = useState<OpenSupport | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const check = useCallback(async () => {
+    try {
+      const r = await fetch("/api/admin/support", { cache: "no-store" });
+      const j = (await r.json().catch(() => ({}))) as { session?: OpenSupport | null };
+      setS(r.ok ? (j.session ?? null) : null);
+    } catch {
+      // Leave the banner as it was; the next check corrects it.
+    }
+  }, []);
+  useEffect(() => {
+    check();
+  }, [check, pathname]);
+  useEffect(() => {
+    window.addEventListener(SUPPORT_CHANGED, check);
+    return () => window.removeEventListener(SUPPORT_CHANGED, check);
+  }, [check]);
+  useEffect(() => {
+    const t = setInterval(() => {
+      setNow(Date.now());
+      check();
+    }, 60_000);
+    return () => clearInterval(t);
+  }, [check]);
+  if (!s || s.expiresAt <= now) return null;
+  const end = async () => {
+    await fetch(`/api/admin/users/${encodeURIComponent(s.userId)}/support`, { method: "DELETE" }).catch(() => undefined);
+    setS(null);
+    if (pathname.startsWith(`/admin/users/${s.userId}`)) window.location.reload();
+  };
+  const mins = Math.max(1, Math.round((s.expiresAt - now) / 60_000));
+  return (
+    <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/50 bg-amber-400/15 px-3 py-2 text-sm text-amber-100">
+      <span>
+        <b className="font-semibold">Support session open</b> on{" "}
+        <Link href={`/admin/users/${encodeURIComponent(s.userId)}`} className="underline">
+          {s.userName || s.userEmail}
+        </Link>{" "}
+        — {mins} min left. Everything you open on that account is recorded.
+      </span>
+      <button type="button" onClick={end} className="rounded-lg border border-amber-300/40 px-2.5 py-1 text-xs hover:bg-amber-300/10">
+        End session
+      </button>
+    </div>
   );
 }
 
