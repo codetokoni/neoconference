@@ -143,3 +143,67 @@ export async function verifyWebhook(rawBody: string, sigHeader: string | null, t
   try { return JSON.parse(rawBody); } catch { return null; }
 }
 
+
+// --- Refunds and session listing (admin billing) ---
+
+export type StripeRefund = { id: string; status: string; amount: number; currency: string };
+
+/**
+ * Refund all or part of a ticket sale: POST /v1/refunds. `idempotencyKey`
+ * makes a retried or double-clicked refund return the first one instead of
+ * sending money twice.
+ */
+export async function createRefund(input: {
+  paymentIntent: string;
+  amountMinor?: number;
+  idempotencyKey: string;
+  metadata?: Record<string, string>;
+}): Promise<StripeRefund> {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error('STRIPE_SECRET_KEY not configured');
+  const fields: Record<string, string | number | undefined> = {
+    payment_intent: input.paymentIntent,
+    amount: input.amountMinor,
+    reason: 'requested_by_customer',
+  };
+  for (const [k, v] of Object.entries(input.metadata ?? {})) fields['metadata[' + k + ']'] = v.slice(0, 500);
+  const res = await fetch('https://api.stripe.com/v1/refunds', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + key,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Idempotency-Key': input.idempotencyKey,
+    },
+    body: encodeForm(fields),
+  });
+  const data = (await res.json().catch(() => ({}))) as { id?: string; status?: string; amount?: number; currency?: string; error?: { message?: string } };
+  if (!res.ok || !data.id) throw new Error('Stripe ' + res.status + ': ' + (data.error?.message ?? 'refund failed').slice(0, 300));
+  return { id: data.id, status: data.status ?? 'pending', amount: data.amount ?? 0, currency: data.currency ?? '' };
+}
+
+/** Completed Checkout Sessions, newest first, up to `max` (for the admin backfill). */
+export async function listCompletedCheckoutSessions(max = 2000): Promise<unknown[]> {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error('STRIPE_SECRET_KEY not configured');
+  const out: unknown[] = [];
+  let after: string | undefined;
+  while (out.length < max) {
+    const q = 'limit=100&status=complete' + (after ? '&starting_after=' + encodeURIComponent(after) : '');
+    const res = await fetch('https://api.stripe.com/v1/checkout/sessions?' + q, { headers: { Authorization: 'Bearer ' + key } });
+    if (!res.ok) throw new Error('Stripe list ' + res.status);
+    const page = (await res.json()) as { data?: { id: string }[]; has_more?: boolean };
+    const data = page.data ?? [];
+    out.push(...data);
+    if (!page.has_more || data.length === 0) break;
+    after = data[data.length - 1].id;
+  }
+  return out;
+}
+
+/** Whether a key is a test or live key, from its prefix alone. Never returns the key. */
+export function stripeMode(): 'test' | 'live' | null {
+  const k = process.env.STRIPE_SECRET_KEY || '';
+  if (/^(sk|rk)_test_/.test(k)) return 'test';
+  if (/^(sk|rk)_live_/.test(k)) return 'live';
+  return k ? 'live' : null;
+}
