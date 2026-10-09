@@ -1,7 +1,8 @@
 // /api/admin/plans — the subscription plan catalog.
 //
 // GET  (plans:read)   every plan (archived too) in display order, its current
-//                     version, and how many subscribers each version has
+//                     version, and how many subscribers each version has,
+//                     plus the platform trial policy (Settings → Registration)
 // POST (plans:write)  { id?, baseTier, name, description, prices, trialDays,
 //                       limits, selfServe, public, highlight } a new plan.
 //                     The five tiers already exist; a new plan names the
@@ -24,6 +25,7 @@ import {
 } from "@/lib/billing/model";
 import { createPlan, getPlan, getPlanDef, listPlans } from "@/lib/billing/store";
 import { subscriberCounts } from "@/lib/billing/adminViews";
+import { getTrialPolicy } from "@/lib/platform/settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +33,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const g = await requireAdmin(req, "plans:read");
   if (!g.ok) return g.response;
-  const [plans, counts] = await Promise.all([listPlans(), subscriberCounts()]);
+  const [plans, counts, trialPolicy] = await Promise.all([listPlans(), subscriberCounts(), getTrialPolicy()]);
   return NextResponse.json({
     ok: true,
     plans: plans.map((p) => ({ ...p, subscribers: counts[p.id] ?? { total: 0, live: 0, byVersion: {} } })),
@@ -39,6 +41,7 @@ export async function GET(req: Request) {
     limitFields: LIMIT_FIELDS,
     tiers: PLANS,
     prorationRule: PRORATION_RULE,
+    trialPolicy,
   });
 }
 
