@@ -22,7 +22,8 @@ export const kv = {
   },
   async del(...ks) { let n = 0; for (const k of ks) if (store.delete(k)) n++; return n; },
   async sadd(k, ...m) { const s = store.get(k) ?? sets(); m.forEach((x) => s.add(x)); store.set(k, s); return m.length; },
-  async srem(k, ...m) { const s = store.get(k) ?? sets(); m.forEach((x) => s.delete(x)); store.set(k, s); return m.length; },
+  // As Redis: how many were actually there to remove.
+  async srem(k, ...m) { const s = store.get(k) ?? sets(); let n = 0; m.forEach((x) => { if (s.delete(x)) n++; }); store.set(k, s); return n; },
   async smembers(k) { return [...(store.get(k) ?? [])].map(de); },
   async sismember(k, m) { return (store.get(k) ?? sets()).has(m) ? 1 : 0; },
   async incr(k) { const n = (store.get(k) ?? 0) + 1; store.set(k, n); return n; },
