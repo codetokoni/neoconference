@@ -15,6 +15,14 @@
     {
       "path": "/api/cron/comms",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/ops-health",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/ops-backup",
+      "schedule": "30 3 * * *"
     }
   ]
 }
