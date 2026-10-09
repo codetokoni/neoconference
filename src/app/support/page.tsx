@@ -1,16 +1,19 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import SupportChatOpener from "./SupportChatOpener";
 import { getPlatformSettings } from "@/lib/platform/settings";
+import ContactForm from "./ContactForm";
 
 export const metadata: Metadata = {
   title: "Help & support — NeoConference",
-  description: "Chat with the NeoConference team.",
+  description: "Chat with the NeoConference team, send a support request, or browse the help centre.",
 };
 
 export const dynamic = "force-dynamic";
 
-// The page the app's "Help & support" opens: the chat opens on arrival.
-// The contacts below come from the admin settings (/admin/settings).
+// The page the app's "Help & support" opens: the chat opens on arrival, and
+// below it the help centre, the contact form and the user's tickets. The
+// contacts come from the admin settings (/admin/settings).
 export default async function SupportPage() {
   const { branding, contacts } = await getPlatformSettings();
   return (
@@ -22,6 +25,21 @@ export default async function SupportPage() {
         your plan. The chat opens at the bottom of this page; if it doesn&apos;t, tap the chat
         button.
       </p>
+      <div className="mt-6 flex flex-wrap justify-center gap-3 text-sm">
+        <Link href="/help" className="rounded-lg border border-cyan-400/40 px-3.5 py-2 font-medium text-cyan-100 hover:bg-cyan-400/10">
+          Browse the help centre
+        </Link>
+        <Link href="/support/tickets" className="rounded-lg border border-white/15 px-3.5 py-2 text-cyan-100/80 hover:bg-white/5">
+          My tickets
+        </Link>
+      </div>
+
+      <div id="contact" className="mt-12 rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-6">
+        <h2 className="text-left text-xl font-semibold text-white">Contact support</h2>
+        <p className="mb-4 mt-1 text-left text-sm text-cyan-100/60">Not urgent, or need to send details? Send a request and we&apos;ll reply by email.</p>
+        <ContactForm />
+      </div>
+
       {(contacts.supportEmail || contacts.supportPhone) && (
         <p className="mt-6 text-sm text-cyan-100/50">
           Or{" "}

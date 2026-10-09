@@ -46,6 +46,15 @@ const isPublicRoute = createRouteMatcher([
   '/access-blocked',
   // The platform logo (admin settings), shown in the header to everyone.
   '/api/platform/logo',
+  // The contact form works signed out (bot check and rate limits in the
+  // routes); GET of the ticket list checks sign-in itself. A ticket's page
+  // and API (/support/tickets/..., /api/support/tickets/<id>) stay behind
+  // sign-in. The help centre is public and meant to be indexed.
+  '/api/support/session',
+  '/api/support/tickets',
+  '/help',
+  '/help/(.*)',
+  '/api/help/suggest',
   '/e/(.*)',
   '/embed/(.*)',
   '/share/(.*)',
