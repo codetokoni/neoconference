@@ -210,6 +210,9 @@ async function main() {
   });
 
   await t("rate limits: 3 an hour from one email, 5 an hour from one network", async () => {
+    // The limiter counts in fixed clock hours. Start at the top of one, or a
+    // run near hh:57 sends the 4th request into the next hour and it passes.
+    tick(HOUR - (Date.now() % HOUR));
     for (let i = 0; i < 3; i++) {
       const r = await call(null, R.intake.POST, { ip: "198.51.100.7", body: guestForm({ token: await freshToken(), email: "flood@example.com" }) });
       assert.equal(r.status, 201, JSON.stringify(r.body));
