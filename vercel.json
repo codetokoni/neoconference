@@ -17,6 +17,14 @@
       "schedule": "30 3 * * *"
     },
     {
+      "path": "/api/cron/ops-health",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/ops-backup",
+      "schedule": "30 3 * * *"
+    },
+    {
       "path": "/api/cron/automation",
       "schedule": "*/5 * * * *"
     }

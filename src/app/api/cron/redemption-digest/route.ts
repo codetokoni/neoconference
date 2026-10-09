@@ -13,6 +13,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { eventStore } from "@/lib/eventStore";
 import { isMailConfigured } from "@/lib/mail";
 import { sendTemplateEmail } from "@/lib/comms/templates";
+import { cronRoute } from "@/lib/ops/cron";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +40,7 @@ type EventRow = {
   recentRedemptions?: Redemption[];
 };
 
-export async function GET(req: NextRequest) {
+async function handle(req: NextRequest) {
   if (!isAuthed(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (!isMailConfigured()) return NextResponse.json({ ok: true, skipped: "mail_not_configured" });
 
@@ -91,3 +92,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ ok: true, owners: sent.length, sent });
 }
+
+// Recorded and locked by the ops job runner (Operations > Jobs); the
+// schedule and what the route does are unchanged.
+export const GET = cronRoute("redemption-digest", handle);
