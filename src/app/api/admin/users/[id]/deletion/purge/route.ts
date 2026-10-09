@@ -15,7 +15,8 @@ import { actorOf, requireAdmin } from "@/lib/admin/context";
 import { fail, readJson } from "@/lib/admin/http";
 import { getDeletion, loadTargetUser, targetGuard } from "@/lib/admin/users";
 import { erasureBlockers } from "@/lib/dataGov/erase";
-import { completeDeletion } from "@/lib/dataGov/actions";
+import { DATA_JOBS, asJob, completeDeletion } from "@/lib/dataGov/actions";
+import { jobLockHolder } from "@/lib/ops/jobs";
 import type { DeletionRequest } from "@/lib/dataGov/requests";
 
 export const runtime = "nodejs";
@@ -46,7 +47,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (typeof body?.confirm !== "string" || body.confirm.trim().toLowerCase() !== "delete") {
     return fail("confirmation_required", 'Type "delete" to confirm.', 400);
   }
-  const r = await completeDeletion(t.user.id, deletion, { ...actorOf(g.ctx), req });
+  // Through the job runner, under the same lock as the Data page's completions.
+  const actor = { ...actorOf(g.ctx), req };
+  if (await jobLockHolder(DATA_JOBS.deletions)) return fail("busy", "Another deletion is being completed right now. Try again in a moment.", 409);
+  const r = await asJob(DATA_JOBS.deletions, actor, () => completeDeletion(t.user.id, deletion, actor), (o) => (o.ok ? "1 account deleted" : "not deleted"));
   if (!r.ok) {
     if ("blockers" in r) return fail(r.blockers[0].code, r.blockers[0].message, 409);
     return fail("erase_failed", `Deletion stopped part-way (${r.error}). The account is still there; try again.`, 500);

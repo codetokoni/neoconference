@@ -72,6 +72,8 @@ export default function YourData() {
       const x = r.data.export;
       setExports((cur) => [x, ...cur.filter((y) => y.id !== id)]);
       if (x.status !== "running") return;
+      // Another export's step may hold the runner's lock: give it a moment.
+      await new Promise((ok) => setTimeout(ok, 700));
     }
   };
 

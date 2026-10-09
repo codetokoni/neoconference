@@ -35,6 +35,7 @@ import { forgetSubscriptionUser, getHistory, getSubscription } from "@/lib/billi
 import { anonymiseFinanceForUser, financeRecordsForUser } from "@/lib/finance/governance";
 import { anonymiseTicketsForAccount, listTickets, ticketsForAccount } from "@/lib/support/tickets";
 import { forgetCommsUser } from "@/lib/comms/forget";
+import { forgetUserActivity } from "@/lib/activity";
 import { DELETED_NAME, deletePrefix, fromB64Url, listPrefix, parseJson, rewriteList, rewriteValue, scanKeys } from "@/lib/dataGov/util";
 
 export interface Person {
@@ -471,14 +472,11 @@ export const ERASE_STEPS: EraseStep[] = [
   },
   {
     id: "activity",
-    label: "Activity log: the person's own stream deleted; raw events and daily counts keep only the pseudonym",
+    label: "Activity log: the person's own stream and raw events deleted; daily counts keep only the pseudonym",
     covers: ["kv.activity"],
     run: async (p, dry) => {
-      let n = await delKeys([`neo:act:u:${p.uid}`], dry);
-      if (Number(await kv.sismember("neo:act:users", p.uid)) === 1) {
-        n++;
-        if (!dry) await kv.srem("neo:act:users", p.uid);
-      }
+      let n = 0;
+      // Daily counts: the id becomes the pseudonym, so totals stay right.
       for (const k of [...(await scanKeys("neo:act:dau:*")), ...(await scanKeys("neo:act:new:*"))]) {
         if (Number(await kv.sismember(k, p.uid)) !== 1) continue;
         n++;
@@ -498,22 +496,15 @@ export const ERASE_STEPS: EraseStep[] = [
           }
         }
       }
+      // The person's own stream and their raw events: the analytics phase's own function.
+      if (!dry) return n + (await forgetUserActivity(p.uid)).removed;
+      n += Number(await kv.llen(`neo:act:u:${p.uid}`));
       for (const k of await scanKeys("neo:act:log:*")) {
         const raw = ((await kv.lrange(k, 0, -1)) ?? []) as unknown[];
-        let changed = 0;
-        const next = raw.map((r) => {
+        n += raw.filter((r) => {
           const e = parseJson<Record<string, unknown>>(r);
-          if (!e || (e.userId !== p.uid && e.account !== p.uid)) return r;
-          changed++;
-          return {
-            ...e,
-            ...(e.userId === p.uid ? { userId: p.pseudonym } : {}),
-            ...(e.account === p.uid ? { account: p.pseudonym } : {}),
-            ...(e.props ? { props: JSON.parse(scrub(p, JSON.stringify(e.props))) } : {}),
-          };
-        });
-        n += changed;
-        if (changed && !dry) await rewriteList(k, next);
+          return !!e && (e.userId === p.uid || e.account === p.uid);
+        }).length;
       }
       return n;
     },

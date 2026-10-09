@@ -20,8 +20,34 @@ import { closeRequest, openRequests, rescheduleOpen, openStatus, requestId, type
 import { getTrashItem, listTrash, restoreCheck, restoreFromTrash, trashWindowMs, expiresAt } from "@/lib/dataGov/trash";
 import { checkValue, cutoffFor, DAY_MS, getRetention, retentionDef, saveRetentionValue, type RetentionCategory } from "@/lib/dataGov/settings";
 import { daysFor, purgeDef, type PurgeCategory, type PurgeRecord } from "@/lib/dataGov/purge";
+import { jobLockHolder, runJob } from "@/lib/ops/jobs";
 
 const actorAudit = (a: BulkActor) => ({ userId: a.userId, email: a.email });
+
+/** Job names in the operations job runner (src/lib/ops/jobs.ts): one lock each, runs listed on the Jobs page. */
+export const DATA_JOBS = { deletions: "data-deletions", restore: "data-restore", purge: "data-purge" } as const;
+const JOB_LOCK_MS = 5 * 60 * 1000;
+
+const busyIf = (job: string) => async () => ((await jobLockHolder(job)) ? "The same data job is running right now. Try again when it has finished." : null);
+
+/**
+ * Run a data job through the job runner: locked (one at a time), timed and
+ * recorded with its outcome. A throw is recorded as a failure and rethrown.
+ */
+export async function asJob<T>(job: string, actor: BulkActor, fn: () => Promise<T>, summary: (out: T) => string): Promise<T> {
+  let out: T | undefined;
+  const r = await runJob(
+    job,
+    async () => {
+      out = await fn();
+      return { ok: true, summary: summary(out) };
+    },
+    { trigger: "manual", actor: actor.email, lockMs: JOB_LOCK_MS },
+  );
+  if (r.status === "locked") throw new Error("The same data job is running right now.");
+  if (r.error) throw r.error;
+  return out as T;
+}
 const idList = (input: unknown, max = 500): string[] | null => {
   if (!Array.isArray(input)) return null;
   const ids = [...new Set(input.filter((x): x is string => typeof x === "string" && /^[A-Za-z0-9_:.-]{1,128}$/.test(x)))];
@@ -93,16 +119,23 @@ export const completeDeletionsAction = defineBulkAction<DeletionSelection, Delet
     for (const r of records.slice(0, 5)) plans[r.id] = await planErasure(r.id);
     return { skipped, plans };
   },
-  run: async (records, _sel, actor) => {
-    const completed: string[] = [];
-    const failed: { userId: string; error: string }[] = [];
-    for (const r of records) {
-      const res = await completeDeletion(r.id, r.request, actor);
-      if (res.ok) completed.push(r.id);
-      else failed.push({ userId: r.id, error: "blockers" in res ? res.blockers.map((b) => b.code).join(", ") : res.error });
-    }
-    return { completed, failed };
-  },
+  busy: busyIf(DATA_JOBS.deletions),
+  run: (records, _sel, actor) =>
+    asJob(
+      DATA_JOBS.deletions,
+      actor,
+      async () => {
+        const completed: string[] = [];
+        const failed: { userId: string; error: string }[] = [];
+        for (const r of records) {
+          const res = await completeDeletion(r.id, r.request, actor);
+          if (res.ok) completed.push(r.id);
+          else failed.push({ userId: r.id, error: "blockers" in res ? res.blockers.map((b) => b.code).join(", ") : res.error });
+        }
+        return { completed, failed };
+      },
+      (o) => `${o.completed.length} account(s) deleted, ${o.failed.length} not`,
+    ),
 });
 
 /**
@@ -175,27 +208,30 @@ export const restoreAction = defineBulkAction<{ ids: string[] }, TrashRecord, { 
     const missing = sel.ids.filter((id) => !records.some((r) => r.id === id));
     return { conflicts, notRestorable: missing };
   },
-  run: async (records, _sel, actor) => {
-    const restored: string[] = [];
-    const failed: { id: string; error: string }[] = [];
-    for (const r of records) {
-      const res = await restoreFromTrash(r.id, actor.userId);
-      if (!res.ok) {
-        failed.push({ id: r.id, error: res.detail ? `${res.error}: ${res.detail}` : res.error });
-        continue;
-      }
-      restored.push(r.id);
-      await recordAdminAction(actorAudit(actor), actor.req, {
-        action: "data.trash.restore",
-        targetType: res.item.kind,
-        targetId: res.item.ref,
-        targetLabel: res.item.label,
-        after: { trashId: r.id, keys: res.keys, objects: res.objects, ownerId: res.item.ownerId },
-      });
-    }
-    return { restored, failed };
-  },
+  busy: busyIf(DATA_JOBS.restore),
+  run: (records, _sel, actor) => asJob(DATA_JOBS.restore, actor, () => restoreRecords(records, actor), (o) => `${o.restored.length} restored, ${o.failed.length} not`),
 });
+
+async function restoreRecords(records: TrashRecord[], actor: BulkActor) {
+  const restored: string[] = [];
+  const failed: { id: string; error: string }[] = [];
+  for (const r of records) {
+    const res = await restoreFromTrash(r.id, actor.userId);
+    if (!res.ok) {
+      failed.push({ id: r.id, error: res.detail ? `${res.error}: ${res.detail}` : res.error });
+      continue;
+    }
+    restored.push(r.id);
+    await recordAdminAction(actorAudit(actor), actor.req, {
+      action: "data.trash.restore",
+      targetType: res.item.kind,
+      targetId: res.item.ref,
+      targetLabel: res.item.label,
+      after: { trashId: r.id, keys: res.keys, objects: res.objects, ownerId: res.item.ownerId },
+    });
+  }
+  return { restored, failed };
+}
 
 /* ---------------------------------- purge --------------------------------- */
 
@@ -221,10 +257,11 @@ export const purgeAction = defineBulkAction<{ category: PurgeCategory }, PurgeRe
     const days = await daysFor(sel.category);
     return { label: def.label, days, unavailable: def.unavailable(days) };
   },
+  busy: busyIf(DATA_JOBS.purge),
   run: async (records, sel, actor) => {
     const def = purgeDef(sel.category)!;
     const days = await daysFor(sel.category);
-    const r = await def.remove(records, days, Date.now());
+    const r = await asJob(DATA_JOBS.purge, actor, () => def.remove(records, days, Date.now()), (o) => `${sel.category}: ${o.removed} removed`);
     await recordAdminAction(actorAudit(actor), actor.req, {
       action: "data.purge",
       targetType: "retention",

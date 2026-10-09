@@ -40,6 +40,8 @@ export default function ExportPanel({ userId }: { userId: string }) {
       if (!r.ok || !r.data.export) return setErr(r.data.message ?? "The export stopped.");
       setItems((cur) => [r.data.export!, ...(cur ?? []).filter((x) => x.id !== id)]);
       if (r.data.export.status !== "running") return;
+      // Another export's step may hold the runner's lock: give it a moment.
+      await new Promise((ok) => setTimeout(ok, 700));
     }
   };
 

@@ -95,6 +95,7 @@ async function main() {
   const groupChat = await import("../groupChat");
   const { activity } = await import("../activity");
   const tickets = await import("../support/tickets");
+  const jobs = await import("../ops/jobs");
   const { eventStore } = await import("../eventStore");
   const { kv } = await import("../kv");
   const { DATA_MAP, erasableLocations } = await import("../dataMap");
@@ -702,9 +703,25 @@ async function main() {
     assert.ok((tp.body.count as number) >= 1);
     assert.equal((await bulk("user_super", "purge", "apply", { selection: { category: "trash" }, token: tp.body.token, confirm: tp.body.confirmPhrase })).status, 200);
     assert.ok(!g.__objects.some((o) => o.key.startsWith("trash/") && o.key.includes("bob-retro")));
+    // KV snapshots older than the backups period (14 days) go: file and index entry, as the operations phase's own retention does.
+    const meta = (id: string, age: number) => JSON.stringify({ id, kind: "scheduled", createdAt: Date.now() - age, createdBy: "vercel-cron", r2Key: `ops-backups/kv/${id}.json.gz`, bytes: 10, rawBytes: 20, keyCount: 3, sha256: id, truncated: false, prefixes: null });
+    await kv.hset("neo:ops:backups", { bk_old: meta("bk_old", 30 * day), bk_new: meta("bk_new", day) });
+    g.__objects.push({ key: "ops-backups/kv/bk_old.json.gz", size: 10 }, { key: "ops-backups/kv/bk_new.json.gz", size: 10 });
     const backups = await bulk("user_super", "purge", "preview", { selection: { category: "backups" } });
-    assert.equal(backups.body.count, 0);
-    assert.match(String((backups.body.extra as { unavailable: string }).unavailable), /Arrives with/);
+    assert.equal(backups.body.count, 1, JSON.stringify(backups.body));
+    assert.equal((await bulk("user_super", "purge", "apply", { selection: { category: "backups" }, token: backups.body.token, confirm: "purge 1" })).status, 200);
+    assert.deepEqual(Object.keys((await kv.hgetall("neo:ops:backups")) ?? {}), ["bk_new"]);
+    assert.deepEqual(g.__objects.filter((o) => o.key.startsWith("ops-backups/")).map((o) => o.key), ["ops-backups/kv/bk_new.json.gz"]);
+    // Every purge ran through the operations job runner, recorded and locked.
+    const runs = await jobs.listRuns("data-purge", 50);
+    assert.ok(runs.length >= 3 && runs.every((x) => x.outcome === "ok" && x.actor === "super@example.com"), JSON.stringify(runs));
+    assert.ok((await jobs.listRuns("data-deletions", 10)).length >= 1);
+    assert.ok((await jobs.listRuns("data-export", 50)).length >= 2);
+    // While the same job runs, apply is refused before the token is spent.
+    assert.equal(await jobs.acquireJobLock("data-purge", "run_elsewhere", 60_000), true);
+    const lp = await bulk("user_super", "purge", "preview", { selection: { category: "exports" } });
+    assert.equal((await bulk("user_super", "purge", "apply", { selection: { category: "exports" }, token: lp.body.token, confirm: lp.body.confirmPhrase })).body.error, "busy");
+    await jobs.releaseJobLock("data-purge", "run_elsewhere");
     // Raw activity past its period goes by whole days; Bob's sign-in is weeks old by now.
     const act = await bulk("user_super", "purge", "preview", { selection: { category: "activity" } });
     assert.equal(act.status, 200, JSON.stringify(act.body));

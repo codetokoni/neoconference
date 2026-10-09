@@ -36,6 +36,7 @@ import { getDeletion, getSuspension, listSupportSessions, type ClerkUserish } fr
 import { buildZip, toCsv, type ZipEntry } from "@/lib/dataGov/zip";
 import { fromB64Url, listPrefix, parseJson, scanKeys } from "@/lib/dataGov/util";
 import { DATA_MAP } from "@/lib/dataMap";
+import { runJob } from "@/lib/ops/jobs";
 import { getHistory, getSubscription } from "@/lib/billing/subscriptions";
 import { financeRecordsForUser } from "@/lib/finance/governance";
 import { listMessages, listTickets, ticketsForAccount } from "@/lib/support/tickets";
@@ -466,11 +467,32 @@ const README = (job: ExportJob, sections: string[]) =>
     "manifest.json lists every place NeoConference keeps data about people and what happens to it when an account is deleted.",
   ].join("\n");
 
+/** The job runner's name for export steps (src/lib/ops/jobs.ts): one step at a time, each recorded. */
+export const EXPORT_JOB = "data-export";
+
 /**
- * Run sections until `budgetMs` is spent. Returns the job as it stands.
+ * Run sections until `budgetMs` is spent, as a step of the "data-export" job
+ * (locked and recorded by the operations job runner). Returns the job as it
+ * stands; while another export's step holds the lock, unchanged — call again.
  * Safe to call again after a failure or timeout: finished sections are kept.
  */
 export async function advanceExport(id: string, budgetMs = 8_000): Promise<ExportJob | null> {
+  const job = await getExport(id);
+  if (!job || job.status !== "running") return job;
+  let out: ExportJob | null = job;
+  const r = await runJob(
+    EXPORT_JOB,
+    async () => {
+      out = await advanceExportNow(id, budgetMs);
+      return { ok: out?.status !== "failed", summary: `${id}: ${out?.status} (${out?.done.length ?? 0}/${SECTIONS.length} sections)`, error: out?.error };
+    },
+    // A step runs for seconds; a step killed mid-way frees the lock within a minute.
+    { trigger: "manual", actor: job.by === "self" ? "account holder" : job.by, lockMs: 60_000 },
+  );
+  return r.status === "locked" ? job : out;
+}
+
+async function advanceExportNow(id: string, budgetMs: number): Promise<ExportJob | null> {
   const job = await getExport(id);
   if (!job || job.status !== "running") return job;
   const started = Date.now();

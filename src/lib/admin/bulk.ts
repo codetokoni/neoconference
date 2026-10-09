@@ -71,6 +71,8 @@ export interface BulkAction<S, R extends BulkRecord = BulkRecord, O = unknown> {
   totals?: (records: R[]) => Record<string, number>;
   /** Anything else the preview should say (e.g. records left out and why). Not part of the token. */
   extra?: (selection: S, records: R[]) => Promise<Record<string, unknown>>;
+  /** Why it cannot run right now (e.g. the same job is already running), checked before the token is spent. */
+  busy?: (selection: S) => Promise<string | null>;
   run: (records: R[], selection: S, actor: BulkActor) => Promise<O>;
 }
 
@@ -202,6 +204,8 @@ export async function bulkApply<S, R extends BulkRecord, O>(
       return { refusal: fail("confirmation_required", `Type "${phrase}" to confirm.`, 400, { confirmPhrase: phrase }) };
     }
   }
+  const busy = action.busy ? await action.busy(selection) : null;
+  if (busy) return { refusal: fail("busy", busy, 409) };
   // Spend the token before running, so a double submit cannot run twice.
   const spent = await kv.set(usedKey(t.j), "1", { nx: true, px: PREVIEW_TTL_MS + 60_000 });
   if (!spent) return { refusal: fail("token_used", "That preview was already applied. Preview again.", 409) };

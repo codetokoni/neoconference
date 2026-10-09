@@ -6,8 +6,9 @@
 // so what runs is what was shown. Deleted accounts are not purged here:
 // a due deletion request is completed (src/lib/dataGov/erase.ts).
 //
-// Categories whose store is added by another admin phase (activity,
-// tickets, backups) say so and offer nothing until that phase is on main.
+// Where another admin phase owns the store, its own function does the work
+// (activity: purgeRawActivityBefore; tickets: purgeTicketsClosedBefore;
+// email log: purgeCommsLogBefore; backups: as src/lib/ops/backup.ts does).
 
 import { kv } from "@/lib/kv";
 import { deleteObject } from "@/lib/r2";
@@ -19,6 +20,8 @@ import { listPrefix, parseJson, rewriteList, scanKeys } from "@/lib/dataGov/util
 import { purgeAuditMonths } from "@/lib/admin/audit";
 import { listTickets, purgeTicketsClosedBefore } from "@/lib/support/tickets";
 import { purgeCommsLogBefore } from "@/lib/comms/forget";
+import { purgeRawActivityBefore } from "@/lib/activity";
+import { getBackup, listBackups } from "@/lib/ops/backup";
 
 export type PurgeCategory = Exclude<RetentionCategory, "accounts"> | "exports";
 
@@ -41,8 +44,6 @@ export interface PurgeDef {
 /** Files older than the files period: recordings, meeting and group chat uploads. */
 const FILE_PREFIXES = ["recordings/", "chat/", "groups/"];
 export const EXPORT_KEEP_DAYS = 7;
-
-const notAvailable = (phase: string) => () => `Arrives with ${phase}; the setting is kept until then.`;
 
 const COMMS_RECORD = "comms:log";
 
@@ -216,19 +217,10 @@ export const PURGES: PurgeDef[] = [
     },
     remove: async (records, days, now) => {
       const cutoff = cutoffFor(days, now) ?? 0;
-      let removed = 0;
-      for (const r of records) {
-        if (r.id.startsWith("neo:act:log:")) {
-          removed += Number(await kv.llen(r.id));
-          await kv.del(r.id);
-        } else {
-          const raw = ((await kv.lrange(r.id, 0, -1)) ?? []) as unknown[];
-          const keep = raw.filter((x) => (parseJson<{ ts?: number }>(x)?.ts ?? Infinity) >= cutoff);
-          removed += raw.length - keep.length;
-          await rewriteList(r.id, keep);
-        }
-      }
-      return { removed, bytes: 0 };
+      const entries = records.reduce((a, r) => a + (r.entries ?? 0), 0);
+      // The analytics phase's own purge: whole raw days before the cutoff day, and older entries in each stream.
+      await purgeRawActivityBefore(new Date(cutoff).toISOString().slice(0, 10));
+      return { removed: entries, bytes: 0 };
     },
   },
   {
@@ -252,10 +244,34 @@ export const PURGES: PurgeDef[] = [
   },
   {
     id: "backups",
-    label: "KV snapshots in R2",
-    unavailable: notAvailable("the operations phase (backups)"),
-    find: async () => [],
-    remove: async () => ({ removed: 0, bytes: 0 }),
+    label: "KV snapshots in R2 past the backups period",
+    unavailable: () => null,
+    find: async (days, now) => {
+      const cutoff = cutoffFor(days, now);
+      if (cutoff == null) return [];
+      return (await listBackups())
+        .filter((b) => b.createdAt < cutoff)
+        .map((b) => ({ id: b.id, fingerprint: `${b.createdAt}:${b.sha256}`, bytes: b.bytes, view: { kind: b.kind, createdAt: b.createdAt, keys: b.keyCount, size: b.bytes } }));
+    },
+    remove: async (records) => {
+      // As the operations phase's own retention does it (src/lib/ops/backup.ts applyRetention):
+      // the R2 file, then the index entry.
+      let removed = 0;
+      let bytes = 0;
+      for (const r of records) {
+        const b = await getBackup(r.id);
+        if (!b) continue;
+        try {
+          await deleteObject(b.r2Key);
+        } catch (err) {
+          console.warn("[data-purge] backup file delete failed", b.r2Key, err);
+        }
+        await kv.hdel("neo:ops:backups", b.id);
+        removed++;
+        bytes += b.bytes;
+      }
+      return { removed, bytes };
+    },
   },
 ];
 

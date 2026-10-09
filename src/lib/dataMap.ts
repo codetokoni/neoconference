@@ -534,7 +534,7 @@ export const DATA_MAP: DataLocation[] = [
     personal: "User id, event properties",
     exported: true,
     onDelete: "anonymise",
-    why: "The person's own stream is deleted; in the raw log and the daily counts the id becomes the pseudonym, so totals stay right. Raw events expire with the activity retention (ACTIVITY_RETENTION_DAYS, and the purge here); daily counts after 400 days.",
+    why: "The person's own stream and their raw events are deleted (src/lib/activity.ts forgetUserActivity); in the daily counts the id becomes the pseudonym, so totals stay right. Raw events also go with the activity retention (ACTIVITY_RETENTION_DAYS, and the purge here); daily counts after 400 days.",
     ttl: "Raw events: activity retention (90 days); counts: 400 days",
     erasedBy: "activity",
   },
@@ -591,9 +591,9 @@ export const DATA_MAP: DataLocation[] = [
     personal: "Everything in KV at the time",
     exported: false,
     onDelete: "expire",
-    why: "Backups are not edited; they age out under the backups retention setting, and a restore skips erased accounts (neo:data:erased).",
+    why: "Backups are not edited; they age out under the backups retention setting (the purge here) and the operations phase's own count limit. The erased tombstone (neo:data:erased) lists every deleted account id.",
     ttl: "Backups retention (default 14 days)",
-    pending: "phase 9 (operations)",
+    unsure: "A restore by key prefix from a snapshot taken before a deletion would bring that account's keys back. src/lib/ops/backup.ts does not yet skip ids in neo:data:erased, nor protect neo:data:* from being restored over — proposed as a follow-up for the operations phase.",
   },
 ];
 
