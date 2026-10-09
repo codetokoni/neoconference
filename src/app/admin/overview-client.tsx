@@ -135,11 +135,11 @@ export default function OverviewClient() {
           >
             <label className="text-xs text-zinc-400">
               From
-              <input type="date" value={custom.from} max={custom.to || undefined} onChange={(e) => setCustom({ ...custom, from: e.target.value })} className={`${field} mt-0.5 py-1.5`} />
+              <input type="date" aria-label="Period from" value={custom.from} max={custom.to || undefined} onChange={(e) => setCustom({ ...custom, from: e.target.value })} className={`${field} mt-0.5 py-1.5`} />
             </label>
             <label className="text-xs text-zinc-400">
               To
-              <input type="date" value={custom.to} min={custom.from || undefined} onChange={(e) => setCustom({ ...custom, to: e.target.value })} className={`${field} mt-0.5 py-1.5`} />
+              <input type="date" aria-label="Period to" value={custom.to} min={custom.from || undefined} onChange={(e) => setCustom({ ...custom, to: e.target.value })} className={`${field} mt-0.5 py-1.5`} />
             </label>
             <button type="submit" className={`${btn.ghost} py-1.5 text-xs`} aria-pressed={query.range === "custom"} disabled={!custom.from || !custom.to}>
               Apply dates
@@ -147,7 +147,7 @@ export default function OverviewClient() {
           </form>
           <label className="text-xs text-zinc-400">
             Compare with
-            <select value={query.compare} onChange={(e) => setQuery({ compare: e.target.value as OverviewQuery["compare"] })} className={`${field} mt-0.5 py-1.5`}>
+            <select aria-label="Compare with" value={query.compare} onChange={(e) => setQuery({ compare: e.target.value as OverviewQuery["compare"] })} className={`${field} mt-0.5 py-1.5`}>
               {COMPARES.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.label}
