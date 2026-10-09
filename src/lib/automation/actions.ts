@@ -27,7 +27,7 @@ import { limitsFromMetadata } from "@/lib/planLimits";
 import { effectivePlan, type ClerkUserish } from "@/lib/admin/users";
 import { usageMonth, recordedSeconds } from "@/lib/recordingUsage";
 import { ownerEmails } from "@/lib/admin/owner";
-import { listByPeriodEnd } from "@/lib/billing/subscriptions";
+import { listByPeriodEnd, planDue } from "@/lib/billing/subscriptions";
 import { runReminders, type ReminderRules } from "@/lib/finance/reminders";
 import { meetingCapReminder, recordingReminder } from "@/lib/comms/reminders";
 import { sendTemplateEmail } from "@/lib/comms/templates";
@@ -379,22 +379,13 @@ export const SUBSCRIPTION_JOB = "downgrade-expired-plans";
 const subscriptions: ActionImpl = {
   claims: false,
   async plan(ctx) {
-    const due = await listByPeriodEnd(0, ctx.now);
-    const targets = due
-      .filter((s) => s.periodEnd != null && s.periodEnd <= ctx.now && s.status !== "paused" && s.status !== "expired")
-      .map((s) => ({
-        key: `sub:${s.userId}:${s.periodEnd}`,
-        label: s.email || s.userId,
-        userId: s.userId,
-        detail:
-          s.scheduled && s.status !== "cancelled"
-            ? `Start the scheduled plan (${s.scheduled.planId}, ${s.scheduled.cycle})`
-            : s.status === "trialing"
-              ? "End the trial: back to Free"
-              : s.status === "cancelled"
-                ? "Cancellation takes effect: back to Free"
-                : "Period ended: back to Free",
-      }));
+    // The same decision the sweep makes (planDue), so the preview cannot drift from the run.
+    const targets = (await planDue(ctx.now)).map((d) => ({
+      key: `sub:${d.userId}:${d.action}`,
+      label: d.email || d.userId,
+      userId: d.userId,
+      detail: d.summary,
+    }));
     return { targets, note: "Also moves any account whose paid period has ended back to Free in Clerk." };
   },
   async batch(ctx, targets) {
