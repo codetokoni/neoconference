@@ -41,6 +41,17 @@ One record per account in KV (`neo:sub:<userId>`, history in `neo:sub:h:<userId>
 - **Backfill** (Subscriptions → Backfill from Clerk) records every account with a paid plan in Clerk and no record, on version 1 of its tier, without touching Clerk. It is safe to run again.
 - **The platform owner is never affected.** Every subscription action refuses the owner (`owner_protected`, and the attempt is audited), checkout refuses the owner, the Clerk write itself refuses the owner, the backfill skips the owner, and the owner stays enterprise in every plan lookup.
 
+## Entry points for other admin phases
+
+From `src/lib/billing/subscriptions.ts`; keep these stable.
+
+- `getSubscription(userId)`, `getHistory(userId, limit?)`: readers, for a data export.
+- `listByPeriodEnd(from, to)`, `listEnded(from, to)`: the index views.
+- `planDue(now?)`: read-only; what the daily sweep would do (`apply_scheduled` or `expire`, with a summary). `sweepDue` makes the same decision through the same code.
+- `endSubscriptionNow(userId, { actor, reason })`: for a refund. It cancels a running subscription now, or clears a pre-catalog plan in Clerk, and throws `OwnerProtected` for the owner. The caller writes the audit entry.
+- `forgetSubscriptionUser(userId)`: for account deletion. It removes the record, its index entries and its coupon-use entries, and moves the history to an anonymous key with the account's own id removed. History holds no other personal fields.
+- `getPlanLimitsForUserId(userId)` (`src/lib/plan.ts`): the limits to enforce or show. Each plan's current terms come from `listPlans()` / `getPlan(id)` in `src/lib/billing/store.ts`.
+
 ## The proration rule
 
 eSPees can neither charge a saved wallet nor refund, so nothing here moves money: it moves time. The rule is shown in every confirmation dialog.

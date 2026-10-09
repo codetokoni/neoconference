@@ -1,8 +1,8 @@
 // src/lib/support/notify.ts
 //
 // Telling a user about their ticket: an email (Resend, src/lib/mail.ts) and,
-// for an account, the bell in the header. Plain sendMail for now — the
-// admin's email-template store was not on main when this was written.
+// for an account, the bell in the header. The wording is the "support.*"
+// email templates (Admin → Email templates; src/lib/comms/templateDefaults.ts).
 //
 // Replying by email is not wired: Resend inbound is not set up for this
 // domain, so the emails send people back to /support/tickets to answer.
@@ -11,6 +11,9 @@
 import { sendMail, type SendMailInput, type SendMailResult } from "@/lib/mail";
 import { addNotification } from "@/lib/notificationStore";
 import { publicOrigin } from "@/lib/publicOrigin";
+import { renderEmail } from "@/lib/comms/templates";
+import { logEmail } from "@/lib/comms/log";
+import type { TemplateVars } from "@/lib/comms/format";
 import type { Ticket } from "@/lib/support/model";
 
 type Mailer = (input: SendMailInput) => Promise<SendMailResult>;
@@ -27,49 +30,38 @@ export function siteOrigin(req: Request): string {
   return publicOrigin(req) ?? "https://www.neoconference.app";
 }
 
-function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+/** Fill a support template, send it (through the test seam) and log it for Communication → Email delivery. */
+async function sendTicketMail(template: "support.received" | "support.reply", t: Ticket, vars: TemplateVars): Promise<SendMailResult> {
+  const r = await renderEmail(template, vars);
+  const res = await send({ to: t.email, subject: r.subject, ...(r.text ? { text: r.text } : {}), ...(r.html ? { html: r.html } : {}) });
+  await logEmail({
+    source: "template",
+    template,
+    templateVersion: r.version,
+    to: t.email,
+    recipients: 1,
+    subject: r.subject,
+    status: res.ok ? "sent" : res.error === "mail_not_configured" ? "skipped" : "failed",
+    ...(res.ok ? { resendId: res.id } : { error: res.error }),
+  });
+  return res;
 }
 
-function page(lines: string[], link: { href: string; label: string } | null): string {
-  const p = (s: string) => `<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a;white-space:pre-line">${s}</p>`;
-  return [
-    ...lines.map(p),
-    link
-      ? `<p style="font-family:system-ui,sans-serif"><a href="${esc(link.href)}" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#06b6d4;color:#020617;text-decoration:none;font-weight:600">${esc(link.label)}</a></p>`
-      : "",
-    `<p style="font-family:system-ui,sans-serif;font-size:12px;color:#64748b">NeoConference support · Replies to this email are not read; answer on the website.</p>`,
-  ].join("");
-}
-
-function ticketLink(t: Ticket, origin: string): { href: string; label: string } | null {
+function ticketVars(t: Ticket, origin: string): TemplateVars {
   // A ticket sent signed out is read after signing in with the same address.
-  return { href: `${origin}/support/tickets/${t.id}`, label: t.userId ? "Open your ticket" : "Sign in to follow it" };
+  return { number: t.number, subject: t.subject, ticketUrl: `${origin}/support/tickets/${t.id}`, signedIn: !!t.userId, email: t.email };
 }
 
 export async function notifyTicketReceived(t: Ticket, origin: string): Promise<SendMailResult> {
-  const subject = `[#${t.number}] We received your request: ${t.subject}`;
-  const intro = t.userId
-    ? "Thanks for getting in touch. Your request is with the NeoConference team and you can follow it on the website."
-    : `Thanks for getting in touch. Your request is with the NeoConference team. We'll answer at this address. To read the conversation on the website, sign in or sign up with ${t.email}.`;
-  return send({
-    to: t.email,
-    subject,
-    text: `${intro}\n\nTicket #${t.number}: ${t.subject}\n\n${origin}/support/tickets/${t.id}`,
-    html: page([esc(intro), `<b>Ticket #${t.number}:</b> ${esc(t.subject)}`], ticketLink(t, origin)),
-  });
+  return sendTicketMail("support.received", t, ticketVars(t, origin));
 }
 
 /** A public reply from support: email, and the bell for an account. */
 export async function notifyTicketReply(t: Ticket, body: string, agentName: string, origin: string) {
-  const subject = `[#${t.number}] Reply from NeoConference support: ${t.subject}`;
   // An anonymised ticket (deleted account) has no address left to write to.
-  const mail: SendMailResult = !t.email ? { ok: false, error: "no_email" } : await send({
-    to: t.email,
-    subject,
-    text: `${agentName} replied to your ticket #${t.number}:\n\n${body}\n\n${origin}/support/tickets/${t.id}`,
-    html: page([`<b>${esc(agentName)}</b> replied to your ticket #${t.number}:`, esc(body)], ticketLink(t, origin)),
-  });
+  const mail: SendMailResult = !t.email
+    ? { ok: false, error: "no_email" }
+    : await sendTicketMail("support.reply", t, { ...ticketVars(t, origin), agentName, body });
   let bell = false;
   if (t.userId) {
     try {

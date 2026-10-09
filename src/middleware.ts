@@ -84,6 +84,12 @@ const isPublicRoute = createRouteMatcher([
   // The scheduler's tick. No session: the bearer secret checked in the route
   // (DISPATCH_SECRET / CRON_SECRET) is the credential.
   '/api/internal/dispatch',
+  // Unsubscribe links in announcement emails work signed out: the signed
+  // token in ?t= is the credential (src/lib/comms/prefs.ts). Resend's
+  // delivery reports carry a Svix signature checked in the route.
+  '/unsubscribe',
+  '/api/comms/unsubscribe',
+  '/api/comms/resend-webhook',
   '/i/(.*)',
   '/video/dashboard',
   // Listed individually on purpose: a wildcard here would silently expose
