@@ -349,6 +349,7 @@ async function main() {
     { key: "recordings/user_bob/bob-room/2026-09-01-10-00-00.mp4", size: 7000, lastModified: lm, etag: '"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' },
     { key: "recordings/user_bob/bob-room/2026-09-01-10-05-00.mp4", size: 7100, lastModified: lm, etag: '"cccccccccccccccccccccccccccccccc"' },
     { key: "misc/stray.bin", size: 300, lastModified: lm, etag: '"dddddddddddddddddddddddddddddddd"' },
+    { key: "platform/logo-1.png", size: 2000, lastModified: lm, etag: '"99999999999999999999999999999999"' },
     { key: "recordings/user_gone/old-room/2025-01-01-00-00-00.mp4", size: 900, lastModified: lm, etag: '"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"' },
     { key: "chat/user_bob/11111111-1111-1111-1111-111111111111-copy1.pdf", size: 4444, lastModified: lm, etag },
     { key: "chat/user_bob/22222222-2222-2222-2222-222222222222-copy2.pdf", size: 4444, lastModified: lm, etag },
@@ -425,6 +426,8 @@ async function main() {
     assert.ok(has("missing", missingKey), "in the index, not in storage");
     assert.ok(!has("missing", chatKey), "a file the scan saw is not missing");
     assert.ok(has("orphan", "misc/stray.bin"));
+    assert.ok(!has("orphan", "platform/logo-1.png"), "the platform's own files are not orphans");
+    assert.equal((await rec("platform/logo-1.png")).type, "system");
     const gone = ps.find((p) => p.kind === "orphan" && p.fileIds.includes(files.fileId("r2", "recordings/user_gone/old-room/2025-01-01-00-00-00.mp4")));
     assert.match(gone!.detail, /no longer exists/);
     const sum = ps.find((p) => p.id.startsWith("duplicate:sum:"));

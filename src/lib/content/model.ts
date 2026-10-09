@@ -18,6 +18,7 @@ export const CONTENT_TYPES = [
   { id: "group_upload", label: "Group chat files" },
   { id: "support_attachment", label: "Support attachments" },
   { id: "roster", label: "Roster spreadsheets" },
+  { id: "system", label: "Platform files (logo, backups)" },
   { id: "other", label: "Other objects" },
 ] as const;
 
@@ -103,6 +104,7 @@ export interface KeyFacts {
  * chat/<uid>/<uuid>-<name>
  * groups/<gid>/<uuid>-<name>
  * support/<ticketId>/<id>-<name>
+ * platform/logo-<ts>.<ext>, ops-backups/kv/<id>.json.gz   (the platform's own)
  */
 export function classifyKey(key: string): KeyFacts {
   const parts = String(key || "").split("/");
@@ -126,6 +128,8 @@ export function classifyKey(key: string): KeyFacts {
   if (parts[0] === "groups" && parts.length === 3 && parts[1]) {
     return { type: "group_upload", ownerId: null, groupId: parts[1], name: tail(last) };
   }
+  // The platform's own files: the logo (settings) and KV backups (operations).
+  if (parts[0] === "platform" || parts[0] === "ops-backups") return { type: "system", ownerId: null, name: last };
   if (parts[0] === "support" && parts.length === 3 && parts[1]) {
     return { type: "support_attachment", ownerId: null, ticketId: parts[1], name: tail(last) };
   }
@@ -323,6 +327,7 @@ export const STUCK_MINUTES: Record<ContentType, number> = {
   group_upload: 10,
   support_attachment: 10,
   roster: 10,
+  system: 60,
   other: 60,
 };
 

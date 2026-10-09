@@ -85,7 +85,7 @@ export function detectProblems(records: FileRecord[], ctx: ProblemContext): Prob
         at: r.updatedAt,
       });
     }
-    if (r.storage === "r2" && !ignored(r, "orphan")) {
+    if (r.storage === "r2" && r.type !== "system" && !ignored(r, "orphan")) {
       const gone = r.ownerId && ctx.goneOwners?.has(r.ownerId);
       // A group or support file without an uploader still belongs somewhere.
       const unowned = !r.ownerId && !r.groupId && !r.ticketId;
