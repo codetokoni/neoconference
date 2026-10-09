@@ -14,6 +14,7 @@ import { allStates, EMPTY_STATE, getState, listRules, saveRule } from "@/lib/aut
 import { ensureBuiltIns } from "@/lib/automation/builtins";
 import { maintenanceJobs, PURGE_TARGETS, replaceableJobs } from "@/lib/automation/actions";
 import { reschedule, syncReplacements } from "@/lib/automation/runner";
+import { getPlatformSettings } from "@/lib/platform/settings";
 import { auditView, editContext, newRuleId, replacementClash, ruleErrorResponse, ruleView, stepUpNeeded, STEP_UP_RECIPIENTS } from "@/lib/automation/admin";
 
 export const runtime = "nodejs";
@@ -25,6 +26,9 @@ export async function GET(req: Request) {
   await ensureBuiltIns();
   const [rules, states] = await Promise.all([listRules(), allStates()]);
   const now = Date.now();
+  // New rules start in the admin timezone (Settings → Regional); "local" means the browser's, so the page picks.
+  const regional = await getPlatformSettings().then((p) => p.regional).catch(() => null);
+  const adminTimezone = regional && regional.adminTimezone !== "local" ? regional.adminTimezone : null;
   return NextResponse.json({
     ok: true,
     now,
@@ -40,6 +44,7 @@ export async function GET(req: Request) {
       minuteSteps: MINUTE_STEPS,
       hourSteps: HOUR_STEPS,
       stepUpRecipients: STEP_UP_RECIPIENTS,
+      adminTimezone,
     },
   });
 }

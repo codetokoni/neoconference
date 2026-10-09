@@ -78,6 +78,7 @@ type Meta = {
   minuteSteps: number[];
   hourSteps: number[];
   stepUpRecipients: number;
+  adminTimezone: string | null;
 };
 type Draft = {
   id: string | null;
@@ -108,13 +109,13 @@ function browserZone(): string {
   }
 }
 
-function toDraft(r: RuleRow | null): Draft {
+function toDraft(r: RuleRow | null, zone?: string | null): Draft {
   if (!r) {
     return {
       id: null,
       name: "",
       description: "",
-      timezone: browserZone(),
+      timezone: zone || browserZone(),
       schedule: { type: "every", unit: "days", n: 1, at: "09:00" },
       condition: { kind: "trial_ends_in", days: [3] },
       action: { kind: "reminder", channels: { email: true, inApp: true } },
@@ -272,7 +273,7 @@ export default function AutomationClient() {
         sub="Rules that run on a schedule: reminders, announcements, plan changes, reports and maintenance. Each runs once per period per person, under a lock, and alerts the owner and ops admins when it keeps failing."
         actions={
           write && !draft ? (
-            <button type="button" className={btn.primary} onClick={() => (setDraft(toDraft(null)), setPreview(null))}>
+            <button type="button" className={btn.primary} onClick={() => (setDraft(toDraft(null, meta?.adminTimezone)), setPreview(null))}>
               New rule
             </button>
           ) : undefined
