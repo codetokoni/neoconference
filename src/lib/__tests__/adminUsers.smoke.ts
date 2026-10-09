@@ -258,6 +258,17 @@ async function main() {
     assert.equal((ownerView.body.protection as { refusal: { error: string } }).refusal.error, "owner_protected");
   });
 
+  await t("the plan block shows the limits enforced for the account (its subscription's own), not the tier's defaults", async () => {
+    g.__users.user_carol.metadata = { planLimits: { recordingHoursPerMonth: 80, maxParticipants: 500 } };
+    const d = await call("user_analyst", R.user.GET, { params: id("user_carol") });
+    const plan = d.body.plan as { effective: string; recordingHoursPerMonth: number; limits: Record<string, unknown>; limitsSource: string };
+    assert.equal(plan.effective, "business");
+    assert.equal(plan.limitsSource, "account");
+    assert.equal(plan.recordingHoursPerMonth, 80, "Business defaults to 50");
+    assert.equal(plan.limits.maxParticipants, 500);
+    delete g.__users.user_carol.metadata;
+  });
+
   console.log("the owner is untouchable");
   await t("every user action refuses the platform owner — even from the owner's own session — and nothing changes", async () => {
     const before = JSON.stringify(g.__users.user_owner);
