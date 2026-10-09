@@ -4,20 +4,27 @@
 //
 // Stripe -> NeoConference webhook handler.
 // Verifies the Stripe-Signature header (HMAC-SHA256 over t.<rawBody>) using
-// STRIPE_WEBHOOK_SECRET, then handles 'checkout.session.completed'.
+// STRIPE_WEBHOOK_SECRET, then handles 'checkout.session.completed' (and
+// 'checkout.session.async_payment_succeeded' for delayed payment methods).
 //
 // On successful checkout it:
 //   - Loads the event by metadata.eventId
 //   - Adds (or upgrades) a RoleAssignment with role='ticket-holder', preApproved=true
 //   - Increments tickets[<tierId>].sold
+//   - Records the sale for the admin billing area (src/lib/finance/ledger.ts)
 //
-// Configure in Stripe dashboard: send 'checkout.session.completed' to
+// It also records 'checkout.session.async_payment_failed' as a failed
+// payment and mirrors 'charge.refunded' (a refund made in the Stripe
+// dashboard) onto the sale.
+//
+// Configure in Stripe dashboard: send those four events to
 //   https://neoconference.vercel.app/api/stripe/webhook
 // and copy the resulting whsec_... into STRIPE_WEBHOOK_SECRET.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eventStore } from '@/lib/eventStore';
 import { verifyWebhook } from '@/lib/stripe';
+import { mirrorStripeRefund, recordTicketSession } from '@/lib/finance/ledger';
 import type { NeoEvent, RoleAssignment } from '@/types/event';
 
 export const runtime = 'nodejs';
@@ -30,6 +37,8 @@ type StripeEvent = {
 type StripeSession = {
   id: string;
   payment_status?: string;
+  payment_intent?: string | null;
+  created?: number;
   customer_email?: string | null;
   customer_details?: { email?: string | null; name?: string | null };
   amount_total?: number;
@@ -91,7 +100,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_signature_or_unconfigured' }, { status: 400 });
   }
 
-  if (evt.type !== 'checkout.session.completed') {
+  // A refund made in the Stripe dashboard: mirror it onto the sale so the
+  // admin billing area shows it.
+  if (evt.type === 'charge.refunded') {
+    const sale = await mirrorStripeRefund(evt.data.object as unknown as Parameters<typeof mirrorStripeRefund>[0]);
+    return NextResponse.json({ ok: true, mirrored: !!sale });
+  }
+
+  // A delayed payment method (bank debit, voucher) failed after checkout.
+  if (evt.type === 'checkout.session.async_payment_failed') {
+    const session = evt.data.object;
+    if (!session.metadata?.eventId) return NextResponse.json({ ok: true, ignored: 'not_a_ticket' });
+    const ev = await eventStore.byId(session.metadata.eventId);
+    await recordTicketSession(session, 'failed', {
+      eventName: ev?.name,
+      tierLabel: ev?.tickets?.find((t) => t.id === session.metadata?.tierId)?.label,
+      failureReason: 'The payment failed after checkout.',
+      at: Date.now(),
+    });
+    return NextResponse.json({ ok: true, recorded: 'failed' });
+  }
+
+  if (evt.type !== 'checkout.session.completed' && evt.type !== 'checkout.session.async_payment_succeeded') {
     return NextResponse.json({ ok: true, ignored: evt.type });
   }
 
@@ -111,5 +141,16 @@ export async function POST(req: NextRequest) {
   }
 
   await eventStore.update(ev.id, (prev) => applyTicketSale(prev, session));
+  // The sale itself, for the admin's payments, revenue and refunds. A
+  // failure here must not undo the ticket that was just granted.
+  try {
+    await recordTicketSession(session, 'paid', {
+      eventName: ev.name,
+      tierLabel: ev.tickets?.find((t) => t.id === session.metadata?.tierId)?.label,
+      at: Date.now(),
+    });
+  } catch (err) {
+    console.error('[stripe-webhook] could not record the sale', session.id, err);
+  }
   return NextResponse.json({ ok: true, eventId: ev.id });
 }

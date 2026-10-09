@@ -22,7 +22,7 @@ import { NextResponse } from "next/server";
 import { readPendingPayment, updatePaymentStatus, type PendingPayment } from "@/lib/billingStore";
 import { isAppCallback, redirectToApp } from "@/lib/app-callback";
 import { ESPEES_AMOUNTS } from "@/lib/espees";
-import { recordPayment } from "@/lib/paymentsStore";
+import { recordPayment, updatePaymentRecord } from "@/lib/paymentsStore";
 import { applyPurchase } from "@/lib/billing/subscriptions";
 import { redeemCoupon } from "@/lib/billing/store";
 
@@ -167,6 +167,11 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   await updatePaymentStatus(nonce, "paid");
+
+  // Where the buyer's connection was (Vercel's geo header), for the tax
+  // rule on their invoice. Best effort.
+  const country = req.headers.get("x-vercel-ip-country");
+  if (paymentCreated && country) await updatePaymentRecord(paymentRef, { country }).catch(() => null);
 
   return upgradedRedirect(origin, record);
 }

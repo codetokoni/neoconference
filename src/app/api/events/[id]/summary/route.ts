@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { aiAvailable, chatCompletion } from "@/lib/llm";
 import { auth } from "@clerk/nextjs/server";
+import { activity } from "@/lib/activity";
 import { eventStore } from "@/lib/eventStore";
 import { assertOwnerOrAdmin } from "@/lib/roles";
 import { chatStore } from "@/lib/chatStore";
@@ -93,5 +94,6 @@ export async function POST(
 
   const summary = { text: plainSummary(result.text), model: result.model, generatedAt: Date.now() };
   await eventStore.update(ev.id, { summary });
+  await activity.record("ai.summary", { userId, account: ev.ownerUserId, props: { eventId: ev.id, model: result.model ?? null } });
   return NextResponse.json({ ok: true, summary });
 }

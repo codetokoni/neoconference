@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { authorize } from "@/lib/authz";
 import { rememberEgressOwner } from "@/lib/recordingUsage";
+import { activity } from "@/lib/activity";
 import { recordingGate, startRoomRecording } from "@/lib/roomRecording";
 
 export const runtime = "nodejs";
@@ -60,6 +61,7 @@ export async function POST(req: Request) {
     // The video egress is the one whose length counts (the audio sidecar
     // runs alongside it and is not counted twice).
     if (owner && !allowed.exempt) await rememberEgressOwner(started.egressId, owner);
+    await activity.record("recording.started", { userId, account: owner || null, props: { eventId: ev.id, egressId: started.egressId } });
 
     return NextResponse.json({
       egressId: started.egressId,

@@ -560,6 +560,52 @@ async function main() {
     assert.ok(items.every((e) => e.actorEmail === "agent@example.com" && e.outcome === "ok"));
   });
 
+  console.log("data retention");
+  const deleted: string[] = [];
+  tickets.__setSupportDeleter(async (key) => {
+    deleted.push(key);
+  });
+  await t("deleting an account anonymises its tickets: no id, email, name or files; the history stays", async () => {
+    const before = (await tickets.listTickets()).filter((x) => x.userId === "user_alice" || x.email === "alice@example.com").length;
+    assert.ok(before >= 3);
+    const r = await tickets.anonymiseTicketsForAccount("user_alice", ["alice@example.com"]);
+    assert.deepEqual(r, { tickets: before, attachments: 1 });
+    assert.match(deleted[0], new RegExp(`^support/${aliceTicket}/`));
+    const tk = await tickets.getTicket(aliceTicket);
+    assert.equal(tk?.userId, null);
+    assert.equal(tk?.email, "");
+    assert.equal(tk?.name, "Deleted user");
+    const msgs = await tickets.listMessages(aliceTicket);
+    assert.ok(msgs.filter((m) => m.author === "user").every((m) => m.authorName === "Deleted user" && m.attachments.length === 0));
+    assert.ok(msgs.some((m) => m.author === "agent" && m.body.startsWith("Found it")), "support's replies are kept");
+    assert.equal(msgs[0].body, "Yesterday's recording never appeared in my library.", "the text and its order are kept");
+    assert.equal((await tickets.listNotes(aliceTicket)).length, 1, "internal notes are kept");
+    assert.deepEqual((await call("user_alice", R.intake.GET)).body.tickets, [], "nothing ties them to the account any more");
+    assert.ok(!JSON.stringify(await tickets.listTickets()).includes("alice@example.com"));
+    await stepUp("user_agent");
+    const view = await call("user_agent", R.ticket.GET, { params: { id: aliceGuestTicket } });
+    assert.equal(view.status, 200, JSON.stringify(view.body));
+    assert.deepEqual((view.body.history as { id: string }[]).map((h) => h.id), [aliceGuestTicket], "anonymised tickets are not linked to each other through their empty address");
+    const mailsBefore = mail.length;
+    const reply = await call("user_agent", R.agentMsg.POST, { params: { id: aliceGuestTicket }, body: { kind: "reply", body: "Following up." } });
+    assert.equal(reply.status, 201);
+    assert.equal(reply.body.emailError, "no_email");
+    assert.equal(mail.length, mailsBefore, "an anonymised ticket emails nobody");
+  });
+
+  await t("retention purges closed tickets closed before the cut-off: ticket, conversation, notes and files", async () => {
+    const closed = (await tickets.listTickets()).filter((x) => x.status === "closed");
+    assert.ok(closed.some((x) => x.id === aliceTicket));
+    const open = (await tickets.listTickets()).filter((x) => x.status !== "closed").length;
+    assert.deepEqual(await tickets.purgeTicketsClosedBefore(0), { tickets: 0 }, "nothing closed before the epoch");
+    const r = await tickets.purgeTicketsClosedBefore(Date.now() + 1);
+    assert.equal(r.tickets, closed.length);
+    assert.equal(await tickets.getTicket(aliceTicket), null);
+    assert.deepEqual(await tickets.listMessages(aliceTicket), []);
+    assert.deepEqual(await tickets.listNotes(aliceTicket), []);
+    assert.equal((await tickets.listTickets()).length, open, "open, pending and resolved tickets stay");
+  });
+
   console.log(`\n${n} checks passed`);
   process.exit(0);
 }

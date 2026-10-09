@@ -31,6 +31,7 @@ function toUser(id) {
     username: null,
     imageUrl: "",
     publicMetadata,
+    createdAt: u.createdAt ?? 0,
     emailAddresses: list,
     primaryEmailAddress: primary,
     primaryEmailAddressId: primary?.id ?? null,
@@ -122,6 +123,7 @@ export async function clerkClient() {
         return u;
       },
       async getUserList(params = {}) {
+        if (globalThis.__clerkListFails) throw new Error("clerk: unavailable (test)");
         let ids = Object.keys(users());
         if (params.userId?.length) ids = ids.filter((id) => params.userId.includes(id));
         if (params.emailAddress?.length) {

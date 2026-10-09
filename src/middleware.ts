@@ -1,6 +1,7 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { NextResponse, type NextRequest } from 'next/server';
+import { clerkClient, clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server';
 import { kv } from '@/lib/kv';
+import { markActive } from '@/lib/activity';
 import { RESERVED_SHORT_URL_SLUGS } from '@/lib/reservedSlugs';
 import { platformGate } from '@/lib/platform/gate';
 import {
@@ -329,8 +330,23 @@ async function enforcePersistentSession(req: NextRequest): Promise<NextResponse 
   return res;
 }
 
+/**
+ * Daily-active mark for the admin analytics (src/lib/activity.ts). Runs after
+ * the response via waitUntil, so it adds no latency; markActive is memoised
+ * per instance (one KV round trip per person per day) and never throws.
+ */
+async function noteActive(auth: () => Promise<{ userId: string | null }>, event: NextFetchEvent): Promise<void> {
+  try {
+    const { userId } = await auth();
+    if (!userId) return;
+    event.waitUntil(markActive(userId, async () => (await (await clerkClient()).users.getUser(userId)).createdAt));
+  } catch {
+    // Analytics never stands in the way of a request.
+  }
+}
+
 export default clerkMiddleware(
-  async (auth, req) => {
+  async (auth, req, event) => {
     const nextReq = req as unknown as NextRequest;
     // Maintenance mode and the registration rules (admin settings) come
     // before everything else. Who is asking is looked up only when one of
@@ -338,6 +354,7 @@ export default clerkMiddleware(
     // /admin always get through.
     const gated = await platformGate(nextReq, async () => (await auth()).userId ?? null);
     if (gated) return gated;
+    await noteActive(auth, event);
     // Custom-domain rewrite runs first because it's tenant-scoped and
     // consumes the whole path. Short-meeting-URL rewrite runs second so
     // it only sees canonical-domain requests.

@@ -16,6 +16,7 @@ import { checkLifetimeCap, incrementMeetingsCreated, getPlanLimitsForUserId } fr
 import { hashMeetingPassword } from '@/lib/eventPassword';
 import { featureDecision, featureRefusal } from '@/lib/platform/features';
 import type { NeoEvent, RoleAssignment } from '@/types/event';
+import { activity } from '@/lib/activity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -272,6 +273,7 @@ export async function POST(req: NextRequest) {
   // Increment Free-tier lifetime counter. No-op for paid plans.
   // Best-effort: failure here logs but does not undo the event creation.
   await incrementMeetingsCreated(userId);
+  await activity.record('meeting.created', { userId, props: { eventId: ev.id, kind: ev.isPermanent ? 'permanent' : 'scheduled' } });
 
   return NextResponse.json({
         id: ev.id,

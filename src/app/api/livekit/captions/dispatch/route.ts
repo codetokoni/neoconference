@@ -15,6 +15,7 @@ import { eventStore } from '@/lib/eventStore';
 import { authorize } from '@/lib/authz';
 import { getPlanForUserId } from '@/lib/plan';
 import { featureDecision, featureRefusal } from '@/lib/platform/features';
+import { activity } from '@/lib/activity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -100,6 +101,7 @@ export async function POST(req: NextRequest) {
     const dispatch = await client.createDispatch(roomName, AGENT_NAME, {
       metadata: JSON.stringify({ requestedBy: userId, eventSlug }),
     });
+    await activity.record('captions.used', { userId, props: { eventSlug } });
     return NextResponse.json({
       ok: true,
       dispatched: true,
