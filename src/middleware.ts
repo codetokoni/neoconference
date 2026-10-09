@@ -59,6 +59,9 @@ const isPublicRoute = createRouteMatcher([
   '/e/(.*)',
   '/embed/(.*)',
   '/share/(.*)',
+  // Report a replay or shared recording, signed in or not. The route
+  // rate limits per address and account (src/lib/content/reports.ts).
+  '/api/content/reports',
   '/replay/(.*)',
   '/api/qr/(.*)',
   '/api/livekit/token(.*)',

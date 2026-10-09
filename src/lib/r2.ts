@@ -1,4 +1,4 @@
-import { S3Client, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 /**
@@ -180,6 +180,55 @@ export async function putObject(
       CacheControl: opts?.cacheControl,
     })
   );
+}
+
+/**
+ * One page of the bucket listing, in key order, for the content index's
+ * backfill (src/lib/content/backfill.ts). Read-only. `token` is the
+ * previous page's `next`; null when the listing is complete.
+ */
+export async function listObjectsPage(opts: { prefix?: string; token?: string | null; maxKeys?: number } = {}): Promise<{
+  objects: R2Object[];
+  next: string | null;
+}> {
+  if (!isR2Configured()) return { objects: [], next: null };
+  const s3 = r2Client();
+  const out = await s3.send(
+    new ListObjectsV2Command({
+      Bucket: requiredEnv('S3_BUCKET'),
+      Prefix: opts.prefix,
+      MaxKeys: Math.min(Math.max(opts.maxKeys ?? 1000, 1), 1000),
+      ContinuationToken: opts.token || undefined,
+    })
+  );
+  return {
+    objects: (out.Contents || []).map((o) => ({
+      key: o.Key || '',
+      size: o.Size || 0,
+      lastModified: o.LastModified ? o.LastModified.toISOString() : undefined,
+      etag: o.ETag,
+    })),
+    next: out.IsTruncated && out.NextContinuationToken ? out.NextContinuationToken : null,
+  };
+}
+
+/** An object's size and checksum without its bytes; null when there is none. Read-only. */
+export async function headObject(key: string): Promise<{ size: number; etag?: string; contentType?: string; lastModified?: string } | null> {
+  if (!isR2Configured()) return null;
+  const s3 = r2Client();
+  try {
+    const out = await s3.send(new HeadObjectCommand({ Bucket: requiredEnv('S3_BUCKET'), Key: key }));
+    return {
+      size: out.ContentLength || 0,
+      etag: out.ETag,
+      contentType: out.ContentType,
+      lastModified: out.LastModified ? out.LastModified.toISOString() : undefined,
+    };
+  } catch (err) {
+    const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
+    if (status === 404 || (err as { name?: string })?.name === 'NotFound') return null;
+    throw err;
+  }
 }
 
 /**

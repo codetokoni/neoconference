@@ -8,21 +8,20 @@
 // Auth: signed-in Clerk users only. Prevents a public open-upload
 // endpoint that would double as free file hosting.
 //
-// Size cap: 10 MB per attachment. The body is fully buffered in memory
-// (Vercel default request body limit is 4.5MB unless raised; this
-// route sets `maxDuration` + reads the body itself so it works up to
-// 10 MB, but larger uploads should switch to signed-PUT-URL flow).
-//
-// MIME allow-list: broadly permissive (images, PDFs, common Office
-// documents, plain text, common archives) — enough for a chat that
-// operators use for sending programme sheets, images, screenshots.
+// Size cap and allowed types: set in the admin area (Content > Limits,
+// src/lib/content/limits.ts) — 10 MB of images, PDFs, Office documents,
+// text and ZIP until changed. The body is fully buffered in memory, so
+// much larger uploads should switch to a signed-PUT-URL flow.
 
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { randomUUID } from 'node:crypto';
 import { isR2Configured, putObject, signGetUrl } from '@/lib/r2';
 import { recordMediaEvent } from '@/lib/ops/media';
-import { CHAT_IMAGE_MIMES, CHAT_UPLOAD_ALLOWED, CHAT_UPLOAD_MAX_BYTES, safeFilename } from '@/lib/chatUploadRules';
+import { CHAT_IMAGE_MIMES, safeFilename } from '@/lib/chatUploadRules';
+import { refuseUpload, uploadRule } from '@/lib/content/limits';
+import { storedMime } from '@/lib/content/model';
+import { indexUpload, indexUploadFailed } from '@/lib/content/files';
 import { activity } from '@/lib/activity';
 
 export const runtime = 'nodejs';
@@ -31,10 +30,6 @@ export const dynamic = 'force-dynamic';
 // image inside the window. The endpoint is small even at max size.
 export const maxDuration = 30;
 
-// Limits and the allowed file types are shared with group chat
-// (src/lib/chatUploadRules.ts).
-const MAX_BYTES = CHAT_UPLOAD_MAX_BYTES;
-const ALLOWED = CHAT_UPLOAD_ALLOWED;
 const IMAGE_MIMES = CHAT_IMAGE_MIMES;
 
 export async function POST(req: Request) {
@@ -62,22 +57,10 @@ export async function POST(req: Request) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: 'file_field_missing' }, { status: 400 });
   }
-  if (file.size <= 0) {
-    return NextResponse.json({ error: 'empty_file' }, { status: 400 });
-  }
-  if (file.size > MAX_BYTES) {
-    return NextResponse.json(
-      { error: 'too_large', limit: MAX_BYTES, size: file.size },
-      { status: 413 },
-    );
-  }
-  const mime = (file.type || 'application/octet-stream').toLowerCase();
-  if (!ALLOWED.has(mime)) {
-    return NextResponse.json(
-      { error: 'unsupported_type', mime },
-      { status: 415 },
-    );
-  }
+  // Size and type limits are set in the admin area (Content > Limits).
+  const refused = await refuseUpload('chat', file, userId);
+  if (refused) return refused;
+  const mime = storedMime(await uploadRule('chat'), file);
 
   const name = safeFilename(file.name || 'file');
   // Namespace by uploader so an admin browsing R2 later can tell who
@@ -85,6 +68,7 @@ export async function POST(req: Request) {
   const key = `chat/${userId}/${randomUUID()}-${name}`;
 
   const buf = Buffer.from(await file.arrayBuffer());
+  const indexed = { key, type: 'chat_upload' as const, ownerId: userId, name, size: file.size, contentType: mime, body: buf };
   try {
     await putObject(key, buf, mime, {
       // Signed URLs already gate lifetime; a modest immutable cache
@@ -94,6 +78,7 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     console.error('[chat/upload] R2 put failed', e);
+    await indexUploadFailed({ ...indexed, detail: (e as Error).message });
     await recordMediaEvent('upload', false, key, (e as Error).message);
     return NextResponse.json(
       { error: 'upload_failed', detail: (e as Error).message.slice(0, 200) },
@@ -101,6 +86,8 @@ export async function POST(req: Request) {
     );
   }
 
+  // The admin file index (Content): owner, size, type, checksum.
+  await indexUpload(indexed);
   await recordMediaEvent('upload', true, key);
 
   // 7-day GET signature — enough for the meeting itself plus a

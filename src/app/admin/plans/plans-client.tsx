@@ -1007,7 +1007,7 @@ const GRANT_FIELDS: { key: string; label: string; kind: "number" | "bool" }[] = 
   { key: "recordingHoursPerMonth", label: "Extra recording hours / month", kind: "number" },
   { key: "groupMembers", label: "Extra group members", kind: "number" },
   { key: "seats", label: "Extra host seats (shown, not enforced yet)", kind: "number" },
-  { key: "storageGb", label: "Extra storage GB (shown, not enforced yet)", kind: "number" },
+  { key: "storageGb", label: "Extra storage GB", kind: "number" },
   { key: "recording", label: "Cloud recording", kind: "bool" },
   { key: "livestream", label: "Livestream", kind: "bool" },
   { key: "translation", label: "Choose translation languages", kind: "bool" },

@@ -14,6 +14,7 @@
 
 import { kv } from '@/lib/kv';
 import type { TranscribeJob } from '@/lib/transcribe';
+import { indexTranscriptJob } from '@/lib/content/files';
 
 const PREFIX = 'neo:transcribe:';
 const KEY_INDEX_PREFIX = 'neo:transcribe:key:';
@@ -64,6 +65,8 @@ export const transcribeStore = {
         ex: TTL_SECONDS,
       });
     }
+    // The admin file index (Content): the transcript's status and size.
+    await indexTranscriptJob(job);
     return job;
   },
 

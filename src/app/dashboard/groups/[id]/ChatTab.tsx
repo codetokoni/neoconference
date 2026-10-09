@@ -179,13 +179,12 @@ export default function ChatTab({
         form.append("file", file);
         const res = await fetch(`/api/groups/${encodeURIComponent(groupId)}/upload`, { method: "POST", body: form });
         if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+          // Size and type limits are set in the admin area; the server words them.
           setErr(
-            body.error === "too_large"
-              ? `${file.name} is over 10 MB.`
-              : body.error === "unsupported_type"
-                ? `${file.name} isn't a type that can be shared here.`
-                : groupErrorMessage(body.error)
+            body.error === "too_large" || body.error === "unsupported_type" || body.error === "empty_file" || body.error === "storage_full"
+              ? `${file.name}: ${body.message || "can't be shared here."}`
+              : groupErrorMessage(body.error)
           );
           continue;
         }
