@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
-import { getPlanForUserId, getPlanLimits, type Plan } from "@/lib/plan";
+import { getPlanLimits, getPlanLimitsForUserId, type Plan, type PlanFeatureLimits } from "@/lib/plan";
 import { isAdmin } from "@/lib/roles";
 import { rejoinDropsToAttendee, reopensOnJoin } from "@/lib/meetingLifecycle";
 import { gateStatus } from "@/lib/waitingRoom";
@@ -202,6 +202,7 @@ export async function GET(req: NextRequest) {
     //      joiner's plan was the reason /room/hsmanagers hit "room_full"
     //      at 30 people even after the host paid to raise the cap.
     let hostPlan: Plan | null = null;
+    let hostLimits: PlanFeatureLimits | null = null;
     try {
       let hostUserId: string | undefined;
       const { eventStore: __es } = await import("@/lib/eventStore");
@@ -227,11 +228,13 @@ export async function GET(req: NextRequest) {
       // check entirely below — better to admit everyone into a room
       // nobody owns than to punish a free joiner with the free-plan
       // cap for a room somebody else provisioned.
-      if (hostUserId) hostPlan = await getPlanForUserId(hostUserId);
+      if (hostUserId) ({ plan: hostPlan, limits: hostLimits } = await getPlanLimitsForUserId(hostUserId));
     } catch (planErr) {
       console.error("[livekit/token] plan lookup failed:", planErr);
     }
-    const planLimits = hostPlan ? getPlanLimits(hostPlan) : null;
+    // The host's own limits: a subscription's version, add-ons and custom
+    // terms, not just its tier's defaults (getPlanLimitsForUserId).
+    const planLimits = hostPlan ? hostLimits : null;
 
     // Platform-admin bypass. If the person joining is a NeoConference
     // admin (isAdmin(email) — the same list that lets you into
