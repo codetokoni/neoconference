@@ -23,7 +23,8 @@ import { listCheckouts } from "@/lib/finance/checkouts";
 import { outstanding, periodFigures, series as revenueSeries, type Bucket } from "@/lib/finance/revenue";
 import { allFiles } from "@/lib/content/files";
 import { backfillState } from "@/lib/content/backfill";
-import { CONTENT_TYPES, type ContentType } from "@/lib/content/model";
+import { usageTotals } from "@/lib/content/admin";
+import { contentTypeLabel, type ContentType } from "@/lib/content/model";
 import { latestResults, type ProbeStatus } from "@/lib/ops/probes";
 import { listIncidents } from "@/lib/ops/incidents";
 import { listAlerts } from "@/lib/ops/alerts";
@@ -293,6 +294,7 @@ export interface StorageData {
   files: number;
   bytes: number;
   byType: Array<{ type: ContentType; label: string; files: number; bytes: number; href: string }>;
+  /** Of the above, in the bin (still stored until purged). */
   trashed: { files: number; bytes: number };
   /** Whether a full listing of R2 has been folded into the index; false = the totals are a floor. */
   complete: boolean;
@@ -311,29 +313,14 @@ const storage: SourceDef<StorageData> = {
   periodic: false,
   async load() {
     const [files, state] = await Promise.all([allFiles(), backfillState()]);
-    const byType = new Map<ContentType, { files: number; bytes: number }>();
-    const trashed = { files: 0, bytes: 0 };
-    let bytes = 0;
-    let count = 0;
-    for (const f of files) {
-      const size = Number(f.size) || 0;
-      if (f.state === "trashed") {
-        trashed.files++;
-        trashed.bytes += size;
-        continue;
-      }
-      count++;
-      bytes += size;
-      const t = byType.get(f.type) ?? { files: 0, bytes: 0 };
-      t.files++;
-      t.bytes += size;
-      byType.set(f.type, t);
-    }
+    // The Content section's own totals: files in the bin still take space until purged, so they count.
+    const usage = usageTotals(files);
+    const bin = files.filter((f) => f.state === "trashed");
     return {
-      files: count,
-      bytes,
-      byType: CONTENT_TYPES.filter((t) => byType.has(t.id)).map((t) => ({ type: t.id, label: t.label, ...byType.get(t.id)!, href: L.storageByType(t.id) })),
-      trashed,
+      files: usage.total.files,
+      bytes: usage.total.bytes,
+      byType: usage.byType.map((t) => ({ ...t, label: contentTypeLabel(t.type), href: L.storageByType(t.type) })),
+      trashed: { files: bin.length, bytes: bin.reduce((s, f) => s + f.size, 0) },
       complete: !!state.lastCompletePass,
       lastCompletePassAt: state.lastCompletePass?.finishedAt ?? null,
       bandwidth: { available: false, reason: BANDWIDTH_UNAVAILABLE },

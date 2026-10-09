@@ -33,7 +33,7 @@ type Stubbed = typeof globalThis & {
   __who?: string;
   __rooms?: { name: string; numParticipants: number }[];
   __clerkCountFails?: boolean;
-  __kvTtl?: Map<string, number>;
+  __kvTtl?: boolean;
 };
 const g = globalThis as Stubbed;
 const DAY = 86_400_000;
@@ -380,17 +380,18 @@ async function main() {
     assert.equal(d.series.byCurrency.USD[11], 50, "12 September");
   });
 
-  await t("storage: bytes and files from the index, the bin apart, bandwidth said to be unavailable", async () => {
+  await t("storage: the Content section's totals (the bin still takes space), bandwidth said to be unavailable", async () => {
     const d = ok<Body>(first, "storage");
-    assert.deepEqual([d.bytes, d.files], [4500, 3]);
+    assert.deepEqual([d.bytes, d.files], [5499, 4]);
     assert.deepEqual(d.trashed, { files: 1, bytes: 999 });
     assert.deepEqual(
-      d.byType.map((x: Body) => [x.type, x.files, x.bytes]),
+      d.byType.map((x: Body) => [x.type, x.files, x.bytes, x.href]),
       [
-        ["recording", 2, 4000],
-        ["chat_upload", 1, 500],
+        ["recording", 2, 4000, "/admin/content?type=recording&state=all"],
+        ["chat_upload", 2, 1499, "/admin/content?type=chat_upload&state=all"],
       ],
     );
+    assert.equal(d.links.storage, "/admin/content/storage");
     assert.equal(d.complete, false, "no full listing has run");
     assert.equal(d.bandwidth.available, false);
     assert.match(d.bandwidth.reason, /Cloudflare/);
@@ -557,14 +558,15 @@ async function main() {
 
   console.log("cache");
   await t("a repeat within the minute is served from KV with its own time; refresh recomputes", async () => {
-    const a = await call("user_owner", R.overview.GET, SEPT + "&only=users");
+    g.__kvTtl = true; // the stub Redis keeps TTLs from here on
+    const a = await call("user_owner", R.overview.GET, SEPT + "&only=users&refresh=1");
     const b = await call("user_owner", R.overview.GET, SEPT + "&only=users");
     assert.equal(b.body.sources.users.cached, true);
     assert.equal(b.body.sources.users.at, a.body.sources.users.at);
     assert.equal(b.body.asOf, a.body.sources.users.at);
-    const key = [...(g.__kvTtl?.keys() ?? [])].find((k) => k.startsWith("neo:admin:overview:v1:users:UTC:2026-09-01:2026-09-30"));
+    const [key] = (await kv.keys("neo:admin:overview:v1:users:UTC:2026-09-01:2026-09-30:*")) as string[];
     assert.ok(key, "cached under the period it was computed for");
-    assert.equal(g.__kvTtl!.get(key!), 60);
+    assert.equal(await kv.pttl(key), 60_000);
 
     g.__users.user_gus = { emails: ["gus@example.com"], createdAt: at("2026-09-20T12:00:00Z") };
     tick(5_000);
@@ -575,9 +577,12 @@ async function main() {
     assert.equal(fresh.body.sources.users.data.total, 12);
     assert.equal(fresh.body.sources.users.data.newUsers.value, 4);
     assert.ok(fresh.body.sources.users.at > a.body.sources.users.at);
-    await kv.del(key!); // what the TTL does after 60 s
+    tick(53_000);
+    assert.equal((await call("user_owner", R.overview.GET, SEPT + "&only=users")).body.sources.users.cached, true, "58 s on: still cached");
+    tick(3_000);
     const later = await call("user_owner", R.overview.GET, SEPT + "&only=users");
-    assert.equal(later.body.sources.users.cached, false);
+    assert.equal(later.body.sources.users.cached, false, "61 s on: expired and recomputed");
+    g.__kvTtl = false;
     delete g.__users.user_gus;
   });
 

@@ -438,7 +438,7 @@ function storageFoot(d: SourceData["storage"]): string {
   const base = d.complete
     ? `From the file index, last fully checked against storage ${d.lastCompletePassAt ? fmtTime(d.lastCompletePassAt) : ""}.`
     : "From the file index; older files are still being indexed, so this is at least the figure shown.";
-  return `${base} ${d.trashed.files ? `${formatBytes(d.trashed.bytes)} more in the bin. ` : ""}Bandwidth: ${d.bandwidth.reason}`;
+  return `${base} ${d.trashed.files ? `Includes ${formatBytes(d.trashed.bytes)} in the bin until it is purged. ` : ""}Bandwidth: ${d.bandwidth.reason}`;
 }
 
 function pctText(d: Delta): string {

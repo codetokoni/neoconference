@@ -17,8 +17,6 @@ const base = {
   async get(k) { return store.has(k) ? de(store.get(k)) : null; },
   async set(k, v, opts) {
     if (opts?.nx && store.has(k)) return null;
-    // Expiry is not simulated; the TTL asked for is kept for tests to read.
-    if (opts?.ex || opts?.px) (globalThis.__kvTtl ??= new Map()).set(k, opts.ex ?? opts.px / 1000);
     store.set(k, structuredClone(v));
     return "OK";
   },

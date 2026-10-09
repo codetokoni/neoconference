@@ -153,14 +153,14 @@ const CATEGORIES = [
       const s = q.toLowerCase();
       const files = await allFiles();
       const hits = files
-        .filter((f) => f.id.toLowerCase() === s || f.ownerId === q || has(s, f.name, f.key, f.eventSlug))
+        .filter((f) => f.id.toLowerCase() === s || f.ownerId === q || has(s, f.name, f.key, f.eventSlug, f.groupId))
         .sort((a, b) => b.createdAt - a.createdAt);
       return {
         items: hits.slice(0, limit).map((f) => ({
           id: f.id,
           title: f.name || f.key.split("/").pop() || f.key,
           sub: [contentTypeLabel(f.type), formatBytes(f.size), f.state !== "active" ? f.state : "", f.ownerId].filter(Boolean).join(" · "),
-          href: `/admin/content?file=${enc(f.id)}`,
+          href: `/admin/content/files/${enc(f.id)}`,
         })),
         more: hits.length > limit ? `/admin/content?q=${enc(q)}` : null,
       };
