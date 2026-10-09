@@ -2,7 +2,7 @@
 //
 // Who an announcement goes to. An audience is one of:
 //
-//   everyone   every account
+//   everyone   every account that is not suspended
 //   filter     accounts matching plan / account status / sign-up date
 //   groups     the members of one or more groups (by group id)
 //   users      specific people, by user id or email
@@ -88,7 +88,7 @@ export function cleanAudience(raw: unknown): { audience: Audience } | { error: s
 /** One line for history and the audit log. */
 export function describeAudience(a: Audience): string {
   const parts: string[] = [];
-  if (a.kind === "everyone") return "Everyone";
+  if (a.kind === "everyone") return "Everyone (not suspended)";
   if (a.kind === "groups") parts.push(`Members of ${a.groupIds!.length} group${a.groupIds!.length === 1 ? "" : "s"}`);
   if (a.kind === "users") parts.push(`${a.users!.length} named ${a.users!.length === 1 ? "person" : "people"}`);
   if (a.plans) parts.push(`plan ${a.plans.join(" or ")}`);
@@ -135,10 +135,15 @@ export function toRecipient(u: ClerkUser): Recipient {
   };
 }
 
+/**
+ * Suspended accounts (Clerk ban — which includes accounts waiting to be
+ * deleted) are left out unless the audience asks for them: by an account
+ * status filter, or by naming the people.
+ */
 export function matches(a: Audience, r: Recipient): boolean {
-  if (a.kind === "everyone") return true;
+  if (a.kind === "everyone") return r.status !== "suspended";
   if (a.plans && !a.plans.includes(r.plan)) return false;
-  if (a.statuses && !a.statuses.includes(r.status)) return false;
+  if (a.statuses ? !a.statuses.includes(r.status) : a.kind !== "users" && r.status === "suspended") return false;
   if (a.signedUpFrom != null && r.createdAt < a.signedUpFrom) return false;
   if (a.signedUpTo != null && r.createdAt > a.signedUpTo) return false;
   return true;
@@ -234,14 +239,6 @@ export async function previewAudience(a: Audience, maxPages = 40): Promise<Audie
   const sample: AudiencePreview["sample"] = [];
   const unmatched: string[] = [];
   let pages = 0;
-  if (a.kind === "everyone") {
-    const first = await resolvePage(a, 0);
-    for (const r of first.recipients.slice(0, 10)) sample.push({ uid: r.uid, email: r.email, name: r.name, plan: r.plan, status: r.status });
-    // Everyone has an address in Clerk unless they signed up by phone or KingsChat only.
-    const share = first.recipients.length ? first.recipients.filter((r) => r.email).length / first.recipients.length : 1;
-    const total = first.total ?? first.recipients.length;
-    return { count: total, exact: true, sample, withEmail: Math.round(total * share), unmatched, groups: [] };
-  }
   while (cursor !== null && pages < maxPages) {
     const page: AudiencePage = await resolvePage(a, cursor);
     pages++;
