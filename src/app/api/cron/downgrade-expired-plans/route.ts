@@ -11,6 +11,12 @@
 // this sweeper has not yet run. The cron exists to make the demotion
 // durable in Clerk so downstream tools (admin views, billing) reflect it.
 //
+// Subscriptions first (src/lib/billing/subscriptions.ts sweepDue): every
+// subscription record whose period has ended either starts the plan an
+// administrator scheduled for that date or ends — trials and
+// cancellations included — before the Clerk sweep below would read the
+// same accounts as expired and drop them to Free.
+//
 // Pagination: Clerk's getUserList returns { data, totalCount } with a max
 // page size of 500. We page through using offset until we've covered the
 // reported totalCount, with a hard ceiling of 10,000 users for safety.
@@ -18,6 +24,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { isPlanExpired } from "@/lib/plan";
+import { sweepDue } from "@/lib/billing/subscriptions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,6 +47,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  let subscriptions: Awaited<ReturnType<typeof sweepDue>> | { error: string };
+  try {
+    subscriptions = await sweepDue();
+    for (const e of subscriptions.errors) {
+      // eslint-disable-next-line no-console
+      console.error("[cron/downgrade-expired-plans] subscription sweep failed for", e.userId, e.reason);
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[cron/downgrade-expired-plans] subscription sweep failed", e);
+    subscriptions = { error: (e as Error).message || "unknown" };
+  }
+
   const client = await clerkClient();
   let scanned = 0;
   let downgraded = 0;
@@ -56,7 +76,7 @@ export async function GET(req: NextRequest) {
       // eslint-disable-next-line no-console
       console.error("[cron/downgrade-expired-plans] getUserList failed at offset", offset, e);
       return NextResponse.json(
-        { ok: false, error: "list_failed", scanned, downgraded, offset },
+        { ok: false, error: "list_failed", scanned, downgraded, offset, subscriptions },
         { status: 500 },
       );
     }
@@ -73,6 +93,9 @@ export async function GET(req: NextRequest) {
               ...((user.publicMetadata as Record<string, unknown>) ?? {}),
               plan: "free",
               planExpiresAt: null,
+              planId: null,
+              planVersion: null,
+              planLimits: null,
             },
           });
           downgraded++;
@@ -102,5 +125,9 @@ export async function GET(req: NextRequest) {
     totalCount: Number.isFinite(totalCount) ? totalCount : 0,
     truncated,
     errorCount: errors.length,
+    subscriptions:
+      "errors" in subscriptions
+        ? { changed: subscriptions.changed, expired: subscriptions.expired, errorCount: subscriptions.errors.length }
+        : subscriptions,
   });
 }

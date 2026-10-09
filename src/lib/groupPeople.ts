@@ -14,7 +14,7 @@ import {
 } from "@/lib/groupStore";
 import { clerkIdsForKcHandles } from "@/lib/kcHandle";
 import type { CreateMeetingDeps } from "@/lib/groupMeetings";
-import { checkLifetimeCap, getPlanForUserId, getPlanLimits, incrementMeetingsCreated } from "@/lib/plan";
+import { checkLifetimeCap, getPlanLimitsForUserId, incrementMeetingsCreated } from "@/lib/plan";
 
 type ClerkUserLike = {
   id: string;
@@ -165,8 +165,10 @@ export function siteOrigin(req: Request): string {
  */
 export async function memberLimitFor(ownerUserId: string): Promise<MemberLimit> {
   try {
-    const plan = await getPlanForUserId(ownerUserId);
-    const max = getPlanLimits(plan).maxParticipants;
+    const { plan, limits } = await getPlanLimitsForUserId(ownerUserId);
+    // A plan may set its own group size (admin plan catalog); null = as
+    // many as it allows in a meeting.
+    const max = limits.groupMembers ?? limits.maxParticipants;
     return { cap: max > 0 ? Math.min(max, GROUP_LIMITS.membersMax) : GROUP_LIMITS.membersMax, plan };
   } catch {
     return { cap: GROUP_LIMITS.membersMax };
