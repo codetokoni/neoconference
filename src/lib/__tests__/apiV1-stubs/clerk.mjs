@@ -74,6 +74,7 @@ export async function clerkClient() {
       },
       async getUserList(params = {}) {
         let ids = Object.keys(users());
+        if (params.userId?.length) ids = ids.filter((id) => params.userId.includes(id));
         if (params.emailAddress?.length) {
           const want = params.emailAddress.map((e) => e.toLowerCase());
           ids = ids.filter((id) => emailList(users()[id]).some((e) => want.includes(e.emailAddress.toLowerCase())));

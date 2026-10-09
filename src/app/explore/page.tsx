@@ -6,6 +6,8 @@
 import Link from "next/link";
 import { eventStore } from "@/lib/eventStore";
 import type { NeoEvent } from "@/types/event";
+import ReportContentButton from "@/components/ReportContentButton";
+import { hiddenEventSlugs } from "@/lib/content/files";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 30;
@@ -35,8 +37,10 @@ function rankWeight(ev: NeoEvent) {
 }
 export default async function ExplorePage() {
   const all = await eventStore.listAll(200);
+  // Unpublished by a moderator (admin area, Content > Reports).
+  const hidden = await hiddenEventSlugs();
   const list = all
-    .filter((e) => e.visibility === "public" && e.state !== "archived")
+    .filter((e) => e.visibility === "public" && e.state !== "archived" && !hidden.has(e.slug))
     .sort((a, b) => {
       const w = rankWeight(a) - rankWeight(b);
       if (w !== 0) return w;
@@ -71,7 +75,7 @@ export default async function ExplorePage() {
         ) : (
           <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {list.map((ev) => (
-              <li key={ev.id} className="group rounded-2xl overflow-hidden border border-slate-800 bg-slate-900/40 hover:border-cyan-400/40 transition">
+              <li key={ev.id} className="group relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-900/40 hover:border-cyan-400/40 transition">
                 <Link href={"/e/" + ev.slug} className="block">
                   <div
                     className="aspect-[16/9] relative"
@@ -105,6 +109,15 @@ export default async function ExplorePage() {
                     </span>
                   </div>
                 </Link>
+                {/* Outside the link, so reporting does not open the event. */}
+                <div className="absolute top-3 right-3">
+                  <ReportContentButton
+                    targetType="event"
+                    target={ev.slug}
+                    label="Report"
+                    className="rounded-full border border-white/15 bg-black/50 px-2 py-0.5 text-[11px] text-white/70 hover:text-rose-200"
+                  />
+                </div>
               </li>
             ))}
           </ul>

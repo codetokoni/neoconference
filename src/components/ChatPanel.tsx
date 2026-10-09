@@ -324,8 +324,12 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok || !json?.attachment) {
-        const msg = json?.error === 'too_large'
-          ? 'File too large (max 10 MB).'
+        // Size and type refusals carry the server's own sentence: the
+        // limits are set in the admin area, so they are not known here.
+        const msg = (json?.error === 'too_large' || json?.error === 'unsupported_type' || json?.error === 'empty_file') && json?.message
+          ? json.message
+          : json?.error === 'too_large'
+          ? 'File too large.'
           : json?.error === 'unsupported_type'
             ? 'That file type is not supported.'
             : json?.error === 'unauthorized'

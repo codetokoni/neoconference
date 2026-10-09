@@ -18,6 +18,7 @@ import {
 import { getPlanForUserId, getPlanLimits, isAdminUserId } from "@/lib/plan";
 import { recordedSeconds, recordingAllowance, usageMonth } from "@/lib/recordingUsage";
 import { sanitizeSegment } from "@/lib/eventRecordings";
+import { indexEgressStarted } from "@/lib/content/files";
 
 function requiredEnv(name: string): string {
   const v = process.env[name];
@@ -139,12 +140,15 @@ export async function startRoomRecording(input: {
   } else {
     console.warn("[roomRecording] audio sidecar failed; continuing video-only", audio.reason);
   }
-  return {
+  const started = {
     egressId: video.value.egressId,
     filepath,
     audioEgressId,
     audioFilepath: audioEgressId ? audioFilepath : null,
   };
+  // The admin file index (Content): these files are on their way.
+  await indexEgressStarted({ room: input.room, recorderUserId: input.recorderUserId, ...started });
+  return started;
 }
 
 /** Stop every recording running in this room. Returns the egress ids stopped. */

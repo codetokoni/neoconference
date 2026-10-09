@@ -14,6 +14,8 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import ReplayShareBar from './ReplayShareBar';
 import ReplayViewBumper from './ReplayViewBumper';
+import ReportContentButton from '@/components/ReportContentButton';
+import { getHiddenEvent } from '@/lib/content/files';
 import { toPublicView, type NeoEvent, type PublicEventView } from '@/types/event';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { can, resolveRole } from '@/lib/permissions';
@@ -31,6 +33,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     return {
       title: 'Replay not found / NeoConference',
     };
+  }
+  if (await getHiddenEvent(ev.slug)) {
+    return { title: 'Replay removed / NeoConference', robots: { index: false, follow: false } };
   }
   const title = (ev.name || ev.slug) + ' / NeoConference replay';
   const description = ev.description
@@ -80,6 +85,20 @@ export default async function ReplayPage({ params }: Props) {
   const view: PublicEventView = isHost
     ? { ...publicView, recordings: event.recordings || [], chapters: event.chapters }
     : publicView;
+  // Unpublished by a moderator (admin area, Content > Reports): nobody but
+  // the hosts sees it, and they are told why it is gone.
+  const hidden = await getHiddenEvent(event.slug);
+  if (hidden && !isHost) {
+    return (
+      <ReplayView
+        view={{ ...publicView, name: "Replay removed", description: "", ownerName: "", recordings: [], chapters: undefined, hlsUrl: undefined }}
+        replayUrl=""
+        replayShareTitle=""
+        recordedVideos={[]}
+        notice="This replay has been removed after a review."
+      />
+    );
+  }
   // Replay switched off by the owner: the hosts still see the recordings
   // (told it is off); everyone else sees that there is nothing to watch.
   const replayOff = !replayOpen(event);
@@ -108,7 +127,8 @@ export default async function ReplayPage({ params }: Props) {
       replayUrl={replayUrl}
       replayShareTitle={replayShareTitle}
       recordedVideos={recordedVideos}
-      notice={replayOff ? "Replay is switched off for this meeting: only its hosts can see these recordings. Turn it on from the meeting's Manage page." : undefined}
+      notice={hidden ? "An administrator removed this replay from public view after a review: only its hosts can see it." : replayOff ? "Replay is switched off for this meeting: only its hosts can see these recordings. Turn it on from the meeting's Manage page." : undefined}
+      reportSlug={hidden || replayOff ? undefined : view.slug}
     />
   );
 }
@@ -119,12 +139,15 @@ function ReplayView({
   replayShareTitle,
   recordedVideos,
   notice,
+  reportSlug,
 }: {
   view: PublicEventView;
   replayUrl: string;
   replayShareTitle: string;
   recordedVideos: ReplayVideo[];
   notice?: string;
+  /** The meeting to report from this page; none when the page shows nothing. */
+  reportSlug?: string;
 }) {
   const recordings = view.recordings || [];
   const transcripts = recordings.filter((r) => r.kind === 'transcript');
@@ -158,6 +181,11 @@ function ReplayView({
 
         <div className="mt-4">
           {replayUrl && <ReplayShareBar url={replayUrl} title={replayShareTitle} />}
+          {reportSlug && (
+            <div className="mt-2 flex justify-end">
+              <ReportContentButton targetType="event" target={reportSlug} />
+            </div>
+          )}
           {(() => { const first = videos[0] || audios[0] || transcripts[0]; return first ? <ReplayViewBumper recordingKey={first.key} /> : null; })()}
         </div>
 

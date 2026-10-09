@@ -25,6 +25,7 @@ import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
 import { disconnectReasonName } from '@/lib/disconnectReason';
 import { addRecordedSeconds, egressSeconds } from '@/lib/recordingUsage';
+import { indexEgressEnded } from '@/lib/content/files';
 import { recordWebhookEvent, recordWebhookRejection } from '@/lib/webhookMetrics';
 import {
   canEnd,
@@ -73,8 +74,9 @@ export async function POST(req: Request) {
       roomName?: string;
       status?: number | string;
       error?: string;
-      file?: { filename?: string; location?: string };
-      fileResults?: Array<{ filename?: string; location?: string }>;
+      endedAt?: unknown;
+      file?: { filename?: string; location?: string; size?: unknown };
+      fileResults?: Array<{ filename?: string; location?: string; size?: unknown }>;
     };
     type LKParticipant = {
       identity?: string;
@@ -281,6 +283,10 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, livestream: 'ended', egressId: egressInfo.egressId, error: egressInfo.error || undefined });
       }
     }
+
+    // The admin file index (Content): the recording (or its audio
+    // sidecar) is ready, or failed. Never throws.
+    await indexEgressEnded(egressInfo);
 
     // Extract the R2 key that egress wrote to. LiveKit gives us either a
     // single file or an array depending on egress type.

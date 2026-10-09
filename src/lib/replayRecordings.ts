@@ -12,6 +12,7 @@
 import type { NeoEvent } from "@/types/event";
 import { isVideoKey, listEventRecordingObjects } from "@/lib/eventRecordings";
 import { isR2Configured, signGetUrl } from "@/lib/r2";
+import { blockedKeys } from "@/lib/content/files";
 
 export type ReplayVideo = {
   /** When it was recorded (from the key), or null when the key is odd. */
@@ -64,7 +65,10 @@ export async function eventReplayVideos(ev: NeoEvent, max = 50): Promise<ReplayV
   if (!isR2Configured()) return [];
   const slugs = Array.from(new Set([ev.slug, ...(ev.aliasSlugs || [])]));
   const listed = await Promise.all(slugs.map((s) => listEventRecordingObjects(ev, max, s).catch(() => [])));
-  const videos = replayVideoKeys(listed.flat());
+  const all = replayVideoKeys(listed.flat());
+  // Hidden by a moderator or in the trash (admin area, Content): not on the public page.
+  const blocked = await blockedKeys(all.map((o) => o.key));
+  const videos = all.filter((o) => !blocked.has(o.key));
   return Promise.all(
     videos.map(async (o) => ({
       recordedAt: recordedAtFromKey(o.key),
