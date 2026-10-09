@@ -20,7 +20,7 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { kv } from "@/lib/kv";
 import { addNotification } from "@/lib/notificationStore";
-import { getPlanForUserId, getPlanLimits } from "@/lib/plan";
+import { getPlanLimitsForUserId } from "@/lib/plan";
 import { nextMonthStart, recordedSeconds, usageMonth } from "@/lib/recordingUsage";
 import { allows, getPrefs, oneClickUrl } from "@/lib/comms/prefs";
 import { renderEmail, sendTemplateEmail } from "@/lib/comms/templates";
@@ -184,8 +184,9 @@ export async function recordingReminder(uid: string, now = Date.now()): Promise<
     if (!uid) return "no_owner";
     const cfg = await getReminderConfig();
     if (!cfg.recording.enabled) return "off";
-    const plan = await getPlanForUserId(uid);
-    const capHours = getPlanLimits(plan).recordingHoursPerMonth;
+    // The plan's own limits, or the snapshot a managed subscription set (billing).
+    const { plan, limits } = await getPlanLimitsForUserId(uid);
+    const capHours = limits.recordingHoursPerMonth;
     if (capHours <= 0) return "no_cap";
     const month = usageMonth(now);
     const used = await recordedSeconds(uid, month);

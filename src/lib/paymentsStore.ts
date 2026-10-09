@@ -74,6 +74,13 @@ export interface PaymentRecord {
   /** Assigned lazily by assignInvoiceNumber() on first invoice request,
    *  then frozen. Absent until the invoice is first generated. */
   invoiceNumber?: string;
+  /** The admin catalog plan bought, when it is not just the tier (`plan`). */
+  planId?: string;
+  planVersion?: number;
+  /** Price before discount, and the coupon or offer that took it down. */
+  listPriceEsp?: number;
+  couponCode?: string | null;
+  offerId?: string | null;
 }
 
 function paymentKey(paymentRef: string): string {
@@ -163,6 +170,11 @@ export interface RecordPaymentInput {
   source?: PaymentSource;
   status?: PaymentStatus;
   paidAt?: number;
+  planId?: string;
+  planVersion?: number;
+  listPriceEsp?: number;
+  couponCode?: string | null;
+  offerId?: string | null;
 }
 
 export interface RecordPaymentResult {
@@ -201,6 +213,11 @@ export async function recordPayment(
     periodStart: input.periodStart,
     periodEnd: input.periodEnd,
     source: input.source ?? "espees-redirect-unverified",
+    ...(input.planId ? { planId: input.planId } : {}),
+    ...(input.planVersion ? { planVersion: input.planVersion } : {}),
+    ...(input.listPriceEsp != null ? { listPriceEsp: input.listPriceEsp } : {}),
+    ...(input.couponCode ? { couponCode: input.couponCode } : {}),
+    ...(input.offerId ? { offerId: input.offerId } : {}),
   };
   if (!isKvConfigured()) {
     memPayments.set(ref, record);
