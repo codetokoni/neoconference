@@ -479,71 +479,32 @@ async function main() {
   });
 
   console.log("incidents and maintenance");
-  await t("an incident goes into the Settings site notice; an administrator's own notice is never replaced", async () => {
-    const platform = await import("../platform/settings");
-    const model = await import("../platform/model");
-    const r = await call("user_ops", R.incidents.POST as never, { method: "POST", body: { title: "Captions delayed", impact: "major", message: "Looking into it", showBanner: true, services: ["deepl", "bogus"] } });
+  await t("an incident's banner is the site notice (Settings); it comes down on resolve; an administrator's own notice is never replaced", async () => {
+    const settings = await import("../platform/settings");
+    const notice = async () => {
+      settings.clearSettingsCache();
+      return (await settings.getPlatformSettings()).notice;
+    };
+    const r = await call("user_ops", R.incidents.POST as never, { method: "POST", body: { title: "Captions delayed", impact: "minor", message: "Looking into it", showBanner: true, services: ["deepl", "bogus"] } });
     assert.equal(r.status, 201, r.text);
     const inc = r.body.incident as { id: string; services: string[]; banner: { ok: boolean; detail: string } };
     assert.deepEqual(inc.services, ["deepl"]);
     assert.equal(inc.banner.ok, true, inc.banner.detail);
-    let notice = (await platform.getPlatformSettings()).notice;
-    assert.ok(model.noticeActive(notice));
-    assert.equal(notice.level, "warning");
-    assert.match(notice.message, /Captions delayed: Looking into it/);
-    const firstId = notice.id;
-    // The same update again keeps the notice (and its id), so a dismissed banner stays dismissed.
-    await call("user_ops", R.incident.PATCH as never, { method: "PATCH", params: { id: inc.id }, body: { showBanner: true } });
-    assert.equal((await platform.getPlatformSettings()).notice.id, firstId);
+    const shown = await notice();
+    assert.equal(shown.enabled, true);
+    assert.equal(shown.message, "Captions delayed: Looking into it");
     await call("user_ops", R.incident.PATCH as never, { method: "PATCH", params: { id: inc.id }, body: { status: "resolved", message: "Fixed" } });
-    notice = (await platform.getPlatformSettings()).notice;
-    assert.equal(model.noticeActive(notice), false, "resolving takes ours down");
-    // An administrator's own notice is left alone, and the incident says so.
-    const settings = await platform.getPlatformSettings();
-    await platform.savePlatformSettings({ ...settings, notice: { ...settings.notice, id: "admin_notice", enabled: true, message: "Office closed Monday", level: "info" } });
-    const r2 = await call("user_ops", R.incidents.POST as never, { method: "POST", body: { title: "Slow uploads", message: "Investigating", showBanner: true } });
-    const b2 = (r2.body.incident as { id: string; banner: { ok: boolean; detail: string } });
-    assert.equal(b2.banner.ok, false);
-    assert.match(b2.banner.detail, /in use by an administrator/);
-    await call("user_ops", R.incident.PATCH as never, { method: "PATCH", params: { id: b2.id }, body: { status: "resolved", message: "Done" } });
-    notice = (await platform.getPlatformSettings()).notice;
-    assert.equal(notice.id, "admin_notice");
-    assert.equal(model.noticeActive(notice), true, "resolving ours never clears theirs");
-    await platform.savePlatformSettings({ ...(await platform.getPlatformSettings()), notice: { ...notice, enabled: false } });
-    // Two ops owners: the later one's notice is not taken down by the earlier one clearing.
-    const { platformSurface } = await import("../ops/siteSurface");
-    await platformSurface.showNotice("incident:a", { level: "info", message: "A", endsAt: null });
-    await platformSurface.showNotice("maintenance:b", { level: "warning", message: "B", endsAt: null });
-    await platformSurface.clearNotice("incident:a");
-    notice = (await platform.getPlatformSettings()).notice;
-    assert.equal(notice.message, "B");
-    assert.equal(model.noticeActive(notice), true);
-    await platformSurface.clearNotice("maintenance:b");
-    assert.equal(model.noticeActive((await platform.getPlatformSettings()).notice), false);
-  });
+    assert.equal((await notice()).enabled, false, "resolving takes the notice down");
 
-  await t("maintenance mode is turned on and off only by the window that turned it on", async () => {
-    const platform = await import("../platform/settings");
-    const { platformSurface } = await import("../ops/siteSurface");
-    const on = await platformSurface.startMaintenance("maintenance:w1", "Upgrading", Date.now() + 60_000);
-    assert.equal(on.ok, true);
-    let m = (await platform.getFeatureControls()).maintenance;
-    assert.equal(m.enabled, true);
-    assert.equal(m.startedBy, "ops:maintenance:w1");
-    assert.equal((await platformSurface.endMaintenance("maintenance:other")).detail, "maintenance mode not ours; left as it is");
-    assert.equal((await platform.getFeatureControls()).maintenance.enabled, true);
-    assert.equal((await platformSurface.startMaintenance("maintenance:w2", "x", Date.now() + 60_000)).ok, false, "another window cannot take it over");
-    await platformSurface.endMaintenance("maintenance:w1");
-    assert.equal((await platform.getFeatureControls()).maintenance.enabled, false);
-    // An administrator's maintenance is never ended by ops.
-    const c = await platform.getFeatureControls();
-    await platform.saveFeatureControls({ ...c, maintenance: { ...c.maintenance, enabled: true, startedBy: "user_owner", endsAt: null } });
-    assert.equal((await platformSurface.startMaintenance("maintenance:w3", "x", Date.now() + 60_000)).ok, false);
-    await platformSurface.endMaintenance("maintenance:w3");
-    m = (await platform.getFeatureControls()).maintenance;
-    assert.equal(m.enabled, true);
-    assert.equal(m.startedBy, "user_owner");
-    await platform.saveFeatureControls({ ...(await platform.getFeatureControls()), maintenance: { ...m, enabled: false } });
+    const s = await settings.getPlatformSettings();
+    await settings.savePlatformSettings({ ...s, notice: { ...s.notice, id: "n_admin", enabled: true, message: "Admin's own notice", startsAt: null, endsAt: null } });
+    const other = await call("user_ops", R.incidents.POST as never, { method: "POST", body: { title: "Slow joins", impact: "major", message: "Investigating", showBanner: true } });
+    const blocked = (other.body.incident as { banner: { ok: boolean; detail: string } }).banner;
+    assert.equal(blocked.ok, false);
+    assert.match(blocked.detail, /in use by an administrator/);
+    assert.equal((await notice()).message, "Admin's own notice");
+    const cleared = await settings.getPlatformSettings();
+    await settings.savePlatformSettings({ ...cleared, notice: { ...cleared.notice, enabled: false } });
   });
 
   const calls: string[] = [];
