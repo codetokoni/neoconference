@@ -25,6 +25,8 @@ import { isAppCallback, redirectToApp } from "@/lib/app-callback";
 import { computePlanExpiry } from "@/lib/plan";
 import { ESPEES_AMOUNTS } from "@/lib/espees";
 import { recordPayment } from "@/lib/paymentsStore";
+import { activity } from "@/lib/activity";
+import { readPlanFromMetadata } from "@/lib/planLimits";
 
 /**
  * Where to send the buyer once the upgrade has landed.
@@ -80,9 +82,11 @@ export async function GET(req: Request): Promise<Response> {
   // monthly / 365d annual) and is what the daily downgrade cron sweeps on.
   const planExpiresAt = computePlanExpiry(record.billingCycle);
   const paidAt = Date.now();
+  let fromPlan: string = "free";
   try {
     const client = await clerkClient();
     const user = await client.users.getUser(record.userId);
+    fromPlan = readPlanFromMetadata(user.publicMetadata);
     await client.users.updateUserMetadata(record.userId, {
       publicMetadata: { ...(user.publicMetadata ?? {}), plan: record.plan, planExpiresAt },
     });
@@ -133,6 +137,11 @@ export async function GET(req: Request): Promise<Response> {
   // never throws. Only emit on first-time write so a page refresh doesn't
   // spam the log.
   if (paymentCreated) {
+    await activity.record("plan.purchased", {
+      userId: record.userId,
+      ts: paidAt,
+      props: { from: fromPlan, to: record.plan, cycle: record.billingCycle, amountEsp, paymentRef },
+    });
     void appendAuditEntry({
       ts: paidAt,
       permission: "billing:upgrade",

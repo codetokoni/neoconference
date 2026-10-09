@@ -13,6 +13,7 @@ import { auth } from '@clerk/nextjs/server';
 import { AgentDispatchClient } from 'livekit-server-sdk';
 import { eventStore } from '@/lib/eventStore';
 import { authorize } from '@/lib/authz';
+import { activity } from '@/lib/activity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -94,6 +95,7 @@ export async function POST(req: NextRequest) {
     const dispatch = await client.createDispatch(roomName, AGENT_NAME, {
       metadata: JSON.stringify({ requestedBy: userId, eventSlug }),
     });
+    await activity.record('captions.used', { userId, props: { eventSlug } });
     return NextResponse.json({
       ok: true,
       dispatched: true,

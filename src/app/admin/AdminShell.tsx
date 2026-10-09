@@ -18,7 +18,8 @@ type Section = { label: string; href: string; permission: AdminPermission | null
 export const SECTIONS: Section[] = [
   { label: "Users", href: "/admin", permission: "users:read", group: "Platform" },
   { label: "Meetings", href: "/admin/events", permission: "events:read", group: "Platform" },
-  { label: "Metrics", href: "/admin/metrics", permission: "analytics:read", group: "Platform" },
+  { label: "Analytics", href: "/admin/analytics", permission: "analytics:read", group: "Platform" },
+  { label: "Logs", href: "/admin/logs", permission: "analytics:read", group: "Platform" },
   { label: "Administrators", href: "/admin/team", permission: "admins:read", group: "Access" },
   { label: "Roles", href: "/admin/roles", permission: "admins:read", group: "Access" },
   { label: "Audit log", href: "/admin/audit-log", permission: "audit:read", group: "Access" },

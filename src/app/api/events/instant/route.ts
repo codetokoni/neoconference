@@ -19,6 +19,7 @@ import {
 import { hsmoh } from '@/lib/hsmoh';
 import { checkLifetimeCap, incrementMeetingsCreated } from '@/lib/plan';
 import type { NeoEvent } from '@/types/event';
+import { activity } from '@/lib/activity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -141,6 +142,8 @@ export async function POST(req: NextRequest) {
 
   // Increment Free-tier lifetime counter. No-op for paid plans.
   await incrementMeetingsCreated(userId);
+  await activity.record('meeting.created', { userId, props: { eventId: ev.id, kind: 'instant' } });
+  await activity.record('meeting.started', { userId, props: { eventId: ev.id, by: 'instant' } });
 
   return NextResponse.json(
     {

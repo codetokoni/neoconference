@@ -1,5 +1,5 @@
 // Clerk: who is signed in (globalThis.__who, session globalThis.__sid) and
-// each user in globalThis.__users = { [id]: { plan?, role?, emails?, unverified?, first? } }.
+// each user in globalThis.__users = { [id]: { plan?, role?, emails?, unverified?, first?, createdAt? } }.
 // `emails` are verified addresses; `unverified` are on the account but not verified.
 export * from "real:clerk";
 
@@ -26,6 +26,7 @@ function toUser(id) {
     username: null,
     imageUrl: "",
     publicMetadata,
+    createdAt: u.createdAt ?? 0,
     emailAddresses: list,
     primaryEmailAddress: list[0] ?? null,
   };
@@ -49,7 +50,9 @@ export async function clerkClient() {
         return u;
       },
       async getUserList(params = {}) {
+        if (globalThis.__clerkListFails) throw new Error("clerk: unavailable (test)");
         let ids = Object.keys(users());
+        if (params.userId?.length) ids = ids.filter((id) => params.userId.includes(id));
         if (params.emailAddress?.length) {
           const want = params.emailAddress.map((e) => e.toLowerCase());
           ids = ids.filter((id) => emailList(users()[id]).some((e) => want.includes(e.emailAddress.toLowerCase())));
@@ -59,6 +62,7 @@ export async function clerkClient() {
           ids = ids.filter((id) => JSON.stringify(users()[id]).toLowerCase().includes(q));
         }
         const all = ids.map(toUser);
+        if (params.orderBy === "-created_at") all.sort((a, b) => b.createdAt - a.createdAt);
         const offset = params.offset ?? 0;
         return { data: all.slice(offset, offset + (params.limit ?? 10)), totalCount: all.length };
       },

@@ -25,6 +25,7 @@ import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
 import { disconnectReasonName } from '@/lib/disconnectReason';
 import { addRecordedSeconds, egressSeconds } from '@/lib/recordingUsage';
+import { activity } from '@/lib/activity';
 import { recordWebhookEvent, recordWebhookRejection } from '@/lib/webhookMetrics';
 import {
   canEnd,
@@ -134,6 +135,14 @@ export async function POST(req: Request) {
         // Leave or everyone's link dropped.
         ...(left ? { reason: disconnectReasonName(participant.disconnectReason) } : {}),
       });
+      if (!left) {
+        await activity.record('meeting.joined', {
+          userId: baseIdentity.startsWith('user_') ? baseIdentity : null,
+          account: ev.ownerUserId,
+          ts: Number.isFinite(ts) ? ts : undefined,
+          props: { eventId: ev.id, role: role || null, guest: !baseIdentity.startsWith('user_') },
+        });
+      }
       return NextResponse.json({ ok: true, recorded: event.event, eventId: ev.id });
     }
 
@@ -226,6 +235,15 @@ export async function POST(req: Request) {
         endedAt,
         updatedAt: new Date().toISOString(),
       }));
+      const startedMs = Date.parse(ev.startedAt || '');
+      await activity.record('meeting.ended', {
+        userId: ev.ownerUserId,
+        props: {
+          eventId: ev.id,
+          by: 'room_empty',
+          minutes: Number.isFinite(startedMs) ? Math.max(0, Math.round((Date.parse(endedAt) - startedMs) / 60_000)) : null,
+        },
+      });
       return NextResponse.json({ ok: true, transitioned: true, eventId: ev.id, endedAt });
     }
 
@@ -262,6 +280,7 @@ export async function POST(req: Request) {
         };
       });
       if (goLive) console.info('[webhook] meeting went live', roomName);
+      await activity.record('meeting.started', { userId: ev.ownerUserId, props: { eventId: ev.id, by: 'room_started' } });
       return NextResponse.json({ ok: true, transitioned: true, live: goLive, eventId: ev.id, startedAt });
     }
 
@@ -322,6 +341,12 @@ export async function POST(req: Request) {
         fallbackOwner
       );
       if (!usage.counted) console.warn('[webhook] recording not counted:', usage.reason, filename);
+      else
+        await activity.record('recording.finished', {
+          userId: usage.owner,
+          account: usage.owner,
+          props: { eventSlug: eventSlug || null, seconds: usage.seconds, egressId: egressInfo?.egressId || null },
+        });
     } catch (err) {
       console.warn('[webhook] recording usage failed', err);
     }
