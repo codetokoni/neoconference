@@ -591,9 +591,8 @@ export const DATA_MAP: DataLocation[] = [
     personal: "Everything in KV at the time",
     exported: false,
     onDelete: "expire",
-    why: "Backups are not edited; they age out under the backups retention setting (the purge here) and the operations phase's own count limit. The erased tombstone (neo:data:erased) lists every deleted account id.",
+    why: "Backups are not edited; they age out under the backups retention setting (the purge here, through deleteBackup) and the operations phase's own count limit. A restore leaves alone every key that names or holds an id in the erased tombstone (neo:data:erased), and never writes over neo:data:*, so a deleted account does not come back (src/lib/ops/backup.ts).",
     ttl: "Backups retention (default 14 days)",
-    unsure: "A restore by key prefix from a snapshot taken before a deletion would bring that account's keys back. src/lib/ops/backup.ts does not yet skip ids in neo:data:erased, nor protect neo:data:* from being restored over — proposed as a follow-up for the operations phase.",
   },
 ];
 
