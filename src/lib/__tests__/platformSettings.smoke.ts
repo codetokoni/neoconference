@@ -371,7 +371,7 @@ async function main() {
     assert.equal((await visit("user_owner", "/api/events/mine")).passed, true);
     assert.equal((await visit("user_ops", "/dashboard")).passed, true);
     assert.equal((await visit("user_analyst", "/api/events/mine")).passed, true, "any active administrator");
-    for (const p of ["/admin", "/admin/features", "/api/admin/maintenance", "/sign-in", "/api/health", "/api/version", "/api/cron/downgrade-expired-plans", "/api/livekit/webhook", "/api/stripe/webhook", "/api/transcribe/deepgram"]) {
+    for (const p of ["/admin", "/admin/features", "/api/admin/maintenance", "/sign-in", "/api/health", "/api/version", "/api/cron/downgrade-expired-plans", "/api/livekit/webhook", "/api/stripe/webhook", "/api/transcribe/deepgram", "/api/comms/resend-webhook", "/api/comms/unsubscribe"]) {
       const r = await visit(p.startsWith("/api/cron") || p.includes("webhook") || p.includes("deepgram") ? null : "user_free", p, p.includes("webhook") || p.includes("deepgram") ? "POST" : "GET");
       assert.notEqual(r.status, 503, `${p} must stay open`);
     }

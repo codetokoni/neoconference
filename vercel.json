@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/downgrade-expired-plans",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/comms",
+      "schedule": "30 3 * * *"
     }
   ]
 }

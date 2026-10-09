@@ -29,7 +29,9 @@ export type PushType =
   | "reminder"
   | "ring"
   | "missed"
-  | "mention";
+  | "mention"
+  /** An administrator's announcement or service notice (src/lib/comms/sends.ts). */
+  | "announcement";
 
 /** What the service worker receives (public/sw.js). */
 export interface PushPayload {

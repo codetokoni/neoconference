@@ -576,6 +576,10 @@ const MAINTENANCE_OPEN: RegExp[] = [
   /^\/api\/livekit\/webhook(\/|$)/,
   /^\/api\/stripe\/webhook(\/|$)/,
   /^\/api\/transcribe\/deepgram(\/|$)/,
+  // Resend delivery events, and one-click unsubscribe (must work at all times).
+  /^\/api\/comms\/resend-webhook(\/|$)/,
+  /^\/api\/comms\/unsubscribe(\/|$)/,
+  /^\/unsubscribe(\/|$)/,
   /^\/api\/billing\/espees\/(return|fail)(\/|$)/,
   /^\/api\/platform\/logo(\/|$)/,
   /^\/\.well-known\//,
@@ -601,6 +605,9 @@ const REGISTRATION_OPEN: RegExp[] = [
   /^\/api\/livekit\/webhook(\/|$)/,
   /^\/api\/stripe\/webhook(\/|$)/,
   /^\/api\/transcribe\/deepgram(\/|$)/,
+  /^\/api\/comms\/resend-webhook(\/|$)/,
+  /^\/api\/comms\/unsubscribe(\/|$)/,
+  /^\/unsubscribe(\/|$)/,
   /^\/api\/platform\/logo(\/|$)/,
   /^\/\.well-known\//,
 ];
