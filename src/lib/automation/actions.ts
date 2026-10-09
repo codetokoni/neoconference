@@ -32,7 +32,7 @@ import { runReminders, type ReminderRules } from "@/lib/finance/reminders";
 import { meetingCapReminder, recordingReminder } from "@/lib/comms/reminders";
 import { sendTemplateEmail } from "@/lib/comms/templates";
 import { cleanAudience, describeAudience, previewAudience } from "@/lib/comms/audience";
-import { confirmSend, createDraft } from "@/lib/comms/sends";
+import { confirmSend, createDraft, processSend } from "@/lib/comms/sends";
 import { buildAnalytics, analyticsTables, type ReportName } from "@/lib/admin/analytics";
 import { csvOf } from "@/lib/admin/exportReport";
 import { addDays, dayInZone, period } from "@/lib/activityReports";
@@ -324,7 +324,9 @@ const announcement: ActionImpl = {
       site(),
     );
     const queued = await confirmSend(send, actor);
-    return { outcome: "done", detail: `queued as ${queued.id} for ${queued.preview.count} recipient(s)` };
+    // Start delivering now (awaited: Vercel drops unawaited work); the send queue's own tick finishes the rest.
+    const p = await processSend(queued.id, 8_000);
+    return { outcome: "done", detail: `queued as ${queued.id} for ${queued.preview.count} recipient(s); ${p.status}` };
   },
 };
 

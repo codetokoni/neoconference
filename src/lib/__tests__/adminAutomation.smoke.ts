@@ -547,6 +547,13 @@ async function main() {
     // A small audience needs no fresh code.
     const small = await call("user_writer", R.rules.POST, { method: "POST", body: { ...body, name: "Two people", action: { ...body.action, audience: { kind: "users", users: ["u1@example.com", "u2@example.com"] } } } });
     assert.equal(small.status, 201, JSON.stringify(small.body));
+    // It goes out through the announcement queue, to the bell, once per scheduled period.
+    const { listNotifications } = await import("../notificationStore");
+    const run1 = await ruleCall("user_writer", R.run.POST, small.body.rule.id);
+    assert.equal(run1.body.detail.counts.done, 1, JSON.stringify(run1.body.detail));
+    const bell = (await listNotifications("user_u2")).items;
+    assert.ok(bell.some((x) => x.title === "Hello"), JSON.stringify(bell));
+    assert.equal((await ruleCall("user_writer", R.run.POST, small.body.rule.id)).body.detail.counts.already, 1);
     for (let i = 0; i < 520; i++) delete g.__users[`user_bulk${i}`];
   });
 
