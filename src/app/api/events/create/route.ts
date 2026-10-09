@@ -12,7 +12,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { eventStore, generateId, generateSlug, generateQrSeed } from '@/lib/eventStore';
 import { streamlab } from '@/lib/streamlab';
 import { hsmoh } from '@/lib/hsmoh';
-import { checkLifetimeCap, incrementMeetingsCreated, getPlanForUserId, getPlanLimits } from '@/lib/plan';
+import { checkLifetimeCap, incrementMeetingsCreated, getPlanLimitsForUserId } from '@/lib/plan';
 import { hashMeetingPassword } from '@/lib/eventPassword';
 import { featureDecision, featureRefusal } from '@/lib/platform/features';
 import type { NeoEvent, RoleAssignment } from '@/types/event';
@@ -135,8 +135,7 @@ export async function POST(req: NextRequest) {
     : [];
   const uniqueLanguages = Array.from(new Set(languages));
   if (uniqueLanguages.length > 0) {
-    const ownerPlan = await getPlanForUserId(userId);
-    const ownerLimits = getPlanLimits(ownerPlan);
+    const { plan: ownerPlan, limits: ownerLimits } = await getPlanLimitsForUserId(userId);
     const translation = await featureDecision('translation', { userId, plan: ownerPlan, planAllows: ownerLimits.translation });
     if (!translation.enabled && translation.source !== 'plan_default') return featureRefusal(translation);
     if (!translation.enabled) {
@@ -158,8 +157,7 @@ export async function POST(req: NextRequest) {
   let streamlabBinding: NeoEvent['streamlab'] | undefined;
   if (body.enableStream) {
     try {
-      const ownerPlan = await getPlanForUserId(userId);
-      const ownerLimits = getPlanLimits(ownerPlan);
+      const { plan: ownerPlan, limits: ownerLimits } = await getPlanLimitsForUserId(userId);
       const livestream = await featureDecision('livestream', { userId, plan: ownerPlan, planAllows: ownerLimits.livestream });
       if (!livestream.enabled && livestream.source !== 'plan_default') return featureRefusal(livestream);
       if (!livestream.enabled) {

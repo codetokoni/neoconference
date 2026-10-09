@@ -1,57 +1,126 @@
+// GET /api/admin/users — the Users list. users:read.
+//
+//   ?q=            name, email, username, user id (Clerk's own search)
+//   &plan=         free | starter | pro | business | enterprise (the plan the app applies)
+//   &access=       owner | admin | staff | user
+//   &verified=     yes | no          (primary email)
+//   &status=       active | suspended | pending_deletion
+//   &tag=          an internal tag
+//   &from= &to=    sign-up date, YYYY-MM-DD (UTC, inclusive)
+//   &sort=         [-]created_at | last_sign_in_at | last_active_at | email_address | first_name
+//   &page=1 &pageSize=25 (10–100)
+//
+// Clerk searches and sorts but cannot filter on plan, verification,
+// suspension or our tags. With none of those, Clerk pages directly. With any,
+// up to SCAN_CAP accounts are read in Clerk's order and filtered here; the
+// answer says how many were read and whether there were more.
+
 import { NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
-import { readRoleFromMetadata } from "@/lib/roles";
 import { requireAdmin } from "@/lib/admin/context";
-import { isOwnerEmailList } from "@/lib/admin/owner";
 import { listMembers } from "@/lib/admin/store";
+import { isPlan } from "@/lib/planLimits";
+import { allDeletions, allTags, summarize, type ClerkUserish, type UserRow } from "@/lib/admin/users";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * GET /api/admin/users?limit=50&offset=0&query=
- * Lists Clerk users with their current role for the admin panel.
- * Only admins may call this.
- */
+const SORTS = ["created_at", "last_sign_in_at", "last_active_at", "email_address", "first_name"] as const;
+const SCAN_PAGE = 500;
+const SCAN_CAP = 5000;
+type Sort = `${"" | "-"}${(typeof SORTS)[number]}`;
+
+function dayStart(v: string | null): number | null {
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const t = Date.parse(v + "T00:00:00Z");
+  return Number.isFinite(t) ? t : null;
+}
+
 export async function GET(req: Request) {
   const g = await requireAdmin(req, "users:read");
   if (!g.ok) return g.response;
 
   const url = new URL(req.url);
-  const limit = Math.min(
-    Math.max(parseInt(url.searchParams.get("limit") ?? "50", 10) || 50, 1),
-    100
-  );
-  const offset = Math.max(parseInt(url.searchParams.get("offset") ?? "0", 10) || 0, 0);
-  const query = url.searchParams.get("query")?.trim() || undefined;
+  const p = url.searchParams;
+  const q = (p.get("q") ?? p.get("query") ?? "").trim().slice(0, 100) || undefined;
+  const plan = p.get("plan");
+  const access = p.get("access");
+  const verified = p.get("verified");
+  const status = p.get("status");
+  const tag = (p.get("tag") ?? "").trim().toLowerCase() || null;
+  const from = dayStart(p.get("from"));
+  const toStart = dayStart(p.get("to"));
+  const to = toStart == null ? null : toStart + 24 * 60 * 60 * 1000 - 1;
+  const rawSort = p.get("sort") ?? "-created_at";
+  const sort: Sort = (SORTS as readonly string[]).includes(rawSort.replace(/^-/, "")) ? (rawSort as Sort) : "-created_at";
+  const pageSize = Math.min(Math.max(parseInt(p.get("pageSize") ?? "25", 10) || 25, 10), 100);
+  const page = Math.max(parseInt(p.get("page") ?? "1", 10) || 1, 1);
+
+  const [memberList, tags, deletions] = await Promise.all([listMembers(), allTags(), allDeletions()]);
+  const members = new Map(memberList.map((m) => [m.userId, m]));
+  const row = (u: ClerkUserish) =>
+    summarize(u, { member: members.get(u.id), tags: tags.get(u.id), deletion: deletions.get(u.id) ?? null });
 
   const client = await clerkClient();
-  const list = await client.users.getUserList({
-    limit,
-    offset,
-    query,
-  });
+  const filtered =
+    (plan && isPlan(plan)) ||
+    ["owner", "admin", "staff", "user"].includes(access ?? "") ||
+    verified === "yes" ||
+    verified === "no" ||
+    ["active", "suspended", "pending_deletion"].includes(status ?? "") ||
+    !!tag ||
+    from != null ||
+    to != null;
 
-  // Platform access comes from the owner list and administrator records,
-  // not the Clerk role, so say which applies.
-  const members = new Map((await listMembers()).map((m) => [m.userId, m]));
-  const items = list.data.map((u) => {
-    const m = members.get(u.id);
-    return {
-      id: u.id,
-      name: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.username || "",
-      email: u.emailAddresses?.[0]?.emailAddress ?? "",
-      imageUrl: u.imageUrl,
-      role: readRoleFromMetadata(u.publicMetadata),
-      access: isOwnerEmailList(u.emailAddresses)
-        ? "owner"
-        : m && m.status !== "removed"
-          ? m.status === "suspended"
-            ? "admin (suspended)"
-            : "admin"
-          : null,
-    };
-  });
+  if (!filtered) {
+    const list = await client.users.getUserList({ query: q, orderBy: sort, limit: pageSize, offset: (page - 1) * pageSize });
+    return NextResponse.json({
+      items: (list.data as unknown as ClerkUserish[]).map(row),
+      total: list.totalCount,
+      page,
+      pageSize,
+      scanned: null,
+      capped: false,
+    });
+  }
 
-  return NextResponse.json({ items, total: list.totalCount });
+  const keep = (r: UserRow) => {
+    if (plan && isPlan(plan) && r.plan !== plan) return false;
+    if (access === "owner" && r.access !== "owner") return false;
+    if (access === "admin" && !(r.access === "admin" || r.access === "admin (suspended)")) return false;
+    if (access === "staff" && (r.appRole !== "staff" || r.access)) return false;
+    if (access === "user" && (r.appRole !== "user" || r.access)) return false;
+    if (verified === "yes" && !r.emailVerified) return false;
+    if (verified === "no" && r.emailVerified) return false;
+    if (status === "active" && (r.banned || r.pendingDeletion)) return false;
+    if (status === "suspended" && !r.banned) return false;
+    if (status === "pending_deletion" && !r.pendingDeletion) return false;
+    if (tag && !r.tags.includes(tag)) return false;
+    if (from != null && (r.createdAt ?? 0) < from) return false;
+    if (to != null && (r.createdAt ?? 0) > to) return false;
+    return true;
+  };
+
+  const matches: UserRow[] = [];
+  let scanned = 0;
+  let totalInClerk = 0;
+  for (let offset = 0; offset < SCAN_CAP; offset += SCAN_PAGE) {
+    const list = await client.users.getUserList({ query: q, orderBy: sort, limit: SCAN_PAGE, offset });
+    totalInClerk = list.totalCount;
+    const data = list.data as unknown as ClerkUserish[];
+    scanned += data.length;
+    for (const u of data) {
+      const r = row(u);
+      if (keep(r)) matches.push(r);
+    }
+    if (data.length < SCAN_PAGE) break;
+  }
+  return NextResponse.json({
+    items: matches.slice((page - 1) * pageSize, page * pageSize),
+    total: matches.length,
+    page,
+    pageSize,
+    scanned,
+    capped: scanned < totalInClerk,
+  });
 }

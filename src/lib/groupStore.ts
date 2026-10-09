@@ -12,6 +12,9 @@
 //   neo:groupinvite:<token>      JSON   { gid, createdBy, createdAt }, 72 h TTL
 //   neo:group:<gid>:pending      hash   "email:<addr>" | "kc:<handle>" -> { addedBy, addedAt }
 //   neo:pending-member:<key>     set    group ids waiting for that email / handle
+//   neo:groups:all               set    every group id, for the admin area
+//   neo:groups:all:backfilled    epoch ms the index was last rebuilt from the
+//                                       per-user sets (groups made before it existed)
 //
 // Pending members are people added by email or KingsChat handle before they
 // have an account. They count toward the member limit, and become Members the
@@ -393,6 +396,8 @@ const userGroupsKey = (uid: string) => `neo:user:${uid}:groups`;
 const inviteKey = (token: string) => `neo:groupinvite:${token}`;
 const pendingKey = (gid: string) => `neo:group:${gid}:pending`;
 const pendingIndexKey = (key: string) => `neo:pending-member:${key}`;
+const ALL_GROUPS = "neo:groups:all";
+const ALL_GROUPS_BACKFILLED = "neo:groups:all:backfilled";
 
 function isKvConfigured(): boolean {
   return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
@@ -663,6 +668,7 @@ export async function createGroup(
 
   if (!isKvConfigured()) warnOnce();
   await writeGroup(group);
+  await indexGroup(group.id);
   const ts = now.getTime();
   await writeMembers(group.id, [
     { ...owner, role: "owner", joinedAt: ts, addedBy: owner.userId },
@@ -747,7 +753,64 @@ export async function deleteGroup(gid: string): Promise<boolean> {
   }
   await Promise.all(members.map((m) => kv.srem(userGroupsKey(m.userId), gid)));
   await kv.del(membersKey(gid), activityKey(gid), groupKey(gid));
+  await kv.srem(ALL_GROUPS, gid);
   return true;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Every group (admin area)                                                   */
+/* -------------------------------------------------------------------------- */
+
+async function indexGroup(gid: string): Promise<void> {
+  if (!isKvConfigured()) return; // memGroups is already every group
+  try {
+    await kv.sadd(ALL_GROUPS, gid);
+  } catch (err) {
+    // The backfill finds it again; creating the group must not fail on this.
+    console.warn("[neo:groupStore] group index write failed", err);
+  }
+}
+
+/** Every group id: neo:groups:all, filled on create and by backfillGroupIndex(). */
+export async function listAllGroupIds(): Promise<string[]> {
+  if (!isKvConfigured()) return Array.from(memGroups.keys());
+  return ((await kv.smembers(ALL_GROUPS)) as unknown[]).map(String);
+}
+
+/** When the index was last rebuilt, or null if never (groups older than it may be missing). */
+export async function groupIndexBackfilledAt(): Promise<number | null> {
+  if (!isKvConfigured()) return 0;
+  const v = await kv.get(ALL_GROUPS_BACKFILLED);
+  return v == null ? null : Number(v) || null;
+}
+
+/**
+ * Rebuild the index from neo:user:*:groups — a group's owner always has it
+ * in their set — keeping only ids that still resolve to a group. Groups
+ * created before the index existed are found this way.
+ */
+export async function backfillGroupIndex(): Promise<{ scannedUsers: number; found: number; added: number }> {
+  if (!isKvConfigured()) return { scannedUsers: memUserGroups.size, found: memGroups.size, added: 0 };
+  const have = new Set(await listAllGroupIds());
+  const candidates = new Set<string>();
+  let scannedUsers = 0;
+  let cursor: string | number = 0;
+  do {
+    const [next, keys] = (await kv.scan(cursor, { match: "neo:user:*:groups", count: 500 })) as [string | number, string[]];
+    for (const key of keys) {
+      scannedUsers++;
+      for (const gid of ((await kv.smembers(key)) as unknown[]).map(String)) candidates.add(gid);
+    }
+    cursor = next;
+  } while (String(cursor) !== "0");
+  let added = 0;
+  for (const gid of candidates) {
+    if (have.has(gid) || !(await getGroup(gid))) continue;
+    await kv.sadd(ALL_GROUPS, gid);
+    added++;
+  }
+  await kv.set(ALL_GROUPS_BACKFILLED, Date.now());
+  return { scannedUsers, found: have.size + added, added };
 }
 
 export interface GroupSummary {
@@ -1163,6 +1226,50 @@ export async function claimPendingMemberships(
     }
   }
   return joined;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Platform administrators                                                    */
+/* -------------------------------------------------------------------------- */
+// The admin area acts on a group it is not part of, so these skip the group's
+// own rank checks; the caller has checked the administrator's permission.
+// The group's history says an administrator did it.
+
+/** Make a member the owner; the previous owner stays, as a Host. */
+export async function adminTransferOwnership(
+  gid: string,
+  newOwnerId: string,
+  adminId: string
+): Promise<{ owner: GroupMember; previous: GroupMember | null }> {
+  await requireGroup(gid);
+  const target = await getMember(gid, newOwnerId);
+  if (!target) throw new GroupError("not_member", 404);
+  if (target.role === "owner") throw new GroupError("already_owner", 409);
+  const current = (await listMembers(gid)).find((m) => m.role === "owner") ?? null;
+  const owner: GroupMember = { ...target, role: "owner" };
+  const previous: GroupMember | null = current ? { ...current, role: "host" } : null;
+  await writeMembers(gid, previous ? [owner, previous] : [owner]);
+  await appendActivity(gid, {
+    actorId: adminId,
+    type: "ownership_transferred",
+    detail: `A NeoConference administrator made ${target.name} the owner${current ? ` (${current.name} is now a Host)` : ""}`,
+  });
+  return { owner, previous };
+}
+
+/** Remove a member who is not the owner (transfer ownership first). */
+export async function adminRemoveMember(gid: string, targetUserId: string, adminId: string): Promise<GroupMember> {
+  await requireGroup(gid);
+  const target = await getMember(gid, targetUserId);
+  if (!target) throw new GroupError("not_member", 404);
+  if (target.role === "owner") throw new GroupError("cannot_target_owner", 403);
+  await dropMember(gid, targetUserId);
+  await appendActivity(gid, {
+    actorId: adminId,
+    type: "member_removed",
+    detail: `A NeoConference administrator removed ${target.name}`,
+  });
+  return target;
 }
 
 /* -------------------------------------------------------------------------- */

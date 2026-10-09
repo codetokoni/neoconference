@@ -15,7 +15,7 @@ import {
   EncodedFileType,
   S3Upload,
 } from "livekit-server-sdk";
-import { getPlanForUserId, getPlanLimits, isAdminUserId } from "@/lib/plan";
+import { getPlanLimitsForUserId, isAdminUserId } from "@/lib/plan";
 import { recordedSeconds, recordingAllowance, usageMonth } from "@/lib/recordingUsage";
 import { sanitizeSegment } from "@/lib/eventRecordings";
 import { featureDecision } from "@/lib/platform/features";
@@ -52,8 +52,7 @@ export type RecordingGate =
  * from the hours (and their recordings are not counted against them).
  */
 export async function recordingGate(ownerUserId: string): Promise<RecordingGate> {
-  const plan = ownerUserId ? await getPlanForUserId(ownerUserId) : "free";
-  const limits = getPlanLimits(plan);
+  const { plan, limits } = await getPlanLimitsForUserId(ownerUserId);
   // Feature controls (admin): off everywhere or for this account beats the
   // plan; an account allowed it records whatever the plan says.
   const feature = await featureDecision("recording", { userId: ownerUserId, plan, planAllows: limits.recording });

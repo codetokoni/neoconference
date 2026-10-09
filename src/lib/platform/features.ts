@@ -22,7 +22,7 @@ import {
   type FeatureKey,
 } from "@/lib/platform/model";
 import { getAccountOverrides, getFeatureControls } from "@/lib/platform/settings";
-import { PLANS, getPlanLimits, type Plan } from "@/lib/planLimits";
+import { PLANS, getPlanLimits, type Plan, type PlanLimits } from "@/lib/planLimits";
 
 export interface FeatureQuery {
   /** The account the feature is billed to (usually the meeting's owner). */
@@ -64,14 +64,20 @@ export async function featureDecisions(features: FeatureKey[], q: Omit<FeatureQu
 /**
  * The per-plan values of the features the plan catalog carries, for the
  * admin's feature matrix (read-only there; they are edited in Plans).
- * The interface phase 3's catalog plugs into: today the built-in tier
- * limits; with the catalog, each tier's current version.
+ * Each tier's current version in the plan catalog (src/lib/billing/store.ts),
+ * or the built-in tier limits when the catalog cannot be read. Existing
+ * subscribers keep the version they bought; the enforcement points use
+ * the account's own limits (getPlanLimitsForUserId).
  */
 export async function catalogPlanValues(): Promise<Record<Plan, Partial<Record<FeatureKey, boolean>>>> {
+  const pick = (l: PlanLimits) => ({ recording: l.recording, translation: l.translation, livestream: l.livestream, breakouts: l.breakouts, branding: l.branding });
   const out = {} as Record<Plan, Partial<Record<FeatureKey, boolean>>>;
-  for (const plan of PLANS) {
-    const l = getPlanLimits(plan);
-    out[plan] = { recording: l.recording, translation: l.translation, livestream: l.livestream, breakouts: l.breakouts, branding: l.branding };
+  for (const plan of PLANS) out[plan] = pick(getPlanLimits(plan));
+  try {
+    const { listPlans } = await import("@/lib/billing/store");
+    for (const p of await listPlans()) if ((PLANS as string[]).includes(p.id)) out[p.id as Plan] = pick(p.current.limits);
+  } catch (err) {
+    console.error("[feature-controls] plan catalog unreadable; showing built-in tiers", err);
   }
   return out;
 }

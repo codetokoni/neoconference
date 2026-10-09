@@ -13,7 +13,7 @@ import { actorOf, requireAdmin } from "@/lib/admin/context";
 import { recordAdminAction } from "@/lib/admin/audit";
 import { fail, readJson, str } from "@/lib/admin/http";
 import { isOwnerEmailList, type ClerkEmailish } from "@/lib/admin/owner";
-import { getPlanForUserId, getPlanLimits, isAdminUserId } from "@/lib/plan";
+import { getPlanLimitsForUserId, isAdminUserId } from "@/lib/plan";
 import { featureDecisions } from "@/lib/platform/features";
 import { getAccountOverrides, setAccountOverrides } from "@/lib/platform/settings";
 import { FEATURE_KEYS, isFeatureKey, type FeatureKey } from "@/lib/platform/model";
@@ -42,8 +42,7 @@ async function findAccount(q: string): Promise<Found | null> {
 }
 
 async function effective(userId: string) {
-  const plan = await getPlanForUserId(userId);
-  const limits = getPlanLimits(plan);
+  const { plan, limits } = await getPlanLimitsForUserId(userId);
   const decisions = await featureDecisions(FEATURE_KEYS, {
     userId,
     plan,
