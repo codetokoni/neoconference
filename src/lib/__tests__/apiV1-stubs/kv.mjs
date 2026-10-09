@@ -55,7 +55,7 @@ const base = {
   async srem(k, ...m) { const s = store.get(k) ?? sets(); let n = 0; m.forEach((x) => { if (s.delete(x)) n++; }); store.set(k, s); return n; },
   async smembers(k) { return [...(store.get(k) ?? [])].map(de); },
   async sismember(k, m) { return (store.get(k) ?? sets()).has(m) ? 1 : 0; },
-  async incr(k) { const n = (store.get(k) ?? 0) + 1; store.set(k, n); return n; },
+  async incr(k) { const n = Number(store.get(k) ?? 0) + 1; store.set(k, n); return n; },
   async scard(k) { return (store.get(k) ?? sets()).size; },
   async expire(k, s) { if (ttlOn() && store.has(k)) expires.set(k, Date.now() + s * 1000); return 1; },
   async pexpire(k, ms) { if (ttlOn() && store.has(k)) expires.set(k, Date.now() + ms); return 1; },
@@ -103,6 +103,10 @@ const base = {
     rows = rows.slice(opts.offset ?? 0, (opts.offset ?? 0) + (opts.count ?? rows.length));
     return opts.withScores ? rows.flatMap(([m, s]) => [m, s]) : rows.map(([m]) => m);
   },
+  async llen(k) { return alive(k) ? (store.get(k) ?? []).length : 0; },
+  async lindex(k, i) { const l = store.get(k) ?? []; const v = l[i < 0 ? l.length + i : i]; return v === undefined ? null : de(v); },
+  async lset(k, i, v) { const l = store.get(k) ?? []; l[i] = structuredClone(v); store.set(k, l); return "OK"; },
+  async exists(...ks) { return ks.filter((k) => alive(k)).length; },
   async keys(pattern) { const re = globRe(pattern); return [...store.keys()].filter((k) => alive(k) && re.test(k)); },
   // One pass: every match and cursor "0" (done).
   async scan(_cursor, opts = {}) { const re = globRe(opts.match ?? "*"); return ["0", [...store.keys()].filter((k) => alive(k) && re.test(k))]; },

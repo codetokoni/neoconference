@@ -83,6 +83,36 @@ const SUPPORT_VARS: TemplateVariable[] = [
   { name: "signedIn", description: "Set when the ticket belongs to an account (not sent signed out)", sample: true },
   { name: "email", description: "The address the ticket came from", sample: "ada@example.com" },
 ];
+const BILLING_VARS: TemplateVariable[] = [
+  { name: "plan", description: 'The plan\'s name, capitalised ("your" when unknown)', sample: "Pro" },
+  { name: "amount", description: "The price with its currency, or empty when unknown", sample: "25.00 USD" },
+  { name: "currency", description: "The currency code", sample: "USD" },
+  { name: "cycle", description: '"monthly" or "annual"', sample: "monthly" },
+  { name: "endDate", description: "When the plan runs out (renewal reminders only)", sample: "Fri, 16 Oct 2026" },
+  { name: "pricingUrl", description: "The pricing page", sample: "https://www.neoconference.app/pricing" },
+  { name: "billingUrl", description: "Their billing history", sample: "https://www.neoconference.app/dashboard/billing" },
+];
+const B_PRICE = "{{#amount}} ({{amount}}, {{cycle}}){{/amount}}";
+const B_SIGN = "— NeoConference";
+
+/** Each paragraph is plain text; the HTML version links its {{…Url}}s. */
+function billingTemplate(kind: string, name: string, description: string, subject: string, paras: string[]): TemplateDef {
+  return {
+    id: `billing.${kind}`,
+    name,
+    group: "Billing",
+    description: `${description} Turned on, with its days, in Admin → Billing → Settings.`,
+    audience: "The account holder",
+    variables: BILLING_VARS,
+    defaults: {
+      subject,
+      // The blank paragraph before the signature is how these always went out.
+      text: [...paras, "", B_SIGN].join("\n\n"),
+      html: paras.map((p) => `<p>${p.replace(/\{\{(\w+Url)\}\}/g, '<a href="{{$1}}">{{$1}}</a>')}</p>`).join("") + `<p>${B_SIGN}</p>`,
+    },
+  };
+}
+
 const S_INTRO_TEXT =
   "Thanks for getting in touch. Your request is with the NeoConference team{{#signedIn}} and you can follow it on the website.{{/signedIn}}{{^signedIn}}. We'll answer at this address. To read the conversation on the website, sign in or sign up with {{email}}.{{/signedIn}}";
 
@@ -152,6 +182,19 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
       html: `${S_P}<b>{{agentName}}</b> replied to your ticket #{{number}}:</p>${S_P}{{body}}</p>${S_BUTTON}${S_FOOT}`,
     },
   },
+  billingTemplate("failed_payment", "Payment failed", "When a plan payment failed and nothing was paid since.", "Your NeoConference {{plan}} payment did not go through", [
+    `Your payment for the {{plan}} plan${B_PRICE} did not go through, so the plan was not added.`,
+    "You can try again here: {{pricingUrl}}",
+  ]),
+  billingTemplate("abandoned_checkout", "Checkout not finished", "When someone started paying for a plan and never finished.", "Finish upgrading to NeoConference {{plan}}", [
+    `You started upgrading to the {{plan}} plan${B_PRICE} but the payment was not completed.`,
+    "Pick up where you left off: {{pricingUrl}}",
+  ]),
+  billingTemplate("renewal_reminder", "Plan ending soon", "Before a paid plan runs out. Plans do not renew by themselves.", "Your NeoConference {{plan}} plan ends on {{endDate}}", [
+    `Your {{plan}} plan${B_PRICE} runs until {{endDate}}. It does not renew by itself: to keep it, buy another period before then.`,
+    "Renew: {{pricingUrl}}",
+    "Your billing history: {{billingUrl}}",
+  ]),
   {
     id: "digest.redemptions",
     name: "Daily invite redemptions",
@@ -230,6 +273,51 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
         "{{#reached}}Your meetings have recorded all {{capHours}} hours the {{planName}} plan includes this month. New recordings will not start until the hours reset on {{resets}}.{{/reached}}" +
         "{{^reached}}Your meetings have recorded {{usedHours}} of the {{capHours}} hours the {{planName}} plan includes this month. They reset on {{resets}}.{{/reached}}</p>" +
         '<p style="font-family:system-ui,sans-serif"><a href="{{origin}}/pricing" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#06b6d4;color:#020617;text-decoration:none;font-weight:600">See the plans</a></p>',
+    },
+  },
+  // Sent by automation rules (src/lib/automation/actions.ts).
+  {
+    id: "reminder.trial",
+    name: "Trial ending",
+    group: "Usage reminders",
+    description: "When a trial is about to end (an automation rule's \"Trial ends in\" condition, Admin → Automation).",
+    audience: "The account holder",
+    variables: [
+      { name: "name", description: "Their first name, or empty", sample: "Ada" },
+      { name: "planName", description: "The plan they are trying", sample: "Business" },
+      { name: "days", description: "Whole days left", sample: 3 },
+      { name: "endsOn", description: "When the trial ends", sample: "Mon, 12 Oct 2026" },
+      { name: "origin", description: "The site's address", sample: "https://www.neoconference.app" },
+    ],
+    defaults: {
+      subject: "Your {{planName}} trial ends in {{days}} day(s)",
+      short: "Your {{planName}} trial ends on {{endsOn}}. Choose a plan to keep its features.",
+      text:
+        "Hi{{#name}} {{name}}{{/name}},\n\n" +
+        "Your {{planName}} trial ends on {{endsOn}}. After that your account goes back to the Free plan. To keep the {{planName}} features, choose a plan before then.\n\n" +
+        "See the plans: {{origin}}/pricing\n\n— NeoConference",
+      html:
+        '<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a">Hi{{#name}} {{name}}{{/name}},</p>' +
+        '<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a">Your {{planName}} trial ends on {{endsOn}}. After that your account goes back to the Free plan. To keep the {{planName}} features, choose a plan before then.</p>' +
+        '<p style="font-family:system-ui,sans-serif"><a href="{{origin}}/pricing" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#06b6d4;color:#020617;text-decoration:none;font-weight:600">See the plans</a></p>',
+    },
+  },
+  {
+    id: "automation.report",
+    name: "Scheduled report",
+    group: "Automation",
+    description: "A report an automation rule builds and emails on its schedule (Admin → Automation). The tables come as CSV attachments.",
+    audience: "The platform owner (and ops administrators, if the rule says so)",
+    variables: [
+      { name: "reportName", description: "The rule's name", sample: "Weekly summary to the owner" },
+      { name: "period", description: "The days covered", sample: "2026-10-02 to 2026-10-08 (UTC)" },
+      { name: "summary", description: "The headline figures, one per line", sample: "Active users: 120\nMeetings: 48" },
+      { name: "origin", description: "The site's address", sample: "https://www.neoconference.app" },
+    ],
+    defaults: {
+      subject: "NeoConference: {{reportName}} ({{period}})",
+      html: "",
+      text: "{{reportName}}\n{{period}}\n\n{{summary}}\n\nThe tables are attached as CSV. Analytics: {{origin}}/admin/analytics\n\n— NeoConference",
     },
   },
 ];

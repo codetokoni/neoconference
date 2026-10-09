@@ -20,9 +20,14 @@
 // latest is sent and the earlier ones are claimed with it.
 //
 //   billing:reminders:log     list, newest first, last 500 sends and skips
+//
+// The wording is the billing.* templates in src/lib/comms/templateDefaults.ts,
+// editable in Admin → Email templates; what goes out is the edited version.
 
 import { kv } from "@/lib/kv";
-import { isMailConfigured, sendMail } from "@/lib/mail";
+import { isMailConfigured } from "@/lib/mail";
+import { renderEmail, sendTemplateEmail } from "@/lib/comms/templates";
+import type { TemplateVars } from "@/lib/comms/format";
 import { entriesBetween, lookupUser, type LedgerEntry } from "@/lib/finance/ledger";
 import { CHECKOUT_WINDOW_MS, checkoutState, listCheckouts, type CheckoutLog } from "@/lib/finance/checkouts";
 import { fmtMoney } from "@/lib/finance/money";
@@ -198,31 +203,24 @@ function appUrl(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || "https://www.neoconference.app").replace(/\/+$/, "");
 }
 
-export function reminderEmail(r: DueReminder): { subject: string; text: string; html: string } {
-  const price = r.amount != null ? ` (${fmtMoney(r.amount, r.currency)}, ${r.cycle === "annual" ? "annual" : "monthly"})` : "";
-  const pricing = `${appUrl()}/pricing`;
-  const billing = `${appUrl()}/dashboard/billing`;
-  let subject: string;
-  let body: string[];
-  if (r.kind === "failed") {
-    subject = `Your NeoConference ${PLAN(r.plan)} payment did not go through`;
-    body = [`Your payment for the ${PLAN(r.plan)} plan${price} did not go through, so the plan was not added.`, `You can try again here: ${pricing}`];
-  } else if (r.kind === "abandoned") {
-    subject = `Finish upgrading to NeoConference ${PLAN(r.plan)}`;
-    body = [`You started upgrading to the ${PLAN(r.plan)} plan${price} but the payment was not completed.`, `Pick up where you left off: ${pricing}`];
-  } else {
-    const date = new Date(r.when).toUTCString().slice(0, 16);
-    subject = `Your NeoConference ${PLAN(r.plan)} plan ends on ${date}`;
-    body = [
-      `Your ${PLAN(r.plan)} plan${price} runs until ${date}. It does not renew by itself: to keep it, buy another period before then.`,
-      `Renew: ${pricing}`,
-      `Your billing history: ${billing}`,
-    ];
-  }
-  const text = [...body, "", "— NeoConference"].join("\n\n");
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const html = body.map((p) => `<p>${esc(p).replace(/(https?:\/\/\S+)/g, '<a href="$1">$1</a>')}</p>`).join("") + "<p>— NeoConference</p>";
-  return { subject, text, html };
+/** The editable template (Admin → Email templates) each kind goes out as. */
+export const REMINDER_TEMPLATE: Record<ReminderKind, string> = {
+  failed: "billing.failed_payment",
+  abandoned: "billing.abandoned_checkout",
+  renewal: "billing.renewal_reminder",
+};
+
+/** The variables a reminder's template is filled with. */
+export function reminderVars(r: DueReminder): TemplateVars {
+  return {
+    plan: PLAN(r.plan),
+    amount: r.amount != null ? fmtMoney(r.amount, r.currency) : "",
+    currency: r.currency,
+    cycle: r.cycle === "annual" ? "annual" : "monthly",
+    endDate: r.kind === "renewal" ? new Date(r.when).toUTCString().slice(0, 16) : "",
+    pricingUrl: `${appUrl()}/pricing`,
+    billingUrl: `${appUrl()}/dashboard/billing`,
+  };
 }
 
 /* ------------------------------ running ------------------------------ */
@@ -286,7 +284,7 @@ export async function runReminders(now: number, opts: RunOptions = {}): Promise<
         continue;
       }
       const who = await lookupUser(r.userId);
-      result.preview.push({ ...r, email: who.email, subjectLine: reminderEmail(r).subject });
+      result.preview.push({ ...r, email: who.email, subjectLine: (await renderEmail(REMINDER_TEMPLATE[r.kind], reminderVars(r))).subject });
     }
     return result;
   }
@@ -311,12 +309,11 @@ export async function runReminders(now: number, opts: RunOptions = {}): Promise<
       await log({ at: now, kind: r.kind, key: r.key, userId: r.userId, email: null, outcome: "skipped", detail: "No email address on the account.", by });
       continue;
     }
-    const mail = reminderEmail(r);
-    const sent = await sendMail({ to: who.email, subject: mail.subject, text: mail.text, html: mail.html });
+    const sent = await sendTemplateEmail(REMINDER_TEMPLATE[r.kind], reminderVars(r), { to: who.email });
     if (sent.ok) {
       result.sent++;
       for (const k of r.alsoClaims) await kv.set(SENT(k), { at: now, by, with: r.key }, { nx: true, ex: CLAIM_S });
-      await log({ at: now, kind: r.kind, key: r.key, userId: r.userId, email: who.email, outcome: "sent", detail: mail.subject, by });
+      await log({ at: now, kind: r.kind, key: r.key, userId: r.userId, email: who.email, outcome: "sent", detail: sent.rendered.subject, by });
     } else {
       result.failed++;
       // Give the claim back so the next run tries again.

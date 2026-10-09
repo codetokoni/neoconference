@@ -346,6 +346,7 @@ async function main() {
     assert.deepEqual(dg.runs.map((x) => x.outcome).slice(0, 2), ["failed", "ok"]);
     assert.equal(list.find((j) => j.name === "redemption-digest")!.retrySafe, false);
     assert.equal(list.find((j) => j.name === "comms")!.retrySafe, true, "announcement delivery claims each recipient before sending");
+    assert.equal(list.find((j) => j.name === "billing-reminders")!.retrySafe, true, "each reminder is sent at most once");
     assert.deepEqual((r.body.queues as { sends: { open: number } }).sends.open, 0);
     assert.ok(list.some((j) => j.name === "smoke-slow"), "unregistered jobs that ran are listed too");
     noSecrets(r.text, "GET jobs");
@@ -478,13 +479,32 @@ async function main() {
   });
 
   console.log("incidents and maintenance");
-  await t("without the settings area deployed an incident says so instead of drawing its own banner", async () => {
+  await t("an incident's banner is the site notice (Settings); it comes down on resolve; an administrator's own notice is never replaced", async () => {
+    const settings = await import("../platform/settings");
+    const notice = async () => {
+      settings.clearSettingsCache();
+      return (await settings.getPlatformSettings()).notice;
+    };
     const r = await call("user_ops", R.incidents.POST as never, { method: "POST", body: { title: "Captions delayed", impact: "minor", message: "Looking into it", showBanner: true, services: ["deepl", "bogus"] } });
     assert.equal(r.status, 201, r.text);
-    const inc = r.body.incident as { services: string[]; banner: { ok: boolean; detail: string } };
+    const inc = r.body.incident as { id: string; services: string[]; banner: { ok: boolean; detail: string } };
     assert.deepEqual(inc.services, ["deepl"]);
-    assert.equal(inc.banner.ok, false);
-    assert.match(inc.banner.detail, /not deployed/);
+    assert.equal(inc.banner.ok, true, inc.banner.detail);
+    const shown = await notice();
+    assert.equal(shown.enabled, true);
+    assert.equal(shown.message, "Captions delayed: Looking into it");
+    await call("user_ops", R.incident.PATCH as never, { method: "PATCH", params: { id: inc.id }, body: { status: "resolved", message: "Fixed" } });
+    assert.equal((await notice()).enabled, false, "resolving takes the notice down");
+
+    const s = await settings.getPlatformSettings();
+    await settings.savePlatformSettings({ ...s, notice: { ...s.notice, id: "n_admin", enabled: true, message: "Admin's own notice", startsAt: null, endsAt: null } });
+    const other = await call("user_ops", R.incidents.POST as never, { method: "POST", body: { title: "Slow joins", impact: "major", message: "Investigating", showBanner: true } });
+    const blocked = (other.body.incident as { banner: { ok: boolean; detail: string } }).banner;
+    assert.equal(blocked.ok, false);
+    assert.match(blocked.detail, /in use by an administrator/);
+    assert.equal((await notice()).message, "Admin's own notice");
+    const cleared = await settings.getPlatformSettings();
+    await settings.savePlatformSettings({ ...cleared, notice: { ...cleared.notice, enabled: false } });
   });
 
   const calls: string[] = [];
@@ -505,7 +525,7 @@ async function main() {
     assert.deepEqual(calls.splice(0), [`show incident:${id} critical`, `clear incident:${id}`]);
     const [created] = await auditOf("ops.incident.create");
     assert.equal(created.targetId, id);
-    assert.equal((await auditOf("ops.incident.update")).length, 2);
+    assert.equal((await auditOf("ops.incident.update")).filter((e) => e.targetId === id).length, 2);
     assert.equal((await call("user_analyst", R.incidents.POST as never, { method: "POST", body: { title: "x", message: "y" } })).body.error, "forbidden");
   });
 

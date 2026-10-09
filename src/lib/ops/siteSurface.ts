@@ -7,6 +7,8 @@
 // maintenance mode, that it put there under that owner — what an
 // administrator set by hand is left alone and reported back.
 
+import { settingsSurface } from "@/lib/platform/opsSurface";
+
 export interface SurfaceResult {
   ok: boolean;
   detail: string;
@@ -25,16 +27,8 @@ export interface SiteSurface {
   endMaintenance(owner: string): Promise<SurfaceResult>;
 }
 
-const UNAVAILABLE = "the site notice and maintenance mode (Settings) are not deployed yet — shown here only";
-
-const unavailable: SiteSurface = {
-  showNotice: async () => ({ ok: false, detail: UNAVAILABLE }),
-  clearNotice: async () => ({ ok: true, detail: "nothing shown on the site" }),
-  startMaintenance: async () => ({ ok: false, detail: UNAVAILABLE }),
-  endMaintenance: async () => ({ ok: true, detail: "maintenance mode not used" }),
-};
-
-let current: SiteSurface = unavailable;
+// The settings area (src/lib/platform/opsSurface.ts) is the one real backend.
+let current: SiteSurface = settingsSurface;
 
 export const siteSurface: SiteSurface = {
   showNotice: (o, n) => current.showNotice(o, n),
@@ -45,5 +39,5 @@ export const siteSurface: SiteSurface = {
 
 /** Tests: stand in for the settings area. Null restores the default. */
 export function __setSiteSurface(s: SiteSurface | null): void {
-  current = s ?? unavailable;
+  current = s ?? settingsSurface;
 }

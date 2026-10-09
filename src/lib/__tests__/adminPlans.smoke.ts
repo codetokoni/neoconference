@@ -41,6 +41,8 @@ g.__users = {
   user_editor: { emails: ["editor@example.com"] },
 };
 for (let i = 1; i <= 12; i++) g.__users[`user_u${i}`] = { emails: [`u${i}@example.com`] };
+// For the platform trial policy.
+for (let i = 1; i <= 4; i++) g.__users[`user_t${i}`] = { emails: [`t${i}@example.com`] };
 // From before the catalog: a paid plan in Clerk, no subscription record.
 g.__users.user_u4.plan = "pro";
 g.__users.user_u4.metadata = { planExpiresAt: realNow() + 300 * DAY };
@@ -91,6 +93,7 @@ async function main() {
     checkout: await import("../../app/api/billing/espees/checkout/route"),
     ret: await import("../../app/api/billing/espees/return/route"),
     cron: await import("../../app/api/cron/downgrade-expired-plans/route"),
+    settings: await import("../../app/api/admin/settings/route"),
   };
 
   const jar: Record<string, string> = {};
@@ -518,6 +521,48 @@ async function main() {
     await cron();
     assert.equal((await sub("user_u6")).status, "expired");
     assert.equal(meta("user_u6").plan, "free");
+  });
+
+  await t("the platform trial policy: off refuses a new trial; on, a plan without trial days gets the default length", async () => {
+    /** As the owner does it in Settings → Registration. */
+    const saveTrials = async (trials: { enabled: boolean; defaultDays: number }) => {
+      await fresh("user_owner");
+      const r = await call("user_owner", R.settings.PATCH, { method: "PATCH", body: { section: "registration", value: { mode: "open", trials } } });
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+    };
+    const trialOf = (userId: string, planId: string) => act("user_billing", userId, { action: "assign", planId, cycle: "monthly", trial: true });
+
+    await saveTrials({ enabled: false, defaultDays: 14 });
+    await fresh("user_billing");
+    assert.deepEqual((await call("user_billing", R.plans.GET)).body.trialPolicy, { enabled: false, defaultDays: 14 }, "the panel's trial box reads it here");
+    const off = await trialOf("user_t1", "business");
+    assert.equal(off.status, 400);
+    assert.equal(off.body.error, "trials_disabled", "business has its own 14 days, and is still refused");
+    assert.match(off.body.message, /Free trials are turned off in Settings/);
+    assert.equal(await subs.getSubscription("user_t1"), null);
+    const paid = await act("user_billing", "user_t1", { action: "assign", planId: "business", cycle: "monthly" });
+    assert.equal(paid.status, 200, "only trials are refused: " + JSON.stringify(paid.body));
+    assert.equal((await sub("user_t1")).status, "active");
+
+    await saveTrials({ enabled: true, defaultDays: 9 });
+    await fresh("user_billing");
+    assert.equal((await call("user_billing", R.plans.GET)).body.plans.find((p: { id: string }) => p.id === "starter").current.trialDays, 0);
+    const before = Date.now();
+    const dflt = await trialOf("user_t2", "starter");
+    assert.equal(dflt.status, 200, JSON.stringify(dflt.body));
+    assert.ok(dflt.body.lines.some((l: string) => /9-day \(the platform default\) trial of Starter/.test(l)), JSON.stringify(dflt.body.lines));
+    const t2 = await sub("user_t2");
+    assert.equal(t2.status, "trialing");
+    assert.ok(Math.abs(t2.periodEnd! - (before + 9 * DAY)) < 60_000, `ends in 9 days, not ${(t2.periodEnd! - before) / DAY}`);
+    assert.equal(meta("user_t2").plan, "starter");
+    const own = await trialOf("user_t3", "business");
+    assert.equal(own.status, 200, JSON.stringify(own.body));
+    assert.ok(Math.abs((await sub("user_t3")).periodEnd! - (Date.now() + 14 * DAY)) < 60_000, "a plan's own trial length wins over the default");
+
+    await saveTrials({ enabled: true, defaultDays: 0 });
+    await fresh("user_billing");
+    assert.equal((await trialOf("user_t4", "starter")).body.error, "no_trial", "no plan length and a 0-day default");
+    await saveTrials({ enabled: true, defaultDays: 14 });
   });
 
   console.log("the owner");

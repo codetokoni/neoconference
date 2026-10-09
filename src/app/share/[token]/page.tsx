@@ -5,6 +5,7 @@
 import { errorMessage } from "@/lib/errorMessage";
 import { headers } from "next/headers";
 import Link from "next/link";
+import ReportContentButton from "@/components/ReportContentButton";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,6 +60,9 @@ export default async function SharePage(
             <p className="text-[11px] text-slate-500 mt-4">
               The download URL is signed and expires in a few minutes for your security.
             </p>
+            <div className="mt-4 flex justify-end">
+              <ReportContentButton targetType="share" target={token} />
+            </div>
           </>
         ) : (
           <>
@@ -66,7 +70,9 @@ export default async function SharePage(
             <p className="text-slate-400 mb-6 text-sm">
               {result.error === "not_found_or_expired"
                 ? "This share link has expired or been revoked."
-                : "We could not load this share link right now."}
+                : result.error === "removed"
+                  ? "This recording has been removed."
+                  : "We could not load this share link right now."}
             </p>
             <Link
               href="/"

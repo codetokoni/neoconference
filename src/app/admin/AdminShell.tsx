@@ -11,7 +11,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { AdminPermission } from "@/lib/admin/catalog";
 import type { PublicAdminContext } from "@/lib/admin/context";
-import { AdminProvider, useAdmin } from "./AdminApi";
+import { AdminProvider, useAdmin, type AdminClock } from "./AdminApi";
 import GlobalSearch from "./GlobalSearch";
 
 type Section = { label: string; href: string; permission: AdminPermission | null; group: string };
@@ -21,8 +21,10 @@ export const SECTIONS: Section[] = [
   { label: "Users", href: "/admin/users", permission: "users:read", group: "Platform" },
   { label: "Groups", href: "/admin/groups", permission: "users:read", group: "Platform" },
   { label: "Meetings", href: "/admin/events", permission: "events:read", group: "Platform" },
+  { label: "Content", href: "/admin/content", permission: "content:read", group: "Platform" },
   { label: "Analytics", href: "/admin/analytics", permission: "analytics:read", group: "Platform" },
   { label: "Logs", href: "/admin/logs", permission: "analytics:read", group: "Platform" },
+  { label: "Data", href: "/admin/data", permission: "users:read", group: "Platform" },
   { label: "Plans & pricing", href: "/admin/plans", permission: "plans:read", group: "Billing" },
   { label: "Subscriptions", href: "/admin/subscriptions", permission: "plans:read", group: "Billing" },
   { label: "Payments", href: "/admin/billing/payments", permission: "billing:read", group: "Billing" },
@@ -38,13 +40,17 @@ export const SECTIONS: Section[] = [
   { label: "Alerts", href: "/admin/ops/alerts", permission: "ops:read", group: "Operations" },
   { label: "Incidents", href: "/admin/ops/incidents", permission: "ops:read", group: "Operations" },
   { label: "Backups", href: "/admin/ops/backups", permission: "ops:read", group: "Operations" },
+  { label: "Automation", href: "/admin/automation", permission: "ops:read", group: "Operations" },
   { label: "Administrators", href: "/admin/team", permission: "admins:read", group: "Access" },
   { label: "Roles", href: "/admin/roles", permission: "admins:read", group: "Access" },
   { label: "Audit log", href: "/admin/audit-log", permission: "audit:read", group: "Access" },
   { label: "Security", href: "/admin/security", permission: null, group: "Access" },
+  { label: "Settings", href: "/admin/settings", permission: "settings:write", group: "Settings" },
+  { label: "Features", href: "/admin/features", permission: "features:write", group: "Settings" },
+  { label: "Integrations", href: "/admin/integrations", permission: "integrations:write", group: "Settings" },
 ];
 
-export default function AdminShell({ me, children }: { me: PublicAdminContext; children: ReactNode }) {
+export default function AdminShell({ me, clock, children }: { me: PublicAdminContext; clock?: AdminClock; children: ReactNode }) {
   const pathname = usePathname() || "";
   const visible = SECTIONS.filter((s) => !s.permission || me.permissions.includes(s.permission));
   const groups = [...new Set(visible.map((s) => s.group))];
@@ -64,7 +70,7 @@ export default function AdminShell({ me, children }: { me: PublicAdminContext; c
   };
 
   return (
-    <AdminProvider me={me}>
+    <AdminProvider me={me} clock={clock}>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:gap-6">
         <aside className="lg:w-56 lg:shrink-0">
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
@@ -106,6 +112,9 @@ export default function AdminShell({ me, children }: { me: PublicAdminContext; c
               </div>
             ))}
           </nav>
+          <p className="mt-2 hidden px-3 text-[11px] text-zinc-500 lg:block" data-admin-clock>
+            Times shown in {!clock || clock.timeZone === "local" ? "your local time zone" : clock.timeZone}
+          </p>
         </aside>
         <div className="min-w-0 flex-1">
           <GlobalSearch />

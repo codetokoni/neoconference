@@ -11,6 +11,7 @@ import { auth } from "@clerk/nextjs/server";
 import { shareStore } from "@/lib/shareStore";
 import { isR2Configured, signGetUrl } from "@/lib/r2";
 import { recordingAnalytics } from "@/lib/analytics";
+import { blockedKeys, markShared } from "@/lib/content/files";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,8 @@ export async function POST(req: NextRequest) {
   const label = typeof body.label === "string" ? body.label.slice(0, 200) : undefined;
   const ttlSeconds = typeof body.ttlSeconds === "number" ? body.ttlSeconds : undefined;
   const rec = await shareStore.create({ key, ownerUserId: userId, label, ttlSeconds });
+  // The admin file index (Content): anyone with the link can download it now.
+  await markShared(key);
   return NextResponse.json({ ok: true, share: rec });
 }
 
@@ -44,6 +47,10 @@ export async function GET(req: NextRequest) {
   const rec = await shareStore.get(token);
   if (!rec) {
     return NextResponse.json({ error: "not_found_or_expired" }, { status: 404 });
+  }
+  // Hidden by a moderator or in the trash (admin area, Content).
+  if ((await blockedKeys([rec.key])).has(rec.key)) {
+    return NextResponse.json({ error: "removed" }, { status: 410 });
   }
   if (!isR2Configured()) {
     return NextResponse.json({ error: "r2_not_configured" }, { status: 503 });

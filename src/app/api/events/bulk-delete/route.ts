@@ -25,6 +25,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
 import { assertOwnerOrAdmin } from '@/lib/roles';
+import { meetingTrashInput, tryMoveToTrash, withGroupIndex } from '@/lib/dataGov/trash';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -82,6 +83,8 @@ export async function POST(req: Request) {
       continue;
     }
     try {
+      // Restorable by an administrator for the trash period (src/lib/dataGov/trash.ts).
+      await tryMoveToTrash(() => withGroupIndex(meetingTrashInput(ev, userId), ev));
       const ok = await eventStore.delete(ev.id);
       if (ok) {
         deleted.push(slug);

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { isR2Configured, listRecordings, signGetUrl, deleteObject, renameObject } from '@/lib/r2';
 import { transcribeStore } from '@/lib/transcribeStore';
+import { tryMoveToTrash } from '@/lib/dataGov/trash';
 import { asReported } from '@/lib/transcribeNotSetUp';
 import { eventStore } from '@/lib/eventStore';
 import { authorize } from '@/lib/authz';
@@ -12,6 +13,7 @@ import {
   stripAudioExt,
   userPrefix,
 } from '@/lib/eventRecordings';
+import { indexDeleted, indexRenamed, indexTrashed, trashedKeys } from '@/lib/content/files';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -78,6 +80,10 @@ export async function GET(req: Request) {
                 .filter((o) => o.size > 0)
                 .filter((o) => o.key.startsWith(base));
         }
+
+      // Files an administrator moved to the trash are not listed.
+      const trashed = await trashedKeys(filtered.map((o) => o.key));
+      if (trashed.size) filtered = filtered.filter((o) => !trashed.has(o.key));
 
       // Pair each .mp4 video with its audio sidecar (same basename). Sidecars
       // may be named "<basename>.m4a" OR "<basename>.m4a.mp4" depending on the
@@ -157,7 +163,22 @@ export async function DELETE(req: Request) {
           return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 });
     }
     try {
-          await deleteObject(key);
+          // Moved under trash/ rather than deleted, so an administrator can
+          // restore it for the trash period (src/lib/dataGov/trash.ts). It
+          // leaves the user's list at once, as before. If the move fails the
+          // file is deleted outright, as it always was.
+          const kept = await tryMoveToTrash({
+            kind: 'recording',
+            label: key.split('/').pop() || key,
+            ownerId: userId,
+            ref: key,
+            deletedBy: userId,
+            r2Keys: [key],
+          });
+          if (!kept) await deleteObject(key);
+          // The admin file index (Content): in the trash, or gone.
+          if (kept) await indexTrashed(key, kept.id, userId);
+          else await indexDeleted(key);
           return NextResponse.json({ ok: true, key });
     } catch (e) {
           return NextResponse.json(
@@ -194,6 +215,7 @@ export async function PATCH(req: Request) {
     }
     try {
           await renameObject(key, newKey);
+          await indexRenamed(key, newKey);
           return NextResponse.json({ ok: true, key, newKey });
     } catch (e) {
           return NextResponse.json({ ok: false, error: errorMessage(e) || 'rename-failed' }, { status: 500 });

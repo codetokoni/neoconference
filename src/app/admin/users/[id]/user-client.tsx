@@ -12,6 +12,9 @@ import { fmtTime, useAdmin, type ApiResult } from "../../AdminApi";
 import { Badge, Confirm, Empty, Loading, Notice, PageHeader, Panel, btn, field } from "../../ui";
 import { statusBadges, type UserRow } from "../users-client";
 import { SUPPORT_CHANGED } from "../../AdminShell";
+import SubscriptionPanel from "../../subscriptions/SubscriptionPanel";
+import { LIMIT_FIELDS, type LimitField } from "@/lib/billing/model";
+import ExportPanel from "./ExportPanel";
 import { ACTIVITY_TYPES } from "@/lib/activityTypes";
 import type { ActivityEvent } from "@/lib/activity";
 
@@ -46,6 +49,8 @@ type Detail = {
     expired: boolean;
     lifetimeMeetingCap: number;
     recordingHoursPerMonth: number;
+    limits: Record<string, number | boolean | null>;
+    limitsSource: "account" | "tier";
   };
   usage: {
     meetingsHosted: number | null;
@@ -88,6 +93,13 @@ type Ask = {
 };
 
 const hours = (s: number | null | undefined) => (s == null ? "—" : `${(s / 3600).toFixed(1)} h`);
+
+/** One enforced limit as words: 0 / null read as the catalog says ("unlimited"…). */
+function limitText(f: LimitField, v: number | boolean | null | undefined): string {
+  if (f.kind === "bool") return v ? "Yes" : "No";
+  if (v == null || v === 0) return f.zero ?? "—";
+  return `${v}${f.unit ? ` ${f.unit}` : ""}`;
+}
 
 function Section({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
   return (
@@ -304,9 +316,18 @@ export default function UserClient({ id }: { id: string }) {
             </Row>
             <Row k="Meetings created">
               {u.meetingsCreated}
-              {d.plan.lifetimeMeetingCap ? ` of ${d.plan.lifetimeMeetingCap} on this plan` : " (no lifetime cap)"}
+              {d.plan.lifetimeMeetingCap ? ` of ${d.plan.lifetimeMeetingCap}` : " (no lifetime cap)"}
             </Row>
-            <Row k="Recording">{d.plan.recordingHoursPerMonth ? `${d.plan.recordingHoursPerMonth} h a month` : "Not on this plan"}</Row>
+          </dl>
+          <h3 className="mb-1 mt-3 text-xs uppercase tracking-wide text-zinc-500">
+            Limits enforced{d.plan.limitsSource === "tier" ? " (tier defaults — the account's own could not be read)" : ""}
+          </h3>
+          <dl>
+            {LIMIT_FIELDS.filter((f) => f.enforced).map((f) => (
+              <Row key={f.key} k={f.label}>
+                {limitText(f, d.plan.limits[f.key])}
+              </Row>
+            ))}
           </dl>
         </Section>
 
@@ -373,6 +394,19 @@ export default function UserClient({ id }: { id: string }) {
           )}
         </Section>
       </div>
+
+      {can("plans:read") && (
+        <Section
+          title="Subscription"
+          aside={
+            <Link href={`/admin/subscriptions/${encodeURIComponent(u.id)}`} className="text-sm text-cyan-300 hover:underline">
+              Open on its own page
+            </Link>
+          }
+        >
+          <SubscriptionPanel userId={u.id} />
+        </Section>
+      )}
 
       <Section
         title="Sessions"
@@ -516,20 +550,10 @@ export default function UserClient({ id }: { id: string }) {
                     className={btn.danger}
                     disabled={!d.deletion.due}
                     title={d.deletion.due ? undefined : `Available from ${fmtTime(d.deletion.deleteAfter)}`}
-                    onClick={() =>
-                      setAsk({
-                        title: `Delete ${label} for good?`,
-                        body: "The Clerk account is deleted, they are removed from their groups, and the notes and tags here are dropped. The audit log keeps the record. This cannot be undone.",
-                        confirmLabel: "Delete now",
-                        danger: true,
-                        typeToConfirm: "delete",
-                        run: () => adminFetch(`${base}/deletion/purge`, { method: "POST" }),
-                        done: "Account deleted.",
-                        after: () => window.location.assign("/admin/users?deleted=1"),
-                      })
-                    }
+                    // The Data page previews what completing removes (every place in the data map) first.
+                    onClick={() => window.location.assign(`/admin/data?complete=${encodeURIComponent(u.id)}`)}
                   >
-                    Delete now
+                    Delete now…
                   </button>
                 </>
               ) : (
@@ -604,6 +628,12 @@ export default function UserClient({ id }: { id: string }) {
               {!u.passwordEnabled && <p className="mt-2 text-xs text-zinc-500">This account has no password: it signs in with a social account, KingsChat or an email code.</p>}
             </div>
           )}
+        </Section>
+      )}
+
+      {can("data:export") && !blocked && (
+        <Section title="Data export">
+          <ExportPanel userId={u.id} />
         </Section>
       )}
 

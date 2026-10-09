@@ -16,18 +16,20 @@ import { COMPARES, RANGES, queryString, readQuery, type Delta, type MoneyDelta, 
 import type { SourceData, SourceId } from "@/lib/admin/overview/sources";
 import { fmtMoney, currenciesOf } from "@/lib/finance/money";
 import { formatBytes } from "@/lib/content/model";
-import { fmtTime, useAdmin } from "./AdminApi";
+import { adminClock, fmtTime, useAdmin } from "./AdminApi";
 import { DailyBars, HBars } from "./analytics/charts";
 import { PageHeader, btn, field } from "./ui";
 
 type Answer = Overview & { query: OverviewQuery };
 
-/** The zone the Overview's days are in: the administrator's own clock. */
-function viewerZone(): string {
+/** The zone the Overview's days are in: Settings → Regional's admin time zone, or the viewer's own when that is "local". */
+function overviewZone(): { tz: string; source: "setting" | "local" } {
+  const set = adminClock().timeZone;
+  if (set && set !== "local") return { tz: set, source: "setting" };
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    return { tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", source: "local" };
   } catch {
-    return "UTC";
+    return { tz: "UTC", source: "local" };
   }
 }
 
@@ -42,7 +44,8 @@ export default function OverviewClient() {
   const sp = useSearchParams();
   const router = useRouter();
   const pathname = usePathname() || "/admin";
-  const tz = useMemo(viewerZone, []);
+  const zone = useMemo(overviewZone, []);
+  const tz = zone.tz;
   const query = useMemo(() => {
     const p = new URLSearchParams(sp?.toString() ?? "");
     p.set("tz", tz);
@@ -163,7 +166,7 @@ export default function OverviewClient() {
               {cur.to !== cur.from && ` – ${shortDate(cur.to)}`}
             </b>{" "}
             compared with {shortDate(prev.from)}
-            {prev.to !== prev.from && ` – ${shortDate(prev.to)}`} · days in <b className="text-zinc-300">{cur.tz}</b> (your time zone)
+            {prev.to !== prev.from && ` – ${shortDate(prev.to)}`} · days in <b className="text-zinc-300">{cur.tz}</b> ({zone.source === "setting" ? "the admin time zone" : "your time zone"})
           </p>
         )}
       </div>

@@ -49,6 +49,9 @@ type Data = {
   prorationRule: string[];
 };
 
+/** Settings → Registration: whether trials may start, and their default length. */
+type TrialPolicy = { enabled: boolean; defaultDays: number };
+
 type Action = "assign" | "change" | "extend" | "pause" | "resume" | "cancel" | "comp" | "custom" | "addons" | "unschedule";
 
 const STATUS_TONE: Record<string, "green" | "cyan" | "amber" | "red" | "zinc"> = {
@@ -77,6 +80,7 @@ export default function SubscriptionPanel({ userId }: { userId: string }) {
   const { can, adminFetch } = useAdmin();
   const [data, setData] = useState<Data | null>(null);
   const [plans, setPlans] = useState<CatalogPlan[]>([]);
+  const [trialPolicy, setTrialPolicy] = useState<TrialPolicy | null>(null);
   const [addOns, setAddOns] = useState<AddOn[]>([]);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [action, setAction] = useState<Action | null>(null);
@@ -92,7 +96,11 @@ export default function SubscriptionPanel({ userId }: { userId: string }) {
   }, [adminFetch, userId]);
   useEffect(() => {
     load();
-    adminFetch<{ plans: CatalogPlan[] }>("/api/admin/plans").then((r) => r.ok && setPlans(r.data.plans));
+    adminFetch<{ plans: CatalogPlan[]; trialPolicy: TrialPolicy }>("/api/admin/plans").then((r) => {
+      if (!r.ok) return;
+      setPlans(r.data.plans);
+      setTrialPolicy(r.data.trialPolicy);
+    });
     adminFetch<{ addOns: AddOn[] }>("/api/admin/addons").then((r) => r.ok && setAddOns(r.data.addOns));
   }, [load, adminFetch]);
 
@@ -181,6 +189,7 @@ export default function SubscriptionPanel({ userId }: { userId: string }) {
               userId={user.userId}
               sub={sub}
               plans={plans}
+              trialPolicy={trialPolicy}
               addOns={addOns}
               rule={data.prorationRule}
               onDone={(text) => {
@@ -347,6 +356,7 @@ function ActionForm({
   userId,
   sub,
   plans,
+  trialPolicy,
   addOns,
   rule,
   onDone,
@@ -356,6 +366,7 @@ function ActionForm({
   userId: string;
   sub: Subscription | null;
   plans: CatalogPlan[];
+  trialPolicy: TrialPolicy | null;
   addOns: AddOn[];
   rule: string[];
   onDone: (text: string) => void;
@@ -382,6 +393,9 @@ function ActionForm({
   const [problem, setProblem] = useState<string | null>(null);
 
   const target = plans.find((p) => p.id === planId);
+  // Mirrors the server: no trials when Settings turns them off; a plan
+  // without its own length gets the platform default.
+  const trialDays = trialPolicy?.enabled ? target?.current.trialDays || trialPolicy.defaultDays : 0;
   // The proration rule: a downgrade waits for the period end unless chosen
   // otherwise; an upgrade applies now.
   const newDaily = target ? (espPrice(target.current.prices, cycle) ?? 0) / CYCLE_DAYS[cycle] : 0;
@@ -489,8 +503,10 @@ function ActionForm({
             {planSelect}
             {cycleSelect}
             <label className="flex items-center gap-2 text-sm text-zinc-300">
-              <input type="checkbox" className="h-4 w-4 accent-cyan-500" checked={trial} disabled={!target?.current.trialDays} onChange={(e) => setTrial(e.target.checked)} />
-              Start with the plan&apos;s {target?.current.trialDays ?? 0}-day trial
+              <input type="checkbox" className="h-4 w-4 accent-cyan-500" checked={trial} disabled={!trialDays} onChange={(e) => setTrial(e.target.checked)} />
+              {trialPolicy && !trialPolicy.enabled
+                ? "Free trials are turned off in Settings → Registration"
+                : `Start with ${target?.current.trialDays ? "the plan's" : "the platform default"} ${trialDays}-day trial`}
             </label>
             {!trial && (
               <>

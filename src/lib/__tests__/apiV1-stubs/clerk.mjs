@@ -54,6 +54,37 @@ function revokeAll(userId) {
   for (const s of sessions()[userId] ?? []) s.status = "revoked";
 }
 
+// clerkMiddleware: runs the app's handler with auth() as above, so a test
+// can drive src/middleware.ts. protect() on a signed-out request throws, as
+// Clerk's does (Clerk's throw becomes a sign-in redirect).
+export function clerkMiddleware(handler) {
+  return async (req, ev) => {
+    const authFn = Object.assign(async () => auth(), {
+      protect: async () => {
+        if (!globalThis.__who) throw new Error("clerk: protect() on a signed-out request");
+      },
+    });
+    return handler(authFn, req, ev);
+  };
+}
+
+// Restrictions (allowlist / blocklist), in globalThis.__clerkLists.
+const lists = () => (globalThis.__clerkLists ??= { allow: [], block: [], restrictions: {}, seq: 0 });
+const identifierApi = (which) => ({
+  async list() {
+    return { data: lists()[which].map((x) => ({ ...x })), totalCount: lists()[which].length };
+  },
+  async create({ identifier }) {
+    const item = { id: `${which}_${++lists().seq}`, identifier, identifierType: "email_address", createdAt: Date.now() };
+    lists()[which].push(item);
+    return item;
+  },
+  async remove(id) {
+    lists()[which] = lists()[which].filter((x) => x.id !== id);
+    return { id, deleted: true };
+  },
+});
+
 export async function auth() {
   const userId = globalThis.__who ?? null;
   return { userId, sessionId: userId ? (globalThis.__sid ?? `sess_${userId}`) : null, sessionClaims: {} };
@@ -66,7 +97,25 @@ export async function currentUser() {
 const SORT_FIELD = { created_at: "createdAt", last_sign_in_at: "lastSignInAt", last_active_at: "lastActiveAt", email_address: "email", first_name: "firstName" };
 
 export async function clerkClient() {
+  const allow = identifierApi("allow");
+  const block = identifierApi("block");
   return {
+    allowlistIdentifiers: {
+      getAllowlistIdentifierList: allow.list,
+      createAllowlistIdentifier: allow.create,
+      deleteAllowlistIdentifier: allow.remove,
+    },
+    blocklistIdentifiers: {
+      getBlocklistIdentifierList: block.list,
+      createBlocklistIdentifier: block.create,
+      deleteBlocklistIdentifier: block.remove,
+    },
+    instance: {
+      async updateRestrictions(params) {
+        Object.assign(lists().restrictions, params);
+        return { ...lists().restrictions };
+      },
+    },
     users: {
       // globalThis.__clerkCountFails makes it throw, as Clerk does when it is down.
       async getCount() {

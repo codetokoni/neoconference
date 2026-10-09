@@ -23,6 +23,10 @@ import {
 } from "@/lib/rosterStore";
 import { getRoom } from "@/lib/rooms";
 import { isVideoRoomAdmin } from "@/lib/videoAdmin";
+import { uploadRule } from "@/lib/content/limits";
+import { checkUpload, storedMime } from "@/lib/content/model";
+import { indexUpload } from "@/lib/content/files";
+import { auth } from "@clerk/nextjs/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,6 +71,12 @@ export async function POST(req: Request) {
   const file = form.get("file");
   if (!(file instanceof Blob)) {
     return NextResponse.json({ ok: false, error: "No file uploaded." }, { status: 400 });
+  }
+  // Size and type limits: admin area, Content > Limits. This screen shows
+  // `error` as it is, so it carries the sentence; `code` the reason.
+  const refusal = checkUpload(await uploadRule("roster"), { size: file.size, type: file.type, name: file instanceof File ? file.name : "" });
+  if (refusal) {
+    return NextResponse.json({ ok: false, error: refusal.message, code: refusal.error }, { status: refusal.status });
   }
 
   const appendField = form.get("append");
@@ -116,6 +126,19 @@ export async function POST(req: Request) {
       rowCount: rows.length,
     });
     savedBatch = batch.id;
+    // The admin file index (Content): a stored spreadsheet, in KV.
+    const { userId } = await auth();
+    await indexUpload({
+      storage: "kv",
+      key: `roster:${r}:${batch.id}`,
+      type: "roster",
+      ownerId: userId || "",
+      eventSlug: r,
+      name: filename,
+      size: buffer.length,
+      contentType: storedMime(await uploadRule("roster"), { type: file.type, name: filename }),
+      body: buffer,
+    });
   } catch (e) {
     console.error("[video/room/roster] saveRosterBatch failed:", e);
   }
