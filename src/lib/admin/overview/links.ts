@@ -36,10 +36,11 @@ export const overviewLinks = {
   storage: () => "/admin/content/storage",
   storageByType: (type: string) => href("/admin/content", { type, state: "all" }),
   health: () => "/admin/ops",
+  // The alerts page opens on the active ones.
   incidents: () => href("/admin/ops/incidents", { status: "open" }),
-  alerts: () => href("/admin/ops/alerts", { status: "active" }),
+  alerts: () => "/admin/ops/alerts",
   jobs: () => "/admin/ops/jobs",
-  failedJobs: () => href("/admin/ops/jobs", { outcome: "failed" }),
+  failedJobs: () => "/admin/ops/jobs#failed-runs",
   job: (name: string) => href("/admin/ops/jobs", { job: name }),
   errors: (p: P) => href("/admin/logs", { severity: "error", from: p.from, to: p.to }),
   feature: (p: P, type: string) => href("/admin/logs", { type, from: p.from, to: p.to }),

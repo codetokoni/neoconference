@@ -5,6 +5,7 @@
 // outside the runner (transcription, pending checkouts, webhook events that
 // changed nothing).
 
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { fmtTime, useAdmin } from "../../AdminApi";
 import { Badge, Confirm, Empty, Loading, Notice, PageHeader, Panel, btn } from "../../ui";
@@ -50,7 +51,9 @@ export default function OpsJobsClient() {
   const { can, adminFetch } = useAdmin();
   const write = can("ops:write");
   const [data, setData] = useState<Data | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
+  // ?job=<name> opens that job's runs (the Overview links here).
+  const sp = useSearchParams();
+  const [open, setOpen] = useState<string | null>(sp?.get("job") || null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -136,7 +139,9 @@ export default function OpsJobsClient() {
         })}
       </div>
 
-      <h2 className="mb-2 mt-6 text-lg font-semibold text-cyan-50">Failed runs</h2>
+      <h2 id="failed-runs" className="mb-2 mt-6 scroll-mt-4 text-lg font-semibold text-cyan-50">
+        Failed runs
+      </h2>
       {data.failed.length === 0 ? (
         <Empty>No failed runs.</Empty>
       ) : (

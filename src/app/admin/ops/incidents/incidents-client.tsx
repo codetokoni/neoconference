@@ -4,6 +4,7 @@
 // Both reach users only through the Settings area's site notice and
 // maintenance mode — there is no second banner or switch here.
 
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { fmtTime, useAdmin } from "../../AdminApi";
 import { Confirm, Empty, Loading, Notice, PageHeader, Panel, btn, field } from "../../ui";
@@ -48,6 +49,9 @@ export default function OpsIncidentsClient() {
   const write = can("ops:write");
   const canMode = can("features:write");
   const [data, setData] = useState<Data | null>(null);
+  // ?status=open lists only unresolved incidents (the Overview links here).
+  const sp = useSearchParams();
+  const [onlyOpen, setOnlyOpen] = useState(sp?.get("status") === "open");
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [inc, setInc] = useState({ title: "", impact: "minor", status: "investigating", message: "", services: [] as string[], showBanner: true });
   const [upd, setUpd] = useState<Record<string, { status: string; message: string }>>({});
@@ -165,12 +169,17 @@ export default function OpsIncidentsClient() {
         </Panel>
       )}
 
-      <h2 className="mb-2 text-lg font-semibold text-cyan-50">Incidents</h2>
-      {data.incidents.length === 0 ? (
-        <Empty>No incidents.</Empty>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-cyan-50">{onlyOpen ? "Open incidents" : "Incidents"}</h2>
+        <button type="button" className={btn.ghost} onClick={() => setOnlyOpen(!onlyOpen)} aria-pressed={onlyOpen}>
+          {onlyOpen ? "Show resolved too" : "Only open"}
+        </button>
+      </div>
+      {data.incidents.filter((i) => !onlyOpen || i.status !== "resolved").length === 0 ? (
+        <Empty>{onlyOpen ? "No open incidents." : "No incidents."}</Empty>
       ) : (
         <div className="grid gap-3">
-          {data.incidents.map((i) => (
+          {data.incidents.filter((i) => !onlyOpen || i.status !== "resolved").map((i) => (
             <Panel key={i.id}>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
