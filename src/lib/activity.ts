@@ -19,6 +19,7 @@
 //   neo:act:new:<day>    set     user ids who signed up that day TTL 400 d
 //   neo:act:acct:<day>   hash    "<account>|<metric>" -> amount  TTL 400 d
 //   neo:act:users        set     every user id seen (first sight = sign-up check)
+//   neo:act:listed       set     user ids that have a neo:act:u list (for retention purges)
 //   neo:act:since        string  epoch ms of the first event recorded
 //
 // Cost: one record() is 3–7 Redis commands, sent as one HTTP request
@@ -63,6 +64,7 @@ export const K = {
   newUsers: (day: string) => `neo:act:new:${day}`,
   accounts: (day: string) => `neo:act:acct:${day}`,
   users: "neo:act:users",
+  listed: "neo:act:listed",
   since: "neo:act:since",
 };
 
@@ -192,7 +194,7 @@ export async function record(type: string, opts: RecordOptions = {}): Promise<Ac
       const line = JSON.stringify(event);
       ops.push(kv.lpush(K.log(day), line), expireOnce(K.log(day), retentionS));
       if (userId) {
-        ops.push(kv.lpush(K.user(userId), line), kv.ltrim(K.user(userId), 0, USER_LIST_MAX - 1));
+        ops.push(kv.lpush(K.user(userId), line), kv.ltrim(K.user(userId), 0, USER_LIST_MAX - 1), kv.sadd(K.listed, userId));
         ops.push(expireOnce(K.user(userId), retentionS));
       }
     }
@@ -343,12 +345,68 @@ export async function listUserActivity(userId: string, opts: { limit?: number; b
   if (!userId) return [];
   const limit = Math.max(1, Math.min(opts.limit ?? 50, USER_LIST_MAX));
   const raw = ((await kv.lrange(K.user(userId), 0, USER_LIST_MAX - 1)) ?? []) as unknown[];
+  // Nothing older than raw-event retention, even if the list itself lives on.
+  const oldest = Date.now() - retentionDays() * DAY_MS;
   // By when it happened: a sign-up is written at sign-in but dated at sign-up.
   return raw
     .map(parse)
-    .filter((e): e is ActivityEvent => !!e && !(opts.before && e.ts >= opts.before))
+    .filter((e): e is ActivityEvent => !!e && e.ts >= oldest && !(opts.before && e.ts >= opts.before))
     .sort((a, b) => b.ts - a.ts)
     .slice(0, limit);
+}
+
+/**
+ * Account deletion: the person's own list, their first-sight mark, and every
+ * raw log line about them (as the user or the account charged) within
+ * retention. Counters and the per-day active / sign-up sets keep the bare id
+ * until their 400-day TTL — counts, not records of what anyone did.
+ */
+export async function forgetUserActivity(userId: string): Promise<{ removed: number }> {
+  if (!userId) return { removed: 0 };
+  let removed = 0;
+  const own = ((await kv.lrange(K.user(userId), 0, -1)) ?? []) as unknown[];
+  removed += own.length;
+  await Promise.all([kv.del(K.user(userId)), kv.srem(K.users, userId), kv.srem(K.listed, userId)]);
+  const now = Date.now();
+  for (const day of utcDaysBetween(now - retentionDays() * DAY_MS, now)) {
+    const lines = ((await kv.lrange(K.log(day), 0, -1)) ?? []) as unknown[];
+    // Lines were written with JSON.stringify(event); LREM needs that exact string back.
+    const mine = lines.map(parse).filter((e): e is ActivityEvent => !!e && (e.userId === userId || e.account === userId));
+    for (const e of mine) removed += Number(await kv.lrem(K.log(day), 0, JSON.stringify(e))) || 0;
+  }
+  return { removed };
+}
+
+/**
+ * Retention: delete raw day logs before `day` (YYYY-MM-DD, UTC), and trim
+ * everyone's own list to events on or after it. ACTIVITY_RETENTION_DAYS
+ * stays the ceiling (its TTL removes day logs anyway); this is for keeping
+ * less. Counters, active-user sets and cohorts are untouched.
+ */
+export async function purgeRawActivityBefore(day: string): Promise<{ days: number; userEntries: number }> {
+  const cutoff = Date.parse(day + "T00:00:00Z");
+  if (!Number.isFinite(cutoff)) throw new Error(`purgeRawActivityBefore: not a day: ${day}`);
+  const old = utcDaysBetween(cutoff - 400 * DAY_MS, cutoff - DAY_MS);
+  const deleted = await Promise.all(old.map((d) => kv.del(K.log(d))));
+  const users = ((await kv.smembers(K.listed)) ?? []) as unknown[];
+  let userEntries = 0;
+  for (let i = 0; i < users.length; i += 50) {
+    const trimmed = await Promise.all(
+      users.slice(i, i + 50).map(async (u) => {
+        const key = K.user(String(u));
+        const list = (((await kv.lrange(key, 0, -1)) ?? []) as unknown[]).map(parse);
+        const keep = list.filter((e) => e && e.ts >= cutoff).length;
+        if (keep === list.length) return 0;
+        // Newest first: what remains is the head. (A backdated sign-up sits at
+        // the end and goes first, which is the order retention wants anyway.)
+        if (keep === 0) await Promise.all([kv.del(key), kv.srem(K.listed, String(u))]);
+        else await kv.ltrim(key, 0, keep - 1);
+        return list.length - keep;
+      }),
+    );
+    userEntries += trimmed.reduce((a, b) => a + b, 0);
+  }
+  return { days: deleted.reduce((a: number, b) => a + (Number(b) || 0), 0), userEntries };
 }
 
 export interface ActivityQuery {
