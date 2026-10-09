@@ -1,11 +1,13 @@
 "use client";
 
 // Reader UI for the authz decision log written by src/lib/auditLog.ts.
-// Newest first, capped at MAX_ENTRIES on the server; this page requests
-// a chunk, renders it as a table, and filters client-side because the
-// data set is small (5 000 entries max on the server side).
+// Newest first, capped at 5 000 entries on the server; this tab requests
+// a chunk, and searches, sorts and pages it in the browser because the
+// data set is small.
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { errorText, fmtNumber, fmtTime, useAdmin } from "../AdminApi";
+import { FilterBar, Labeled, LoadState, Pager, SortTh, TableWrap, btn, field, useClientTable } from "../ui";
 
 interface AuditLogEntry {
   ts: number;
@@ -20,41 +22,34 @@ interface AuditLogEntry {
 const DEFAULT_LIMIT = 500;
 const LIMIT_OPTIONS = [100, 500, 1000, 5000];
 
-function formatTs(ms: number): string {
-  const d = new Date(ms);
-  return d.toISOString().replace("T", " ").replace("Z", "");
-}
-
 export default function AdminAuditLogClient() {
-  const [entries, setEntries] = useState<AuditLogEntry[]>([]);
+  const { adminFetch } = useAdmin();
+  const [entries, setEntries] = useState<AuditLogEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [limit, setLimit] = useState<number>(DEFAULT_LIMIT);
   const [filter, setFilter] = useState<string>("");
   const [deniedOnly, setDeniedOnly] = useState(false);
 
-  const load = async (n: number) => {
-    setLoading(true);
-    setErr(null);
-    try {
-      const r = await fetch(`/api/admin/audit-log?limit=${n}`, { cache: "no-store" });
-      const j = await r.json();
-      if (!r.ok || !j.ok) throw new Error((j as { error?: string })?.error || "load_failed");
-      setEntries(Array.isArray(j.entries) ? (j.entries as AuditLogEntry[]) : []);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "load_failed");
-    } finally {
+  const load = useCallback(
+    async (n: number) => {
+      setLoading(true);
+      setErr(null);
+      const r = await adminFetch<{ ok?: boolean; entries?: AuditLogEntry[] }>(`/api/admin/audit-log?limit=${n}`);
       setLoading(false);
-    }
-  };
+      if (r.ok && r.data.ok) setEntries(Array.isArray(r.data.entries) ? r.data.entries : []);
+      else setErr(`Could not load the permission decisions: ${errorText(r)}`);
+    },
+    [adminFetch],
+  );
 
   useEffect(() => {
     load(DEFAULT_LIMIT);
-  }, []);
+  }, [load]);
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    return entries.filter((e) => {
+    return (entries ?? []).filter((e) => {
       if (deniedOnly && e.allowed) return false;
       if (!q) return true;
       return (
@@ -67,18 +62,23 @@ export default function AdminAuditLogClient() {
     });
   }, [entries, filter, deniedOnly]);
 
+  const t = useClientTable(
+    filtered,
+    (e, k) => (k === "ts" ? e.ts : k === "allowed" ? (e.allowed ? 1 : 0) : k === "permission" ? e.permission : k === "role" ? e.role : k === "user" ? e.userId : (e.eventId ?? null)),
+    { key: "ts", dir: "desc", pageSize: 50 },
+  );
+  const { setPage } = t;
+  useEffect(() => setPage(1), [filter, deniedOnly, entries, setPage]);
+
   return (
-    <main className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-lg font-semibold text-zinc-100">Authorization audit log</h1>
-          <p className="text-xs text-zinc-500 mt-1">
-            Every allow / deny decision from the authz gate. Newest first. Bounded at 5 000 entries on the server.
-          </p>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-zinc-100">Authorization decisions</h2>
+          <p className="mt-1 text-xs text-zinc-400">Every allow / deny decision from the meeting permission gate. Newest first. The server keeps the latest 5 000.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-zinc-400 flex items-center gap-1">
-            Limit
+        <div className="flex flex-wrap items-end gap-2">
+          <Labeled label="Read the latest">
             <select
               value={limit}
               onChange={(e) => {
@@ -86,108 +86,90 @@ export default function AdminAuditLogClient() {
                 setLimit(n);
                 load(n);
               }}
-              className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-100"
+              className={`${field} w-auto`}
             >
               {LIMIT_OPTIONS.map((n) => (
                 <option key={n} value={n}>
-                  {n}
+                  {fmtNumber(n)}
                 </option>
               ))}
             </select>
-          </label>
-          <button
-            onClick={() => load(limit)}
-            disabled={loading}
-            className="px-3 py-1 rounded border border-cyan-400/40 text-cyan-100 text-xs hover:bg-cyan-400/10 transition disabled:opacity-60"
-          >
+          </Labeled>
+          <button type="button" onClick={() => load(limit)} disabled={loading} aria-busy={loading} className={btn.ghost}>
             {loading ? "Refreshing…" : "Refresh"}
           </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Search permission, user, role, event, reason…"
-          className="flex-1 min-w-[240px] bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-xs text-zinc-100 focus:border-cyan-400/60 focus:outline-none"
-        />
-        <label className="text-xs text-zinc-400 flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={deniedOnly}
-            onChange={(e) => setDeniedOnly(e.target.checked)}
-            className="accent-rose-400"
-          />
+      <FilterBar
+        active={!!filter || deniedOnly}
+        onClear={() => {
+          setFilter("");
+          setDeniedOnly(false);
+        }}
+      >
+        <Labeled label="Search" className="min-w-[14rem] flex-1">
+          <input type="search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Permission, user, role, event, reason…" className={field} />
+        </Labeled>
+        <label className="flex items-center gap-2 pb-2 text-xs text-zinc-400">
+          <input type="checkbox" checked={deniedOnly} onChange={(e) => setDeniedOnly(e.target.checked)} className="accent-rose-400" />
           Denied only
         </label>
-        <div className="text-xs text-zinc-500">
-          {filtered.length} shown / {entries.length} loaded
-        </div>
-      </div>
+        {entries && (
+          <span className="pb-2 text-xs text-zinc-400">
+            {fmtNumber(filtered.length)} shown of {fmtNumber(entries.length)} read
+          </span>
+        )}
+      </FilterBar>
 
-      {err && (
-        <div className="rounded border border-rose-500/40 bg-rose-500/10 text-rose-200 px-3 py-2 text-xs">
-          {err}
-        </div>
-      )}
-
-      <div className="overflow-auto border border-zinc-800 rounded-lg">
-        <table className="w-full text-xs">
-          <thead className="bg-zinc-950/60 text-zinc-400">
-            <tr>
-              <th className="text-left px-3 py-2 font-medium">Time (UTC)</th>
-              <th className="text-left px-3 py-2 font-medium">Verdict</th>
-              <th className="text-left px-3 py-2 font-medium">Permission</th>
-              <th className="text-left px-3 py-2 font-medium">User</th>
-              <th className="text-left px-3 py-2 font-medium">Role</th>
-              <th className="text-left px-3 py-2 font-medium">Event</th>
-              <th className="text-left px-3 py-2 font-medium">Via</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((e, i) => (
-              <tr key={`${e.ts}-${i}`} className="border-t border-zinc-800/60">
-                <td className="px-3 py-2 whitespace-nowrap text-zinc-400 font-mono">
-                  {formatTs(e.ts)}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap">
-                  <span
-                    className={
-                      "inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide " +
-                      (e.allowed
-                        ? "bg-emerald-500/15 text-emerald-300 border border-emerald-400/30"
-                        : "bg-rose-500/15 text-rose-300 border border-rose-400/30")
-                    }
-                  >
-                    {e.allowed ? "allow" : "deny"}
-                  </span>
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap text-cyan-200 font-mono">
-                  {e.permission}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap text-zinc-200 font-mono">
-                  {e.userId || <span className="text-zinc-600">anonymous</span>}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap text-zinc-300">
-                  {e.role}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap text-zinc-400 font-mono">
-                  {e.eventId || <span className="text-zinc-600">—</span>}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap text-zinc-500">{e.reason}</td>
-              </tr>
-            ))}
-            {filtered.length === 0 && !loading && (
-              <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-zinc-500 text-xs">
-                  {entries.length === 0 ? "No entries yet." : "No entries match the current filter."}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </main>
+      <LoadState
+        data={entries}
+        error={err}
+        onRetry={() => load(limit)}
+        isEmpty={() => filtered.length === 0}
+        empty={entries && entries.length === 0 ? "No decisions recorded yet." : "No decisions match the search."}
+      >
+        {() => (
+          <>
+            <TableWrap minWidth={820}>
+              <thead className="border-b border-white/10 text-xs text-zinc-400">
+                <tr>
+                  <SortTh label="Time" k="ts" sort={t.sort} onSort={t.onSort} />
+                  <SortTh label="Verdict" k="allowed" sort={t.sort} onSort={t.onSort} />
+                  <SortTh label="Permission" k="permission" sort={t.sort} onSort={t.onSort} />
+                  <SortTh label="User" k="user" sort={t.sort} onSort={t.onSort} />
+                  <SortTh label="Role" k="role" sort={t.sort} onSort={t.onSort} />
+                  <SortTh label="Event" k="event" sort={t.sort} onSort={t.onSort} />
+                  <th className="px-3 py-2 font-medium">Via</th>
+                </tr>
+              </thead>
+              <tbody className="text-xs">
+                {t.visible.map((e, i) => (
+                  <tr key={`${e.ts}-${i}`} className="border-t border-white/5">
+                    <td className="whitespace-nowrap px-3 py-2 text-zinc-400">{fmtTime(e.ts)}</td>
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <span
+                        className={
+                          "inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide " +
+                          (e.allowed ? "border border-emerald-400/30 bg-emerald-500/15 text-emerald-300" : "border border-rose-400/30 bg-rose-500/15 text-rose-300")
+                        }
+                      >
+                        {e.allowed ? "allow" : "deny"}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-cyan-200">{e.permission}</td>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-zinc-200">{e.userId || <span className="text-zinc-400">anonymous</span>}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-zinc-300">{e.role}</td>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-zinc-400">{e.eventId || <span className="text-zinc-400">—</span>}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-zinc-400">{e.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableWrap>
+            <Pager page={t.page} pageSize={t.pageSize} total={t.total} noun="decision" onPage={t.setPage} onPageSize={t.setPageSize} sizes={[50, 100, 250]} />
+          </>
+        )}
+      </LoadState>
+    </div>
   );
 }

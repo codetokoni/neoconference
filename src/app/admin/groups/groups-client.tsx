@@ -2,13 +2,14 @@
 
 // Groups: every group on the platform with its owner and size. A group
 // opens to its members, invitations and history, where ownership can be
-// transferred and members removed.
+// transferred and members removed. The search and page live in the address
+// bar (?q=, ?page=, ?pageSize=): the admin search's "all matching groups"
+// links here.
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { fmtTime, useAdmin } from "../AdminApi";
-import { Empty, Loading, Notice, PageHeader, Panel, btn, field } from "../ui";
+import { Time, errorText, fmtNumber, fmtTime, useAdmin } from "../AdminApi";
+import { Empty, FilterBar, Labeled, Loading, Notice, PageHeader, Pager, TableWrap, btn, field, useUrlFilters } from "../ui";
 
 type GroupRow = {
   id: string;
@@ -22,55 +23,63 @@ type GroupRow = {
   pendingCount: number;
 };
 
+const SIZES = [25, 50, 100];
+
 export default function GroupsClient() {
   const { can, adminFetch } = useAdmin();
+  const f = useUrlFilters({ q: "", page: "1", pageSize: "25" });
+  const page = Math.max(1, Number(f.value.page) || 1);
+  const pageSize = SIZES.includes(Number(f.value.pageSize)) ? Number(f.value.pageSize) : 25;
+  const query = f.value.q.trim();
+  const [draft, setDraft] = useState(f.value.q);
   const [items, setItems] = useState<GroupRow[] | null>(null);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  // ?q= opens the list searched (the admin search's "all matching groups" links here).
-  const sp = useSearchParams();
-  const [q, setQ] = useState(sp?.get("q") ?? "");
-  const [query, setQuery] = useState(sp?.get("q") ?? "");
+  const [error, setError] = useState<string | null>(null);
   const [backfilledAt, setBackfilledAt] = useState<number | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-  const pageSize = 25;
+  const [rebuilding, setRebuilding] = useState(false);
+
+  // A link from the admin search while this page is open changes ?q= without remounting.
+  useEffect(() => setDraft(f.value.q), [f.value.q]);
 
   const load = useCallback(async () => {
     setItems(null);
+    setError(null);
     const r = await adminFetch<{ items: GroupRow[]; total: number; backfilledAt: number | null }>(
       `/api/admin/groups?q=${encodeURIComponent(query)}&page=${page}&pageSize=${pageSize}`,
     );
-    if (!r.ok) {
-      setMsg({ kind: "err", text: r.data.message ?? `HTTP ${r.status}` });
-      setItems([]);
-      return;
-    }
+    if (!r.ok) return setError(errorText(r));
     setItems(r.data.items);
     setTotal(r.data.total);
     setBackfilledAt(r.data.backfilledAt);
-  }, [adminFetch, query, page]);
+  }, [adminFetch, query, page, pageSize]);
   useEffect(() => {
     load();
   }, [load]);
 
   const rebuild = async () => {
     setMsg(null);
+    setRebuilding(true);
     const r = await adminFetch<{ scannedUsers: number; added: number; found: number }>("/api/admin/groups", { method: "POST", json: { action: "backfill" } });
+    setRebuilding(false);
     if (!r.ok) return setMsg({ kind: "err", text: r.data.message ?? "Could not rebuild the list." });
-    setMsg({ kind: "ok", text: `Checked ${r.data.scannedUsers} members' group lists: ${r.data.added} group${r.data.added === 1 ? "" : "s"} added, ${r.data.found} in all.` });
+    setMsg({ kind: "ok", text: `Checked ${fmtNumber(r.data.scannedUsers)} members' group lists: ${fmtNumber(r.data.added)} group${r.data.added === 1 ? "" : "s"} added, ${fmtNumber(r.data.found)} in all.` });
     load();
   };
-  const pages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <div>
       <PageHeader
         title="Groups"
-        sub={`${total} group${total === 1 ? "" : "s"}. ${backfilledAt ? `List last rebuilt from members' group lists ${fmtTime(backfilledAt)}.` : ""}`}
+        sub={
+          items
+            ? `${fmtNumber(total)} group${total === 1 ? "" : "s"}${query ? ` match “${query}”` : ""}, newest first.${backfilledAt ? ` List last rebuilt from members' group lists ${fmtTime(backfilledAt)}.` : ""}`
+            : "Every group on NeoConference, newest first."
+        }
         actions={
           can("users:write") ? (
-            <button type="button" className={btn.ghost} onClick={rebuild} title="Find groups created before this list existed">
-              Rebuild list
+            <button type="button" className={btn.ghost} onClick={rebuild} disabled={rebuilding} title="Find groups created before this list existed">
+              {rebuilding ? "Rebuilding…" : "Rebuild list"}
             </button>
           ) : null
         }
@@ -81,26 +90,38 @@ export default function GroupsClient() {
         </Notice>
       )}
       <form
-        className="mb-4 flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          setPage(1);
-          setQuery(q.trim());
+          f.set({ q: draft.trim(), page: "1" });
         }}
       >
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search group name, id, or owner" aria-label="Search groups" className={field} />
-        <button type="submit" className={btn.primary}>
-          Search
-        </button>
+        <FilterBar
+          active={f.value.q !== ""}
+          onClear={() => {
+            setDraft("");
+            f.set({ q: "", page: "1" });
+          }}
+        >
+          <Labeled label="Search" className="min-w-0 flex-1 basis-60">
+            <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Group name, id, or owner" className={field} />
+          </Labeled>
+          <button type="submit" className={btn.primary}>
+            Search
+          </button>
+        </FilterBar>
       </form>
-      {!items ? (
+      {error ? (
+        <Notice kind="err" onRetry={load}>
+          {error}
+        </Notice>
+      ) : !items ? (
         <Loading />
       ) : items.length === 0 ? (
-        <Empty>No groups.</Empty>
+        <Empty>{query ? `No groups match “${query}”.` : "No groups yet."}</Empty>
       ) : (
-        <Panel className="overflow-x-auto p-0">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="border-b border-white/10 text-xs text-zinc-500">
+        <>
+          <TableWrap minWidth={640}>
+            <thead className="border-b border-white/10 text-xs text-zinc-400">
               <tr>
                 <th className="px-3 py-2 font-medium">Group</th>
                 <th className="px-3 py-2 font-medium">Owner</th>
@@ -115,7 +136,7 @@ export default function GroupsClient() {
                     <Link href={`/admin/groups/${encodeURIComponent(gr.id)}`} className="font-medium text-cyan-200 hover:underline">
                       {gr.name}
                     </Link>
-                    {gr.description && <span className="block max-w-xs truncate text-xs text-zinc-500">{gr.description}</span>}
+                    {gr.description && <span className="block max-w-xs truncate text-xs text-zinc-400">{gr.description}</span>}
                   </td>
                   <td className="px-3 py-2">
                     {gr.ownerId ? (
@@ -127,28 +148,28 @@ export default function GroupsClient() {
                     )}
                   </td>
                   <td className="px-3 py-2 text-zinc-300">
-                    {gr.memberCount}
-                    {gr.pendingCount ? <span className="text-xs text-zinc-500"> + {gr.pendingCount} invited</span> : null}
+                    <Link href={`/admin/groups/${encodeURIComponent(gr.id)}#members`} className="hover:underline" aria-label={`${gr.memberCount} members of ${gr.name}`}>
+                      {fmtNumber(gr.memberCount)}
+                    </Link>
+                    {gr.pendingCount ? <span className="text-xs text-zinc-400"> + {fmtNumber(gr.pendingCount)} invited</span> : null}
                   </td>
-                  <td className="px-3 py-2 text-xs text-zinc-400">{gr.createdAt ? new Date(gr.createdAt).toLocaleDateString() : "—"}</td>
+                  <td className="px-3 py-2 text-xs text-zinc-400">
+                    <Time ts={gr.createdAt} mode="date" />
+                  </td>
                 </tr>
               ))}
             </tbody>
-          </table>
-        </Panel>
-      )}
-      {total > pageSize && (
-        <nav aria-label="Pages" className="mt-3 flex items-center justify-end gap-2 text-sm text-zinc-400">
-          <span>
-            Page {page} of {pages}
-          </span>
-          <button type="button" className={btn.ghost} disabled={page <= 1} onClick={() => setPage(page - 1)}>
-            Previous
-          </button>
-          <button type="button" className={btn.ghost} disabled={page >= pages} onClick={() => setPage(page + 1)}>
-            Next
-          </button>
-        </nav>
+          </TableWrap>
+          <Pager
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            sizes={SIZES}
+            noun="group"
+            onPage={(p) => f.set({ page: String(p) })}
+            onPageSize={(n) => f.set({ pageSize: String(n), page: "1" })}
+          />
+        </>
       )}
     </div>
   );

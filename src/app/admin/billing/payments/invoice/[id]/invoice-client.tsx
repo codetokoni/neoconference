@@ -4,10 +4,9 @@
 // the refunds made since. Print it, or download the PDF.
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useAdmin } from "../../../../AdminApi";
+import { useCallback, useEffect, useState } from "react";
+import { fmtMoney, useAdmin } from "../../../../AdminApi";
 import { Loading, Notice, btn } from "../../../../ui";
-import { fmtMoney } from "@/lib/finance/money";
 import { day, type RefundRow } from "../../../shared";
 
 type Invoice = {
@@ -29,18 +28,36 @@ type Invoice = {
 };
 
 export default function InvoiceClient({ id }: { id: string }) {
-  const { adminFetch } = useAdmin();
+  const { adminFetch, adminDownload } = useAdmin();
   const [data, setData] = useState<{ invoice: Invoice; refunds: RefundRow[]; issued: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
-  useEffect(() => {
-    adminFetch<{ invoice: Invoice; refunds: RefundRow[]; issued: boolean }>(`/api/admin/billing/payments/${encodeURIComponent(id)}/invoice`).then((r) => {
-      if (r.ok) setData(r.data);
-      else setError(r.data.message ?? "Could not open the invoice.");
-    });
+  const load = useCallback(async () => {
+    setError(null);
+    const r = await adminFetch<{ invoice: Invoice; refunds: RefundRow[]; issued: boolean }>(`/api/admin/billing/payments/${encodeURIComponent(id)}/invoice`);
+    if (r.ok) setData(r.data);
+    else setError(r.data.message ?? "Could not open the invoice.");
   }, [adminFetch, id]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  if (error) return <Notice kind="err">{error}</Notice>;
+  const downloadPdf = async () => {
+    setPdfBusy(true);
+    setPdfError(null);
+    const r = await adminDownload(`/api/admin/billing/payments/${encodeURIComponent(id)}/invoice?format=pdf`);
+    setPdfBusy(false);
+    if (!r.ok && r.data.error !== "cancelled") setPdfError(r.data.message ?? "The PDF could not be downloaded.");
+  };
+
+  if (error)
+    return (
+      <Notice kind="err" onRetry={load}>
+        {error}
+      </Notice>
+    );
   if (!data) return <Loading />;
   const { invoice: inv, refunds } = data;
   const m = (v: number) => fmtMoney(v, inv.currency);
@@ -56,13 +73,20 @@ export default function InvoiceClient({ id }: { id: string }) {
           <button type="button" className={btn.ghost} onClick={() => window.print()}>
             Print
           </button>
-          <a className={btn.primary} href={`/api/admin/billing/payments/${encodeURIComponent(id)}/invoice?format=pdf`}>
-            Download PDF
-          </a>
+          <button type="button" className={btn.primary} disabled={pdfBusy} onClick={downloadPdf}>
+            {pdfBusy ? "Preparing PDF…" : "Download PDF"}
+          </button>
         </div>
       </div>
+      {pdfError && (
+        <div className="print:hidden">
+          <Notice kind="err" onClose={() => setPdfError(null)}>
+            {pdfError}
+          </Notice>
+        </div>
+      )}
       {data.issued && (
-        <p className="mb-3 text-xs text-zinc-500 print:hidden">Issued just now as {inv.number}. It will not change if the invoice details in Billing settings change later.</p>
+        <p className="mb-3 text-xs text-zinc-400 print:hidden">Issued just now as {inv.number}. It will not change if the invoice details in Billing settings change later.</p>
       )}
       <article className="mx-auto max-w-2xl rounded-xl bg-white p-8 text-[13px] text-zinc-900 shadow-xl print:shadow-none">
         <header className="flex flex-wrap justify-between gap-4">
@@ -73,7 +97,7 @@ export default function InvoiceClient({ id }: { id: string }) {
             {inv.seller.email && <p className="text-zinc-600">{inv.seller.email}</p>}
           </div>
           <div className="text-right">
-            <p className="text-lg font-bold">{inv.balanceDue > 0 ? "INVOICE" : "INVOICE / RECEIPT"}</p>
+            <h1 className="text-lg font-bold">{inv.balanceDue > 0 ? "INVOICE" : "INVOICE / RECEIPT"}</h1>
             <p>
               No. <b>{inv.number}</b>
             </p>
@@ -82,14 +106,14 @@ export default function InvoiceClient({ id }: { id: string }) {
           </div>
         </header>
         <section className="mt-6">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Bill to</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-600">Bill to</p>
           <p>{inv.buyer.name ?? inv.buyer.email ?? inv.buyer.userId ?? "Guest buyer"}</p>
           {inv.buyer.name && inv.buyer.email && <p>{inv.buyer.email}</p>}
           {inv.buyer.country && <p>{inv.buyer.country}</p>}
         </section>
         <table className="mt-6 w-full">
           <thead>
-            <tr className="border-b border-zinc-300 text-left text-[11px] uppercase tracking-wider text-zinc-500">
+            <tr className="border-b border-zinc-300 text-left text-[11px] uppercase tracking-wider text-zinc-600">
               <th className="py-1.5 font-semibold">Description</th>
               <th className="py-1.5 text-right font-semibold">Amount ({inv.currency})</th>
             </tr>
@@ -99,7 +123,7 @@ export default function InvoiceClient({ id }: { id: string }) {
               <tr key={i} className="border-b border-zinc-100">
                 <td className="py-2">
                   {l.description}
-                  {l.period && <div className="text-xs text-zinc-500">Period {l.period}</div>}
+                  {l.period && <div className="text-xs text-zinc-600">Period {l.period}</div>}
                 </td>
                 <td className="py-2 text-right tabular-nums">{m(l.amount)}</td>
               </tr>
@@ -140,11 +164,11 @@ export default function InvoiceClient({ id }: { id: string }) {
             </>
           )}
         </dl>
-        <p className="mt-6 text-xs text-zinc-500">
+        <p className="mt-6 text-xs text-zinc-600">
           Payment reference {inv.ref} · paid with {inv.provider === "stripe" ? "card (Stripe)" : inv.provider === "manual" ? "a direct arrangement" : "Espees"} · all amounts in {inv.currency}
           {inv.currency === "ESP" ? " (Espees)" : ""}.
         </p>
-        {inv.seller.footer && <p className="mt-4 whitespace-pre-line border-t border-zinc-200 pt-3 text-xs text-zinc-500">{inv.seller.footer}</p>}
+        {inv.seller.footer && <p className="mt-4 whitespace-pre-line border-t border-zinc-200 pt-3 text-xs text-zinc-600">{inv.seller.footer}</p>}
       </article>
       {inv.balanceDue > 0 && (
         <p className="mx-auto mt-3 max-w-2xl text-xs text-amber-200/90 print:hidden">

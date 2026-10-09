@@ -381,3 +381,25 @@ body.neo-room-idle .lk-control-bar {
     padding-bottom: max(8px, env(safe-area-inset-bottom)) !important;
   }
 }
+
+/* Admin area: every link, button and tab shows where keyboard focus is,
+   including the hand-styled ones (inputs use the ring in admin ui.tsx). */
+.admin-root :is(a, button, summary, [role="tab"], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 2px;
+}
+
+/* Admin area: a sideways-scrolling box is the containing block of what's
+   inside it, so screen-reader-only text (position:absolute) in a wide table
+   stays in the box instead of widening the page on a phone. */
+.admin-root :is(.overflow-x-auto, .overflow-auto, .overflow-x-scroll) {
+  position: relative;
+}
+
+/* Admin area: a link inside a sentence is underlined, so it is told apart
+   from the text around it by more than colour. */
+.admin-root :is(p, li) a:is(.text-cyan-200, .text-cyan-300, .text-cyan-400) {
+  text-decoration-line: underline;
+  text-decoration-color: rgba(103, 232, 249, 0.45);
+  text-underline-offset: 2px;
+}

@@ -8,10 +8,10 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { AdminPermission } from "@/lib/admin/catalog";
 import type { PublicAdminContext } from "@/lib/admin/context";
-import { AdminProvider, useAdmin, type AdminClock } from "./AdminApi";
+import { AdminProvider, errorText, fmtTime, useAdmin, type AdminClock } from "./AdminApi";
 import GlobalSearch from "./GlobalSearch";
 
 type Section = { label: string; href: string; permission: AdminPermission | null; group: string };
@@ -22,8 +22,8 @@ export const SECTIONS: Section[] = [
   { label: "Groups", href: "/admin/groups", permission: "users:read", group: "Platform" },
   { label: "Meetings", href: "/admin/events", permission: "events:read", group: "Platform" },
   { label: "Content", href: "/admin/content", permission: "content:read", group: "Platform" },
-  { label: "Analytics", href: "/admin/analytics", permission: "analytics:read", group: "Platform" },
-  { label: "Logs", href: "/admin/logs", permission: "analytics:read", group: "Platform" },
+  { label: "Analytics", href: "/admin/analytics", permission: "analytics:read", group: "Insights" },
+  { label: "Logs", href: "/admin/logs", permission: "analytics:read", group: "Insights" },
   { label: "Data", href: "/admin/data", permission: "users:read", group: "Platform" },
   { label: "Plans & pricing", href: "/admin/plans", permission: "plans:read", group: "Billing" },
   { label: "Subscriptions", href: "/admin/subscriptions", permission: "plans:read", group: "Billing" },
@@ -63,16 +63,22 @@ export default function AdminShell({ me, clock, children }: { me: PublicAdminCon
     )
     .sort((a, b) => b.href.length - a.href.length)[0]?.href;
   const isActive = (href: string) => href === current;
-
-  const lock = async () => {
-    await fetch("/api/admin/mfa/lock", { method: "POST" }).catch(() => undefined);
-    window.location.href = "/admin";
-  };
+  const nav = useRef<HTMLElement>(null);
+  // On a phone the sections are one sideways strip: keep the current one in view.
+  useEffect(() => {
+    nav.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [current]);
 
   return (
     <AdminProvider me={me} clock={clock}>
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:gap-6">
-        <aside className="lg:w-56 lg:shrink-0">
+      <a
+        href="#admin-main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[120] focus:rounded-lg focus:bg-cyan-500 focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-black"
+      >
+        Skip to content
+      </a>
+      <div className="admin-root mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:gap-6">
+        <aside aria-label="Admin menu" className="lg:w-56 lg:shrink-0">
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
             <div className="flex items-center justify-between gap-2 lg:block">
               <div className="min-w-0">
@@ -85,15 +91,15 @@ export default function AdminShell({ me, clock, children }: { me: PublicAdminCon
                   </span>
                 </p>
               </div>
-              <button type="button" onClick={lock} title="End the admin session now. You stay signed in to NeoConference." className="rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-white/5 lg:mt-3 lg:w-full">
+              <button type="button" onClick={lockAdmin} title="End the admin session now. You stay signed in to NeoConference." className="rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-white/5 lg:mt-3 lg:w-full">
                 Lock admin
               </button>
             </div>
           </div>
-          <nav aria-label="Admin sections" className="mt-3 flex gap-1 overflow-x-auto pb-1 lg:block lg:overflow-visible">
+          <nav ref={nav} aria-label="Admin sections" className="mt-3 flex gap-1 overflow-x-auto pb-1 lg:block lg:overflow-visible">
             {groups.map((g) => (
               <div key={g} className="flex gap-1 lg:mb-3 lg:block">
-                <p className="hidden px-3 pb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-500 lg:block">{g}</p>
+                <p className="hidden px-3 pb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-400 lg:block">{g}</p>
                 {visible
                   .filter((s) => s.group === g)
                   .map((s) => (
@@ -112,11 +118,11 @@ export default function AdminShell({ me, clock, children }: { me: PublicAdminCon
               </div>
             ))}
           </nav>
-          <p className="mt-2 hidden px-3 text-[11px] text-zinc-500 lg:block" data-admin-clock>
+          <p className="mt-1 px-3 text-[11px] text-zinc-400 lg:mt-2" data-admin-clock>
             Times shown in {!clock || clock.timeZone === "local" ? "your local time zone" : clock.timeZone}
           </p>
         </aside>
-        <div className="min-w-0 flex-1">
+        <div id="admin-main" tabIndex={-1} className="min-w-0 flex-1 outline-none">
           <GlobalSearch />
           <SupportBanner pathname={pathname} />
           {children}
@@ -134,10 +140,13 @@ export const SUPPORT_CHANGED = "neo-admin-support-changed";
 /**
  * While the administrator has a support session open on someone's account,
  * every admin page says so, with a way back to that account and a way to
- * end it. Checked on each page change and every minute.
+ * end it. Checked on each page change and every minute — with a plain
+ * fetch, so a background check never pops up a code prompt by itself.
  */
 function SupportBanner({ pathname }: { pathname: string }) {
+  const { adminFetch } = useAdmin();
   const [s, setS] = useState<OpenSupport | null>(null);
+  const [endError, setEndError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const check = useCallback(async () => {
     try {
@@ -164,7 +173,12 @@ function SupportBanner({ pathname }: { pathname: string }) {
   }, [check]);
   if (!s || s.expiresAt <= now) return null;
   const end = async () => {
-    await fetch(`/api/admin/users/${encodeURIComponent(s.userId)}/support`, { method: "DELETE" }).catch(() => undefined);
+    setEndError(null);
+    const r = await adminFetch(`/api/admin/users/${encodeURIComponent(s.userId)}/support`, { method: "DELETE" });
+    if (!r.ok) {
+      setEndError(errorText(r));
+      return;
+    }
     setS(null);
     if (pathname.startsWith(`/admin/users/${s.userId}`)) window.location.reload();
   };
@@ -176,13 +190,28 @@ function SupportBanner({ pathname }: { pathname: string }) {
         <Link href={`/admin/users/${encodeURIComponent(s.userId)}`} className="underline">
           {s.userName || s.userEmail}
         </Link>{" "}
-        — {mins} min left. Everything you open on that account is recorded.
+        — ends {fmtTime(s.expiresAt)} ({mins} min left). Everything you open on that account is recorded.
+        {endError && (
+          <span role="alert" className="mt-1 block text-red-200">
+            Could not end it: {endError}
+          </span>
+        )}
       </span>
       <button type="button" onClick={end} className="rounded-lg border border-amber-300/40 px-2.5 py-1 text-xs hover:bg-amber-300/10">
         End session
       </button>
     </div>
   );
+}
+
+/**
+ * Ends the admin session (not the NeoConference sign-in) and goes back to
+ * /admin, which asks for a code again. A plain fetch on purpose: locking must
+ * never itself ask for a code.
+ */
+export async function lockAdmin() {
+  await fetch("/api/admin/mfa/lock", { method: "POST" }).catch(() => undefined);
+  window.location.href = "/admin";
 }
 
 /** Shown by a page whose permission the role lacks (the API refuses too). */
@@ -199,7 +228,7 @@ export function GoToFirstSection() {
     router.replace(target.href);
   }, [router, target.href]);
   return (
-    <p className="px-1 py-6 text-sm text-zinc-500">
+    <p className="px-1 py-6 text-sm text-zinc-400">
       Opening <Link href={target.href} className="text-cyan-300 underline">{target.label}</Link>…
     </p>
   );

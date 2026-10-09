@@ -2,9 +2,11 @@
 
 // src/app/admin/ops/opsUi.tsx — pieces the Operations pages share: status
 // badges (colour + icon + word, never colour alone), sizes and durations,
-// and the 24-hour health history chart.
+// and the 24-hour health history chart. Times use the shared admin
+// formatters (<Time mode="relative"> rather than a local "ago").
 
 import { useState } from "react";
+import { fmtNumber, fmtTime } from "../AdminApi";
 import { Badge } from "../ui";
 
 export type ProbeStatus = "up" | "degraded" | "down" | "not_configured";
@@ -38,6 +40,10 @@ const STATUS: Record<string, { tone: "green" | "amber" | "red" | "zinc" | "cyan"
   cancelled: { tone: "zinc", icon: "✕", label: "Cancelled" },
 };
 
+export function statusLabel(status: string): string {
+  return STATUS[status]?.label ?? status;
+}
+
 export function StatusBadge({ status }: { status: string }) {
   const s = STATUS[status] ?? { tone: "zinc" as const, icon: "○", label: status };
   return (
@@ -52,26 +58,17 @@ export function StatusBadge({ status }: { status: string }) {
 
 export function fmtBytes(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
-  if (n >= 1e9) return `${(n / 1e9).toFixed(2)} GB`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1)} MB`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(0)} kB`;
+  if (n >= 1e9) return `${fmtNumber(n / 1e9, { maximumFractionDigits: 2, minimumFractionDigits: 2 })} GB`;
+  if (n >= 1e6) return `${fmtNumber(n / 1e6, { maximumFractionDigits: 1, minimumFractionDigits: 1 })} MB`;
+  if (n >= 1e3) return `${fmtNumber(n / 1e3, { maximumFractionDigits: 0 })} kB`;
   return `${n} B`;
 }
 
 export function fmtMs(ms: number | null | undefined): string {
   if (ms == null) return "—";
   if (ms < 1000) return `${ms} ms`;
-  if (ms < 120_000) return `${(ms / 1000).toFixed(1)} s`;
+  if (ms < 120_000) return `${fmtNumber(ms / 1000, { maximumFractionDigits: 1, minimumFractionDigits: 1 })} s`;
   return `${Math.round(ms / 60_000)} min`;
-}
-
-export function ago(ts: number | null | undefined): string {
-  if (!ts) return "never";
-  const s = Math.round((Date.now() - ts) / 1000);
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.round(s / 60)} min ago`;
-  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
-  return `${Math.round(s / 86400)} d ago`;
 }
 
 export type HealthPoint = { t: number; s: ProbeStatus; l: number | null };
@@ -81,15 +78,16 @@ const FILL: Record<ProbeStatus, string> = { up: "#34d399", degraded: "#fbbf24", 
 
 /**
  * The last 24 hours of one service: a status strip (one cell per check) and
- * its latency as a 2px line beneath. Hover shows the check's time, status
- * and latency.
+ * its latency as a 2px line beneath. Pointer, touch, or the arrow keys once
+ * the chart has focus, show one check's time, status and latency; the label
+ * sums the day up and "Show data" lists every check as a table.
  */
 export function HealthHistory({ points, label }: { points: HealthPoint[]; label: string }) {
   const [hover, setHover] = useState<number | null>(null);
   const pts = [...points].reverse(); // oldest first
   const W = 288;
   const H = 40;
-  if (!pts.length) return <p className="text-xs text-zinc-500">No history yet — it fills in every 5 minutes.</p>;
+  if (!pts.length) return <p className="text-xs text-zinc-400">No history yet — it fills in every 5 minutes.</p>;
   const n = pts.length;
   const cw = W / Math.max(n, 1);
   const lat = pts.map((p) => p.l ?? 0);
@@ -97,19 +95,38 @@ export function HealthHistory({ points, label }: { points: HealthPoint[]; label:
   const y = (v: number) => 14 + (H - 16) * (1 - v / max);
   const line = pts.map((p, i) => `${i ? "L" : "M"}${(i + 0.5) * cw},${y(p.l ?? 0)}`).join(" ");
   const h = hover != null ? pts[hover] : null;
+  const tally = (s: ProbeStatus) => pts.filter((p) => p.s === s).length;
+  const latest = pts[n - 1];
+  const summary =
+    `${label}: last ${n} checks — ${tally("up")} up, ${tally("degraded")} degraded, ${tally("down")} down` +
+    `${tally("not_configured") ? `, ${tally("not_configured")} not configured` : ""}; latest ${statusLabel(latest.s)} at ${fmtTime(latest.t)}. ` +
+    "Use the arrow keys to read each check.";
+  const pick = (clientX: number, el: SVGSVGElement) => {
+    const r = el.getBoundingClientRect();
+    const i = Math.floor(((clientX - r.left) / r.width) * n);
+    setHover(Math.max(0, Math.min(n - 1, i)));
+  };
   return (
     <div className="relative">
       <svg
         role="img"
-        aria-label={`${label}: last ${n} checks`}
+        aria-label={summary}
+        tabIndex={0}
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
-        className="h-12 w-full"
-        onMouseLeave={() => setHover(null)}
-        onMouseMove={(e) => {
-          const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
-          const i = Math.floor(((e.clientX - r.left) / r.width) * n);
-          setHover(Math.max(0, Math.min(n - 1, i)));
+        className="h-12 w-full touch-pan-y rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400"
+        onPointerLeave={(e) => {
+          if (e.pointerType === "mouse") setHover(null);
+        }}
+        onPointerMove={(e) => pick(e.clientX, e.currentTarget)}
+        onPointerDown={(e) => pick(e.clientX, e.currentTarget)}
+        onBlur={() => setHover(null)}
+        onKeyDown={(e) => {
+          const cur = hover ?? n;
+          const next = e.key === "ArrowLeft" ? cur - 1 : e.key === "ArrowRight" ? cur + 1 : e.key === "Home" ? 0 : e.key === "End" ? n - 1 : null;
+          if (next == null) return;
+          e.preventDefault();
+          setHover(Math.max(0, Math.min(n - 1, next)));
         }}
       >
         {pts.map((p, i) => (
@@ -118,9 +135,33 @@ export function HealthHistory({ points, label }: { points: HealthPoint[]; label:
         <path d={line} fill="none" stroke="#67e8f9" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
         {hover != null && <line x1={(hover + 0.5) * cw} x2={(hover + 0.5) * cw} y1={0} y2={H} stroke="#a1a1aa" strokeWidth={1} vectorEffect="non-scaling-stroke" />}
       </svg>
-      <p aria-live="polite" className="h-4 text-right font-mono text-[11px] text-zinc-300">
-        {h ? `${new Date(h.t).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} · ${STATUS[h.s]?.label ?? h.s} · ${fmtMs(h.l)}` : ""}
+      <p aria-live="polite" className="h-4 truncate text-right font-mono text-[11px] text-zinc-300">
+        {h ? `${fmtTime(h.t)} · ${statusLabel(h.s)} · ${fmtMs(h.l)}` : ""}
       </p>
+      <details className="text-[11px] text-zinc-400">
+        <summary className="cursor-pointer select-none hover:text-zinc-300">Show data</summary>
+        <div className="mt-1 max-h-48 overflow-auto">
+          <table className="w-full text-left">
+            <caption className="sr-only">{label}: every check in the last 24 hours, newest first</caption>
+            <thead>
+              <tr>
+                <th className="py-0.5 pr-3 font-medium">Checked</th>
+                <th className="py-0.5 pr-3 font-medium">Status</th>
+                <th className="py-0.5 font-medium">Latency</th>
+              </tr>
+            </thead>
+            <tbody>
+              {points.map((p, i) => (
+                <tr key={i} className="border-t border-white/5 text-zinc-400">
+                  <td className="py-0.5 pr-3">{fmtTime(p.t)}</td>
+                  <td className="py-0.5 pr-3">{statusLabel(p.s)}</td>
+                  <td className="py-0.5 font-mono">{fmtMs(p.l)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
   );
 }
@@ -131,8 +172,8 @@ export function Counts({ items }: { items: Array<[string, string | number]> }) {
     <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
       {items.map(([k, v]) => (
         <div key={k} className="min-w-0">
-          <dt className="truncate text-xs text-zinc-500">{k}</dt>
-          <dd className="font-mono text-zinc-100">{v}</dd>
+          <dt className="truncate text-xs text-zinc-400">{k}</dt>
+          <dd className="font-mono text-zinc-100">{typeof v === "number" ? fmtNumber(v) : v}</dd>
         </div>
       ))}
     </dl>

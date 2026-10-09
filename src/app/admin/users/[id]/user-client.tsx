@@ -8,8 +8,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { fmtTime, useAdmin, type ApiResult } from "../../AdminApi";
-import { Badge, Confirm, Empty, Loading, Notice, PageHeader, Panel, btn, field } from "../../ui";
+import { Time, adminToday, errorText, fmtMoney, fmtNumber, fmtTime, useAdmin, type ApiResult } from "../../AdminApi";
+import { Badge, Confirm, EmptyLine, Labeled, Loading, Notice, PageHeader, Panel, btn, field } from "../../ui";
 import { statusBadges, type UserRow } from "../users-client";
 import { SUPPORT_CHANGED } from "../../AdminShell";
 import SubscriptionPanel from "../../subscriptions/SubscriptionPanel";
@@ -116,9 +116,18 @@ function Section({ title, children, aside }: { title: string; children: ReactNod
 function Row({ k, children }: { k: string; children: ReactNode }) {
   return (
     <div className="flex gap-3 py-1 text-sm">
-      <dt className="w-40 shrink-0 text-zinc-500">{k}</dt>
+      <dt className="w-32 shrink-0 text-zinc-400 sm:w-40">{k}</dt>
       <dd className="min-w-0 break-words text-zinc-200">{children}</dd>
     </div>
+  );
+}
+
+/** One part of the account the server could not read this time (the rest of the page still loaded). */
+function Unread({ onRetry }: { onRetry: () => void }) {
+  return (
+    <Notice kind="err" onRetry={onRetry}>
+      Could not be read.
+    </Notice>
   );
 }
 
@@ -133,11 +142,14 @@ export default function UserClient({ id }: { id: string }) {
   const [tags, setTags] = useState("");
   const [support, setSupport] = useState({ reason: "", minutes: 30 });
   const [ws, setWs] = useState<Workspace | null>(null);
+  // Which one-click action is on its way (Save name, Save tags…), so it cannot be sent twice.
+  const [working, setWorking] = useState<string | null>(null);
   const base = `/api/admin/users/${encodeURIComponent(id)}`;
 
   const load = useCallback(async () => {
+    setError(null);
     const r = await adminFetch<Detail>(base);
-    if (!r.ok) return setError(r.data.message ?? `HTTP ${r.status}`);
+    if (!r.ok) return setError(errorText(r));
     setD(r.data);
     setTags(r.data.user.tags.join(" "));
   }, [adminFetch, base]);
@@ -155,10 +167,11 @@ export default function UserClient({ id }: { id: string }) {
     else setWs(null);
   }, [d?.support.mine, loadWorkspace]);
 
+  // The dialog stays open on "Working…" until the answer is in, then closes.
   const go = async (a: Ask, reason: string) => {
-    setAsk(null);
     setMsg(null);
     const r = await a.run(reason);
+    setAsk(null);
     if (!r.ok) return setMsg({ kind: "err", text: r.data.message ?? r.data.error ?? `HTTP ${r.status}` });
     setMsg({ kind: "ok", text: typeof a.done === "string" ? a.done : a.done(r) });
     // The support banner in the shell checks again (a session may have opened or ended).
@@ -166,10 +179,23 @@ export default function UserClient({ id }: { id: string }) {
     if (a.after) return a.after();
     load();
   };
-  const direct = async (run: () => Promise<ApiResult>, done: string) => go({ title: "", body: null, confirmLabel: "", run, done }, "");
+  const direct = async (key: string, run: () => Promise<ApiResult>, done: string) => {
+    setWorking(key);
+    try {
+      await go({ title: "", body: null, confirmLabel: "", run, done }, "");
+    } finally {
+      setWorking(null);
+    }
+  };
 
-  if (error) return <Notice kind="err">{error}</Notice>;
-  if (!d) return <Loading />;
+  if (!d)
+    return error ? (
+      <Notice kind="err" onRetry={load}>
+        {error}
+      </Notice>
+    ) : (
+      <Loading />
+    );
   const u = d.user;
   const label = u.name || u.email || u.id;
   const blocked = d.protection.refusal;
@@ -202,6 +228,11 @@ export default function UserClient({ id }: { id: string }) {
           {msg.text}
         </Notice>
       )}
+      {error && (
+        <Notice kind="err" onRetry={load}>
+          Could not refresh the account: {error}
+        </Notice>
+      )}
       {blocked && (
         <Notice kind="err">
           {d.protection.isOwner ? "This is the platform owner's account. No administrator action reaches it." : blocked.message}
@@ -219,24 +250,38 @@ export default function UserClient({ id }: { id: string }) {
           title="Account"
           aside={
             mayWrite && !names ? (
-              <button type="button" className={btn.ghost} onClick={() => setNames({ firstName: "", lastName: "" })}>
-                Edit name
+              <button
+                type="button"
+                className={btn.ghost}
+                disabled={working === "name"}
+                onClick={() => {
+                  // The detail carries the display name only: split it so the form opens on what is there now.
+                  const shown = u.name && u.name !== u.username ? u.name.trim() : "";
+                  const cut = shown.indexOf(" ");
+                  setNames(cut < 0 ? { firstName: shown, lastName: "" } : { firstName: shown.slice(0, cut), lastName: shown.slice(cut + 1) });
+                }}
+              >
+                {working === "name" ? "Saving…" : "Edit name"}
               </button>
             ) : null
           }
         >
           {names && (
             <form
-              className="mb-3 flex flex-wrap gap-2"
+              className="mb-3 flex flex-wrap items-end gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
                 const n = names;
                 setNames(null);
-                direct(() => adminFetch(base, { method: "PATCH", json: n }), "Name saved.");
+                direct("name", () => adminFetch(base, { method: "PATCH", json: n }), "Name saved.");
               }}
             >
-              <input aria-label="First name" placeholder="First name" value={names.firstName} onChange={(e) => setNames({ ...names, firstName: e.target.value })} className={`${field} w-40`} />
-              <input aria-label="Last name" placeholder="Last name" value={names.lastName} onChange={(e) => setNames({ ...names, lastName: e.target.value })} className={`${field} w-40`} />
+              <Labeled label="First name" className="w-full sm:w-40">
+                <input autoFocus value={names.firstName} onChange={(e) => setNames({ ...names, firstName: e.target.value })} className={field} />
+              </Labeled>
+              <Labeled label="Last name" className="w-full sm:w-40">
+                <input value={names.lastName} onChange={(e) => setNames({ ...names, lastName: e.target.value })} className={field} />
+              </Labeled>
               <button type="submit" className={btn.primary}>
                 Save
               </button>
@@ -268,16 +313,18 @@ export default function UserClient({ id }: { id: string }) {
         </Section>
 
         <Section title="Email addresses">
+          {u.emails.length === 0 && <EmptyLine>No email addresses.</EmptyLine>}
           <ul className="space-y-2">
             {u.emails.map((e) => (
               <li key={e.id} className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-zinc-100">{e.address}</span>
+                <span className="break-all text-zinc-100">{e.address}</span>
                 {e.primary && <Badge>primary</Badge>}
                 <Badge tone={e.verified ? "green" : "amber"}>{e.verified ? "verified" : e.status ?? "unverified"}</Badge>
                 {mayWrite && (
                   <button
                     type="button"
                     className={`${btn.ghost} px-2 py-1 text-xs`}
+                    aria-label={`${e.verified ? "Mark unverified" : "Mark verified"}: ${e.address}`}
                     onClick={() =>
                       setAsk({
                         title: e.verified ? "Mark this address unverified?" : "Mark this address verified?",
@@ -315,11 +362,11 @@ export default function UserClient({ id }: { id: string }) {
               )}
             </Row>
             <Row k="Meetings created">
-              {u.meetingsCreated}
-              {d.plan.lifetimeMeetingCap ? ` of ${d.plan.lifetimeMeetingCap}` : " (no lifetime cap)"}
+              {fmtNumber(u.meetingsCreated)}
+              {d.plan.lifetimeMeetingCap ? ` of ${fmtNumber(d.plan.lifetimeMeetingCap)}` : " (no lifetime cap)"}
             </Row>
           </dl>
-          <h3 className="mb-1 mt-3 text-xs uppercase tracking-wide text-zinc-500">
+          <h3 className="mb-1 mt-3 text-xs uppercase tracking-wide text-zinc-400">
             Limits enforced{d.plan.limitsSource === "tier" ? " (tier defaults — the account's own could not be read)" : ""}
           </h3>
           <dl>
@@ -333,7 +380,18 @@ export default function UserClient({ id }: { id: string }) {
 
         <Section title="Usage">
           <dl>
-            <Row k="Meetings hosted">{d.usage.meetingsHosted ?? "Could not be read"}</Row>
+            <Row k="Meetings hosted">
+              {d.usage.meetingsHosted == null ? (
+                <span className="text-zinc-400">Could not be read</span>
+              ) : can("events:read") && u.email ? (
+                // The Meetings list searches owner emails.
+                <Link href={`/admin/events?q=${encodeURIComponent(u.email)}`} className="text-cyan-300 hover:underline">
+                  {fmtNumber(d.usage.meetingsHosted)}
+                </Link>
+              ) : (
+                fmtNumber(d.usage.meetingsHosted)
+              )}
+            </Row>
             <Row k="Group meetings joined">{d.usage.attended ? `${d.usage.attended.length}${d.usage.attended.length === 10 ? "+" : ""} recently` : "—"}</Row>
             <Row k={`Recorded ${d.usage.recording.thisMonth.month}`}>{hours(d.usage.recording.thisMonth.seconds)}</Row>
             <Row k={`Recorded ${d.usage.recording.lastMonth.month}`}>{hours(d.usage.recording.lastMonth.seconds)}</Row>
@@ -343,7 +401,7 @@ export default function UserClient({ id }: { id: string }) {
               {d.usage.recentHosted.map((m) => (
                 <li key={m.id} className="flex flex-wrap gap-2">
                   <span className="text-zinc-200">{m.name}</span>
-                  <span className="text-zinc-500">/{m.slug}</span>
+                  <span className="text-zinc-400">/{m.slug}</span>
                   <Badge tone={m.status === "live" ? "green" : "zinc"}>{m.status}</Badge>
                 </li>
               ))}
@@ -353,18 +411,18 @@ export default function UserClient({ id }: { id: string }) {
 
         <Section title="Groups">
           {!d.groups ? (
-            <p className="text-sm text-zinc-500">Could not be read.</p>
+            <Unread onRetry={load} />
           ) : d.groups.length === 0 ? (
-            <p className="text-sm text-zinc-500">Not in any group.</p>
+            <EmptyLine>Not in any group.</EmptyLine>
           ) : (
             <ul className="space-y-1 text-sm">
               {d.groups.map((gr) => (
                 <li key={gr.id}>
-                  <Link href={`/admin/groups/${encodeURIComponent(gr.id)}`} className="text-cyan-300 hover:underline">
+                  <Link href={`/admin/groups/${encodeURIComponent(gr.id)}`} className="text-cyan-300 underline decoration-cyan-300/40 hover:decoration-cyan-300">
                     {gr.name}
                   </Link>{" "}
-                  <span className="text-zinc-500">
-                    {gr.role === "participant" ? "member" : gr.role} · {gr.memberCount} members
+                  <span className="text-zinc-400">
+                    {gr.role === "participant" ? "member" : gr.role} · {fmtNumber(gr.memberCount)} member{gr.memberCount === 1 ? "" : "s"}
                   </span>
                 </li>
               ))}
@@ -374,9 +432,13 @@ export default function UserClient({ id }: { id: string }) {
 
         <Section title="Payments">
           {d.payments == null ? (
-            <p className="text-sm text-zinc-500">{can("billing:read") ? "Could not be read." : "Needs the billing:read permission."}</p>
+            can("billing:read") ? (
+              <Unread onRetry={load} />
+            ) : (
+              <EmptyLine>Needs the billing:read permission.</EmptyLine>
+            )
           ) : d.payments.length === 0 ? (
-            <p className="text-sm text-zinc-500">No payments.</p>
+            <EmptyLine>No payments.</EmptyLine>
           ) : (
             <ul className="space-y-1 text-sm">
               {d.payments.map((p) => (
@@ -385,9 +447,9 @@ export default function UserClient({ id }: { id: string }) {
                   <span className="capitalize">
                     {p.plan} ({p.billingCycle})
                   </span>
-                  <span>{p.amountEsp} ESP</span>
+                  <span>{fmtMoney(p.amountEsp, "ESP")}</span>
                   <Badge tone={p.status === "paid" ? "green" : "amber"}>{p.status}</Badge>
-                  <span className="text-xs text-zinc-500">{p.source}</span>
+                  <span className="text-xs text-zinc-400">{p.source}</span>
                 </li>
               ))}
             </ul>
@@ -432,17 +494,17 @@ export default function UserClient({ id }: { id: string }) {
       >
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <h3 className="mb-1 text-xs uppercase tracking-wide text-zinc-500">Sign-in sessions (Clerk)</h3>
+            <h3 className="mb-1 text-xs uppercase tracking-wide text-zinc-400">Sign-in sessions (Clerk)</h3>
             {!d.sessions.clerk ? (
-              <p className="text-sm text-zinc-500">Could not be read.</p>
+              <Unread onRetry={load} />
             ) : d.sessions.clerk.length === 0 ? (
-              <p className="text-sm text-zinc-500">None active.</p>
+              <EmptyLine>None active.</EmptyLine>
             ) : (
               <ul className="space-y-1 text-sm">
                 {d.sessions.clerk.map((s) => (
                   <li key={s.id}>
                     <span className="text-zinc-200">{s.device || "Unknown device"}</span>
-                    <span className="text-zinc-500"> · last active {fmtTime(s.lastActiveAt)}</span>
+                    <span className="text-zinc-400"> · last active {fmtTime(s.lastActiveAt)}</span>
                     {s.impersonated && <Badge tone="amber">impersonated</Badge>}
                   </li>
                 ))}
@@ -450,17 +512,17 @@ export default function UserClient({ id }: { id: string }) {
             )}
           </div>
           <div>
-            <h3 className="mb-1 text-xs uppercase tracking-wide text-zinc-500">Devices (stay-signed-in)</h3>
+            <h3 className="mb-1 text-xs uppercase tracking-wide text-zinc-400">Devices (stay-signed-in)</h3>
             {!d.sessions.devices ? (
-              <p className="text-sm text-zinc-500">Could not be read.</p>
+              <Unread onRetry={load} />
             ) : d.sessions.devices.length === 0 ? (
-              <p className="text-sm text-zinc-500">None.</p>
+              <EmptyLine>None.</EmptyLine>
             ) : (
               <ul className="space-y-1 text-sm">
                 {d.sessions.devices.map((s) => (
                   <li key={s.id} className="truncate" title={s.userAgent ?? ""}>
                     <span className="text-zinc-200">{(s.userAgent ?? "Unknown").slice(0, 60)}</span>
-                    <span className="text-zinc-500"> · {fmtTime(s.lastActivityAt)}</span>
+                    <span className="text-zinc-400"> · {fmtTime(s.lastActivityAt)}</span>
                   </li>
                 ))}
               </ul>
@@ -500,6 +562,7 @@ export default function UserClient({ id }: { id: string }) {
                       body: "They are signed out everywhere and cannot sign in until reactivated. Their meetings, groups and data stay as they are.",
                       confirmLabel: "Suspend",
                       danger: true,
+                      typeToConfirm: "suspend",
                       withReason: "Reason (recorded in the audit log)",
                       run: (reason) => adminFetch(`${base}/suspend`, { method: "POST", json: { reason } }),
                       done: (r) => `Suspended.${ended(r)}`,
@@ -549,12 +612,17 @@ export default function UserClient({ id }: { id: string }) {
                     type="button"
                     className={btn.danger}
                     disabled={!d.deletion.due}
-                    title={d.deletion.due ? undefined : `Available from ${fmtTime(d.deletion.deleteAfter)}`}
+                    aria-describedby={d.deletion.due ? undefined : "delete-now-when"}
                     // The Data page previews what completing removes (every place in the data map) first.
                     onClick={() => window.location.assign(`/admin/data?complete=${encodeURIComponent(u.id)}`)}
                   >
                     Delete now…
                   </button>
+                  {!d.deletion.due && (
+                    <span id="delete-now-when" className="self-center text-xs text-zinc-400">
+                      Delete now opens from {fmtTime(d.deletion.deleteAfter)}, when the retention period ends.
+                    </span>
+                  )}
                 </>
               ) : (
                 <button
@@ -589,7 +657,7 @@ export default function UserClient({ id }: { id: string }) {
                   type="button"
                   className={btn.ghost}
                   disabled={!d.mailConfigured || !u.emailVerified}
-                  title={!d.mailConfigured ? "Email is not set up on this deployment" : !u.emailVerified ? "The primary address is not verified" : undefined}
+                  aria-describedby={!d.mailConfigured || !u.emailVerified ? "instructions-why-not" : undefined}
                   onClick={() =>
                     setAsk({
                       title: "Email sign-in instructions?",
@@ -611,6 +679,7 @@ export default function UserClient({ id }: { id: string }) {
                         title: "Require a new password?",
                         body: "Clerk marks the current password as compromised: they are signed out everywhere now, and the next sign-in makes them set a new password.",
                         confirmLabel: "Require new password",
+                        danger: true,
                         run: () => adminFetch(`${base}/password`, { method: "POST", json: { action: "require_reset" } }),
                         done: (r) => `They must set a new password at their next sign-in.${ended(r)}`,
                       })
@@ -620,12 +689,22 @@ export default function UserClient({ id }: { id: string }) {
                   </button>
                 )}
                 {u.passwordEnabled && (
-                  <button type="button" className={btn.ghost} onClick={() => direct(() => adminFetch(`${base}/password`, { method: "POST", json: { action: "clear_reset" } }), "The password no longer has to be changed.")}>
-                    Undo &ldquo;require a new password&rdquo;
+                  <button
+                    type="button"
+                    className={btn.ghost}
+                    disabled={working === "clear_reset"}
+                    onClick={() => direct("clear_reset", () => adminFetch(`${base}/password`, { method: "POST", json: { action: "clear_reset" } }), "The password no longer has to be changed.")}
+                  >
+                    {working === "clear_reset" ? "Undoing…" : <>Undo &ldquo;require a new password&rdquo;</>}
                   </button>
                 )}
               </div>
-              {!u.passwordEnabled && <p className="mt-2 text-xs text-zinc-500">This account has no password: it signs in with a social account, KingsChat or an email code.</p>}
+              {(!d.mailConfigured || !u.emailVerified) && (
+                <p id="instructions-why-not" className="mt-2 text-xs text-zinc-400">
+                  Sign-in instructions cannot be emailed: {!d.mailConfigured ? "email is not set up on this deployment." : "the primary address is not verified."}
+                </p>
+              )}
+              {!u.passwordEnabled && <p className="mt-2 text-xs text-zinc-400">This account has no password: it signs in with a social account, KingsChat or an email code.</p>}
             </div>
           )}
         </Section>
@@ -641,23 +720,28 @@ export default function UserClient({ id }: { id: string }) {
         <Section title="Internal notes and tags">
           {mayWrite && (
             <form
-              className="mb-3 flex gap-2"
+              className="mb-3 flex flex-wrap items-end gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
                 const tagList = tags.split(/[\s,]+/).filter(Boolean);
-                direct(() => adminFetch(`${base}/tags`, { method: "PUT", json: { tags: tagList } }), "Tags saved.");
+                direct("tags", () => adminFetch(`${base}/tags`, { method: "PUT", json: { tags: tagList } }), "Tags saved.");
               }}
             >
-              <input aria-label="Tags" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Tags, separated by spaces" className={field} />
-              <button type="submit" className={btn.ghost}>
-                Save tags
+              <Labeled label="Tags" className="min-w-0 flex-1 basis-48">
+                <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="Tags, separated by spaces" className={field} />
+              </Labeled>
+              <button type="submit" className={btn.ghost} disabled={working === "tags"}>
+                {working === "tags" ? "Saving…" : "Save tags"}
               </button>
             </form>
           )}
-          {!mayWrite && u.tags.length > 0 && (
-            <p className="mb-2 flex flex-wrap gap-1">
+          {u.tags.length > 0 && (
+            <p className="mb-2 flex flex-wrap items-center gap-1 text-xs text-zinc-400">
+              <span>Other accounts with:</span>
               {u.tags.map((t) => (
-                <Badge key={t}>#{t}</Badge>
+                <Link key={t} href={`/admin/users?tag=${encodeURIComponent(t)}`} aria-label={`Accounts tagged ${t}`} className="rounded hover:ring-1 hover:ring-cyan-400/50">
+                  <Badge>#{t}</Badge>
+                </Link>
               ))}
             </p>
           )}
@@ -667,32 +751,35 @@ export default function UserClient({ id }: { id: string }) {
               onSubmit={(e) => {
                 e.preventDefault();
                 const text = note.trim();
-                if (!text) return;
+                if (!text || working === "note") return;
                 setNote("");
-                direct(() => adminFetch(`${base}/notes`, { method: "POST", json: { text } }), "Note added.");
+                direct("note", () => adminFetch(`${base}/notes`, { method: "POST", json: { text } }), "Note added.");
               }}
             >
-              <textarea aria-label="New note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000} placeholder="Add a note only administrators can see" className={field} />
-              <button type="submit" className={btn.ghost} disabled={!note.trim()}>
-                Add note
+              <Labeled label="New note">
+                <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={2000} placeholder="Only administrators can see it" className={field} />
+              </Labeled>
+              <button type="submit" className={btn.ghost} disabled={!note.trim() || working === "note"}>
+                {working === "note" ? "Adding…" : "Add note"}
               </button>
             </form>
           )}
           {d.notes.length === 0 ? (
-            <p className="text-sm text-zinc-500">No notes.</p>
+            <EmptyLine>No notes.</EmptyLine>
           ) : (
             <ul className="space-y-2">
               {d.notes.map((n) => (
                 <li key={n.id} className="rounded-lg border border-white/5 bg-black/20 p-2 text-sm">
                   <p className="whitespace-pre-wrap text-zinc-200">{n.text}</p>
-                  <p className="mt-1 flex items-center justify-between text-xs text-zinc-500">
+                  <p className="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
                     <span>
-                      {n.byEmail} · {fmtTime(n.ts)}
+                      {n.byEmail} · <Time ts={n.ts} />
                     </span>
                     {mayWrite && (
                       <button
                         type="button"
                         className="text-red-300 hover:underline"
+                        aria-label={`Remove the note by ${n.byEmail} from ${fmtTime(n.ts)}`}
                         onClick={() =>
                           setAsk({
                             title: "Remove this note?",
@@ -723,47 +810,66 @@ export default function UserClient({ id }: { id: string }) {
             <button
               type="button"
               className={btn.warn}
-              onClick={() => direct(() => adminFetch(`${base}/support`, { method: "DELETE" }), "Support session ended.")}
+              disabled={working === "end_support"}
+              onClick={() => direct("end_support", () => adminFetch(`${base}/support`, { method: "DELETE" }), "Support session ended.")}
             >
-              End support session
+              {working === "end_support" ? "Ending…" : "End support session"}
             </button>
           ) : maySupport ? (
             <form
               className="space-y-2"
               onSubmit={(e) => {
                 e.preventDefault();
-                direct(() => adminFetch(`${base}/support`, { method: "POST", json: support }), "Support session open.");
+                const s = { ...support, reason: support.reason.trim() };
+                setMsg(null);
+                setAsk({
+                  title: `Open a support session on ${label}?`,
+                  body: (
+                    <>
+                      You see their workspace read-only for {s.minutes} minutes. It is recorded on the account and in the audit log with your reason, and a banner stays on
+                      every admin page while it is open.
+                      {d.support.elsewhere && <span className="mt-2 block text-amber-300">Your open session on {d.support.elsewhere.userEmail} ends.</span>}
+                    </>
+                  ),
+                  confirmLabel: "Open support session",
+                  run: () => adminFetch(`${base}/support`, { method: "POST", json: s }),
+                  done: "Support session open.",
+                });
               }}
             >
               {d.support.elsewhere && (
                 <p className="text-xs text-amber-300">This ends your open session on {d.support.elsewhere.userEmail}.</p>
               )}
-              <input
-                aria-label="Why you need access"
-                value={support.reason}
-                onChange={(e) => setSupport({ ...support, reason: e.target.value })}
-                placeholder="Why (ticket number, what the user asked)"
-                className={field}
-                maxLength={300}
-              />
-              <div className="flex items-center gap-2">
-                <select aria-label="How long" value={support.minutes} onChange={(e) => setSupport({ ...support, minutes: Number(e.target.value) })} className={`${field} w-auto`}>
-                  {[15, 30, 60, 120].map((m) => (
-                    <option key={m} value={m}>
-                      {m} minutes
-                    </option>
-                  ))}
-                </select>
+              <Labeled label="Why you need access">
+                <input
+                  value={support.reason}
+                  onChange={(e) => setSupport({ ...support, reason: e.target.value })}
+                  placeholder="Ticket number, what the user asked"
+                  className={field}
+                  maxLength={300}
+                />
+              </Labeled>
+              <div className="flex flex-wrap items-end gap-2">
+                <Labeled label="How long">
+                  <select value={support.minutes} onChange={(e) => setSupport({ ...support, minutes: Number(e.target.value) })} className={`${field} w-auto`}>
+                    {[15, 30, 60, 120].map((m) => (
+                      <option key={m} value={m}>
+                        {m} minutes
+                      </option>
+                    ))}
+                  </select>
+                </Labeled>
                 <button type="submit" className={btn.primary} disabled={!support.reason.trim()}>
-                  Open support session
+                  Open support session…
                 </button>
+                {!support.reason.trim() && <span className="self-center text-xs text-zinc-400">Give a reason first.</span>}
               </div>
             </form>
           ) : null}
           {d.support.history.length > 0 && (
             <ul className="mt-3 space-y-1 text-xs text-zinc-400">
               {d.support.history.map((s) => (
-                <li key={s.id}>
+                <li key={s.id} className="break-words">
                   {fmtTime(s.startedAt)} · {s.adminEmail} · {s.reason} ·{" "}
                   {s.endedAt ? `ended ${fmtTime(s.endedAt)}` : s.expiresAt > Date.now() ? `open until ${fmtTime(s.expiresAt)}` : "expired"}
                 </li>
@@ -777,19 +883,19 @@ export default function UserClient({ id }: { id: string }) {
         <Section title={`Workspace — ${label} (support session, read-only)`}>
           <div className="grid gap-4 md:grid-cols-3">
             <div>
-              <h3 className="mb-1 text-xs uppercase tracking-wide text-zinc-500">Meetings they host ({ws.meetings.length})</h3>
+              <h3 className="mb-1 text-xs uppercase tracking-wide text-zinc-400">Meetings they host ({ws.meetings.length})</h3>
               {ws.meetings.length === 0 ? (
-                <Empty>None.</Empty>
+                <EmptyLine>None.</EmptyLine>
               ) : (
                 <ul className="space-y-1 text-sm">
                   {ws.meetings.map((m) => (
                     <li key={m.id}>
-                      <span className="text-zinc-200">{m.name}</span> <span className="text-zinc-500">/{m.slug}</span>
-                      <span className="block text-xs text-zinc-500">
+                      <span className="text-zinc-200">{m.name}</span> <span className="text-zinc-400">/{m.slug}</span>
+                      <span className="block text-xs text-zinc-400">
                         {m.visibility}
                         {m.passwordProtected ? " · password" : ""}
                         {m.waitingRoomEnabled ? " · waiting room" : ""}
-                        {m.isLocked ? " · locked" : ""} · {m.endedAt ? "ended" : m.startedAt ? "live" : m.scheduledAt ? `scheduled ${m.scheduledAt.slice(0, 16).replace("T", " ")}` : "not started"}
+                        {m.isLocked ? " · locked" : ""} · {m.endedAt ? "ended" : m.startedAt ? "live" : m.scheduledAt ? `scheduled ${fmtTime(m.scheduledAt)}` : "not started"}
                       </span>
                     </li>
                   ))}
@@ -797,15 +903,15 @@ export default function UserClient({ id }: { id: string }) {
               )}
             </div>
             <div>
-              <h3 className="mb-1 text-xs uppercase tracking-wide text-zinc-500">Group meetings joined</h3>
+              <h3 className="mb-1 text-xs uppercase tracking-wide text-zinc-400">Group meetings joined</h3>
               {ws.attended.length === 0 ? (
-                <Empty>None.</Empty>
+                <EmptyLine>None.</EmptyLine>
               ) : (
                 <ul className="space-y-1 text-sm">
                   {ws.attended.map((m) => (
                     <li key={m.eid}>
                       <span className="text-zinc-200">{m.name ?? m.eid}</span>
-                      <span className="block text-xs text-zinc-500">
+                      <span className="block text-xs text-zinc-400">
                         {fmtTime(m.startMs)}
                         {m.hostedBy ? ` · ${m.hostedBy}` : ""}
                       </span>
@@ -815,15 +921,15 @@ export default function UserClient({ id }: { id: string }) {
               )}
             </div>
             <div>
-              <h3 className="mb-1 text-xs uppercase tracking-wide text-zinc-500">Groups</h3>
+              <h3 className="mb-1 text-xs uppercase tracking-wide text-zinc-400">Groups</h3>
               {ws.groups.length === 0 ? (
-                <Empty>None.</Empty>
+                <EmptyLine>None.</EmptyLine>
               ) : (
                 <ul className="space-y-2 text-sm">
                   {ws.groups.map((gr) => (
                     <li key={gr.id}>
-                      <span className="text-zinc-200">{gr.name}</span> <span className="text-xs text-zinc-500">({gr.role})</span>
-                      <span className="block text-xs text-zinc-500">
+                      <span className="text-zinc-200">{gr.name}</span> <span className="text-xs text-zinc-400">({gr.role})</span>
+                      <span className="block text-xs text-zinc-400">
                         {gr.members.map((m) => m.name).join(", ")}
                         {gr.pending.length ? ` · ${gr.pending.length} invited` : ""}
                       </span>
@@ -839,7 +945,7 @@ export default function UserClient({ id }: { id: string }) {
       {d.activity && (
         <Section title="Activity">
           {d.activity.length === 0 ? (
-            <p className="text-sm text-zinc-500">Nothing recorded yet. The activity log keeps 90 days.</p>
+            <EmptyLine>Nothing recorded yet. The activity log keeps 90 days.</EmptyLine>
           ) : (
             <ul className="divide-y divide-white/5 text-sm">
               {d.activity.map((e) => (
@@ -853,7 +959,7 @@ export default function UserClient({ id }: { id: string }) {
                     </>
                   )}
                   {e.props && (
-                    <span className="block truncate text-xs text-zinc-500">
+                    <span className="block truncate text-xs text-zinc-400">
                       {Object.entries(e.props)
                         .map(([k, v]) => `${k}=${v}`)
                         .join(" · ")}
@@ -863,16 +969,25 @@ export default function UserClient({ id }: { id: string }) {
               ))}
             </ul>
           )}
-          <Link href={`/admin/logs?source=activity&user=${encodeURIComponent(u.id)}&from=${new Date(Date.now() - 89 * 86_400_000).toISOString().slice(0, 10)}`} className="mt-2 inline-block text-xs text-cyan-300 hover:underline">
+          <Link href={`/admin/logs?source=activity&user=${encodeURIComponent(u.id)}&from=${adminToday(Date.now() - 89 * 86_400_000)}`} className="mt-2 inline-block text-xs text-cyan-300 hover:underline">
             Search all of it in Logs →
           </Link>
         </Section>
       )}
 
       {d.audit && (
-        <Section title="Administrator actions on this account">
+        <Section
+          title="Administrator actions on this account"
+          aside={
+            can("audit:read") ? (
+              <Link href={`/admin/audit-log?target=${encodeURIComponent(u.id)}`} className="text-xs text-cyan-300 hover:underline">
+                All of them in the audit log →
+              </Link>
+            ) : null
+          }
+        >
           {d.audit.length === 0 ? (
-            <p className="text-sm text-zinc-500">None recorded.</p>
+            <EmptyLine>None recorded.</EmptyLine>
           ) : (
             <ul className="divide-y divide-white/5 text-sm">
               {d.audit.map((e) => (
@@ -887,7 +1002,7 @@ export default function UserClient({ id }: { id: string }) {
                       <Badge tone="red">{e.outcome}</Badge>
                     </>
                   )}
-                  {e.note && <span className="block text-xs text-zinc-500">{e.note}</span>}
+                  {e.note && <span className="block text-xs text-zinc-400">{e.note}</span>}
                 </li>
               ))}
             </ul>

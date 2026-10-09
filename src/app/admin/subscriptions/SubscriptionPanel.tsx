@@ -27,8 +27,8 @@ import {
   type Subscription,
 } from "@/lib/billing/model";
 import type { PaymentRecord } from "@/lib/paymentsStore";
-import { fmtTime, useAdmin } from "../AdminApi";
-import { Badge, Confirm, Empty, Loading, Notice, Panel, btn, field } from "../ui";
+import { Time, fmtDate, fmtMoney, fmtNumber, useAdmin } from "../AdminApi";
+import { Badge, Confirm, EmptyLine, Loading, Notice, Pager, Panel, btn, field, useClientTable } from "../ui";
 
 type Data = {
   user: {
@@ -67,14 +67,11 @@ export function StatusBadge({ status }: { status: string }) {
   return <Badge tone={STATUS_TONE[status] ?? "zinc"}>{status}</Badge>;
 }
 
-const day = (ms: number | null | undefined) =>
-  ms
-    ? new Date(ms).toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
-    : "no end";
+// Calendar days on the admin clock (hover a <Time> for the full time).
+const day = (ms: number | null | undefined) => (ms ? fmtDate(ms) : "no end");
+
+/** Rows per page in the history and payments lists. */
+const PAGE = 10;
 
 export default function SubscriptionPanel({ userId }: { userId: string }) {
   const { can, adminFetch } = useAdmin();
@@ -83,28 +80,43 @@ export default function SubscriptionPanel({ userId }: { userId: string }) {
   const [trialPolicy, setTrialPolicy] = useState<TrialPolicy | null>(null);
   const [addOns, setAddOns] = useState<AddOn[]>([]);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // The plan and add-on lists the action forms offer; without them the forms have nothing to pick.
+  const [listsError, setListsError] = useState<string | null>(null);
   const [action, setAction] = useState<Action | null>(null);
+  const history = useClientTable(data?.history, (h) => h.ts, { key: "ts", dir: "desc", pageSize: PAGE });
+  const payments = useClientTable(data?.payments, (p) => p.paidAt, { key: "paidAt", dir: "desc", pageSize: PAGE });
 
   const load = useCallback(async () => {
+    setLoadError(null);
     const r = await adminFetch<Data>(`/api/admin/subscriptions/${encodeURIComponent(userId)}`);
     if (r.ok) setData(r.data);
-    else
-      setMsg({
-        kind: "err",
-        text: r.data.message ?? "Could not load this account.",
-      });
+    else setLoadError(r.data.message ?? "Could not load this account.");
   }, [adminFetch, userId]);
+  const loadLists = useCallback(async () => {
+    setListsError(null);
+    const [p, a] = await Promise.all([adminFetch<{ plans: CatalogPlan[]; trialPolicy: TrialPolicy }>("/api/admin/plans"), adminFetch<{ addOns: AddOn[] }>("/api/admin/addons")]);
+    if (p.ok) {
+      setPlans(p.data.plans);
+      setTrialPolicy(p.data.trialPolicy);
+    }
+    if (a.ok) setAddOns(a.data.addOns);
+    const failed = [!p.ok && `the plans (${p.data.message ?? p.status})`, !a.ok && `the add-ons (${a.data.message ?? a.status})`].filter(Boolean);
+    if (failed.length) setListsError(`Could not read ${failed.join(" or ")}, so the forms below cannot offer them.`);
+  }, [adminFetch]);
   useEffect(() => {
     load();
-    adminFetch<{ plans: CatalogPlan[]; trialPolicy: TrialPolicy }>("/api/admin/plans").then((r) => {
-      if (!r.ok) return;
-      setPlans(r.data.plans);
-      setTrialPolicy(r.data.trialPolicy);
-    });
-    adminFetch<{ addOns: AddOn[] }>("/api/admin/addons").then((r) => r.ok && setAddOns(r.data.addOns));
-  }, [load, adminFetch]);
+    loadLists();
+  }, [load, loadLists]);
 
-  if (!data) return msg ? <Notice kind="err">{msg.text}</Notice> : <Loading />;
+  if (!data)
+    return loadError ? (
+      <Notice kind="err" onRetry={load}>
+        {loadError}
+      </Notice>
+    ) : (
+      <Loading />
+    );
   const { user, subscription: sub } = data;
   const write = can("subscriptions:write") && !user.isOwner;
   const now = Date.now();
@@ -146,6 +158,11 @@ export default function SubscriptionPanel({ userId }: { userId: string }) {
           {msg.text}
         </Notice>
       )}
+      {loadError && (
+        <Notice kind="err" onRetry={load} onClose={() => setLoadError(null)}>
+          {loadError} What is shown may be out of date.
+        </Notice>
+      )}
       <Panel>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -173,11 +190,27 @@ export default function SubscriptionPanel({ userId }: { userId: string }) {
       {write && (
         <Panel>
           <h3 className="text-sm font-semibold text-white">Change this subscription</h3>
+          {listsError && (
+            <div className="mt-2">
+              <Notice kind="err" onRetry={loadLists}>
+                {listsError}
+              </Notice>
+            </div>
+          )}
           <div className="mt-2 flex flex-wrap gap-1.5">
             {available
               .filter((a) => a.show)
               .map((a) => (
-                <button key={a.id} type="button" onClick={() => setAction(action === a.id ? null : a.id)} className={action === a.id ? btn.primary : btn.ghost}>
+                <button
+                  key={a.id}
+                  type="button"
+                  aria-expanded={action === a.id}
+                  onClick={() => {
+                    setMsg(null);
+                    setAction(action === a.id ? null : a.id);
+                  }}
+                  className={action === a.id ? btn.primary : btn.ghost}
+                >
                   {a.label}
                 </button>
               ))}
@@ -206,16 +239,17 @@ export default function SubscriptionPanel({ userId }: { userId: string }) {
       <Panel>
         <h3 className="text-sm font-semibold text-white">History</h3>
         {data.history.length === 0 ? (
-          <Empty>Nothing yet.</Empty>
+          <EmptyLine>Nothing yet.</EmptyLine>
         ) : (
+          <>
           <ol className="mt-2 divide-y divide-white/5">
-            {data.history.map((h, i) => (
-              <li key={i} className="py-2 text-sm">
+            {history.visible.map((h, i) => (
+              <li key={`${h.ts}-${i}`} className="py-2 text-sm">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <span className="text-zinc-100">{h.summary}</span>
-                  <span className="text-xs text-zinc-500">{fmtTime(h.ts)}</span>
+                  <span className="min-w-0 text-zinc-100">{h.summary}</span>
+                  <Time ts={h.ts} className="text-xs text-zinc-400" />
                 </div>
-                <div className="text-xs text-zinc-500">
+                <div className="text-xs text-zinc-400">
                   {h.action} · by {h.by.email}
                   {h.note ? ` · ${h.note}` : ""}
                 </div>
@@ -228,6 +262,8 @@ export default function SubscriptionPanel({ userId }: { userId: string }) {
               </li>
             ))}
           </ol>
+          {history.total > PAGE && <Pager page={history.page} pageSize={history.pageSize} total={history.total} onPage={history.setPage} noun="change" />}
+          </>
         )}
       </Panel>
 
@@ -235,11 +271,12 @@ export default function SubscriptionPanel({ userId }: { userId: string }) {
         <Panel>
           <h3 className="text-sm font-semibold text-white">Payments</h3>
           {data.payments.length === 0 ? (
-            <Empty>No payments recorded.</Empty>
+            <EmptyLine>No payments recorded.</EmptyLine>
           ) : (
-            <div className="mt-2 overflow-x-auto">
+            <>
+            <div className="mt-2 overflow-x-auto" tabIndex={0} role="region" aria-label="Payments (scrolls sideways)">
               <table className="w-full min-w-[560px] text-left text-sm">
-                <thead className="text-xs text-zinc-500">
+                <thead className="text-xs text-zinc-400">
                   <tr>
                     <th className="py-1 font-normal">Paid</th>
                     <th className="py-1 font-normal">Plan</th>
@@ -249,23 +286,27 @@ export default function SubscriptionPanel({ userId }: { userId: string }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.payments.map((p) => (
+                  {payments.visible.map((p) => (
                     <tr key={p.paymentRef} className="border-t border-white/5">
-                      <td className="py-1.5 text-zinc-300">{fmtTime(p.paidAt)}</td>
+                      <td className="py-1.5 text-zinc-300">
+                        <Time ts={p.paidAt} />
+                      </td>
                       <td className="py-1.5 text-zinc-300">
                         {p.planId ?? p.plan} ({p.billingCycle})
                       </td>
                       <td className="py-1.5 text-zinc-300">
-                        {p.amountEsp} ESP
+                        {fmtMoney(p.amountEsp, "ESP")}
                         {p.couponCode ? ` (coupon ${p.couponCode})` : ""}
                       </td>
                       <td className="py-1.5 text-zinc-300">{day(p.periodEnd)}</td>
-                      <td className="py-1.5 text-xs text-zinc-500">{p.source}</td>
+                      <td className="py-1.5 text-xs text-zinc-400">{p.source}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            {payments.total > PAGE && <Pager page={payments.page} pageSize={payments.pageSize} total={payments.total} onPage={payments.setPage} noun="payment" />}
+            </>
           )}
         </Panel>
       )}
@@ -278,27 +319,27 @@ function SubSummaryCard({ sub }: { sub: Subscription }) {
   return (
     <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-        <dt className="text-zinc-500">Plan</dt>
+        <dt className="text-zinc-400">Plan</dt>
         <dd className="text-zinc-100">
-          {sub.snapshot.name} <span className="text-zinc-500">v{sub.version}</span> <span className="font-mono text-xs text-zinc-500">{sub.planId}</span>
+          {sub.snapshot.name} <span className="text-zinc-400">v{sub.version}</span> <span className="font-mono text-xs text-zinc-400">{sub.planId}</span>
         </dd>
-        <dt className="text-zinc-500">Billing</dt>
+        <dt className="text-zinc-400">Billing</dt>
         <dd className="text-zinc-200">{sub.cycle ?? "no cycle"}</dd>
-        <dt className="text-zinc-500">Period</dt>
+        <dt className="text-zinc-400">Period</dt>
         <dd className="text-zinc-200">
           {day(sub.periodStart)} →{" "}
-          {sub.status === "paused" ? `paused, ${sub.paused?.remainingMs != null ? Math.ceil(sub.paused.remainingMs / 86_400_000) + " days kept" : "no end"}` : day(sub.periodEnd)}
+          {sub.status === "paused" ? `paused, ${sub.paused?.remainingMs != null ? fmtNumber(Math.ceil(sub.paused.remainingMs / 86_400_000)) + " days kept" : "no end"}` : day(sub.periodEnd)}
         </dd>
-        <dt className="text-zinc-500">Source</dt>
+        <dt className="text-zinc-400">Source</dt>
         <dd className="text-zinc-200">{sub.source}</dd>
-        <dt className="text-zinc-500">Paid</dt>
+        <dt className="text-zinc-400">Paid</dt>
         <dd className="text-zinc-200">
-          {sub.pricePaid ? `${sub.pricePaid.amount} ${sub.pricePaid.currency}` : "nothing recorded"}
+          {sub.pricePaid ? fmtMoney(sub.pricePaid.amount, sub.pricePaid.currency) : "nothing recorded"}
           {sub.couponCode ? ` (coupon ${sub.couponCode})` : ""}
         </dd>
         {sub.scheduled && (
           <>
-            <dt className="text-zinc-500">Scheduled</dt>
+            <dt className="text-zinc-400">Scheduled</dt>
             <dd className="text-amber-200">
               {sub.scheduled.planId} v{sub.scheduled.version} ({sub.scheduled.cycle}) on {day(sub.scheduled.effectiveAt)}
             </dd>
@@ -306,28 +347,28 @@ function SubSummaryCard({ sub }: { sub: Subscription }) {
         )}
         {sub.cancelled?.atPeriodEnd && sub.status === "cancelled" && (
           <>
-            <dt className="text-zinc-500">Cancels</dt>
+            <dt className="text-zinc-400">Cancels</dt>
             <dd className="text-red-300">at period end</dd>
           </>
         )}
         {sub.addOns.length > 0 && (
           <>
-            <dt className="text-zinc-500">Add-ons</dt>
+            <dt className="text-zinc-400">Add-ons</dt>
             <dd className="text-zinc-200">{sub.addOns.map((a) => a.name).join(", ")}</dd>
           </>
         )}
         {sub.custom && (
           <>
-            <dt className="text-zinc-500">Custom</dt>
+            <dt className="text-zinc-400">Custom</dt>
             <dd className="text-zinc-200">
-              {sub.custom.price ? `${sub.custom.price.amount} ${sub.custom.price.currency} ${sub.custom.price.cycle}` : "no price"}
+              {sub.custom.price ? `${fmtMoney(sub.custom.price.amount, sub.custom.price.currency)} ${sub.custom.price.cycle}` : "no price"}
               {sub.custom.notes ? ` — ${sub.custom.notes}` : ""}
             </dd>
           </>
         )}
       </dl>
       <div>
-        <p className="text-xs uppercase tracking-wide text-zinc-500">Limits in force</p>
+        <p className="text-xs uppercase tracking-wide text-zinc-400">Limits in force</p>
         <ul className="mt-1 grid grid-cols-1 gap-y-0.5 text-xs text-zinc-300">
           {LIMIT_FIELDS.map((f) => {
             const v = limits[f.key];
@@ -441,11 +482,12 @@ function ActionForm({
     if (!r.ok) return setProblem(r.data.message ?? "That cannot be done.");
     setPreview(r.data);
   };
+  // The confirmation stays open, showing that it is working, until the server answers.
   const run = async (reason: string) => {
-    setPreview(null);
     setBusy(true);
     const r = await adminFetch<{ summary: string }>(`/api/admin/subscriptions/${encodeURIComponent(userId)}`, { method: "POST", json: { ...body(), reason } });
     setBusy(false);
+    setPreview(null);
     if (!r.ok) return onError(r.data.message ?? "That did not work.");
     onDone(`${r.data.summary}.`);
   };
@@ -455,7 +497,10 @@ function ActionForm({
       <select value={planId} onChange={(e) => setPlanId(e.target.value)} className={field}>
         {sellable.map((p) => (
           <option key={p.id} value={p.id}>
-            {p.current.name} (v{p.current.version}){p.current.prices.ESP?.monthly ? ` — ${p.current.prices.ESP.monthly} ESP/mo, ${p.current.prices.ESP.annual ?? "–"} ESP/yr` : ""}
+            {p.current.name} (v{p.current.version})
+            {p.current.prices.ESP?.monthly
+              ? ` — ${fmtMoney(p.current.prices.ESP.monthly, "ESP")}/mo, ${p.current.prices.ESP.annual != null ? fmtMoney(p.current.prices.ESP.annual, "ESP") : "–"}/yr`
+              : ""}
           </option>
         ))}
       </select>
@@ -475,8 +520,8 @@ function ActionForm({
   const paidFields = (label: string) => (
     <Row label={label} hint={paidCurrency === "ESP" ? "Off-band: nothing is charged from here." : `${paidCurrency} is ${NOT_CONNECTED}.`}>
       <div className="flex gap-2">
-        <input type="number" min={0} step="0.01" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} className={field} placeholder="amount" />
-        <select value={paidCurrency} onChange={(e) => setPaidCurrency(e.target.value)} className={`${field} w-28`}>
+        <input type="number" min={0} step="0.01" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} className={`${field} min-w-0`} placeholder="amount" />
+        <select aria-label={`${label}: currency`} value={paidCurrency} onChange={(e) => setPaidCurrency(e.target.value)} className={`${field} w-28 shrink-0`}>
           {CURRENCIES.map((c) => (
             <option key={c.code} value={c.code}>
               {c.code}
@@ -639,7 +684,7 @@ function ActionForm({
                 .map((a) => {
                   const offered = !a.planIds.length || (sub && a.planIds.includes(sub.planId));
                   return (
-                    <label key={a.id} className={`flex items-center gap-2 text-sm ${offered ? "text-zinc-200" : "text-zinc-600"}`}>
+                    <label key={a.id} className={`flex items-center gap-2 text-sm ${offered ? "text-zinc-200" : "text-zinc-400"}`}>
                       <input
                         type="checkbox"
                         disabled={!offered}
@@ -656,9 +701,9 @@ function ActionForm({
           ))}
         {(action === "pause" || action === "resume" || action === "unschedule") && <p className="text-sm text-zinc-400">Preview to see exactly what happens.</p>}
         {problem && (
-          <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+          <Notice kind="err" onClose={() => setProblem(null)}>
             {problem}
-          </p>
+          </Notice>
         )}
         <button type="submit" disabled={busy || ((action === "assign" || action === "change" || action === "comp" || action === "custom") && !planId)} className={btn.primary}>
           {busy ? "Working…" : "Preview"}
@@ -684,8 +729,10 @@ function ActionForm({
               </details>
             </div>
           }
-          confirmLabel="Confirm"
+          confirmLabel={action === "cancel" && when === "now" ? "Cancel now" : "Confirm"}
           danger={action === "cancel"}
+          // Ending a plan at once cannot be undone from here: no refund, back to Free immediately.
+          typeToConfirm={action === "cancel" && when === "now" ? "cancel" : undefined}
           withReason="Reason (kept in the history and the audit log)"
           onConfirm={run}
           onCancel={() => setPreview(null)}
@@ -701,7 +748,7 @@ function Row({ label, hint, children }: { label: string; hint?: ReactNode; child
       <span>{label}</span>
       <span className="mt-1 block sm:mt-0">
         {children}
-        {hint && <span className="mt-0.5 block text-xs text-zinc-500">{hint}</span>}
+        {hint && <span className="mt-0.5 block text-xs text-zinc-400">{hint}</span>}
       </span>
     </label>
   );
