@@ -6,6 +6,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { fmtTime, useAdmin } from "../../AdminApi";
 import { Badge, Confirm, Empty, Loading, Notice, PageHeader, Panel, btn, field } from "../../ui";
 import { fmtMoney, type ByCurrency } from "@/lib/finance/money";
@@ -23,13 +24,23 @@ const EMPTY = { from: "", to: "", status: "", provider: "", plan: "", user: "", 
 
 export default function PaymentsClient() {
   const { can, adminFetch } = useAdmin();
-  const [filters, setFilters] = useState(EMPTY);
-  const [applied, setApplied] = useState(EMPTY);
+  // Filters come from the URL (same names as the API) and stay in it, so a
+  // link such as ?status=failed&from=2026-09-01 opens filtered, and ?open=<id>
+  // opens one payment.
+  const params = useSearchParams();
+  const fromUrl = useMemo(
+    () => Object.fromEntries(Object.keys(EMPTY).map((k) => [k, params?.get(k) ?? ""])) as typeof EMPTY,
+    // Read once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const [filters, setFilters] = useState(fromUrl);
+  const [applied, setApplied] = useState(fromUrl);
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<Page | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(() => params?.get("open") || null);
   const [reload, setReload] = useState(0);
   const [confirmBackfill, setConfirmBackfill] = useState(false);
 
@@ -55,6 +66,14 @@ export default function PaymentsClient() {
       live = false;
     };
   }, [adminFetch, query, offset, reload]);
+
+  useEffect(() => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(applied)) if (v) p.set(k, v);
+    if (open) p.set("open", open);
+    const qs = p.toString();
+    window.history.replaceState(null, "", window.location.pathname + (qs ? `?${qs}` : ""));
+  }, [applied, open]);
 
   const set = (k: keyof typeof filters) => (e: { target: { value: string } }) => setFilters({ ...filters, [k]: e.target.value });
 

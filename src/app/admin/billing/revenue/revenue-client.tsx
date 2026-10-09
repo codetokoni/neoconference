@@ -5,6 +5,7 @@
 // cancellations, failed and abandoned payments; a chart per currency.
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAdmin } from "../../AdminApi";
 import { Badge, Loading, Notice, PageHeader, Panel, btn, field } from "../../ui";
 import { currenciesOf, fmtMoney, type ByCurrency } from "@/lib/finance/money";
@@ -50,8 +51,18 @@ const PRESETS: [string, number][] = [
 export default function RevenueClient() {
   const { can, adminFetch } = useAdmin();
   const today = iso(Date.now());
-  const [range, setRange] = useState({ from: iso(Date.now() - 29 * 86_400_000), to: today, bucket: "" });
+  // ?from=YYYY-MM-DD&to=YYYY-MM-DD&bucket=day|week|month open the page on that range, and it stays in the URL.
+  const params = useSearchParams();
+  const [range, setRange] = useState(() => ({
+    from: params?.get("from") || iso(Date.now() - 29 * 86_400_000),
+    to: params?.get("to") || today,
+    bucket: params?.get("bucket") || "",
+  }));
   const [applied, setApplied] = useState(range);
+  useEffect(() => {
+    const p = new URLSearchParams({ from: applied.from, to: applied.to, ...(applied.bucket ? { bucket: applied.bucket } : {}) });
+    window.history.replaceState(null, "", `${window.location.pathname}?${p}`);
+  }, [applied]);
   const [r, setR] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
 

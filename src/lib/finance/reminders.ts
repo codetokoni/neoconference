@@ -235,6 +235,8 @@ export interface RunResult {
   failed: number;
   alreadySent: number;
   noEmail: number;
+  /** Due, but the caller's filter said not now: left unclaimed for a later run. */
+  deferred: number;
   preview?: (DueReminder & { email: string | null; subjectLine: string })[];
 }
 
@@ -242,23 +244,45 @@ export interface RunResult {
  * Work out what is due and (unless dryRun) send it. `by` goes in the log.
  * Safe to call any number of times: claims make each reminder go out once.
  */
-export async function runReminders(now: number, opts: { dryRun?: boolean; by?: string } = {}): Promise<RunResult> {
-  const rules = await getReminderRules();
+export interface RunOptions {
+  dryRun?: boolean;
+  /** Goes in the log: "cron", an administrator's email, "automation:<ruleId>". */
+  by?: string;
+  /** Use these rules instead of the ones in Billing settings (an automation rule's own days). */
+  rules?: ReminderRules;
+  /** Only these kinds. */
+  kinds?: ReminderKind[];
+  /** Asked for each due reminder before it is claimed; false leaves it unclaimed for a later run. */
+  filter?: (r: DueReminder) => boolean;
+}
+
+export async function runReminders(now: number, opts: RunOptions = {}): Promise<RunResult> {
+  const base = opts.rules ?? (await getReminderRules());
+  const only = (k: ReminderKind) => !opts.kinds || opts.kinds.includes(k);
+  const rules: ReminderRules = {
+    failed: { ...base.failed, enabled: base.failed.enabled && only("failed") },
+    abandoned: { ...base.abandoned, enabled: base.abandoned.enabled && only("abandoned") },
+    renewal: { ...base.renewal, enabled: base.renewal.enabled && only("renewal") },
+  };
   const by = opts.by ?? "cron";
   if (!rules.failed.enabled && !rules.abandoned.enabled && !rules.renewal.enabled) {
-    return { ran: false, skipped: "all_off", due: 0, sent: 0, failed: 0, alreadySent: 0, noEmail: 0 };
+    return { ran: false, skipped: "all_off", due: 0, sent: 0, failed: 0, alreadySent: 0, noEmail: 0, deferred: 0 };
   }
   // Renewals look ahead up to 60 days; their payments started a year before.
   const entries = await entriesBetween(now - 400 * DAY, now);
   const checkouts = await listCheckouts(now - LOOKBACK - DAY, now);
   const due = planReminders(rules, entries, checkouts, now);
-  const result: RunResult = { ran: true, due: due.length, sent: 0, failed: 0, alreadySent: 0, noEmail: 0 };
+  const result: RunResult = { ran: true, due: due.length, sent: 0, failed: 0, alreadySent: 0, noEmail: 0, deferred: 0 };
 
   if (opts.dryRun) {
     result.preview = [];
     for (const r of due) {
       if (await kv.get(SENT(r.key))) {
         result.alreadySent++;
+        continue;
+      }
+      if (opts.filter && !opts.filter(r)) {
+        result.deferred++;
         continue;
       }
       const who = await lookupUser(r.userId);
@@ -272,6 +296,10 @@ export async function runReminders(now: number, opts: { dryRun?: boolean; by?: s
   }
 
   for (const r of due) {
+    if (opts.filter && !opts.filter(r)) {
+      result.deferred++;
+      continue;
+    }
     const claimed = (await kv.set(SENT(r.key), { at: now, by }, { nx: true, ex: CLAIM_S })) !== null;
     if (!claimed) {
       result.alreadySent++;

@@ -555,6 +555,17 @@ async function main() {
     assert.deepEqual(due.map((d) => `${d.kind}:${d.email}:${d.step}`).sort(), ["failed:three@example.com:3", "renewal:owner@example.com:30"]);
     assert.equal(sentMail().length, 0, "a preview sends nothing");
 
+    // Automation drives the same reminders: its own rules, some kinds, a filter
+    // that can hold a reminder back unclaimed — and the same claims.
+    const { runReminders, DEFAULT_RULES } = await import("../finance/reminders");
+    assert.equal((await runReminders(Date.now(), { rules: DEFAULT_RULES })).skipped, "all_off", "an override that is all off sends nothing");
+    const onlyRenewal = await runReminders(Date.now(), { dryRun: true, kinds: ["renewal"] });
+    assert.deepEqual(onlyRenewal.preview!.map((p) => [p.kind, p.userId, p.key.startsWith("renewal:")]), [["renewal", "user_owner", true]]);
+    const held = await runReminders(Date.now(), { by: "automation:test", kinds: ["renewal"], filter: () => false });
+    assert.deepEqual([held.deferred, held.sent], [1, 0]);
+    assert.equal([...g.__kvStore.keys()].filter((k) => k.startsWith("billing:reminders:sent:")).length, 0, "a held reminder is not claimed");
+    assert.equal(sentMail().length, 0);
+
     const first = await cron();
     assert.equal(first.body.sent, 2, JSON.stringify(first.body));
     assert.deepEqual(sentMail().map((m) => m.to[0]).sort(), ["owner@example.com", "three@example.com"]);
@@ -618,6 +629,27 @@ async function main() {
     assert.equal(ws.getRow(1).getCell(12).value, "currency");
     assert.equal(ws.rowCount, 1 + 11);
     assert.equal((await audit.listAdminAudit({ action: "billing.export" })).items.length, 4);
+  });
+
+  await t("data governance: a person's finance records export, then lose their name and email but keep the money", async () => {
+    const gov = await import("../finance/governance");
+    const mine = await gov.financeRecordsForUser("buyer1");
+    assert.deepEqual(mine.payments.map((p) => p.ref).sort(), ["OLD1", b1.ref, b1r.ref, "cs_fail_1", "cs_live_1", "cs_live_2"].sort());
+    assert.ok(mine.invoices.some((i) => i.ref === "cs_live_1" && i.buyer.email === "one@example.com"));
+    assert.ok(mine.checkouts.length >= 2);
+    assert.ok(!JSON.stringify(mine).includes("SECRET_VALUE"));
+    const res = await gov.anonymiseFinanceForUser("buyer1");
+    assert.ok(res.records >= 4, JSON.stringify(res));
+    const after = await gov.financeRecordsForUser("buyer1");
+    const sale = after.payments.find((p) => p.ref === "cs_live_1")!;
+    assert.deepEqual([sale.email, sale.name, sale.amount, sale.currency, sale.refundedAmount], [null, null, 25, "USD", 25]);
+    const inv = after.invoices.find((i) => i.ref === "cs_live_1")!;
+    assert.deepEqual([inv.buyer.email, inv.buyer.name, inv.buyer.userId], [null, null, "buyer1"]);
+    assert.match(inv.number, /^NEO-/);
+    assert.equal((await gov.anonymiseFinanceForUser("buyer1")).records, 0, "running it again changes nothing");
+    // A guest purchase made with the address while signed out.
+    await stripeEvent("checkout.session.completed", { ...sale, id: "cs_guest_1", payment_intent: "pi_guest_1", customer_email: "guest2@example.com", metadata: { eventId: "ev_paid", eventSlug: "gala", tierId: "vip" } });
+    assert.equal((await gov.anonymiseFinanceForUser("nobody", { email: "guest2@example.com" })).records, 1);
   });
 
   await t("every change in this file is in the audit log, unbroken", async () => {
