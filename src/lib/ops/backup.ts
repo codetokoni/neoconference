@@ -18,7 +18,8 @@
 // those) is by key prefix: a preview lists the keys it would add, change and
 // remove; applying it first writes a "pre-restore" snapshot of exactly those
 // prefixes, so restoring that one undoes it. The audit trail, two-factor
-// secrets, the backup index and job locks are never restored over.
+// secrets, the backup index, job locks and data-governance records
+// (neo:data:, e.g. erasure tombstones) are never restored over.
 //
 //   neo:ops:backups   hash id -> BackupMeta
 
@@ -42,7 +43,8 @@ export const SNAPSHOT_EXCLUDE = [
 ];
 
 /** Never written by a restore, whatever prefix is chosen. */
-export const RESTORE_PROTECTED = ["neo:admin:audit:", "neo:admin:mfa", "neo:ops:backups", "neo:ops:job:"];
+// neo:data: holds data-governance records (erasure tombstones): a restore must never un-erase anyone.
+export const RESTORE_PROTECTED = ["neo:admin:audit:", "neo:admin:mfa", "neo:ops:backups", "neo:ops:job:", "neo:data:"];
 
 export const MAX_KEYS = 100_000;
 export const MAX_RAW_BYTES = 64 * 1024 * 1024;
@@ -266,6 +268,19 @@ export async function verifySnapshot(id: string): Promise<BackupMeta | null> {
   return next;
 }
 
+/**
+ * Remove one snapshot: its R2 object, then its index entry. For data
+ * governance's age-based retention (the count cap is applyRetention below).
+ * False when there is no such snapshot.
+ */
+export async function deleteBackup(id: string): Promise<boolean> {
+  const meta = await getBackup(id);
+  if (!meta) return false;
+  await deleteObject(meta.r2Key);
+  await kv.hdel(INDEX, id);
+  return true;
+}
+
 /** Keep the newest KEEP_SNAPSHOTS scheduled/manual and KEEP_PRE_RESTORE pre-restore snapshots. */
 export async function applyRetention(): Promise<string[]> {
   const all = await listBackups();
@@ -290,7 +305,7 @@ export function cleanPrefixes(input: unknown): { ok: true; prefixes: string[] } 
   if (!prefixes.length) return { ok: false, error: "Choose at least one key prefix." };
   if (prefixes.length > 20) return { ok: false, error: "At most 20 prefixes at a time." };
   if (prefixes.some((p) => p.length < 3)) return { ok: false, error: "A prefix needs at least 3 characters (a whole-store restore is not offered)." };
-  if (prefixes.some((p) => isProtected(p))) return { ok: false, error: "That prefix is protected (audit trail, two-factor, backups or job locks)." };
+  if (prefixes.some((p) => isProtected(p))) return { ok: false, error: "That prefix is protected (audit trail, two-factor, backups, job locks or data-governance records)." };
   return { ok: true, prefixes };
 }
 

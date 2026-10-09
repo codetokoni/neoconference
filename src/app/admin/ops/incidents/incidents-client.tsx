@@ -54,6 +54,11 @@ export default function OpsIncidentsClient() {
   const now = Date.now();
   const [mw, setMw] = useState({ title: "", message: "", startsAt: localInput(now + 3600_000), endsAt: localInput(now + 2 * 3600_000), maintenanceMode: false, announceMinutes: 60 });
   const [cancel, setCancel] = useState<Window | null>(null);
+  // ?status=open (the Overview's link): unresolved incidents only.
+  const [onlyOpen, setOnlyOpen] = useState(false);
+  useEffect(() => {
+    setOnlyOpen(new URLSearchParams(window.location.search).get("status") === "open");
+  }, []);
 
   const load = useCallback(async () => {
     const r = await adminFetch<Data>("/api/admin/ops/incidents");
@@ -96,6 +101,7 @@ export default function OpsIncidentsClient() {
 
   if (!data) return <Loading />;
   const label = (id: string) => data.services.find((s) => s.id === id)?.label ?? id;
+  const incidents = onlyOpen ? data.incidents.filter((i) => i.status !== "resolved") : data.incidents;
 
   return (
     <div>
@@ -165,12 +171,17 @@ export default function OpsIncidentsClient() {
         </Panel>
       )}
 
-      <h2 className="mb-2 text-lg font-semibold text-cyan-50">Incidents</h2>
-      {data.incidents.length === 0 ? (
-        <Empty>No incidents.</Empty>
+      <div className="mb-2 flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-cyan-50">Incidents</h2>
+        <label className="ml-auto flex items-center gap-2 text-sm text-zinc-400">
+          <input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} /> Open only
+        </label>
+      </div>
+      {incidents.length === 0 ? (
+        <Empty>{onlyOpen ? "No open incidents." : "No incidents."}</Empty>
       ) : (
         <div className="grid gap-3">
-          {data.incidents.map((i) => (
+          {incidents.map((i) => (
             <Panel key={i.id}>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
