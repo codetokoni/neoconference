@@ -31,7 +31,15 @@ type Data = {
   canRestore: boolean;
   config: { exclude: string[]; protected: string[]; maxKeys: number; maxRawBytes: number; keep: number; keepPreRestore: number };
 };
-type Preview = { added: string[]; changed: string[]; removed: string[]; unchanged: number; protectedSkipped: number; counts: { added: number; changed: number; removed: number } };
+type Preview = {
+  added: string[];
+  changed: string[];
+  removed: string[];
+  unchanged: number;
+  protectedSkipped: number;
+  erasedSkipped: string[];
+  counts: { added: number; changed: number; removed: number; erasedSkipped: number };
+};
 
 export default function OpsBackupsClient() {
   const { can, adminFetch } = useAdmin();
@@ -224,7 +232,8 @@ export default function OpsBackupsClient() {
                 Restoring <span className="font-mono">{preview.prefixes.join(", ")}</span> from <span className="font-mono">{preview.snapshotId}</span>:{" "}
                 <b className="text-emerald-300">{preview.p.counts.added} added</b>, <b className="text-amber-300">{preview.p.counts.changed} changed</b>,{" "}
                 <b className="text-red-300">{preview.p.counts.removed} removed</b>, {preview.p.unchanged} unchanged
-                {preview.p.protectedSkipped ? `, ${preview.p.protectedSkipped} protected skipped` : ""}.
+                {preview.p.protectedSkipped ? `, ${preview.p.protectedSkipped} protected skipped` : ""}
+                {preview.p.counts.erasedSkipped ? `, ${preview.p.counts.erasedSkipped} left as they are (erased accounts)` : ""}.
               </p>
               <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
                 {(["added", "changed", "removed"] as const).map((k) => (

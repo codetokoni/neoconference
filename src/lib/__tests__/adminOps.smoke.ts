@@ -636,6 +636,9 @@ async function main() {
     await kv.set("neo:event:ttl", "short-lived", { ex: 3600 });
     await kv.set("neo:other:1", "untouched-original");
     await kv.set("ratelimit:abc:1", 5);
+    await kv.set("neo:event:gone", { id: "gone", ownerUserId: "user_gone" });
+    await kv.set("neo:event:by:user_gone", "x");
+    await kv.set("neo:event:shared", { members: ["user_gone", "user_b"] });
   };
   let snapId = "";
   await t("a snapshot is compressed, checksummed, verified after writing, and leaves rate limits out", async () => {
@@ -703,12 +706,17 @@ async function main() {
     await kv.del("neo:event:s");
     await kv.del("neo:event:z");
     await kv.set("neo:other:1", "changed-and-out-of-scope");
+    // user_gone's deletion completes after the snapshot (data governance's tombstone).
+    await kv.del("neo:event:gone", "neo:event:by:user_gone");
+    await kv.sadd("neo:data:erased", "user_gone");
+    await kv.set("neo:event:shared", { members: ["user_b"] });
     const p = await call("user_owner", R.restore.POST as never, { method: "POST", body: { snapshotId: snapId, prefixes: ["neo:event:"], mode: "preview" } });
     assert.equal(p.status, 200, p.text);
     const pv = p.body.preview as { added: string[]; changed: string[]; removed: string[]; counts: Record<string, number> };
     assert.deepEqual(pv.added, ["neo:event:2", "neo:event:h", "neo:event:l", "neo:event:s", "neo:event:z"]);
     assert.deepEqual(pv.changed, ["neo:event:1"]);
     assert.deepEqual(pv.removed, ["neo:event:new"]);
+    assert.deepEqual((p.body.preview as { erasedSkipped: string[] }).erasedSkipped, ["neo:event:by:user_gone", "neo:event:gone", "neo:event:shared"], "an erased account is not brought back");
     assert.equal(p.body.confirmPhrase, `RESTORE ${snapId}`);
     assert.deepEqual(await kv.get("neo:event:1"), { id: "1", name: "Edited later" }, "preview wrote nothing");
   });
@@ -730,6 +738,9 @@ async function main() {
     assert.deepEqual(await kv.zrange("neo:event:z", 0, -1), ["first", "second"]);
     assert.ok(Number(await kv.pttl("neo:event:ttl")) > 0, "TTL restored");
     assert.equal(await kv.get("neo:other:1"), "changed-and-out-of-scope", "other prefixes untouched");
+    assert.equal(await kv.get("neo:event:gone"), null, "the erased account stays erased");
+    assert.equal(await kv.get("neo:event:by:user_gone"), null);
+    assert.deepEqual(await kv.get("neo:event:shared"), { members: ["user_b"] }, "a key that held the erased id keeps its current value");
     const pre = (await backup.listBackups()).find((b) => b.id === result.preRestoreId)!;
     assert.equal(pre.kind, "pre-restore");
     assert.equal(pre.restoreOf, snapId);

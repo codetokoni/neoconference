@@ -17,7 +17,10 @@
 // Restore (owner only, step-up, typed confirmation — the route enforces
 // those) is by key prefix: a preview lists the keys it would add, change and
 // remove; applying it first writes a "pre-restore" snapshot of exactly those
-// prefixes, so restoring that one undoes it. The audit trail, two-factor
+// prefixes, so restoring that one undoes it. A key that names, or holds, the
+// id of an account whose deletion was completed (data governance's
+// neo:data:erased) is left exactly as it is now: never written back, never
+// removed — a restore cannot bring an erased person back. The audit trail, two-factor
 // secrets, the backup index, job locks and data-governance records
 // (neo:data:, e.g. erasure tombstones) are never restored over.
 //
@@ -28,6 +31,7 @@ import { createHash } from "node:crypto";
 import { kv, kvRaw } from "@/lib/kv";
 import { deleteObject, getObjectBytes, isR2Configured, putObject } from "@/lib/r2";
 import { newId, parseJson, readHash, scanKeys } from "@/lib/ops/util";
+import { erasedUserIds } from "@/lib/dataGov/requests";
 
 export const SNAPSHOT_EXCLUDE = [
   "ratelimit:",
@@ -317,7 +321,9 @@ export interface RestorePreview {
   removed: string[];
   unchanged: number;
   protectedSkipped: number;
-  counts: { added: number; changed: number; removed: number };
+  /** Keys left alone because they belong to an erased account. */
+  erasedSkipped: string[];
+  counts: { added: number; changed: number; removed: number; erasedSkipped: number };
 }
 
 const SHOW = 200;
@@ -330,7 +336,10 @@ async function plan(meta: BackupMeta, prefixes: string[]) {
   if (!read.ok) throw new RestoreError("snapshot_invalid", `The snapshot failed verification: ${read.detail}`);
   const want = read.file.entries.filter((e) => inPrefixes(e.k, prefixes));
   const protectedSkipped = want.filter((e) => isProtected(e.k)).length;
-  const target = new Map(want.filter((e) => !isProtected(e.k) && !isExcluded(e.k)).map((e) => [e.k, e]));
+  const erased = await erasedUserIds();
+  const mentionsErased = (e: SnapshotEntry) => erased.some((id) => id && (e.k.includes(id) || JSON.stringify(e.v).includes(id)));
+  const erasedKeys = new Set(want.filter((e) => !isProtected(e.k) && !isExcluded(e.k) && mentionsErased(e)).map((e) => e.k));
+  const target = new Map(want.filter((e) => !isProtected(e.k) && !isExcluded(e.k) && !erasedKeys.has(e.k)).map((e) => [e.k, e]));
   const cur = await keysFor(prefixes);
   if (cur.truncated) throw new RestoreError("too_many_keys", `Those prefixes cover more than ${MAX_KEYS.toLocaleString("en")} keys.`);
   const curKeys = cur.keys.filter((k) => !isProtected(k) && !isExcluded(k));
@@ -344,8 +353,9 @@ async function plan(meta: BackupMeta, prefixes: string[]) {
     else if (!sameValue(c, e)) changed.push(e);
     else unchanged++;
   }
-  const removed = [...current.keys()].filter((k) => !target.has(k));
-  return { file: read.file, added, changed, removed, unchanged, protectedSkipped };
+  // A current key the snapshot holds for an erased account stays as it is now.
+  const removed = [...current.keys()].filter((k) => !target.has(k) && !erasedKeys.has(k));
+  return { file: read.file, added, changed, removed, unchanged, protectedSkipped, erasedSkipped: [...erasedKeys].sort() };
 }
 
 export class RestoreError extends Error {
@@ -366,7 +376,8 @@ export async function previewRestore(snapshotId: string, prefixes: string[]): Pr
     removed: p.removed.sort().slice(0, SHOW),
     unchanged: p.unchanged,
     protectedSkipped: p.protectedSkipped,
-    counts: { added: p.added.length, changed: p.changed.length, removed: p.removed.length },
+    erasedSkipped: p.erasedSkipped.slice(0, SHOW),
+    counts: { added: p.added.length, changed: p.changed.length, removed: p.removed.length, erasedSkipped: p.erasedSkipped.length },
   };
 }
 
