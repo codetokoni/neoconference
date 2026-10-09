@@ -144,7 +144,7 @@ type Rule = { enabled: boolean; thresholds: number[]; channels: { email: boolean
 type ReminderConfig = { meetings: Rule; recording: Rule; updatedAt: number | null; updatedBy: string | null };
 
 export function RemindersTab() {
-  const { adminFetch } = useAdmin();
+  const { adminFetch, can } = useAdmin();
   const [cfg, setCfg] = useState<ReminderConfig | null>(null);
   const [text, setText] = useState({ meetings: "", recording: "" });
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -206,7 +206,19 @@ export function RemindersTab() {
       {rule("meetings", "Meetings running out", "Plans with a lifetime meeting cap (Free: 5). Each threshold is sent once per account. Wording: the “Free meetings running out” email template.")}
       {rule("recording", "Recording hours running out", "Monthly recording hours (Pro 10, Business and Enterprise 50). Each threshold is sent once a month. Wording: the “Recording hours running out” template.")}
       <p className="text-xs text-zinc-500">
-        People who turned off “Usage reminders” in their settings are skipped on that channel. Renewal and failed-payment reminders are part of billing and are set up there.
+        People who turned off “Usage reminders” in their settings are skipped on that channel. Renewal, failed-payment and abandoned-checkout reminders are part of billing
+        {can("billing:read") ? (
+          <>
+            {" "}
+            — see{" "}
+            <a href="/admin/billing/settings" className="text-cyan-300 hover:text-cyan-200">
+              Billing settings → Reminder emails
+            </a>
+            .
+          </>
+        ) : (
+          " and are set up in Billing settings (needs the billing:read permission)."
+        )}
         {cfg.updatedAt && <> Last changed by {cfg.updatedBy} {fmtTime(cfg.updatedAt)}.</>}
       </p>
       <button type="button" className={btn.primary} disabled={busy} onClick={save}>
