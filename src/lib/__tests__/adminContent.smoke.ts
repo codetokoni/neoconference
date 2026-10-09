@@ -270,8 +270,16 @@ async function main() {
     const e = (await audits("content.limits.update"))[0];
     assert.equal(e.actorEmail, "mod@example.com");
     assert.deepEqual((e.after as { chat: { maxBytes: number } }).chat.maxBytes, 1024);
+    // Support ticket attachments follow the same page (phase 7's checkAttachment reads it).
+    const tickets = await import("../support/tickets");
+    const shot = new File([new Uint8Array(3000)], "shot.png", { type: "image/png" });
+    assert.equal((await tickets.checkAttachment(shot)).ok, true, "5 MB by default");
     await stepUp("user_mod");
-    await call("user_mod", R.limits.PUT as unknown as Handler<unknown>, { method: "PUT", body: { rules: { chat: { maxBytes: 10 * 1024 * 1024, mimes: ["image/png", "application/pdf"] } } } });
+    await call("user_mod", R.limits.PUT as unknown as Handler<unknown>, { method: "PUT", body: { rules: { support: { maxBytes: 2048, mimes: ["image/png"] } } } });
+    const no = await tickets.checkAttachment(shot);
+    assert.equal(no.ok ? "" : no.error, "too_large");
+    await stepUp("user_mod");
+    await call("user_mod", R.limits.PUT as unknown as Handler<unknown>, { method: "PUT", body: { rules: { chat: { maxBytes: 10 * 1024 * 1024, mimes: ["image/png", "application/pdf"] }, support: { maxBytes: 5 * 1024 * 1024, mimes: ["image/png"] } } } });
   });
 
   await t("a plan's storage quota (phase 3's storageGb) refuses the upload that would pass it", async () => {

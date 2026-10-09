@@ -6,13 +6,16 @@
 import { NextResponse } from "next/server";
 import { supportCaller } from "@/lib/support/caller";
 import { issueFormToken } from "@/lib/support/formToken";
-import { SUPPORT_UPLOAD_ALLOWED, SUPPORT_UPLOAD_MAX_BYTES, attachmentStorageReady } from "@/lib/support/tickets";
+import { attachmentStorageReady } from "@/lib/support/tickets";
+import { uploadRule } from "@/lib/content/limits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const who = await supportCaller();
+  // Set in the admin area (Content > Limits); the form refuses big files before sending.
+  const rule = await uploadRule("support");
   return NextResponse.json(
     {
       signedIn: !!who,
@@ -21,8 +24,8 @@ export async function GET() {
       token: issueFormToken(),
       attachments: {
         allowed: !!who && attachmentStorageReady(),
-        maxBytes: SUPPORT_UPLOAD_MAX_BYTES,
-        types: [...SUPPORT_UPLOAD_ALLOWED],
+        maxBytes: rule.maxBytes,
+        types: rule.mimes,
       },
     },
     { headers: { "cache-control": "no-store" } },

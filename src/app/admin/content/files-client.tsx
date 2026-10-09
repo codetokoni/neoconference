@@ -31,7 +31,7 @@ type ListResponse = {
 
 const EMPTY_FILTERS = { q: "", owner: "", type: "", status: "", visibility: "", state: "", minMb: "", maxMb: "", from: "", to: "", sort: "createdAt", dir: "desc" };
 
-export default function FilesClient({ initial = {} }: { initial?: { owner?: string; type?: string } }) {
+export default function FilesClient({ initial = {} }: { initial?: { owner?: string; type?: string; q?: string; state?: string } }) {
   const { can, adminFetch } = useAdmin();
   const [form, setForm] = useState({ ...EMPTY_FILTERS, ...initial });
   const [filters, setFilters] = useState({ ...EMPTY_FILTERS, ...initial });
