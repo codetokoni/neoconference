@@ -343,14 +343,13 @@ export default function ControlRoom({
     );
   }, [visible, query]);
 
-  /* ---- display mode: only live cameras, sized to fill the screen ----
-     A projected board of fifty mostly-empty "not joined" boxes buries the
-     few people who are actually on camera. In display mode the grid holds
-     only live cameras and fits them to the space below the search bar —
-     one fills the screen, fifty share it — paging past PER_PAGE. ---- */
-  const liveShown = useMemo(() => (display ? shown.filter((p) => p.live) : shown), [display, shown]);
+  /* ---- display mode: every box in the room, sized to fill the screen ----
+     The room's slots — however many it has (46, 50, 12…) — share the
+     space below the search bar edge to edge, so a room of fewer than fifty
+     leaves no empty band at the bottom. Paging past PER_PAGE. ---- */
+  const shownLive = useMemo(() => shown.filter((p) => p.live).length, [shown]);
   const [page, setPage] = useState(0);
-  const paged = useMemo(() => pageOf(liveShown, page), [liveShown, page]);
+  const paged = useMemo(() => pageOf(shown, page), [shown, page]);
   useEffect(() => {
     if (paged.page !== page) setPage(paged.page);
   }, [paged.page, page]);
@@ -592,8 +591,8 @@ export default function ControlRoom({
         {display && (
           <div className="mt-1 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/55">
             <span>
-              <b className="text-emerald-300">{liveShown.length}</b> live
-              {query ? ` · matching "${query}"` : ` of ${participants.length}`}
+              <b className="text-emerald-300">{shownLive}</b> live of {shown.length}
+              {query ? ` · matching "${query}"` : ""}
             </span>
             {paged.pages > 1 && (
               <span className="ml-auto flex items-center gap-1.5">
@@ -683,12 +682,8 @@ export default function ControlRoom({
           {tiles.length === 0 && (
             <p className="col-span-full w-full px-3 py-8 text-center text-sm text-white/50">
               {query
-                ? display
-                  ? `No live camera matches "${query}".`
-                  : `No participants match "${query}".`
-                : display
-                  ? "No cameras are live yet. They appear here as people join."
-                  : "No participants."}
+                ? `No participants match "${query}".`
+                : "No participants."}
             </p>
           )}
         </div>

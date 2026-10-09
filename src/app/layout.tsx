@@ -15,6 +15,7 @@ import PlatformNotice from "@/components/PlatformNotice";
 import { getPlatformSettings } from "@/lib/platform/settings";
 import { DEFAULT_PLATFORM_NAME, noticeActive } from "@/lib/platform/model";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import FullscreenBrand from "@/components/FullscreenBrand";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
@@ -71,6 +72,8 @@ export default async function RootLayout({
           <PushRegistrar />
           <IncomingCall />
           <SupportWidget />
+          {/* The NeoConference logo on top of anything full screen. */}
+          <FullscreenBrand />
           {/* Android phones get the app, not the website. */}
           <AndroidAppGate />
           <SpeedInsights />
