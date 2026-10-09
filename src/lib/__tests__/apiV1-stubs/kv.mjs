@@ -13,6 +13,18 @@ export const kv = {
   async expire() { return 1; },
   async hget(k, f) { return (store.get(k) ?? {})[f] ?? null; },
   async hset(k, o) { store.set(k, { ...(store.get(k) ?? {}), ...o }); return 1; },
-  async hgetall(k) { return store.get(k) ?? null; },
+  async hgetall(k) { const o = store.get(k); return o && Object.keys(o).length ? structuredClone(o) : null; },
+  async hdel(k, ...fields) {
+    const o = { ...(store.get(k) ?? {}) };
+    let n = 0;
+    for (const f of fields) if (f in o) { delete o[f]; n++; }
+    store.set(k, o);
+    return n;
+  },
+  // Glob with * only, which is all the app asks for.
+  async keys(pattern) {
+    const escaped = pattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"));
+    const re = new RegExp("^" + escaped.join(".*") + "$");
+    return [...store.keys()].filter((k) => re.test(k));
+  },
 };
-

@@ -320,6 +320,60 @@ export async function updateParticipant(
 }
 
 /**
+ * Add one participant by hand — a name, and any roster columns — the
+ * way an append-mode upload adds a row: into the slot after the last
+ * customised one (renamed from "Child N", or carrying meta). That slot's
+ * unused default code is taken over when one is there; otherwise a code
+ * is minted for that one slot.
+ *
+ * Unlike applyRoster, it mints only that slot, so a slot deleted earlier
+ * (a gap) is not brought back as an empty "Child N" tile.
+ *
+ * Returns the new record, or null for an empty name.
+ */
+export async function addParticipant(
+  room: string,
+  input: { name: string; meta?: Record<string, string> },
+): Promise<ParticipantCode | null> {
+  const name = (input.name ?? "").trim();
+  if (!name) return null;
+  const meta: Record<string, string> = {};
+  for (const [k, v] of Object.entries(input.meta ?? {})) {
+    const key = k.toLowerCase().trim();
+    const val = String(v ?? "").trim();
+    if (key && val) meta[key] = val;
+  }
+
+  const existing = await listCodes(room);
+  const isDefault = (c: ParticipantCode) =>
+    c.name === `Child ${c.slot}` && (!c.meta || Object.keys(c.meta).length === 0);
+  let lastCustom = 0;
+  for (const c of existing) if (!isDefault(c)) lastCustom = Math.max(lastCustom, c.slot);
+  const slot = lastCustom + 1;
+
+  const reused = existing.find((c) => c.slot === slot);
+  let code: string;
+  if (reused) {
+    code = reused.code;
+  } else {
+    if (!(await kv.get<string>(prefixKey(room)))) await kv.set(prefixKey(room), randomPrefix());
+    const used = new Set(existing.map((c) => c.code));
+    code = randomNumericCode();
+    while (used.has(code)) code = randomNumericCode();
+  }
+
+  const entry: ParticipantCode = {
+    code,
+    slot,
+    name,
+    streamId: reused?.streamId ?? participantStreamId(room, slot),
+    ...(Object.keys(meta).length ? { meta } : {}),
+  };
+  await kv.hset(codesKey(room), { [keyForCode(code)]: JSON.stringify(entry) });
+  return entry;
+}
+
+/**
  * Remove one participant from the roster entirely — the code stops
  * working immediately, the tile disappears, and any active claim on
  * that code is released. If the deleted slot was the last one, the

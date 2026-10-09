@@ -11,41 +11,8 @@
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import nodeModule from "node:module";
-import path from "node:path";
-import { pathToFileURL } from "node:url";
+import "./apiV1-stubs/install";
 
-// ---- stand-ins, installed before any app module loads ----
-type Resolved = { url: string; format?: string | null; shortCircuit?: boolean };
-type Ctx = { parentURL?: string };
-const registerHooks = (nodeModule as unknown as {
-  registerHooks?: (h: { resolve: (s: string, c: Ctx, next: (s: string, c?: Ctx) => Resolved) => Resolved }) => void;
-}).registerHooks;
-if (!registerHooks) throw new Error("apiV1.smoke needs Node 22.15+ (module.registerHooks)");
-
-const LIB = pathToFileURL(path.resolve(__dirname, "..") + path.sep).href;
-const STUBS = pathToFileURL(path.resolve(__dirname, "apiV1-stubs") + path.sep).href;
-const stub = (name: string): Resolved => ({ url: STUBS + name, shortCircuit: true, format: "module" });
-const fromStub = (ctx: Ctx) => (ctx.parentURL || "").startsWith(STUBS);
-
-registerHooks({
-  resolve(spec, ctx, next) {
-    if (spec === "real:livekit") return next("livekit-server-sdk", ctx);
-    if (spec === "real:clerk") return next("@clerk/nextjs/server", ctx);
-    if (spec === "real:r2") return next(LIB + "r2.ts", ctx);
-    if (!fromStub(ctx)) {
-      if (spec === "livekit-server-sdk") return stub("livekit.mjs");
-      if (spec === "@clerk/nextjs/server") return stub("clerk.mjs");
-    }
-    const r = next(spec, ctx);
-    if (!fromStub(ctx) && r.url.endsWith("/src/lib/kv.ts")) return stub("kv.mjs");
-    if (!fromStub(ctx) && r.url.endsWith("/src/lib/r2.ts")) return stub("r2.mjs");
-    return r;
-  },
-});
-
-delete process.env.KV_REST_API_URL;
-delete process.env.KV_REST_API_TOKEN;
 Object.assign(process.env, {
   LIVEKIT_API_KEY: "lk",
   LIVEKIT_API_SECRET: "lk-secret-lk-secret-lk-secret-123",

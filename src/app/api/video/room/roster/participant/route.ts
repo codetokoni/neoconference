@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/roles";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
-import { deleteParticipant, updateParticipant } from "@/lib/participantCodes";
+import { addParticipant, deleteParticipant, updateParticipant } from "@/lib/participantCodes";
 import { isVideoRoomAdmin } from "@/lib/videoAdmin";
 
 export const runtime = "nodejs";
@@ -67,6 +67,45 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: false, error: "Slot not found." }, { status: 404 });
   }
   return NextResponse.json({ ok: true, participant: updated });
+}
+
+/**
+ * Add one participant by hand, without uploading a spreadsheet. Body:
+ *
+ *   { name: "Grace Okafor", meta?: { country: "Nigeria", center: "MC Abuja" } }
+ *
+ * They get a code at once, in the slot after the last named one
+ * (participantCodes.addParticipant). Meta keys are lowercased; empty
+ * values are dropped. Answers 201 with the new participant.
+ */
+export async function POST(req: Request) {
+  const denied = await guard();
+  if (denied) return denied;
+
+  const r = room(req);
+
+  let body: { name?: unknown; meta?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: "Bad request." }, { status: 400 });
+  }
+  const name = typeof body.name === "string" ? body.name.slice(0, 200).trim() : "";
+  if (!name) {
+    return NextResponse.json({ ok: false, error: "A name is required." }, { status: 400 });
+  }
+  const meta: Record<string, string> = {};
+  if (body.meta && typeof body.meta === "object") {
+    for (const [k, v] of Object.entries(body.meta as Record<string, unknown>)) {
+      meta[k.slice(0, 60)] = String(v ?? "").slice(0, 500);
+    }
+  }
+
+  const added = await addParticipant(r, { name, meta });
+  if (!added) {
+    return NextResponse.json({ ok: false, error: "A name is required." }, { status: 400 });
+  }
+  return NextResponse.json({ ok: true, participant: added }, { status: 201 });
 }
 
 /**

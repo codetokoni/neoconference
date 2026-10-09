@@ -249,12 +249,27 @@ export function buildRosterXlsxFromTemplate(
   if (!layout) return null;
   const { ws, headerRow, nameCol, snCol, metaByHeaderLower, dataStartRow } = layout;
 
+  // Columns added since the upload (the roster editor's "Add column"):
+  // meta keys no template header has. Each gets a header to the right
+  // of the template's own columns, in the order they first appear, so
+  // the download carries them instead of dropping them.
+  let nextCol = layout.dataColEnd + 1;
+  for (const c of codes) {
+    for (const key of Object.keys(c.meta ?? {})) {
+      if (metaByHeaderLower.has(key)) continue;
+      metaByHeaderLower.set(key, nextCol);
+      writeCell(ws, headerRow, nextCol, key.toUpperCase());
+      extendRefTo(ws, headerRow, nextCol);
+      nextCol += 1;
+    }
+  }
+
   // Add a PASSCODE column at the right edge if the template didn't
   // already have one. We put it after every meta column so the
   // operator's own layout keeps its shape.
   let passcodeCol = layout.passcodeCol;
   if (passcodeCol == null) {
-    passcodeCol = layout.dataColEnd + 1;
+    passcodeCol = nextCol;
     writeCell(ws, headerRow, passcodeCol, "PASSCODE");
     extendRefTo(ws, headerRow, passcodeCol);
   }
