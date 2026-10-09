@@ -5,7 +5,7 @@ import { useAmsMultitrack } from "./useAmsMultitrack";
 import PreviewPane, { type PreviewState } from "./PreviewPane";
 import Spotlight from "./Spotlight";
 import { SIMULCAST_MAIN, type FeaturedState } from "@/lib/simulcast";
-import { fitGrid, pageOf } from "@/lib/fitGrid";
+import { fillGrid, pageOf } from "@/lib/fitGrid";
 
 interface Participant {
   slot: number;
@@ -113,7 +113,10 @@ function Tile({
         // rows to viewport height (an earlier revision) squished tiles
         // into unreadable slivers as soon as a roster grew past 50.
         // The page scrolls now instead.
-        "group relative aspect-[4/3] overflow-hidden rounded border bg-[#16232B]",
+        // In display mode the tile fills the cell it is given instead:
+        // the board sizes cells to cover the screen (src/lib/fitGrid.ts).
+        "group relative overflow-hidden rounded border bg-[#16232B]",
+        display ? "h-full w-full" : "aspect-[4/3]",
         display ? "cursor-pointer" : "cursor-grab",
         featured ? "border-amber-400 ring-1 ring-amber-400" : "border-white/10",
         over ? "ring-2 ring-emerald-400" : "",
@@ -370,7 +373,7 @@ export default function ControlRoom({
       window.removeEventListener("resize", measure);
     };
   }, [display]);
-  const fit = useMemo(() => fitGrid(paged.items.length, box.w, box.h), [paged.items.length, box.w, box.h]);
+  const fill = useMemo(() => fillGrid(paged.items.length, box.w, box.h), [paged.items.length, box.w, box.h]);
   // PageUp / PageDown (and ← / → when nothing is open) turn pages.
   useEffect(() => {
     if (!display || paged.pages < 2) return;
@@ -642,20 +645,16 @@ export default function ControlRoom({
 
       <div className="relative" ref={gridBoxRef}>
         <div
-          className={display ? "grid gap-[3px] p-0" : "grid grid-cols-2 gap-[5px] p-3 sm:grid-cols-6 lg:grid-cols-10"}
-          style={
+          className={
             display
-              ? {
-                  gridTemplateColumns: fit.tileW ? `repeat(${fit.cols}, ${fit.tileW}px)` : undefined,
-                  justifyContent: "center",
-                  alignContent: "center",
-                  height: box.h || undefined,
-                }
-              : undefined
+              ? "flex flex-wrap content-start justify-center gap-[3px] p-0"
+              : "grid grid-cols-2 gap-[5px] p-3 sm:grid-cols-6 lg:grid-cols-10"
           }
-          data-cols={display ? fit.cols : undefined}
+          style={display ? { height: box.h || undefined } : undefined}
+          data-cols={display ? fill.cols : undefined}
         >
-          {tiles.map((p) => (
+          {tiles.map((p) => {
+            const tile = (
             <Tile
               key={p.streamId}
               p={p}
@@ -670,9 +669,19 @@ export default function ControlRoom({
               }}
               onDrop={() => dropOn(p)}
             />
-          ))}
+            );
+            // Display: cells sized to cover the whole area, edge to edge; an
+            // incomplete last row widens to fill its row too (flex-grow).
+            return display ? (
+              <div key={p.streamId} style={{ width: fill.cellW || "100%", height: fill.cellH || undefined, flexGrow: 1 }}>
+                {tile}
+              </div>
+            ) : (
+              tile
+            );
+          })}
           {tiles.length === 0 && (
-            <p className="col-span-full px-3 py-8 text-center text-sm text-white/50">
+            <p className="col-span-full w-full px-3 py-8 text-center text-sm text-white/50">
               {query
                 ? display
                   ? `No live camera matches "${query}".`

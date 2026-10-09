@@ -4,7 +4,7 @@
 // are on: one camera fills it, fifty share it, never more than fifty a page.
 
 import assert from "node:assert/strict";
-import { PER_PAGE, fitGrid, pageOf } from "../fitGrid";
+import { PER_PAGE, fillGrid, fitGrid, pageOf } from "../fitGrid";
 
 let n = 0;
 const t = (name: string, fn: () => void) => {
@@ -56,6 +56,22 @@ t("for every count up to 50 on several screens: everything fits, and no other co
 t("nothing to show, or no space yet: an empty fit, not a crash", () => {
   assert.equal(fitGrid(0, 1920, 1000).tileW, 0);
   assert.equal(fitGrid(5, 0, 0).tileW, 0);
+});
+
+t("fill: the cells cover the whole area edge to edge (within rounding), for every count up to 50", () => {
+  for (const [w, h] of [[1920, 1000], [1280, 655], [375, 700], [3840, 2000]]) {
+    for (let k = 1; k <= PER_PAGE; k++) {
+      const f = fillGrid(k, w, h);
+      const usedW = f.cols * f.cellW + (f.cols - 1) * GAP;
+      const usedH = f.rows * f.cellH + (f.rows - 1) * GAP;
+      assert.ok(usedW <= w && usedW > w - f.cols, `${k} in ${w}x${h}: width ${usedW}`);
+      assert.ok(usedH <= h && usedH > h - f.rows, `${k} in ${w}x${h}: height ${usedH}`);
+      assert.ok(f.cols * f.rows >= k);
+    }
+  }
+  // One person: the whole area.
+  assert.deepEqual(fillGrid(1, 1280, 655), { cols: 1, rows: 1, cellW: 1280, cellH: 655 });
+  assert.deepEqual(fillGrid(0, 1280, 655).rows, 0);
 });
 
 t("pages hold at most 50; a page past the end is the last page", () => {

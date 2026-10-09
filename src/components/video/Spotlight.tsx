@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useAmsMultitrack } from "./useAmsMultitrack";
+import BrandMark from "../BrandMark";
 
 interface Spot {
   streamId: string;
@@ -86,7 +87,10 @@ export default function Spotlight({ spot, onClose, onPrev, onNext }: SpotlightPr
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black">
       <video ref={ref} playsInline autoPlay className="h-full w-full object-contain" />
 
-      <span className="pointer-events-none absolute left-4 top-4 rounded-md border border-white/15 bg-black/70 px-3 py-1.5 font-mono text-xs text-white/80 backdrop-blur">
+      {/* Full screen hides the site header: the logo stays on top. */}
+      <BrandMark className="absolute left-4 top-4 z-10" />
+
+      <span className="pointer-events-none absolute left-4 top-[4.25rem] rounded-md border border-white/15 bg-black/70 px-3 py-1.5 font-mono text-xs text-white/80 backdrop-blur">
         {spot.streamId}
         {spot.code ? ` · ${spot.code}` : ""}
       </span>

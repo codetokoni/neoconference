@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAmsMultitrack } from "./useAmsMultitrack";
 import Spotlight from "./Spotlight";
 import { roomLink } from "@/lib/simulcast";
-import { fitGrid } from "@/lib/fitGrid";
+import { fillGrid } from "@/lib/fitGrid";
 
 interface Participant {
   slot: number;
@@ -349,7 +349,7 @@ export default function QueueBoard({
     const page = Math.min(Math.max(1, screen ?? 1), pages);
     const startIdx = (page - 1) * PAGE_SIZE;
     const pageEntries = connected.slice(startIdx, startIdx + PAGE_SIZE);
-    const fit = fitGrid(pageEntries.length, gridBox.w, gridBox.h);
+    const fill = fillGrid(pageEntries.length, gridBox.w, gridBox.h);
 
     return queue.order.length === 0 || connected.length === 0 ? (
       <div className="flex h-full items-center justify-center bg-[#0F1519] p-6 text-center">
@@ -383,19 +383,12 @@ export default function QueueBoard({
             what gets measured, and tiles sized from it must never be able
             to stretch it (that loop picked fewer, bigger tiles each pass). */}
         <div ref={gridRef} className="relative min-h-0 flex-1">
-        <div
-          className="absolute inset-0 grid gap-[3px]"
-          data-cols={fit.cols}
-          style={{
-            gridTemplateColumns: fit.tileW ? `repeat(${fit.cols}, ${fit.tileW}px)` : "repeat(10, minmax(0, 1fr))",
-            gridAutoRows: fit.tileH ? `${fit.tileH}px` : "1fr",
-            justifyContent: "center",
-            alignContent: "center",
-          }}
-        >
+        <div className="absolute inset-0 flex flex-wrap content-start justify-center gap-[3px]" data-cols={fill.cols}>
           {pageEntries.map(({ sid, position }, iOnPage) => {
             const idx = startIdx + iOnPage;
             return (
+              // Cells sized to cover the whole area, edge to edge.
+              <div key={sid} style={{ width: fill.cellW || "10%", height: fill.cellH || "20%", flexGrow: 1 }}>
               <QueueTile
                 key={sid}
                 streamId={sid}
@@ -415,6 +408,7 @@ export default function QueueBoard({
                 onTake={() => {}}
                 onPreview={() => {}}
               />
+              </div>
             );
           })}
         </div>

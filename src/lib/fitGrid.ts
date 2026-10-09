@@ -30,6 +30,30 @@ export function fitGrid(n: number, width: number, height: number, aspect = 4 / 3
   return best;
 }
 
+export interface GridFill {
+  cols: number;
+  rows: number;
+  /** Cell size in px that, with the gaps, covers the whole box. */
+  cellW: number;
+  cellH: number;
+}
+
+/**
+ * The same columns and rows as fitGrid, but the cells stretched to cover
+ * the box edge to edge — no empty bands around the grid. The video in
+ * each cell fills it (object-cover); an incomplete last row is centred.
+ */
+export function fillGrid(n: number, width: number, height: number, gap = 3): GridFill {
+  const f = fitGrid(n, width, height, 4 / 3, gap);
+  if (!f.rows) return { cols: 1, rows: 0, cellW: 0, cellH: 0 };
+  return {
+    cols: f.cols,
+    rows: f.rows,
+    cellW: Math.floor((width - gap * (f.cols - 1)) / f.cols),
+    cellH: Math.floor((height - gap * (f.rows - 1)) / f.rows),
+  };
+}
+
 /** Page `page` (0-based, clamped) of `items`, PER_PAGE at a time. */
 export function pageOf<T>(items: T[], page: number, per = PER_PAGE): { items: T[]; page: number; pages: number } {
   const pages = Math.max(1, Math.ceil(items.length / per));
