@@ -5,6 +5,7 @@ import { useAmsMultitrack } from "./useAmsMultitrack";
 import PreviewPane, { type PreviewState } from "./PreviewPane";
 import Spotlight from "./Spotlight";
 import { SIMULCAST_MAIN, type FeaturedState } from "@/lib/simulcast";
+import { fitGrid, pageOf } from "@/lib/fitGrid";
 
 interface Participant {
   slot: number;
@@ -339,6 +340,51 @@ export default function ControlRoom({
     );
   }, [visible, query]);
 
+  /* ---- display mode: only live cameras, sized to fill the screen ----
+     A projected board of fifty mostly-empty "not joined" boxes buries the
+     few people who are actually on camera. In display mode the grid holds
+     only live cameras and fits them to the space below the search bar —
+     one fills the screen, fifty share it — paging past PER_PAGE. ---- */
+  const liveShown = useMemo(() => (display ? shown.filter((p) => p.live) : shown), [display, shown]);
+  const [page, setPage] = useState(0);
+  const paged = useMemo(() => pageOf(liveShown, page), [liveShown, page]);
+  useEffect(() => {
+    if (paged.page !== page) setPage(paged.page);
+  }, [paged.page, page]);
+  const gridBoxRef = useRef<HTMLDivElement | null>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    if (!display) return;
+    const measure = () => {
+      const el = gridBoxRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setBox({ w: Math.floor(r.width), h: Math.max(160, Math.floor(window.innerHeight - r.top)) });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (gridBoxRef.current) ro.observe(gridBoxRef.current);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [display]);
+  const fit = useMemo(() => fitGrid(paged.items.length, box.w, box.h), [paged.items.length, box.w, box.h]);
+  // PageUp / PageDown (and ← / → when nothing is open) turn pages.
+  useEffect(() => {
+    if (!display || paged.pages < 2) return;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (document.activeElement as HTMLElement | null)?.tagName;
+      if (spot || tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.key === "PageDown" || e.key === "ArrowRight") setPage((n) => n + 1);
+      else if (e.key === "PageUp" || e.key === "ArrowLeft") setPage((n) => Math.max(0, n - 1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [display, paged.pages, spot]);
+  const tiles = display ? paged.items : shown;
+
   const hiddenList = useMemo(
     () => hidden.map((id) => bySlot.get(id)).filter(Boolean) as Participant[],
     [hidden, bySlot],
@@ -540,10 +586,40 @@ export default function ControlRoom({
             </button>
           )}
         </div>
-        {display && query && (
-          <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
-            {shown.length} of {participants.length}
-          </p>
+        {display && (
+          <div className="mt-1 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.14em] text-white/55">
+            <span>
+              <b className="text-emerald-300">{liveShown.length}</b> live
+              {query ? ` · matching "${query}"` : ` of ${participants.length}`}
+            </span>
+            {paged.pages > 1 && (
+              <span className="ml-auto flex items-center gap-1.5">
+                <button
+                  type="button"
+                  aria-label="Previous page"
+                  title="Previous page (Page Up)"
+                  disabled={paged.page === 0}
+                  onClick={() => setPage((n) => Math.max(0, n - 1))}
+                  className="rounded border border-white/15 px-2 py-0.5 text-white/85 hover:bg-white/10 disabled:opacity-30"
+                >
+                  ◀
+                </button>
+                <span>
+                  {paged.page + 1}/{paged.pages}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Next page"
+                  title="Next page (Page Down)"
+                  disabled={paged.page >= paged.pages - 1}
+                  onClick={() => setPage((n) => n + 1)}
+                  className="rounded border border-white/15 px-2 py-0.5 text-white/85 hover:bg-white/10 disabled:opacity-30"
+                >
+                  ▶
+                </button>
+              </span>
+            )}
+          </div>
         )}
       </div>
 
@@ -564,15 +640,22 @@ export default function ControlRoom({
         </div>
       )}
 
-      <div className="relative">
+      <div className="relative" ref={gridBoxRef}>
         <div
-          className={
+          className={display ? "grid gap-[3px] p-0" : "grid grid-cols-2 gap-[5px] p-3 sm:grid-cols-6 lg:grid-cols-10"}
+          style={
             display
-              ? "grid grid-cols-2 gap-[3px] p-0 sm:grid-cols-6 lg:grid-cols-10"
-              : "grid grid-cols-2 gap-[5px] p-3 sm:grid-cols-6 lg:grid-cols-10"
+              ? {
+                  gridTemplateColumns: fit.tileW ? `repeat(${fit.cols}, ${fit.tileW}px)` : undefined,
+                  justifyContent: "center",
+                  alignContent: "center",
+                  height: box.h || undefined,
+                }
+              : undefined
           }
+          data-cols={display ? fit.cols : undefined}
         >
-          {shown.map((p) => (
+          {tiles.map((p) => (
             <Tile
               key={p.streamId}
               p={p}
@@ -588,11 +671,15 @@ export default function ControlRoom({
               onDrop={() => dropOn(p)}
             />
           ))}
-          {shown.length === 0 && (
+          {tiles.length === 0 && (
             <p className="col-span-full px-3 py-8 text-center text-sm text-white/50">
               {query
-                ? `No participants match "${query}".`
-                : "No participants."}
+                ? display
+                  ? `No live camera matches "${query}".`
+                  : `No participants match "${query}".`
+                : display
+                  ? "No cameras are live yet. They appear here as people join."
+                  : "No participants."}
             </p>
           )}
         </div>
@@ -604,12 +691,12 @@ export default function ControlRoom({
             onPrev={() => {
               // Walk the filtered subset so search + arrow keys walks
               // only the matching tiles.
-              const i = shown.findIndex((p) => p.streamId === spot.streamId);
-              if (i > 0) setSpot(shown[i - 1]);
+              const i = tiles.findIndex((p) => p.streamId === spot.streamId);
+              if (i > 0) setSpot(tiles[i - 1]);
             }}
             onNext={() => {
-              const i = shown.findIndex((p) => p.streamId === spot.streamId);
-              if (i >= 0 && i < shown.length - 1) setSpot(shown[i + 1]);
+              const i = tiles.findIndex((p) => p.streamId === spot.streamId);
+              if (i >= 0 && i < tiles.length - 1) setSpot(tiles[i + 1]);
             }}
           />
         )}

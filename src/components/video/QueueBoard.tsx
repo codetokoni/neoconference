@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAmsMultitrack } from "./useAmsMultitrack";
 import Spotlight from "./Spotlight";
 import { roomLink } from "@/lib/simulcast";
+import { fitGrid } from "@/lib/fitGrid";
 
 interface Participant {
   slot: number;
@@ -64,6 +65,29 @@ export default function QueueBoard({
   screen?: number;
 }) {
   const [queue, setQueue] = useState<Queue | null>(null);
+  // Display mode: the space the tile grid has, so the queued people fill
+  // it — three in the queue get three large tiles, not three cells of a
+  // fixed 10×5 grid. A callback ref because the grid mounts only once the
+  // queue has loaded.
+  const [gridBox, setGridBox] = useState({ w: 0, h: 0 });
+  const gridObs = useRef<(() => void) | null>(null);
+  const gridRef = useCallback((el: HTMLDivElement | null) => {
+    gridObs.current?.();
+    gridObs.current = null;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      setGridBox({ w: Math.floor(r.width), h: Math.floor(r.height) });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener("resize", measure);
+    gridObs.current = () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -321,6 +345,7 @@ export default function QueueBoard({
     const page = Math.min(Math.max(1, screen ?? 1), pages);
     const startIdx = (page - 1) * PAGE_SIZE;
     const pageEntries = queue.order.slice(startIdx, startIdx + PAGE_SIZE);
+    const fit = fitGrid(pageEntries.length, gridBox.w, gridBox.h);
 
     return queue.order.length === 0 ? (
       <div className="flex h-full items-center justify-center bg-[#0F1519] p-6 text-center">
@@ -344,12 +369,24 @@ export default function QueueBoard({
             </span>
           </div>
         )}
-        {/* 10 cols × 5 rows = PAGE_SIZE (50) tiles that split the
-            viewport evenly. Tiles drop their 4:3 aspect in display
-            mode and fill the grid cell. This ONLY works because
-            display mode is paginated at 50 — see the display branch
-            in page.tsx for why fit-to-viewport is safe here. */}
-        <div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-2 gap-[3px] sm:grid-cols-6 lg:grid-cols-10">
+        {/* The page's entries (at most PAGE_SIZE = 50) sized to fill the
+            viewport: as many columns as give the largest 4:3 tiles. Tiles
+            fill their cell in display mode. Fit-to-viewport is only safe
+            because display mode pages at 50 — see page.tsx. */}
+        {/* The grid is laid over its box, not inside its flow: the box is
+            what gets measured, and tiles sized from it must never be able
+            to stretch it (that loop picked fewer, bigger tiles each pass). */}
+        <div ref={gridRef} className="relative min-h-0 flex-1">
+        <div
+          className="absolute inset-0 grid gap-[3px]"
+          data-cols={fit.cols}
+          style={{
+            gridTemplateColumns: fit.tileW ? `repeat(${fit.cols}, ${fit.tileW}px)` : "repeat(10, minmax(0, 1fr))",
+            gridAutoRows: fit.tileH ? `${fit.tileH}px` : "1fr",
+            justifyContent: "center",
+            alignContent: "center",
+          }}
+        >
           {pageEntries.map((sid, iOnPage) => {
             const globalIdx = startIdx + iOnPage;
             return (
@@ -374,6 +411,7 @@ export default function QueueBoard({
               />
             );
           })}
+        </div>
         </div>
 
         {/* Spotlight in display mode too — a moderator projecting the
