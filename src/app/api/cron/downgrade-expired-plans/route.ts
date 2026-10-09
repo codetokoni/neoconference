@@ -25,6 +25,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { isPlanExpired } from "@/lib/plan";
 import { sweepDue } from "@/lib/billing/subscriptions";
+import { activity } from "@/lib/activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,6 +100,8 @@ export async function GET(req: NextRequest) {
             },
           });
           downgraded++;
+          const was = (user.publicMetadata as Record<string, unknown> | undefined)?.plan;
+          await activity.record("plan.downgraded", { userId: user.id, props: { from: typeof was === "string" ? was : null, to: "free", reason: "expired" } });
         } catch (e) {
           // eslint-disable-next-line no-console
           console.error("[cron/downgrade-expired-plans] downgrade failed for", user.id, e);

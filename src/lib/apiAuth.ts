@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createHash } from 'crypto';
+import { activity } from '@/lib/activity';
 import { kv } from '@/lib/kv';
 import { getPlanForUserId } from '@/lib/plan';
 
@@ -133,5 +134,7 @@ export async function requireApiKey(req: NextRequest): Promise<{
 }> {
   const ctx = await authenticate(req);
   const rate = await enforceRateLimit(ctx);
+  // Counted against the key's owner (no log line each: see activity.ts).
+  await activity.record('api.call', { account: ctx.key.ownerUserId });
   return { ctx, rate };
 }
