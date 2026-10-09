@@ -6,7 +6,8 @@
 //   &verified=     yes | no          (primary email)
 //   &status=       active | suspended | pending_deletion
 //   &tag=          an internal tag
-//   &from= &to=    sign-up date, YYYY-MM-DD (UTC, inclusive)
+//   &from= &to=    sign-up date, YYYY-MM-DD (inclusive): calendar days in
+//   &tz=           this IANA zone (default UTC; the Overview's links set it)
 //   &sort=         [-]created_at | last_sign_in_at | last_active_at | email_address | first_name
 //   &page=1 &pageSize=25 (10–100)
 //
@@ -20,6 +21,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { requireAdmin } from "@/lib/admin/context";
 import { listMembers } from "@/lib/admin/store";
 import { isPlan } from "@/lib/planLimits";
+import { addDays, isDay, isTimeZone, zonedDayStart } from "@/lib/activityReports";
 import { allDeletions, allTags, summarize, type ClerkUserish, type UserRow } from "@/lib/admin/users";
 
 export const runtime = "nodejs";
@@ -30,10 +32,9 @@ const SCAN_PAGE = 500;
 const SCAN_CAP = 5000;
 type Sort = `${"" | "-"}${(typeof SORTS)[number]}`;
 
-function dayStart(v: string | null): number | null {
-  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
-  const t = Date.parse(v + "T00:00:00Z");
-  return Number.isFinite(t) ? t : null;
+/** Midnight at the start of day `v` in `tz`, as epoch ms. */
+function dayStart(v: string | null, tz: string): number | null {
+  return isDay(v) ? zonedDayStart(v, tz) : null;
 }
 
 export async function GET(req: Request) {
@@ -48,9 +49,10 @@ export async function GET(req: Request) {
   const verified = p.get("verified");
   const status = p.get("status");
   const tag = (p.get("tag") ?? "").trim().toLowerCase() || null;
-  const from = dayStart(p.get("from"));
-  const toStart = dayStart(p.get("to"));
-  const to = toStart == null ? null : toStart + 24 * 60 * 60 * 1000 - 1;
+  const tz = isTimeZone(p.get("tz")) ? (p.get("tz") as string) : "UTC";
+  const from = dayStart(p.get("from"), tz);
+  const toNext = isDay(p.get("to")) ? dayStart(addDays(p.get("to") as string, 1), tz) : null;
+  const to = toNext == null ? null : toNext - 1;
   const rawSort = p.get("sort") ?? "-created_at";
   const sort: Sort = (SORTS as readonly string[]).includes(rawSort.replace(/^-/, "")) ? (rawSort as Sort) : "-created_at";
   const pageSize = Math.min(Math.max(parseInt(p.get("pageSize") ?? "25", 10) || 25, 10), 100);

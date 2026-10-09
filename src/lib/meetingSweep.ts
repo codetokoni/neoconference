@@ -35,7 +35,7 @@ function isKvConfigured(): boolean {
   return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 }
 
-function livekitClient(): RoomServiceClient | null {
+export function livekitClient(): RoomServiceClient | null {
   const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
   const wsUrl =

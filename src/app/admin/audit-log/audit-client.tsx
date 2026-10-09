@@ -4,6 +4,7 @@
 // before and after), searchable and exportable — and, on a second tab, the
 // per-meeting permission decisions that were here before.
 
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { fmtTime, useAdmin } from "../AdminApi";
 import { Badge, Empty, Loading, Notice, PageHeader, Panel, btn, field } from "../ui";
@@ -70,12 +71,14 @@ export default function AuditClient() {
 
 function AdminActions() {
   const { can, adminFetch } = useAdmin();
-  const [filters, setFilters] = useState({ actor: "", action: "", target: "", q: "", outcome: "", from: "", to: "" });
+  // ?q= searches and ?open=<seq> opens one entry (the admin search links here).
+  const sp = useSearchParams();
+  const [filters, setFilters] = useState({ actor: "", action: "", target: "", q: sp?.get("q") ?? "", outcome: "", from: "", to: "" });
   const [applied, setApplied] = useState(filters);
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState<{ items: Entry[]; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState<number | null>(null);
+  const [open, setOpen] = useState<number | null>(() => Number(sp?.get("open")) || null);
   const [integrity, setIntegrity] = useState<{ intact: boolean; expected: number; missing: number[] } | null>(null);
 
   const query = useCallback(
