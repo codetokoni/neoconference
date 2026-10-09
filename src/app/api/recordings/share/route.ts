@@ -1,7 +1,8 @@
 // src/app/api/recordings/share/route.ts
 // Recording share-link endpoints.
 //
-// POST   - owner-only: mints a share token for a recording R2 key.
+// POST   - mints a share token for a recording R2 key: the recorder's own,
+//          or one of a meeting the caller may read recordings of.
 // GET    - public: resolves a share token to a short-lived signed download URL.
 // DELETE - owner-only: revokes a share token.
 
@@ -12,9 +13,28 @@ import { shareStore } from "@/lib/shareStore";
 import { isR2Configured, signGetUrl } from "@/lib/r2";
 import { recordingAnalytics } from "@/lib/analytics";
 import { blockedKeys, markShared } from "@/lib/content/files";
+import { eventStore } from "@/lib/eventStore";
+import { authorize } from "@/lib/authz";
+import { slugFromRecordingKey, userPrefix } from "@/lib/eventRecordings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** Null when `userId` may share `key`, else the refusal to send. */
+async function refuseShare(key: string, userId: string): Promise<NextResponse | null> {
+  // Only recordings have share links; chat, group and support files do not.
+  if (!key.startsWith("recordings/")) {
+    return NextResponse.json({ error: "not_shareable", message: "Only recordings can be shared with a link." }, { status: 400 });
+  }
+  if (key.startsWith(userPrefix(userId))) return null;
+  const slug = slugFromRecordingKey(key);
+  const ev = slug ? await eventStore.bySlug(slug) : null;
+  if (ev) {
+    const gate = await authorize(ev, "recording:read");
+    if (gate.ok) return null;
+  }
+  return NextResponse.json({ error: "forbidden", message: "You can only share your own recordings, or those of a meeting you host." }, { status: 403 });
+}
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -30,6 +50,12 @@ export async function POST(req: NextRequest) {
   if (!key || key.includes("..")) {
     return NextResponse.json({ error: "invalid_key" }, { status: 400 });
   }
+  // Who may hand out a link anyone can download from: the recording's own
+  // recorder (their folder), or someone who may read the meeting's
+  // recordings (recording:read, the people the meeting's Recordings panel
+  // shows them to). Any other key was shareable by any signed-in account.
+  const refused = await refuseShare(key, userId);
+  if (refused) return refused;
   const label = typeof body.label === "string" ? body.label.slice(0, 200) : undefined;
   const ttlSeconds = typeof body.ttlSeconds === "number" ? body.ttlSeconds : undefined;
   const rec = await shareStore.create({ key, ownerUserId: userId, label, ttlSeconds });
