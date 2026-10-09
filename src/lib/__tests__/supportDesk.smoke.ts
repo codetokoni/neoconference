@@ -415,11 +415,12 @@ async function main() {
     assert.equal(acct.planExpiresAt, Date.UTC(2027, 0, 1));
     assert.equal(acct.payments[0].ref, "pay_test_1");
     assert.equal(acct.meetings[0].name, "Alice standup");
-    assert.equal(acct.href, "/admin?query=alice%40example.com");
+    assert.equal(acct.href, "/admin/users/user_alice");
     const history = (r.body.history as { id: string }[]).map((h) => h.id);
     assert.ok(history.includes(aliceTicket) && history.includes(aliceGuestTicket));
     const bobs = await call("user_analyst", R.ticket.GET, { params: { id: bobGuestTicket } });
     assert.equal((bobs.body.account as { found: boolean }).found, false, "an unverified address does not tie a ticket to an account");
+    assert.equal((bobs.body.account as { href: string }).href, "/admin?q=alice.old%40example.com", "no account: a search for the address");
   });
 
   await t("an agent turns a NeoSupport chat into a ticket on the right account; audited", async () => {
