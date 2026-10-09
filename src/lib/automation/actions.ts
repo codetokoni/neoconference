@@ -38,6 +38,9 @@ import { csvOf } from "@/lib/admin/exportReport";
 import { addDays, dayInZone, period } from "@/lib/activityReports";
 import { jobDef, JOBS, runRegisteredJob } from "@/lib/ops/jobRegistry";
 import { opsRecipients } from "@/lib/ops/notify";
+import { PURGE_TARGETS } from "@/lib/automation/purgeTargets";
+
+export { PURGE_TARGETS };
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -424,15 +427,6 @@ const maintenance: ActionImpl = {
 
 /* --------------------------------- purge --------------------------------- */
 
-export interface PurgeTarget {
-  id: string;
-  label: string;
-  plan(now: number, limit: number): Promise<Target[]>;
-  purge(t: Target, actor: string): Promise<Performed>;
-}
-
-/** Data with a retention rule that a rule may purge. Data governance registers these. */
-export const PURGE_TARGETS: PurgeTarget[] = [];
 
 const purge: ActionImpl = {
   claims: true,

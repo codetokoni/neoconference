@@ -100,6 +100,8 @@ async function main() {
     draftPreview: await import("../../app/api/admin/automation/preview/route"),
     dispatch: await import("../../app/api/cron/automation/route"),
     downgrade: await import("../../app/api/cron/downgrade-expired-plans/route"),
+    espeesFail: await import("../../app/api/billing/espees/fail/route"),
+    billingCron: await import("../../app/api/cron/billing-reminders/route"),
   };
 
   const jar: Record<string, string> = {};
@@ -453,6 +455,28 @@ async function main() {
     const r = await ruleCall("user_writer", R.run.POST, id);
     assert.equal(u5(r.body.detail), "cooling", JSON.stringify(r.body.detail));
     assert.equal(mailTo("u5@example.com").length, 1);
+  });
+
+  await t("'payment failed' follows up through billing reminders, with billing's own claims: its cron does not send it again", async () => {
+    const { createPendingPayment, generateNonce } = await import("../billingStore");
+    const nonce = generateNonce();
+    await createPendingPayment({ nonce, userId: "user_m4", plan: "pro", billingCycle: "monthly", paymentRef: `ESP-${nonce.slice(0, 8)}` });
+    const f = await call(null, R.espeesFail.GET, { query: `?nonce=${nonce}` });
+    assert.equal(f.status, 303, JSON.stringify(f.body));
+    await jump(DAY + HOUR);
+    const p = await ruleCall("user_owner", R.preview.POST, "builtin_failed_payment");
+    assert.deepEqual(p.body.preview.items.map((i: { label: string; outcome: string }) => [i.label, i.outcome]), [["m4@example.com", "would_do"]], JSON.stringify(p.body));
+    const r = await ruleCall("user_owner", R.run.POST, "builtin_failed_payment");
+    assert.equal(r.body.detail.counts.done, 1, JSON.stringify(r.body.detail));
+    assert.equal(mailTo("m4@example.com").length, 1);
+    // Billing's own daily cron, with the same reminder switched on there: already sent.
+    const { saveReminderRules, DEFAULT_RULES } = await import("../finance/reminders");
+    await saveReminderRules({ ...DEFAULT_RULES, failed: { enabled: true, afterDays: [1] } });
+    const cron = await call(null, R.billingCron.GET, { headers: cronHeaders });
+    assert.equal(cron.status, 200, JSON.stringify(cron.body));
+    assert.ok(cron.body.alreadySent >= 1, JSON.stringify(cron.body));
+    assert.equal(mailTo("m4@example.com").length, 1, "one follow-up, not two");
+    await saveReminderRules(DEFAULT_RULES);
   });
 
   console.log("failures and alerts");
