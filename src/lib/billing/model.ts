@@ -124,7 +124,7 @@ export const LIMIT_FIELDS: LimitField[] = [
   { key: "groupMembers", label: "Group members", kind: "nullable", zero: "same as participants", enforced: true, how: "Adding members past the limit is refused (capped at the platform's group maximum)." },
   { key: "branding", label: "Custom branding", kind: "bool", enforced: false, how: "Nothing checks this yet." },
   { key: "seats", label: "Host seats", kind: "number", zero: "unlimited", enforced: false, how: "Accounts have one host; there are no team seats yet." },
-  { key: "storageGb", label: "Storage", kind: "number", unit: "GB", zero: "unlimited", enforced: false, how: "Recordings and files are not counted against a quota yet." },
+  { key: "storageGb", label: "Storage", kind: "number", unit: "GB", zero: "unlimited", enforced: true, how: "Uploads to meeting and group chat are refused once the account's stored files reach it. Recordings count towards it but are never stopped." },
 ];
 
 export { mergeLimits, extendedLimits };

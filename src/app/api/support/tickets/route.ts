@@ -11,6 +11,7 @@
 // Public in middleware for signed-out intake; GET checks sign-in itself.
 
 import { NextResponse } from "next/server";
+import { indexUpload } from "@/lib/content/files";
 import { EMAIL_RE, clientIp, err, readForm, supportCaller, ticketForUser } from "@/lib/support/caller";
 import { checkFormToken } from "@/lib/support/formToken";
 import { isTicketCategory } from "@/lib/support/model";
@@ -92,6 +93,7 @@ export async function POST(req: Request) {
     if (!check.ok) return err(check.error, check.message, check.error === "too_large" ? 413 : 415);
     if (!attachmentStorageReady()) return err("storage_not_configured", "Attachments are unavailable right now. Send it without the file.", 503);
     attachments.push(await storeAttachment(id, check.file));
+    await indexUpload({ key: attachments[0].key, type: "support_attachment", ownerId: userId ?? "", ticketId: id, name: attachments[0].name, size: attachments[0].size, contentType: attachments[0].type });
   }
 
   const ticket = await createTicket({

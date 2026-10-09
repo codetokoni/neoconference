@@ -4,6 +4,7 @@
 // (they open a new one).
 
 import { NextResponse } from "next/server";
+import { indexUpload } from "@/lib/content/files";
 import { err, loadOwnTicket, messagesForUser, readForm, ticketForUser } from "@/lib/support/caller";
 import {
   INTAKE_LIMITS,
@@ -36,6 +37,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (!check.ok) return err(check.error, check.message, check.error === "too_large" ? 413 : 415);
     if (!attachmentStorageReady()) return err("storage_not_configured", "Attachments are unavailable right now. Send it without the file.", 503);
     attachments.push(await storeAttachment(t.id, check.file));
+    await indexUpload({ key: attachments[0].key, type: "support_attachment", ownerId: who.userId, ticketId: t.id, name: attachments[0].name, size: attachments[0].size, contentType: attachments[0].type });
   }
 
   const now = Date.now();
