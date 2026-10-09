@@ -18,9 +18,9 @@ What `/admin/plans` and `/admin/subscriptions` do, and the rules behind them. Th
 
 ## Limits: enforced or only shown
 
-Enforced today: meeting length (the in-room countdown, from the host's token), participants per meeting (token), meetings ever created, cloud recording, recording hours per month, breakout rooms, choosing translation languages, livestream, group members (`memberLimitFor`; empty means as many as the plan allows in a meeting, the old behaviour).
+Enforced today: meeting length (the in-room countdown, from the host's token), participants per meeting (token), meetings ever created, cloud recording, recording hours per month, breakout rooms, choosing translation languages, livestream, group members (`memberLimitFor`; empty means as many as the plan allows in a meeting, the old behaviour), storage (uploads to meeting and group chat are refused once the account's stored files reach it, `refuseOverQuota` in src/lib/content/limits.ts; recordings count towards it but are never stopped).
 
-Shown but **not enforced yet**: custom branding, host seats, storage. The admin marks these "shown, not enforced yet".
+Shown but **not enforced yet**: custom branding, host seats. The admin marks these "shown, not enforced yet".
 
 ## Checkout, coupons and offers
 

@@ -19,6 +19,9 @@
 import { randomBytes } from "node:crypto";
 import { kv } from "@/lib/kv";
 import { deleteObject, isR2Configured, putObject, signGetUrl } from "@/lib/r2";
+import { DEFAULT_UPLOAD_RULES, checkUpload } from "@/lib/content/model";
+import { uploadRule } from "@/lib/content/limits";
+import { indexDeleted } from "@/lib/content/files";
 import {
   DEFAULT_SLA,
   cleanSla,
@@ -296,18 +299,13 @@ export async function hitRateLimit(bucket: string, limit: number, windowSec: num
 
 /* -------------------------------- attachments -------------------------------- */
 
-/** 5 MB a file, one file a message. */
-export const SUPPORT_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+// One file a message. Size and types are set in the admin area (Content >
+// Limits, kind "support"); these are the defaults until changed.
+/** 5 MB a file. */
+export const SUPPORT_UPLOAD_MAX_BYTES = DEFAULT_UPLOAD_RULES.support.maxBytes;
 
 /** Screenshots, PDFs and text — enough to show a problem; nothing executable. */
-export const SUPPORT_UPLOAD_ALLOWED = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "application/pdf",
-  "text/plain",
-]);
+export const SUPPORT_UPLOAD_ALLOWED = new Set<string>(DEFAULT_UPLOAD_RULES.support.mimes);
 
 type Uploader = (key: string, body: Uint8Array, contentType: string) => Promise<void>;
 let uploader: Uploader | null = null;
@@ -330,13 +328,10 @@ export type AttachmentCheck =
   | { ok: true; file: File }
   | { ok: false; error: "too_large" | "unsupported_type" | "empty_file"; message: string };
 
-export function checkAttachment(file: File): AttachmentCheck {
-  if (file.size <= 0) return { ok: false, error: "empty_file", message: "That file is empty." };
-  if (file.size > SUPPORT_UPLOAD_MAX_BYTES) return { ok: false, error: "too_large", message: "Attachments can be up to 5 MB." };
-  const type = (file.type || "").toLowerCase();
-  if (!SUPPORT_UPLOAD_ALLOWED.has(type)) {
-    return { ok: false, error: "unsupported_type", message: "Attach a screenshot (PNG, JPEG, GIF, WebP), a PDF or a text file." };
-  }
+/** The size and type rule in force (admin area, Content > Limits), checked by the server. */
+export async function checkAttachment(file: File): Promise<AttachmentCheck> {
+  const refusal = checkUpload(await uploadRule("support"), file);
+  if (refusal) return { ok: false, error: refusal.error, message: refusal.message };
   return { ok: true, file };
 }
 
@@ -382,6 +377,8 @@ async function deleteAttachments(list: SupportAttachment[]): Promise<number> {
   for (const a of list) {
     try {
       await (deleter ?? deleteObject)(a.key);
+      // The admin file index (Content): the attachment is gone.
+      await indexDeleted(a.key);
       n++;
     } catch (err) {
       console.error("[support] attachment delete failed", a.key, err);

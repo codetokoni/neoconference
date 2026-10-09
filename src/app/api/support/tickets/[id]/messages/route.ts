@@ -33,7 +33,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const attachments = [];
   if (form?.file) {
-    const check = checkAttachment(form.file);
+    const check = await checkAttachment(form.file);
     if (!check.ok) return err(check.error, check.message, check.error === "too_large" ? 413 : 415);
     if (!attachmentStorageReady()) return err("storage_not_configured", "Attachments are unavailable right now. Send it without the file.", 503);
     attachments.push(await storeAttachment(t.id, check.file));

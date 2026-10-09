@@ -171,6 +171,7 @@ export const UPLOAD_KINDS = [
   { id: "chat", label: "Meeting chat attachments", route: "/api/chat/upload" },
   { id: "group", label: "Group chat attachments", route: "/api/groups/[id]/upload" },
   { id: "roster", label: "Roster spreadsheets", route: "/api/video/room/roster" },
+  { id: "support", label: "Support ticket attachments", route: "/api/support/tickets" },
 ] as const;
 
 export type UploadKind = (typeof UPLOAD_KINDS)[number]["id"];
@@ -232,6 +233,8 @@ export const DEFAULT_UPLOAD_RULES: Record<UploadKind, UploadRule> = {
     maxBytes: 5 * 1024 * 1024,
     mimes: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel", "text/csv"],
   },
+  // Screenshots, PDFs and text: enough to show a problem (src/lib/support/tickets.ts).
+  support: { maxBytes: 5 * 1024 * 1024, mimes: ["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain"] },
 };
 
 /** Normalise a rule an administrator sent; null when it cannot be saved. */
