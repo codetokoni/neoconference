@@ -158,12 +158,21 @@ export default function RosterPanel({ room }: { room: string }) {
   );
 
   const downloadHref = `/api/video/room/roster?room=${encodeURIComponent(room)}`;
+  const editHref = `/video/room/roster/edit?room=${encodeURIComponent(room)}`;
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
-        Participants
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
+          Participants
+        </h2>
+        <a
+          href={editHref}
+          className="inline-flex items-center justify-center rounded-md border border-emerald-500/50 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20"
+        >
+          Edit roster · add people &amp; columns
+        </a>
+      </div>
       <div className="grid gap-3 rounded-xl border border-white/12 bg-[#141C22] p-4 sm:grid-cols-2">
         <div className="flex flex-col gap-2">
           <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/45">
@@ -286,12 +295,12 @@ export default function RosterPanel({ room }: { room: string }) {
       )}
 
       <p className="text-xs text-white/60">
-        Typo in a name or condition after upload?{" "}
+        Typo in a name, one more person, or a new column?{" "}
         <a
-          href={`/video/room/roster/edit?room=${encodeURIComponent(room)}`}
+          href={editHref}
           className="text-emerald-300 underline decoration-dotted underline-offset-2 hover:text-emerald-200"
         >
-          Fix one row at a time
+          Edit the roster
         </a>{" "}
         without re-uploading the whole spreadsheet.
       </p>
