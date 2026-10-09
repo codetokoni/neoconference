@@ -96,6 +96,8 @@ async function main() {
   const { activity } = await import("../activity");
   const tickets = await import("../support/tickets");
   const jobs = await import("../ops/jobs");
+  const contentFiles = await import("../content/files");
+  const contentReports = await import("../content/reports");
   const { eventStore } = await import("../eventStore");
   const { kv } = await import("../kv");
   const { DATA_MAP, erasableLocations } = await import("../dataMap");
@@ -291,6 +293,15 @@ async function main() {
   await kv.sadd("neo:subs:users", "user_alice");
   await kv.lpush("neo:sub:h:user_alice", JSON.stringify({ ts: Date.now(), action: "purchase", by: { userId: "user_alice", email: "alice@example.com" }, summary: "Bought Pro", before: null, after: null }));
   await kv.lpush("neo:sub:h:user_alice", JSON.stringify({ ts: Date.now(), action: "extend", by: { userId: "user_super", email: "super@example.com" }, summary: "Extended by a week", before: null, after: null }));
+  // The content index and moderation (phase 12): Alice's file, a case she reported, a case on her file.
+  const aliceFileId = contentFiles.fileId("r2", recKey);
+  const bobFileId = contentFiles.fileId("r2", "recordings/user_bob/bob-standup/2026-09-01-09-00-00.mp4");
+  await contentFiles.putFile({ id: aliceFileId, storage: "r2", key: recKey, type: "recording", ownerId: "user_alice", name: "weekly.mp4", size: 5_000_000, contentType: "video/mp4", createdAt: Date.now(), updatedAt: Date.now(), status: "ready", statusAt: Date.now(), visibility: "private", state: "active" } as never);
+  await contentFiles.putFile({ id: bobFileId, storage: "r2", key: "recordings/user_bob/bob-standup/2026-09-01-09-00-00.mp4", type: "recording", ownerId: "user_bob", name: "standup.mp4", size: 7_000_000, contentType: "video/mp4", createdAt: Date.now(), updatedAt: Date.now(), status: "ready", statusAt: Date.now(), visibility: "private", state: "active" } as never);
+  const kase = (id: string, ownerId: string, reporterId: string | null) =>
+    ({ id, targetType: "file", targetKey: `file:${id}`, label: "x", ownerId, status: "open", createdAt: Date.now(), updatedAt: Date.now(), reportCount: 1, newSinceClosed: 1, reasons: {}, reports: [{ id: `r_${id}`, at: Date.now(), reason: "spam", details: "x", reporterId, sourceHash: "h" }], history: [], notes: [] }) as never;
+  await contentReports.saveCase(kase("case_byalice01", "user_bob", "user_alice"));
+  await contentReports.saveCase(kase("case_onalice01", "user_alice", "user_bob"));
 
   /* ------------------------------- data map ------------------------------- */
   console.log("data map");
@@ -554,6 +565,12 @@ async function main() {
     // Files: Alice's recordings, uploads and exports gone; Bob's stay.
     assert.ok(!g.__objects.some((o) => o.key.includes("user_alice")), JSON.stringify(g.__objects.map((o) => o.key)));
     assert.ok(g.__objects.some((o) => o.key.startsWith("recordings/user_bob/")));
+    // Content index: Alice's record gone, Bob's kept; cases stay, detached from her.
+    assert.equal(await contentFiles.getFile(aliceFileId), null);
+    assert.ok(await contentFiles.getFile(bobFileId));
+    assert.equal((await contentReports.getCase("case_byalice01"))?.reports[0].reporterId, null);
+    assert.match(String((await contentReports.getCase("case_onalice01"))?.ownerId), /^erased_/);
+    assert.equal((await contentReports.getCase("case_onalice01"))?.reports[0].reporterId, "user_bob");
     // Tombstone and closed request.
     assert.equal(await requests.isErased("user_alice"), true);
     const closed = (await requests.closedRequests()).find((c) => c.userId === "user_alice");

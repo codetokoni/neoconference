@@ -36,6 +36,8 @@ import { anonymiseFinanceForUser, financeRecordsForUser } from "@/lib/finance/go
 import { anonymiseTicketsForAccount, listTickets, ticketsForAccount } from "@/lib/support/tickets";
 import { forgetCommsUser } from "@/lib/comms/forget";
 import { forgetUserActivity } from "@/lib/activity";
+import { allFiles, forgetFile } from "@/lib/content/files";
+import { listCases, saveCase } from "@/lib/content/reports";
 import { DELETED_NAME, deletePrefix, fromB64Url, listPrefix, parseJson, rewriteList, rewriteValue, scanKeys } from "@/lib/dataGov/util";
 
 export interface Person {
@@ -570,6 +572,35 @@ export const ERASE_STEPS: EraseStep[] = [
       const prefixes = [userPrefix(p.uid), `chat/${p.uid}/`, TRASH_PREFIX + userPrefix(p.uid), `${TRASH_PREFIX}chat/${p.uid}/`];
       let n = 0;
       for (const pre of prefixes) n += dry ? (await listPrefix(pre)).length : (await deletePrefix(pre)).objects;
+      return n;
+    },
+  },
+  {
+    id: "content",
+    label: "File index records (removed); moderation cases (reporter and owner detached)",
+    covers: ["kv.content"],
+    run: async (p, dry) => {
+      let n = 0;
+      // The bytes go in the r2 and trash steps; these are the index's records of them.
+      for (const f of await allFiles()) {
+        if (f.ownerId !== p.uid) continue;
+        n++;
+        if (!dry) await forgetFile(f.id);
+      }
+      // A case is the moderation record: it stays, without saying who reported or whose content it was.
+      for (const c of await listCases()) {
+        const reported = c.reports.filter((r) => r.reporterId === p.uid).length;
+        const owned = c.ownerId === p.uid;
+        if (!reported && !owned) continue;
+        n += reported + (owned ? 1 : 0);
+        if (!dry) {
+          await saveCase({
+            ...c,
+            ownerId: owned ? p.pseudonym : c.ownerId,
+            reports: c.reports.map((r) => (r.reporterId === p.uid ? { ...r, reporterId: null } : r)),
+          });
+        }
+      }
       return n;
     },
   },

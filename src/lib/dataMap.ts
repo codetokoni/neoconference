@@ -501,6 +501,17 @@ export const DATA_MAP: DataLocation[] = [
     erasedBy: "exports",
   },
   {
+    id: "kv.content",
+    store: "kv",
+    pattern: "neo:content:files field <fileId> (ownerId = <uid>); neo:content:cases reports[].reporterId = <uid>, ownerId = <uid>; neo:content:rl:<who>:<win>",
+    holds: "The file index (one record per stored file) and moderation cases",
+    personal: "Owner id, file names; a reporter's id and a keyed hash of their address",
+    exported: false,
+    onDelete: "anonymise",
+    why: "The person's file records are removed with their files. Cases are the moderation record: they stay, with the reporter's id cleared and the owner replaced by the pseudonym (the address hash is not reversible). Rate-limit counters expire. Not exported: the files themselves are listed in the recordings section.",
+    erasedBy: "content",
+  },
+  {
     id: "trash",
     store: "kv",
     pattern: "neo:trash:items field <id> (ownerId = <uid>), neo:trash:snap:<id>; R2 trash/<original key>",
