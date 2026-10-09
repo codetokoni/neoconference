@@ -88,6 +88,17 @@ export function meetingSlugFromPath(pathname: string, search = ""): string | nul
 export const DOWNLOADED_KEY = "neo:app-downloaded";
 
 /**
+ * What the screen offers. Someone who downloaded the app before (or whose
+ * page was opened from inside the app) is never asked to download it
+ * again — the screen only offers to open the app. Nobody is stranded: on a
+ * phone where the app is missing after all, "open the app" falls through
+ * to the store (appOpenUrl's fallback).
+ */
+export function gateOffers(downloadedBefore: boolean): { download: boolean; open: true } {
+  return { download: !downloadedBefore, open: true };
+}
+
+/**
  * Whether this visit should try the app straight away: they downloaded it
  * before, and this is not the visit straight back from a failed attempt
  * (the store fallback lands on the store, so coming back here at all means
