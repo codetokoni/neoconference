@@ -1,12 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import TierCheckoutButton from "@/components/TierCheckoutButton";
 import type { BillingCycle } from "@/lib/espees";
-import { getPlanLimits, type Plan } from "@/lib/planLimits";
+import { getPlanLimits, type Plan, type PlanLimits } from "@/lib/planLimits";
 
-type TierId = Plan; // "free" | "starter" | "pro" | "business" | "enterprise"
+// A tier, or a plan made in the admin plan catalog.
+type TierId = Plan | string;
+
+/** One plan as /api/billing/plans lists it (the admin plan catalog). */
+type CatalogPlan = {
+  id: string;
+  baseTier: Plan;
+  name: string;
+  description: string;
+  prices: { ESP?: { monthly: number | null; annual: number | null } };
+  limits: PlanLimits;
+  selfServe: boolean;
+  highlight: boolean;
+  offers: { label: string | null; kind: "percent" | "fixed"; value: number; cycles: BillingCycle[] }[];
+};
 
 type Tier = {
   id: TierId;
@@ -25,6 +39,10 @@ type Tier = {
    *  in lock-step with the actual server-side enforcement in
    *  src/lib/plan.ts. */
   extraFeatures: { label: string; included: boolean }[];
+  /** From the catalog, when it has loaded. */
+  limits?: PlanLimits;
+  selfServe?: boolean;
+  offers?: CatalogPlan["offers"];
 };
 
 /**
@@ -32,8 +50,7 @@ type Tier = {
  * the pricing table shows. Single source of truth: change plan.ts
  * and this reflects automatically.
  */
-function planLimitFeatures(id: TierId): { label: string; included: boolean }[] {
-  const l = getPlanLimits(id);
+function planLimitFeatures(l: PlanLimits): { label: string; included: boolean }[] {
   const minutesLabel = l.meetingMinutes === 0
     ? "Unlimited meeting length"
     : l.meetingMinutes === 60
@@ -134,6 +151,35 @@ const TIERS: Tier[] = [
   },
 ];
 
+/**
+ * The cards to show: the catalog's listed plans in its order, each tier
+ * keeping its marketing copy and call to action; until the catalog loads
+ * (or if it cannot), the built-in tiers. A plan the catalog does not sell
+ * online routes to email, as Enterprise always has.
+ */
+function cardsFrom(catalog: CatalogPlan[] | null): Tier[] {
+  if (!catalog) return TIERS;
+  return catalog.map((p) => {
+    const base = TIERS.find((t) => t.id === p.id);
+    const esp = p.prices.ESP;
+    const priced = !!(esp && ((esp.monthly ?? 0) > 0 || (esp.annual ?? 0) > 0));
+    const sold = p.selfServe && priced;
+    return {
+      id: p.id,
+      name: p.name,
+      tagline: p.description || base?.tagline || "",
+      price: p.id === "free" ? { monthly: 0, annual: 0 } : priced ? { monthly: esp?.monthly ?? null, annual: esp?.annual ?? null } : { monthly: null, annual: null },
+      cta: sold ? (base && base.ctaHref === "" && base.name === p.name ? base.cta : "Choose " + p.name) : p.id === "free" ? (base?.cta ?? "Get started free") : "Contact sales",
+      ctaHref: sold ? "" : p.id === "free" ? "/dashboard" : "mailto:info@neoconference.app",
+      highlight: p.highlight,
+      extraFeatures: base?.extraFeatures ?? [],
+      limits: p.limits,
+      selfServe: sold,
+      offers: p.offers,
+    };
+  });
+}
+
 function formatPrice(amount: number): string {
   if (amount === 0) return "0 Espees";
   return amount + " Espees";
@@ -141,6 +187,15 @@ function formatPrice(amount: number): string {
 
 export default function PricingTiers() {
   const [cycle, setCycle] = useState<BillingCycle>("monthly");
+  const [catalog, setCatalog] = useState<CatalogPlan[] | null>(null);
+  const [coupon, setCoupon] = useState("");
+  useEffect(() => {
+    fetch("/api/billing/plans", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d?.ok && Array.isArray(d.plans) && setCatalog(d.plans))
+      .catch(() => undefined);
+  }, []);
+  const tiers = useMemo(() => cardsFrom(catalog), [catalog]);
 
   return (
     <>
@@ -176,11 +231,27 @@ export default function PricingTiers() {
         </div>
       </div>
 
+      {/* Coupon: checked and applied by the checkout route. */}
+      <div className="mt-4 flex justify-center">
+        <label className="flex items-center gap-2 text-xs text-cyan-100/70">
+          Coupon code
+          <input
+            value={coupon}
+            onChange={(e) => setCoupon(e.target.value.toUpperCase())}
+            maxLength={32}
+            placeholder="optional"
+            className="w-36 rounded-full bg-white/5 px-3 py-1.5 font-mono text-xs text-white ring-1 ring-white/15 outline-none focus:ring-cyan-400"
+          />
+        </label>
+      </div>
+
       {/* Tier cards */}
       <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-6">
-        {TIERS.map((tier, idx) => {
-          const isEnterprise = tier.id === "enterprise";
+        {tiers.map((tier, idx) => {
           const isFree = tier.id === "free";
+          // Anything not sold online: "Custom" pricing and a mail link.
+          const isEnterprise = !isFree && (tier.ctaHref.startsWith("mailto:") || (tier.id === "enterprise" && tier.selfServe !== true));
+          const offer = tier.offers?.find((o) => !o.cycles.length || o.cycles.includes(cycle));
           const monthly = tier.price.monthly;
           const annual = tier.price.annual;
           // Desktop bottom-row centering on a 6-col grid: every card spans 2 cols.
@@ -190,6 +261,7 @@ export default function PricingTiers() {
           // Tablet (sm: 2-col grid): Enterprise spans both cols so the lone 5th card
           // isn't orphaned in row 3.
           const gridPos =
+            tiers.length !== 5 ? "" :
             idx === 3 ? "lg:col-start-2" :
             idx === 4 ? "sm:col-span-2 lg:col-start-4" :
             "";
@@ -214,6 +286,11 @@ export default function PricingTiers() {
 
               <h3 className="text-xl font-semibold text-white">{tier.name}</h3>
               <p className="mt-1 text-sm text-cyan-100/60">{tier.tagline}</p>
+              {offer && !isFree && !isEnterprise && (
+                <p className="mt-2 inline-block rounded-full bg-emerald-400/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
+                  {offer.label || (offer.kind === "percent" ? offer.value + "% off" : formatPrice(offer.value) + " off") + " at checkout"}
+                </p>
+              )}
 
               {/* Price block — fixed minimum height keeps cards aligned across the row */}
               <div className="mt-6 min-h-[5.5rem]">
@@ -273,7 +350,8 @@ export default function PricingTiers() {
                   </a>
                 ) : (
                   <TierCheckoutButton
-                    plan={tier.id as "starter" | "pro" | "business"}
+                    plan={tier.id}
+                    coupon={coupon}
                     billingCycle={cycle}
                     label={tier.cta}
                     highlight={tier.highlight}
@@ -286,7 +364,7 @@ export default function PricingTiers() {
                   server actually enforces; marketing-copy rows are
                   the static extraFeatures per tier. */}
               <ul className="mt-6 space-y-2.5">
-                {[...planLimitFeatures(tier.id), ...tier.extraFeatures].map((f, i) => (
+                {[...planLimitFeatures(tier.limits ?? getPlanLimits((TIERS.some((t) => t.id === tier.id) ? tier.id : "free") as Plan)), ...tier.extraFeatures].map((f, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm">
                     {f.included ? (
                       <svg

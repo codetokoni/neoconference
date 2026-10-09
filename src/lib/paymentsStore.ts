@@ -21,6 +21,7 @@
 import { kv } from "@/lib/kv";
 import type { Plan } from "@/lib/plan";
 import type { BillingCycle } from "@/lib/espees";
+import { indexPayment, payId } from "@/lib/finance/paymentIndex";
 
 const PAYMENT_KEY_PREFIX = "billing:payment:";
 const USER_LIST_KEY_PREFIX = "billing:payments:";
@@ -74,6 +75,13 @@ export interface PaymentRecord {
   /** Assigned lazily by assignInvoiceNumber() on first invoice request,
    *  then frozen. Absent until the invoice is first generated. */
   invoiceNumber?: string;
+  /** The admin catalog plan bought, when it is not just the tier (`plan`). */
+  planId?: string;
+  planVersion?: number;
+  /** Price before discount, and the coupon or offer that took it down. */
+  listPriceEsp?: number;
+  couponCode?: string | null;
+  offerId?: string | null;
 }
 
 function paymentKey(paymentRef: string): string {
@@ -163,6 +171,11 @@ export interface RecordPaymentInput {
   source?: PaymentSource;
   status?: PaymentStatus;
   paidAt?: number;
+  planId?: string;
+  planVersion?: number;
+  listPriceEsp?: number;
+  couponCode?: string | null;
+  offerId?: string | null;
 }
 
 export interface RecordPaymentResult {
@@ -201,6 +214,11 @@ export async function recordPayment(
     periodStart: input.periodStart,
     periodEnd: input.periodEnd,
     source: input.source ?? "espees-redirect-unverified",
+    ...(input.planId ? { planId: input.planId } : {}),
+    ...(input.planVersion ? { planVersion: input.planVersion } : {}),
+    ...(input.listPriceEsp != null ? { listPriceEsp: input.listPriceEsp } : {}),
+    ...(input.couponCode ? { couponCode: input.couponCode } : {}),
+    ...(input.offerId ? { offerId: input.offerId } : {}),
   };
   if (!isKvConfigured()) {
     memPayments.set(ref, record);
@@ -213,6 +231,8 @@ export async function recordPayment(
   await kv.set(paymentKey(ref), record);
   await kv.lpush(userListKey(input.userId), ref);
   await kv.ltrim(userListKey(input.userId), 0, MAX_USER_LIST_ENTRIES - 1);
+  // The admin billing area lists every payment through this index.
+  await indexPayment(payId(ref), record.paidAt);
   return { created: true, record };
 }
 
@@ -275,6 +295,30 @@ export async function assignInvoiceNumber(
     await kv.set(paymentKey(ref), updated);
   }
   return { number, assigned: true };
+}
+
+/**
+ * Change fields on an existing record (refunds, a failure's reason). The
+ * paymentRef, userId and paidAt never change — they are the record's
+ * identity and its place in the indexes. Returns null if there is none.
+ */
+export async function updatePaymentRecord(
+  paymentRef: string,
+  patch: Partial<PaymentRecord> & Record<string, unknown>,
+): Promise<PaymentRecord | null> {
+  const ref = (paymentRef || "").trim();
+  const existing = await readPayment(ref);
+  if (!existing) return null;
+  const updated = {
+    ...existing,
+    ...patch,
+    paymentRef: existing.paymentRef,
+    userId: existing.userId,
+    paidAt: existing.paidAt,
+  } as PaymentRecord;
+  if (!isKvConfigured()) memPayments.set(ref, updated);
+  else await kv.set(paymentKey(ref), updated);
+  return updated;
 }
 
 /* ------------------------------------------------------------------ */

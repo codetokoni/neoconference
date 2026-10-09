@@ -123,6 +123,59 @@ export function getPlanLimits(plan: Plan): PlanLimits {
     }
 }
 
+/**
+ * PlanLimits plus the limits the admin plan catalog can also set
+ * (src/lib/billing/model.ts LIMIT_FIELDS says which are enforced).
+ * `groupMembers` null = as many as the plan allows in a meeting, which is
+ * how group sizes were decided before the catalog existed.
+ */
+export type PlanFeatureLimits = PlanLimits & {
+    seats: number;
+    storageGb: number;
+    groupMembers: number | null;
+};
+
+/** The built-in limits of a tier, with the catalog-only fields at their defaults. */
+export function extendedLimits(plan: Plan): PlanFeatureLimits {
+    return { ...getPlanLimits(plan), seats: plan === "enterprise" ? 0 : 1, storageGb: 0, groupMembers: null };
+}
+
+const NUMERIC_LIMITS = ["meetingMinutes", "maxParticipants", "lifetimeMeetingCap", "recordingHoursPerMonth", "seats", "storageGb"] as const;
+const BOOLEAN_LIMITS = ["recording", "breakouts", "branding", "livestream", "translation"] as const;
+
+/** Keep only well-formed limit values from an untrusted object, over `base`. */
+export function mergeLimits(base: PlanFeatureLimits, raw: unknown): PlanFeatureLimits {
+    const out: PlanFeatureLimits = { ...base };
+    if (!raw || typeof raw !== "object") return out;
+    const r = raw as Record<string, unknown>;
+    for (const k of NUMERIC_LIMITS) {
+        const v = r[k];
+        if (typeof v === "number" && Number.isFinite(v) && v >= 0) out[k] = Math.floor(v);
+    }
+    for (const k of BOOLEAN_LIMITS) {
+        if (typeof r[k] === "boolean") out[k] = r[k] as boolean;
+    }
+    if (r.groupMembers === null) out.groupMembers = null;
+    else if (typeof r.groupMembers === "number" && Number.isFinite(r.groupMembers) && r.groupMembers >= 0) out.groupMembers = Math.floor(r.groupMembers);
+    return out;
+}
+
+/**
+ * The limits an account's stored plan gives it. A subscription made from
+ * the admin plan catalog writes the limits of the version bought (plus
+ * add-ons and custom terms) to publicMetadata.planLimits, so editing a plan
+ * later does not change what existing subscribers have. Without that
+ * snapshot — every account from before the catalog — the tier's built-in
+ * limits apply, which are version 1 of each tier in the catalog.
+ */
+export function limitsFromMetadata(metadata: unknown): PlanFeatureLimits {
+    const plan = readPlanFromMetadata(metadata);
+    const base = extendedLimits(plan);
+    if (plan === "free" || !metadata || typeof metadata !== "object") return base;
+    const m = metadata as Record<string, unknown>;
+    return m.plan === plan ? mergeLimits(base, m.planLimits) : base;
+}
+
 export function readPlanFromMetadata(metadata: unknown): Plan {
     if (metadata && typeof metadata === "object" && "plan" in metadata) {
           const p = (metadata as Record<string, unknown>).plan;

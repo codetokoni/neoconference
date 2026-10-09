@@ -7,8 +7,10 @@
 // TTL: 1 hour. If the user does not finish paying within an hour, the
 // record expires and they need to start over.
 
+import { trackCheckout, trackCheckoutStatus } from "@/lib/finance/checkouts";
 import { kv } from "@/lib/kv";
-import type { EspeesPlan, BillingCycle } from "./espees";
+import type { BillingCycle } from "./espees";
+import type { Plan } from "./planLimits";
 
 const KEY_PREFIX = "billing:pending:";
 const TTL_SECONDS = 60 * 60; // 1 hour
@@ -18,7 +20,8 @@ export type PendingPaymentStatus = "pending" | "paid" | "failed";
 export type PendingPayment = {
   nonce: string;
   userId: string;
-  plan: EspeesPlan;
+  /** The base tier (what Clerk publicMetadata.plan will say). */
+  plan: Plan;
   billingCycle: BillingCycle;
   status: PendingPaymentStatus;
   paymentRef: string;
@@ -33,6 +36,17 @@ export type PendingPayment = {
    * which is the existing behaviour.
    */
   returnTo?: string;
+  /**
+   * What was sold, from the admin plan catalog (src/lib/billing). Absent on
+   * records made before the catalog: the return route then falls back to
+   * the tier's built-in price.
+   */
+  planId?: string;
+  planVersion?: number;
+  amountEsp?: number;
+  listPriceEsp?: number;
+  couponCode?: string | null;
+  offerId?: string | null;
 };
 
 function key(nonce: string): string {
@@ -56,10 +70,16 @@ export function generateNonce(): string {
 export async function createPendingPayment(input: {
   nonce: string;
   userId: string;
-  plan: EspeesPlan;
+  plan: Plan;
   billingCycle: BillingCycle;
   paymentRef?: string;
   returnTo?: string;
+  planId?: string;
+  planVersion?: number;
+  amountEsp?: number;
+  listPriceEsp?: number;
+  couponCode?: string | null;
+  offerId?: string | null;
 }): Promise<void> {
   const record: PendingPayment = {
     nonce: input.nonce,
@@ -70,8 +90,16 @@ export async function createPendingPayment(input: {
     paymentRef: input.paymentRef || "",
     createdAt: Date.now(),
     returnTo: input.returnTo,
+    planId: input.planId,
+    planVersion: input.planVersion,
+    amountEsp: input.amountEsp,
+    listPriceEsp: input.listPriceEsp,
+    couponCode: input.couponCode ?? null,
+    offerId: input.offerId ?? null,
   };
   await kv.set(key(input.nonce), record, { ex: TTL_SECONDS });
+  // A lasting copy for the admin's outstanding-payments figures; this one expires.
+  await trackCheckout(record);
 }
 
 export async function readPendingPayment(nonce: string): Promise<PendingPayment | null> {
@@ -87,6 +115,7 @@ export async function updatePaymentStatus(nonce: string, status: PendingPaymentS
   // Keep the record around briefly after resolution so re-hits return a
   // sane response, but expire faster than the original window.
   await kv.set(key(nonce), updated, { ex: 5 * 60 });
+  await trackCheckoutStatus(nonce, status, updated.paymentRef || undefined);
   return updated;
 }
 

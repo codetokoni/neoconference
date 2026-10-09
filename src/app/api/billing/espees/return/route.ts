@@ -19,12 +19,12 @@
 // pending TTL as a "fix" — that would widen the exploit window.
 
 import { NextResponse } from "next/server";
-import { clerkClient } from "@clerk/nextjs/server";
 import { readPendingPayment, updatePaymentStatus, type PendingPayment } from "@/lib/billingStore";
 import { isAppCallback, redirectToApp } from "@/lib/app-callback";
-import { computePlanExpiry } from "@/lib/plan";
 import { ESPEES_AMOUNTS } from "@/lib/espees";
-import { recordPayment } from "@/lib/paymentsStore";
+import { recordPayment, updatePaymentRecord } from "@/lib/paymentsStore";
+import { applyPurchase } from "@/lib/billing/subscriptions";
+import { redeemCoupon } from "@/lib/billing/store";
 
 /**
  * Where to send the buyer once the upgrade has landed.
@@ -75,18 +75,35 @@ export async function GET(req: Request): Promise<Response> {
     return NextResponse.redirect(origin + "/pricing?error=already_resolved", { status: 303 });
   }
 
-  // Promote the user. Preserve any existing publicMetadata. planExpiresAt
-  // is computed from the billing cycle stored on the pending record (30d
-  // monthly / 365d annual) and is what the daily downgrade cron sweeps on.
-  const planExpiresAt = computePlanExpiry(record.billingCycle);
+  // What was paid: the catalog price the checkout charged (after any
+  // coupon or offer). A record from before the catalog has no amount and
+  // was sold at the tier's built-in price.
+  const amountEsp =
+    record.amountEsp ??
+    (record.plan === "starter" || record.plan === "pro" || record.plan === "business"
+      ? ESPEES_AMOUNTS[record.plan][record.billingCycle]
+      : 0);
+
+  // Promote the user: the subscription record and Clerk publicMetadata
+  // (plan, planExpiresAt, and the limits of the version bought) together.
+  // planExpiresAt follows the proration rule in src/lib/billing/model.ts —
+  // a renewal starts when the current period ends, a different plan
+  // converts the unused days — and is what the daily cron sweeps on.
+  let planExpiresAt: number;
   const paidAt = Date.now();
   try {
-    const client = await clerkClient();
-    const user = await client.users.getUser(record.userId);
-    await client.users.updateUserMetadata(record.userId, {
-      publicMetadata: { ...(user.publicMetadata ?? {}), plan: record.plan, planExpiresAt },
+    const applied = await applyPurchase({
+      userId: record.userId,
+      planId: record.planId ?? record.plan,
+      version: record.planVersion,
+      cycle: record.billingCycle,
+      amountEsp,
+      couponCode: record.couponCode ?? null,
+      now: paidAt,
     });
-  } catch {
+    planExpiresAt = applied.periodEnd;
+  } catch (e) {
+    console.warn("[espees-return] applying the purchase failed", e);
     // Mark failed so user can retry; surface error to /pricing.
     await updatePaymentStatus(nonce, "failed");
     const msg = encodeURIComponent("clerk_update_failed");
@@ -105,7 +122,6 @@ export async function GET(req: Request): Promise<Response> {
   // derived from the nonce so the payment is still traceable rather
   // than lost. Prefix disambiguates from real eSpees refs.
   const paymentRef = record.paymentRef?.trim() || `nonce-${nonce}`;
-  const amountEsp = ESPEES_AMOUNTS[record.plan]?.[record.billingCycle] ?? 0;
   let paymentCreated = false;
   try {
     const result = await recordPayment({
@@ -120,8 +136,15 @@ export async function GET(req: Request): Promise<Response> {
       // periodEnd MUST equal the planExpiresAt written to Clerk above.
       periodEnd: planExpiresAt,
       source: "espees-redirect-unverified",
+      planId: record.planId,
+      planVersion: record.planVersion,
+      listPriceEsp: record.listPriceEsp,
+      couponCode: record.couponCode,
+      offerId: record.offerId,
     });
     paymentCreated = result.created;
+    // A coupon counts as used once its payment has come back paid.
+    if (paymentCreated && record.couponCode) await redeemCoupon(record.couponCode, record.userId);
   } catch (e) {
     // Persistence failure here is non-fatal for the upgrade itself —
     // Clerk metadata is already written and the user has their plan.
@@ -144,6 +167,11 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   await updatePaymentStatus(nonce, "paid");
+
+  // Where the buyer's connection was (Vercel's geo header), for the tax
+  // rule on their invoice. Best effort.
+  const country = req.headers.get("x-vercel-ip-country");
+  if (paymentCreated && country) await updatePaymentRecord(paymentRef, { country }).catch(() => null);
 
   return upgradedRedirect(origin, record);
 }

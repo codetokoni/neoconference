@@ -13,6 +13,7 @@ import { eventStore } from "@/lib/eventStore";
 import { authorize } from "@/lib/authz";
 import { verifyMeetingPassword } from "@/lib/eventPassword";
 import { canEnd, endNeedsPin } from "@/lib/meetingLifecycle";
+import { activity } from "@/lib/activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,6 +71,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         updatedAt: new Date().toISOString(),
       }))
     : ev;
+
+  if (canEnd(ev)) {
+    const startedMs = Date.parse(ev.startedAt || "");
+    await activity.record("meeting.ended", {
+      userId: gate.actor.userId,
+      props: { eventId: ev.id, by: "host", minutes: Number.isFinite(startedMs) ? Math.max(0, Math.round((Date.now() - startedMs) / 60_000)) : null },
+    });
+  }
 
   // Force-disconnect any active LiveKit participants. Abrupt (no graceful
   // "meeting ended" message) — adding a graceful toast/redirect requires a

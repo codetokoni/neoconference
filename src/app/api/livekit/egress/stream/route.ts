@@ -19,7 +19,8 @@ import { EgressClient, StreamOutput, StreamProtocol } from "livekit-server-sdk";
 import { eventStore } from "@/lib/eventStore";
 import { authorize } from "@/lib/authz";
 import { errorMessage } from "@/lib/errorMessage";
-import { getPlanForUserId, getPlanLimits, isAdminUserId } from "@/lib/plan";
+import { getPlanLimitsForUserId, isAdminUserId } from "@/lib/plan";
+import { activity } from "@/lib/activity";
 import {
   destinationProblem,
   destinationStatus,
@@ -112,8 +113,8 @@ export async function POST(req: Request) {
   // The owner's plan, as for recording and the participant cap: billing is
   // per host. Operators are exempt.
   const owner = ev.ownerUserId || "";
-  const ownerPlan = owner ? await getPlanForUserId(owner) : "free";
-  if (!getPlanLimits(ownerPlan).livestream && !(owner && (await isAdminUserId(owner)))) {
+  const { plan: ownerPlan, limits: ownerLimits } = await getPlanLimitsForUserId(owner);
+  if (!ownerLimits.livestream && !(owner && (await isAdminUserId(owner)))) {
     return NextResponse.json(
       {
         ok: false,
@@ -172,6 +173,7 @@ export async function POST(req: Request) {
       startedAt: prev.startedAt || state.startedAt,
       updatedAt: state.startedAt,
     }));
+    await activity.record("livestream.started", { userId, account: ev.ownerUserId, props: { eventId: ev.id, destinations: destinations.length } });
     return NextResponse.json({ ok: true, ...state });
   } catch (e) {
     console.error("[egress/stream] start failed", e);

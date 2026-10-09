@@ -21,6 +21,7 @@
 // (neo:admin:audit:purgedThrough) so those gaps are not reported as tampering.
 
 import { kv } from "@/lib/kv";
+import { activity } from "@/lib/activity";
 
 const MONTHS = "neo:admin:audit:months";
 const SEQ = "neo:admin:audit:seq";
@@ -92,6 +93,15 @@ export async function recordAdminAction(
     const m = monthOf(ts);
     await kv.lpush(monthKey(m), JSON.stringify(entry));
     await kv.sadd(MONTHS, m);
+    // A wrong or locked-out authenticator code is a failed admin sign-in:
+    // counted in the activity log too, for the security figures.
+    if (entry.action.startsWith("mfa.") && entry.outcome !== "ok") {
+      await activity.record("admin.sign_in_failed", {
+        userId: entry.actorId,
+        severity: entry.action === "mfa.locked" ? "error" : "warn",
+        props: { action: entry.action, ip: entry.ip ?? null },
+      });
+    }
     return entry;
   } catch (err) {
     console.error("[admin-audit] write failed", input.action, err);

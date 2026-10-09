@@ -1,6 +1,7 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { NextResponse, type NextRequest } from 'next/server';
+import { clerkClient, clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server';
 import { kv } from '@/lib/kv';
+import { markActive } from '@/lib/activity';
 import { RESERVED_SHORT_URL_SLUGS } from '@/lib/reservedSlugs';
 import {
   SESSION_COOKIE,
@@ -41,6 +42,15 @@ const isPublicRoute = createRouteMatcher([
   // Help & support: the app's sign-in screen opens it for people who
   // cannot sign in, so it must not ask them to sign in first.
   '/support',
+  // The contact form works signed out (bot check and rate limits in the
+  // routes); GET of the ticket list checks sign-in itself. A ticket's page
+  // and API (/support/tickets/..., /api/support/tickets/<id>) stay behind
+  // sign-in. The help centre is public and meant to be indexed.
+  '/api/support/session',
+  '/api/support/tickets',
+  '/help',
+  '/help/(.*)',
+  '/api/help/suggest',
   '/e/(.*)',
   '/embed/(.*)',
   '/share/(.*)',
@@ -63,6 +73,8 @@ const isPublicRoute = createRouteMatcher([
   // session.
   '/api/billing/espees/return',
   '/api/billing/espees/fail',
+  // The plan catalog /pricing reads (src/lib/billing): /pricing is public.
+  '/api/billing/plans',
   '/api/events/(.*)/checkout',
   '/api/invites/(.*)',
   // A group invite link opened before signing in: the landing page and its
@@ -73,6 +85,12 @@ const isPublicRoute = createRouteMatcher([
   // The scheduler's tick. No session: the bearer secret checked in the route
   // (DISPATCH_SECRET / CRON_SECRET) is the credential.
   '/api/internal/dispatch',
+  // Unsubscribe links in announcement emails work signed out: the signed
+  // token in ?t= is the credential (src/lib/comms/prefs.ts). Resend's
+  // delivery reports carry a Svix signature checked in the route.
+  '/unsubscribe',
+  '/api/comms/unsubscribe',
+  '/api/comms/resend-webhook',
   '/i/(.*)',
   '/video/dashboard',
   // Listed individually on purpose: a wildcard here would silently expose
@@ -307,9 +325,25 @@ async function enforcePersistentSession(req: NextRequest): Promise<NextResponse 
   return res;
 }
 
+/**
+ * Daily-active mark for the admin analytics (src/lib/activity.ts). Runs after
+ * the response via waitUntil, so it adds no latency; markActive is memoised
+ * per instance (one KV round trip per person per day) and never throws.
+ */
+async function noteActive(auth: () => Promise<{ userId: string | null }>, event: NextFetchEvent): Promise<void> {
+  try {
+    const { userId } = await auth();
+    if (!userId) return;
+    event.waitUntil(markActive(userId, async () => (await (await clerkClient()).users.getUser(userId)).createdAt));
+  } catch {
+    // Analytics never stands in the way of a request.
+  }
+}
+
 export default clerkMiddleware(
-  async (auth, req) => {
+  async (auth, req, event) => {
     const nextReq = req as unknown as NextRequest;
+    await noteActive(auth, event);
     // Custom-domain rewrite runs first because it's tenant-scoped and
     // consumes the whole path. Short-meeting-URL rewrite runs second so
     // it only sees canonical-domain requests.
