@@ -1,8 +1,8 @@
 // /api/admin/content/usage — content:read
 //
 // GET ?sort=bytes|files&dir=desc|asc&limit=  Storage per account, with who
-//     each account is and any storage quota on its plan. Quotas are shown,
-//     not enforced: phase 3's plan catalog marks storage "not enforced yet".
+//     each account is and the storage quota on its plan (enforced at chat
+//     and group uploads; src/lib/content/limits.ts refuseOverQuota).
 
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin/context";
@@ -42,8 +42,8 @@ export async function GET(req: Request) {
     }),
     accountCount: usage.byAccount.length,
     quotas: {
-      enforced: false,
-      note: "Per-plan storage quotas are not enforced yet. Plans and subscriptions (phase 3) define a Storage limit; until it is on main and marked enforced, uploads are limited only by the size and type rules under Limits.",
+      enforced: true,
+      note: "Each plan's Storage limit (Plans) applies to uploads in meeting and group chat: once an account's stored files reach it, its next upload is refused. 0 = unlimited. Recordings count towards it but are never stopped.",
     },
   });
 }

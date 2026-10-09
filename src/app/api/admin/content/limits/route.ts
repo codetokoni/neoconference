@@ -28,7 +28,7 @@ export async function GET(req: Request) {
     ceiling: MAX_UPLOAD_CEILING,
     updatedAt: saved.updatedAt ?? null,
     updatedByEmail: saved.updatedByEmail ?? null,
-    quotas: { enforced: false },
+    quotas: { enforced: true },
   });
 }
 

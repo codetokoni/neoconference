@@ -136,7 +136,7 @@ export function classifyKey(key: string): KeyFacts {
 export function guessContentType(key: string): string {
   const ext = (key.split(".").pop() || "").toLowerCase();
   if (/\.m4a(?:\.mp4)?$/i.test(key)) return "audio/mp4";
-  return KNOWN_FILE_TYPES.find((t) => t.exts.includes(ext))?.mime ?? (ext === "mp4" ? "video/mp4" : "application/octet-stream");
+  return KNOWN_FILE_TYPES.find((t) => (t.exts as readonly string[]).includes(ext))?.mime ?? (ext === "mp4" ? "video/mp4" : "application/octet-stream");
 }
 
 /** "md5:<hex>" for a plain ETag, "etag:<value>" for a multipart one. */

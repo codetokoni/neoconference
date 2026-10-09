@@ -56,7 +56,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'file_field_missing' }, { status: 400 });
   }
   // Size and type limits are set in the admin area (Content > Limits).
-  const refused = await refuseUpload('chat', file);
+  const refused = await refuseUpload('chat', file, userId);
   if (refused) return refused;
   const mime = storedMime(await uploadRule('chat'), file);
 

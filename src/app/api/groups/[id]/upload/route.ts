@@ -37,7 +37,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
   const file = form.get("file");
   if (!(file instanceof File)) return NextResponse.json({ error: "file_field_missing" }, { status: 400 });
-  const refused = await refuseUpload("group", file);
+  const refused = await refuseUpload("group", file, gate.member.userId);
   if (refused) return refused;
   const mime = storedMime(await uploadRule("group"), file);
 

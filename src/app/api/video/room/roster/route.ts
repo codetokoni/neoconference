@@ -136,7 +136,7 @@ export async function POST(req: Request) {
       eventSlug: r,
       name: filename,
       size: buffer.length,
-      contentType: storedMime(await uploadRule("roster"), file instanceof File ? file : { type: file.type, name: filename }),
+      contentType: storedMime(await uploadRule("roster"), { type: file.type, name: filename }),
       body: buffer,
     });
   } catch (e) {

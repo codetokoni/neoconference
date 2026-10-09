@@ -326,7 +326,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
       if (!res.ok || !json?.ok || !json?.attachment) {
         // Size and type refusals carry the server's own sentence: the
         // limits are set in the admin area, so they are not known here.
-        const msg = (json?.error === 'too_large' || json?.error === 'unsupported_type' || json?.error === 'empty_file') && json?.message
+        const msg = (json?.error === 'too_large' || json?.error === 'unsupported_type' || json?.error === 'empty_file' || json?.error === 'storage_full') && json?.message
           ? json.message
           : json?.error === 'too_large'
           ? 'File too large.'

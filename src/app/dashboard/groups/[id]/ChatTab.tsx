@@ -182,7 +182,7 @@ export default function ChatTab({
           const body = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
           // Size and type limits are set in the admin area; the server words them.
           setErr(
-            body.error === "too_large" || body.error === "unsupported_type" || body.error === "empty_file"
+            body.error === "too_large" || body.error === "unsupported_type" || body.error === "empty_file" || body.error === "storage_full"
               ? `${file.name}: ${body.message || "can't be shared here."}`
               : groupErrorMessage(body.error)
           );

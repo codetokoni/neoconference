@@ -18,6 +18,8 @@ import {
   type Visibility,
 } from "@/lib/content/model";
 import { allFiles, effectiveVisibility } from "@/lib/content/files";
+import { limitsFromMetadata, readPlanFromMetadata } from "@/lib/planLimits";
+import { currentFreeLimits } from "@/lib/billing/store";
 import type { NeoEvent } from "@/types/event";
 
 export type FileRow = FileRecord & { effectiveVisibility: Visibility; eventName?: string };
@@ -171,7 +173,7 @@ export interface OwnerInfo {
   id: string;
   email: string;
   name: string;
-  /** Storage quota from the plan snapshot phase 3 writes (publicMetadata.planLimits.storageGb); null = none set. */
+  /** The plan's storage quota (phase 3's storageGb: the subscription's snapshot, or Free's from the catalog); null = unlimited. */
   storageGb: number | null;
 }
 
@@ -181,6 +183,8 @@ export async function ownerInfo(ids: string[]): Promise<Map<string, OwnerInfo>> 
   const want = [...new Set(ids.filter((id) => /^user_[A-Za-z0-9]+$/.test(id)))];
   if (!want.length) return out;
   const client = await clerkClient();
+  let freeGb: number | null = null;
+  const freeQuota = async () => (freeGb ??= await currentFreeLimits().then((l) => l.storageGb, () => 0));
   for (let i = 0; i < want.length; i += 100) {
     const chunk = want.slice(i, i + 100);
     const res = (await client.users.getUserList({ userId: chunk, limit: 100 })) as unknown as {
@@ -194,8 +198,9 @@ export async function ownerInfo(ids: string[]): Promise<Map<string, OwnerInfo>> 
       }[];
     };
     for (const u of res.data ?? []) {
-      const limits = (u.publicMetadata?.planLimits ?? null) as { storageGb?: unknown } | null;
-      const gb = typeof limits?.storageGb === "number" && limits.storageGb > 0 ? limits.storageGb : null;
+      const meta = u.publicMetadata ?? {};
+      const raw = readPlanFromMetadata(meta) === "free" ? await freeQuota() : limitsFromMetadata(meta).storageGb;
+      const gb = raw > 0 ? raw : null;
       out.set(u.id, {
         id: u.id,
         email: (u.primaryEmailAddress?.emailAddress || u.emailAddresses?.[0]?.emailAddress || "").toLowerCase(),
