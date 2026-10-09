@@ -586,7 +586,10 @@ async function main() {
       call(null, R.cron.GET as never, { headers: { authorization: "Bearer cron_SECRET_VALUE" } }),
       call(null, R.cron.GET as never, { headers: { authorization: "Bearer cron_SECRET_VALUE" } }),
     ]);
-    assert.equal((a.body.sent as number) + (b.body.sent as number), 1);
+    // The ops job runner's lock turns the second of two simultaneous runs
+    // away (409 already_running); either way the reminder goes out once.
+    assert.equal(((a.body.sent as number) ?? 0) + ((b.body.sent as number) ?? 0), 1);
+    assert.ok([a, b].every((r) => r.body.sent !== undefined || r.body.skipped === "already_running"), JSON.stringify([a.body, b.body]));
     assert.equal(sentMail().length, before + 2, "one failed attempt, one delivered");
     assert.equal(sentMail().at(-1)!.to[0], "four@example.com");
     assert.match(sentMail().at(-1)!.subject, /Finish upgrading/);
@@ -599,6 +602,33 @@ async function main() {
     const run = await call("user_billing", R.reminders.POST, { method: "POST" });
     assert.equal((run.body.result as { sent: number }).sent, 0);
     assert.equal((await audit.listAdminAudit({ action: "billing.reminders.run" })).items.length, 1);
+  });
+
+  await t("reminders are email templates: the defaults are the old wording, an edit is what goes out", async () => {
+    const { REMINDER_TEMPLATE, reminderVars } = await import("../finance/reminders");
+    const tpl = await import("../comms/templates");
+    for (const kind of ["failed", "abandoned", "renewal"] as const) {
+      for (const [amount, cycle, plan] of [[25, "monthly", "pro"], [250, "annual", "business"], [null, "", ""]] as const) {
+        const r = { kind, key: "k", alsoClaims: [], userId: "u", subject: "s", step: 1, amount, currency: "USD", plan, cycle, when: Date.UTC(2026, 9, 16, 12) };
+        const got = await tpl.renderEmail(REMINDER_TEMPLATE[kind], reminderVars(r));
+        assert.deepEqual([got.subject, got.text, got.html], Object.values(legacyReminderEmail(r)), `${kind} ${amount}`);
+      }
+    }
+    const def = (await tpl.getTemplate("billing.abandoned_checkout"))!.def;
+    assert.equal(def.group, "Billing");
+    await tpl.saveTemplate("billing.abandoned_checkout", { ...def.defaults, subject: "Still thinking about {{plan}}?", text: "Edited: {{pricingUrl}}" }, { userId: "user_owner", email: "owner@example.com" });
+    // Give back the abandoned reminder's claim so the next run sends it again.
+    const claim = [...g.__kvStore.keys()].find((k) => k.startsWith("billing:reminders:sent:abandoned:"))!;
+    g.__kvStore.delete(claim);
+    const res = await call(null, R.cron.GET as never, { headers: { authorization: "Bearer cron_SECRET_VALUE" } });
+    assert.equal(res.body.sent, 1, JSON.stringify(res.body));
+    const last = JSON.parse(calls.filter((c) => c.url === "https://api.resend.com/emails").at(-1)!.body) as { to: string[]; subject: string; text: string };
+    assert.deepEqual([last.to[0], last.subject, last.text], ["four@example.com", "Still thinking about Pro?", "Edited: https://www.neoconference.app/pricing"]);
+    assert.ok(g.__kvStore.has(claim), "the claim is taken again");
+    const { listLog } = await import("../comms/log");
+    const logged = (await listLog()).find((e) => e.subject === "Still thinking about Pro?");
+    assert.deepEqual([logged?.template, logged?.templateVersion], ["billing.abandoned_checkout", 1]);
+    await tpl.revertTemplate("billing.abandoned_checkout", 0, { userId: "user_owner", email: "owner@example.com" });
   });
 
   console.log("exports");
@@ -659,6 +689,33 @@ async function main() {
 
   console.log(`\n${n} checks passed`);
   process.exit(0);
+}
+
+/** The reminder email exactly as src/lib/finance/reminders.ts built it before templates (main at 6740cdb). */
+function legacyReminderEmail(r: { kind: string; amount: number | null; currency: string; plan: string; cycle: string; when: number }) {
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://www.neoconference.app").replace(/\/+$/, "");
+  const PLAN = (p: string) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : "your");
+  const fmt = (amount: number) => `${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${r.currency}`;
+  const price = r.amount != null ? ` (${fmt(r.amount)}, ${r.cycle === "annual" ? "annual" : "monthly"})` : "";
+  const pricing = `${appUrl}/pricing`;
+  const billing = `${appUrl}/dashboard/billing`;
+  let subject: string;
+  let body: string[];
+  if (r.kind === "failed") {
+    subject = `Your NeoConference ${PLAN(r.plan)} payment did not go through`;
+    body = [`Your payment for the ${PLAN(r.plan)} plan${price} did not go through, so the plan was not added.`, `You can try again here: ${pricing}`];
+  } else if (r.kind === "abandoned") {
+    subject = `Finish upgrading to NeoConference ${PLAN(r.plan)}`;
+    body = [`You started upgrading to the ${PLAN(r.plan)} plan${price} but the payment was not completed.`, `Pick up where you left off: ${pricing}`];
+  } else {
+    const date = new Date(r.when).toUTCString().slice(0, 16);
+    subject = `Your NeoConference ${PLAN(r.plan)} plan ends on ${date}`;
+    body = [`Your ${PLAN(r.plan)} plan${price} runs until ${date}. It does not renew by itself: to keep it, buy another period before then.`, `Renew: ${pricing}`, `Your billing history: ${billing}`];
+  }
+  const text = [...body, "", "— NeoConference"].join("\n\n");
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const html = body.map((p) => `<p>${esc(p).replace(/(https?:\/\/\S+)/g, '<a href="$1">$1</a>')}</p>`).join("") + "<p>— NeoConference</p>";
+  return { subject, text, html };
 }
 
 main().catch((err) => {

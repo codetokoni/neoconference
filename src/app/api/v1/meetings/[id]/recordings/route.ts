@@ -51,7 +51,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       throw new ApiError(409, 'meeting_ended', 'This meeting has already ended.');
     }
     const allowed = await recordingGate(meeting.ownerUserId);
-    if (!allowed.ok) throw new ApiError(402, allowed.code, allowed.message);
+    if (!allowed.ok) throw new ApiError(allowed.code === 'feature_disabled' ? 403 : 402, allowed.code, allowed.message);
 
     let started;
     try {

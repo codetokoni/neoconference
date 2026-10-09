@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { kv } from '@/lib/kv';
-import { randomBytes, randomUUID } from 'crypto';
-import { currentPlan, hashKey, type ApiKeyRecord, type ApiPlan } from '@/lib/apiAuth';
+import { currentPlan, type ApiKeyRecord, type ApiPlan } from '@/lib/apiAuth';
+import { mintApiKey } from '@/lib/platform/apiKeys';
+import { featureDecision, featureRefusal } from '@/lib/platform/features';
 
 /** Live (unrevoked) keys one account may hold at once. */
 const MAX_ACTIVE_KEYS = 10;
@@ -77,34 +78,13 @@ export async function POST(req: NextRequest) {
   // It used to come from a KV key nothing writes, so it was always 'free'.
   const plan: ApiPlan = await currentPlan(userId);
 
-  const id = randomUUID();
-  const raw = `nc_live_${randomBytes(24).toString('hex')}`;
-  const hash = hashKey(raw);
+  // Feature controls (admin): no new keys while the API is off for this account.
+  const api = await featureDecision('developer_api', { userId, plan });
+  if (!api.enabled) return featureRefusal(api);
 
-  const record: ApiKeyRecord = {
-    id,
-    ownerUserId: userId,
-    name,
-    plan,
-    createdAt: Date.now(),
-    lastUsedAt: null,
-    revoked: false,
-  };
-
-  const meta: KeyMeta = {
-    id,
-    name,
-    plan,
-    createdAt: record.createdAt,
-    lastUsedAt: null,
-    revoked: false,
-    maskedKey: `nc_live_...${raw.slice(-4)}`,
-  };
-
-  await kv.set(`apikey:${hash}`, record);
-  await kv.set(`apikey:meta:${id}`, meta);
-  await kv.set(`apikey:hash:${id}`, hash);
-  await kv.sadd(`apikeys:user:${userId}`, id);
+  const { meta: stored, raw } = await mintApiKey({ userId, name, plan });
+  // The owner's own id is for the admin index, not this response.
+  const { ownerUserId: _owner, ...meta } = stored;
 
   // The raw key is returned exactly once.
   return NextResponse.json({ data: { ...meta, key: raw } }, { status: 201 });

@@ -83,6 +83,17 @@ export const JOBS: JobDef[] = [
     load: () => import("@/app/api/cron/downgrade-expired-plans/route") as Promise<RouteModule>,
   }),
   routeJob({
+    name: "billing-reminders",
+    label: "Billing reminders",
+    description: "Failed payments, abandoned checkouts and plans coming up for renewal, by the rules on the Billing settings page (all off until turned on).",
+    schedule: "0 9 * * *",
+    scheduleText: "Daily at 09:00 UTC",
+    retrySafe: true,
+    retryNote: "Each reminder is recorded when it goes out and is sent at most once, however often this runs.",
+    route: "/api/cron/billing-reminders",
+    load: () => import("@/app/api/cron/billing-reminders/route") as Promise<RouteModule>,
+  }),
+  routeJob({
     name: "comms",
     label: "Announcement delivery (backstop)",
     description: "Works through announcements that still have recipients left. The scheduler's 30-second tick does this all day; this daily run is the backstop if that container is down.",
