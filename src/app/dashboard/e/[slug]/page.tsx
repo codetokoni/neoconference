@@ -8,7 +8,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { eventStore } from "@/lib/eventStore";
 import { canEnd, endNeedsPin } from "@/lib/meetingLifecycle";
-import { isAdmin } from "@/lib/roles";
+import { hasMeetingAdminPower } from "@/lib/roles";
 import { lastKnocks, stillWaiting } from "@/lib/waitingRoom";
 import { getMeetingParticipants } from "@/lib/meeting-roles";
 import EndEventButton from "./EndEventButton";
@@ -150,9 +150,7 @@ export default async function EventAdminPage({
                 eventId={ev.id}
                 alwaysOpen={alwaysOpen}
                 pinRequired={endNeedsPin(ev, {
-                  isPlatformAdmin: (user?.emailAddresses || []).some((e) =>
-                    isAdmin(e.emailAddress.toLowerCase())
-                  ),
+                  isPlatformAdmin: await hasMeetingAdminPower(userId, user?.emailAddresses),
                 })}
               />
             ) : null}

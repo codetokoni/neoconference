@@ -16,7 +16,8 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
-import { isAdmin } from "@/lib/roles";
+import { hasMeetingAdminPower } from "@/lib/roles";
+import type { ClerkEmailish } from "@/lib/admin/owner";
 import { breakoutsStore, type BreakoutState } from "@/lib/breakoutsStore";
 import type { NeoEvent } from "@/types/event";
 
@@ -26,6 +27,7 @@ export const dynamic = "force-dynamic";
 interface CallerInfo {
   userId: string;
   emails: string[];
+  emailAddresses: ClerkEmailish[];
 }
 
 async function getCaller(): Promise<CallerInfo | null> {
@@ -35,12 +37,12 @@ async function getCaller(): Promise<CallerInfo | null> {
   const emails = (u?.emailAddresses || []).map(
     (e: { emailAddress: string }) => e.emailAddress.toLowerCase()
   );
-  return { userId, emails };
+  return { userId, emails, emailAddresses: u?.emailAddresses || [] };
 }
 
-function isHostlike(ev: NeoEvent, caller: CallerInfo): boolean {
-  if (caller.emails.some((e) => isAdmin(e))) return true;
+async function isHostlike(ev: NeoEvent, caller: CallerInfo): Promise<boolean> {
   if (ev.ownerUserId === caller.userId) return true;
+  if (await hasMeetingAdminPower(caller.userId, caller.emailAddresses)) return true;
   const ownerEmail = (ev.ownerEmail || "").toLowerCase();
   if (ownerEmail && caller.emails.includes(ownerEmail)) return true;
   const role = (ev.roles || []).find((r) => {
@@ -104,7 +106,7 @@ export async function PUT(
   if (!ev) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
-  if (!isHostlike(ev, caller)) {
+  if (!(await isHostlike(ev, caller))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   let body: unknown;
@@ -137,7 +139,7 @@ export async function DELETE(
   if (!ev) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
-  if (!isHostlike(ev, caller)) {
+  if (!(await isHostlike(ev, caller))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   await breakoutsStore.clear(slug);
