@@ -50,6 +50,7 @@ import {
 } from "@/lib/billing/model";
 import { getAddOn, getPlan, getVersion, listCoupons } from "@/lib/billing/store";
 import { recordSubscriptionChange } from "@/lib/activityBilling";
+import { getTrialPolicy } from "@/lib/platform/settings";
 
 const subKey = (u: string) => `neo:sub:${u}`;
 const histKey = (u: string) => `neo:sub:h:${u}`;
@@ -295,10 +296,16 @@ export async function planAction(
       next.cycle = cycle;
       const lines: string[] = [];
       if (raw.trial === true) {
-        if (!plan.current.trialDays) return no("no_trial", `"${plan.current.name}" has no trial. Set trial days on the plan first.`);
+        // The platform trial policy (Settings → Registration) can turn
+        // trials off, and gives the length when the plan sets none.
+        const policy = await getTrialPolicy();
+        if (!policy.enabled) return no("trials_disabled", "Free trials are turned off in Settings → Registration. Turn them on there, or assign the plan without a trial.");
+        const trialDays = plan.current.trialDays || policy.defaultDays;
+        if (!trialDays) return no("no_trial", `"${plan.current.name}" has no trial and the platform default is 0 days. Set trial days on the plan or in Settings first.`);
         next.status = "trialing";
-        next.periodEnd = now + plan.current.trialDays * DAY_MS;
-        lines.push(`A ${plan.current.trialDays}-day trial of ${plan.current.name}, ending ${date(next.periodEnd)}. When it ends the account goes back to Free unless it is paid for.`);
+        next.periodEnd = now + trialDays * DAY_MS;
+        const length = plan.current.trialDays ? `${trialDays}-day` : `${trialDays}-day (the platform default)`;
+        lines.push(`A ${length} trial of ${plan.current.name}, ending ${date(next.periodEnd)}. When it ends the account goes back to Free unless it is paid for.`);
       } else {
         next.periodEnd = now + (days ?? CYCLE_DAYS[cycle]) * DAY_MS;
         next.pricePaid = cleanPaid(raw.paid);
