@@ -568,7 +568,7 @@ async function main() {
   const seed = async () => {
     await kv.set("neo:event:1", { id: "1", name: "Original" });
     await kv.set("neo:event:2", { id: "2", name: "Second" });
-    await kv.hset("neo:event:h", { a: "1", b: "2" });
+    await kv.hset("neo:event:h", { a: "one", b: "two" });
     await kv.rpush("neo:event:l", "x", "y", "z");
     await kv.sadd("neo:event:s", "m1", "m2");
     await kv.zadd("neo:event:z", { score: 1, member: "first" }, { score: 2, member: "second" });
@@ -663,7 +663,7 @@ async function main() {
     assert.deepEqual(await kv.get("neo:event:1"), { id: "1", name: "Original" });
     assert.deepEqual(await kv.get("neo:event:2"), { id: "2", name: "Second" });
     assert.equal(await kv.get("neo:event:new"), null);
-    assert.deepEqual(await kv.hgetall("neo:event:h"), { a: "1", b: "2" });
+    assert.deepEqual(await kv.hgetall("neo:event:h"), { a: "one", b: "two" });
     assert.deepEqual(await kv.lrange("neo:event:l", 0, -1), ["x", "y", "z"]);
     assert.deepEqual((await kv.smembers("neo:event:s")).sort(), ["m1", "m2"]);
     assert.deepEqual(await kv.zrange("neo:event:z", 0, -1), ["first", "second"]);

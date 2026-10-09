@@ -112,5 +112,13 @@ export const kv = {
   },
   async dbsize() { return [...store.keys()].filter((k) => alive(k)).length; },
 };
-// Values here are stored as they were written, so the raw client is the same store.
-export const kvRaw = kv;
+// src/lib/kv.ts kvRaw: the same store without JSON parsing on the way out.
+const raw = (v) => structuredClone(v);
+export const kvRaw = {
+  ...kv,
+  async get(k) { return alive(k) ? raw(store.get(k)) : null; },
+  async hget(k, f) { const v = (store.get(k) ?? {})[f]; return v == null ? null : raw(v); },
+  async hgetall(k) { const o = store.get(k); return o && Object.keys(o).length ? raw(o) : null; },
+  async lrange(k, start, end) { const l = store.get(k) ?? []; return raw(l.slice(start, end === -1 ? undefined : end + 1)); },
+  async smembers(k) { return raw([...(store.get(k) ?? [])]); },
+};
