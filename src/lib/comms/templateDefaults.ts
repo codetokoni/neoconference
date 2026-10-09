@@ -72,6 +72,20 @@ function groupTemplate(kind: string, name: string, subject: string, line: string
   };
 }
 
+const S_P = '<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a;white-space:pre-line">';
+const S_BUTTON =
+  '<p style="font-family:system-ui,sans-serif"><a href="{{ticketUrl}}" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#06b6d4;color:#020617;text-decoration:none;font-weight:600">{{#signedIn}}Open your ticket{{/signedIn}}{{^signedIn}}Sign in to follow it{{/signedIn}}</a></p>';
+const S_FOOT = '<p style="font-family:system-ui,sans-serif;font-size:12px;color:#64748b">NeoConference support · Replies to this email are not read; answer on the website.</p>';
+const SUPPORT_VARS: TemplateVariable[] = [
+  { name: "number", description: "The ticket number", sample: 1042 },
+  { name: "subject", description: "The ticket's subject", sample: "Recording did not start" },
+  { name: "ticketUrl", description: "The ticket's page", sample: "https://www.neoconference.app/support/tickets/t_abc123" },
+  { name: "signedIn", description: "Set when the ticket belongs to an account (not sent signed out)", sample: true },
+  { name: "email", description: "The address the ticket came from", sample: "ada@example.com" },
+];
+const S_INTRO_TEXT =
+  "Thanks for getting in touch. Your request is with the NeoConference team{{#signedIn}} and you can follow it on the website.{{/signedIn}}{{^signedIn}}. We'll answer at this address. To read the conversation on the website, sign in or sign up with {{email}}.{{/signedIn}}";
+
 export const TEMPLATE_DEFS: TemplateDef[] = [
   groupTemplate("scheduled", "Meeting invitation", "Invitation: {{title}}{{many}}", "{{senderName}} invited you to “{{title}}”{{many}}.", true),
   groupTemplate("updated", "Meeting changed", "Updated: {{title}}{{many}}", "{{senderName}} changed “{{title}}”. It is now {{when}}.", true),
@@ -105,6 +119,37 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
         "<p>{{appointer}} made you an administrator (<b>{{roleName}}</b>) on NeoConference.</p>" +
         '<p><a href="{{origin}}/admin">Open the admin area</a> and set up two-factor authentication with an authenticator app to start.</p>' +
         "<p>If you did not expect this, reply to this email.</p>",
+    },
+  },
+  {
+    id: "support.received",
+    name: "Support request received",
+    group: "Support",
+    description: "Sent when someone opens a support ticket (or support opens one for them and chooses to tell them).",
+    audience: "Whoever the ticket is for",
+    variables: SUPPORT_VARS,
+    defaults: {
+      subject: "[#{{number}}] We received your request: {{subject}}",
+      text: `${S_INTRO_TEXT}\n\nTicket #{{number}}: {{subject}}\n\n{{ticketUrl}}`,
+      // The HTML paragraph is the same sentence, with its apostrophe written escaped as it always went out.
+      html: `${S_P}${S_INTRO_TEXT.replace("We'll", "We&#39;ll")}</p>${S_P}<b>Ticket #{{number}}:</b> {{subject}}</p>${S_BUTTON}${S_FOOT}`,
+    },
+  },
+  {
+    id: "support.reply",
+    name: "Support replied",
+    group: "Support",
+    description: "Sent when support answers a ticket publicly. Accounts also get a bell notification.",
+    audience: "Whoever the ticket is for",
+    variables: [
+      ...SUPPORT_VARS,
+      { name: "agentName", description: "Who answered", sample: "Sam from support" },
+      { name: "body", description: "The reply", sample: "Thanks — that is fixed now. Try again and tell us if it happens again." },
+    ],
+    defaults: {
+      subject: "[#{{number}}] Reply from NeoConference support: {{subject}}",
+      text: "{{agentName}} replied to your ticket #{{number}}:\n\n{{body}}\n\n{{ticketUrl}}",
+      html: `${S_P}<b>{{agentName}}</b> replied to your ticket #{{number}}:</p>${S_P}{{body}}</p>${S_BUTTON}${S_FOOT}`,
     },
   },
   {

@@ -619,6 +619,18 @@ async function main() {
         }
       }
     }
+    for (const userId of ["user_x", undefined]) {
+      const ticket = { id: "t_1", number: 1042, subject: `Can't <join> & "record"`, email: "o'neil@example.com", userId };
+      const origin = "https://www.neoconference.app";
+      const vars = { number: ticket.number, subject: ticket.subject, ticketUrl: `${origin}/support/tickets/${ticket.id}`, signedIn: !!userId, email: ticket.email };
+      const rec = await tpl.renderEmail("support.received", vars);
+      const legacyRec = legacySupport.received(ticket, origin);
+      assert.deepEqual([rec.subject, rec.text, rec.html], [legacyRec.subject, legacyRec.text, legacyRec.html], `support.received (${userId ? "account" : "signed out"})`);
+      const body = "Line one <b>\nLine 'two' & more";
+      const rep = await tpl.renderEmail("support.reply", { ...vars, agentName: "Sam & Co", body });
+      const legacyRep = legacySupport.reply(ticket, body, "Sam & Co", origin);
+      assert.deepEqual([rep.subject, rep.text, rep.html], [legacyRep.subject, legacyRep.text, legacyRep.html], "support.reply");
+    }
     for (const count of [1, 3]) {
       const lines = "Sunday\n  - Ann (2026-10-09T09:00:00Z)";
       const r = await tpl.renderEmail("digest.redemptions", { count, plural: count === 1 ? "" : "s", details: lines });
@@ -789,6 +801,43 @@ function legacyGroupEmail(
   const text = kind === "cancelled" ? line : `${line}\n\n${link}`;
   return { subject, html, text };
 }
+
+/** The support ticket emails exactly as src/lib/support/notify.ts built them before templates (main at d11b77d). */
+type LegacyTicket = { id: string; number: number; subject: string; email: string; userId?: string };
+const legacySupport = (() => {
+  const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+  const page = (lines: string[], link: { href: string; label: string } | null) => {
+    const p = (s: string) => `<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a;white-space:pre-line">${s}</p>`;
+    return [
+      ...lines.map(p),
+      link
+        ? `<p style="font-family:system-ui,sans-serif"><a href="${esc(link.href)}" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#06b6d4;color:#020617;text-decoration:none;font-weight:600">${esc(link.label)}</a></p>`
+        : "",
+      `<p style="font-family:system-ui,sans-serif;font-size:12px;color:#64748b">NeoConference support · Replies to this email are not read; answer on the website.</p>`,
+    ].join("");
+  };
+  const ticketLink = (t: LegacyTicket, origin: string) => ({ href: `${origin}/support/tickets/${t.id}`, label: t.userId ? "Open your ticket" : "Sign in to follow it" });
+  return {
+    received(t: LegacyTicket, origin: string) {
+      const subject = `[#${t.number}] We received your request: ${t.subject}`;
+      const intro = t.userId
+        ? "Thanks for getting in touch. Your request is with the NeoConference team and you can follow it on the website."
+        : `Thanks for getting in touch. Your request is with the NeoConference team. We'll answer at this address. To read the conversation on the website, sign in or sign up with ${t.email}.`;
+      return {
+        subject,
+        text: `${intro}\n\nTicket #${t.number}: ${t.subject}\n\n${origin}/support/tickets/${t.id}`,
+        html: page([esc(intro), `<b>Ticket #${t.number}:</b> ${esc(t.subject)}`], ticketLink(t, origin)),
+      };
+    },
+    reply(t: LegacyTicket, body: string, agentName: string, origin: string) {
+      return {
+        subject: `[#${t.number}] Reply from NeoConference support: ${t.subject}`,
+        text: `${agentName} replied to your ticket #${t.number}:\n\n${body}\n\n${origin}/support/tickets/${t.id}`,
+        html: page([`<b>${esc(agentName)}</b> replied to your ticket #${t.number}:`, esc(body)], ticketLink(t, origin)),
+      };
+    },
+  };
+})();
 
 main().catch((err) => {
   console.error(err);
