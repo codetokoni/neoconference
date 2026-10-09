@@ -37,6 +37,7 @@ export const SECTIONS: Section[] = [
   { label: "Alerts", href: "/admin/ops/alerts", permission: "ops:read", group: "Operations" },
   { label: "Incidents", href: "/admin/ops/incidents", permission: "ops:read", group: "Operations" },
   { label: "Backups", href: "/admin/ops/backups", permission: "ops:read", group: "Operations" },
+  { label: "Automation", href: "/admin/automation", permission: "ops:read", group: "Operations" },
   { label: "Administrators", href: "/admin/team", permission: "admins:read", group: "Access" },
   { label: "Roles", href: "/admin/roles", permission: "admins:read", group: "Access" },
   { label: "Audit log", href: "/admin/audit-log", permission: "audit:read", group: "Access" },
