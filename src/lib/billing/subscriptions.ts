@@ -48,7 +48,7 @@ import {
   type SubHistoryEntry,
   type Subscription,
 } from "@/lib/billing/model";
-import { getAddOn, getPlan, getVersion } from "@/lib/billing/store";
+import { getAddOn, getPlan, getVersion, listCoupons } from "@/lib/billing/store";
 
 const subKey = (u: string) => `neo:sub:${u}`;
 const histKey = (u: string) => `neo:sub:h:${u}`;
@@ -720,6 +720,74 @@ export async function migrateSubscribers(
 
 /* -------------------------------- daily job -------------------------------- */
 
+type DueChange =
+  | { kind: "drop" }
+  | { kind: "reindex"; periodEnd: number }
+  | { kind: "apply_scheduled" | "expire"; sub: Subscription; next: Subscription; entry: Omit<SubHistoryEntry, "ts" | "before" | "after"> };
+
+/** What the daily job does with one record found due in the period-end index. Reads only. */
+async function dueChange(sub: Subscription | null, now: number): Promise<DueChange> {
+  if (!sub || sub.periodEnd == null || sub.status === "paused" || sub.status === "expired") return { kind: "drop" };
+  if (sub.periodEnd > now) return { kind: "reindex", periodEnd: sub.periodEnd };
+  const s = sub.scheduled;
+  if (s && sub.status !== "cancelled") {
+    const plan = await getPlan(s.planId);
+    const version = (await getVersion(s.planId, s.version)) ?? plan?.current;
+    if (plan && version) {
+      const listPrice = espPrice(version.prices, s.cycle);
+      const next: Subscription = {
+        ...sub,
+        planId: plan.id,
+        baseTier: plan.baseTier,
+        version: version.version,
+        snapshot: snapshotOf(version),
+        status: "active",
+        cycle: s.cycle,
+        periodStart: sub.periodEnd,
+        periodEnd: sub.periodEnd + CYCLE_DAYS[s.cycle] * DAY_MS,
+        source: "admin",
+        pricePaid: listPrice ? { amount: listPrice, currency: "ESP" } : null,
+        custom: null,
+        scheduled: null,
+        updatedAt: now,
+      };
+      return {
+        kind: "apply_scheduled",
+        sub,
+        next,
+        entry: { action: "scheduled.apply", by: SYSTEM, summary: `Scheduled change applied: ${version.name} (${s.cycle})`, note: `scheduled by ${s.by}` },
+      };
+    }
+  }
+  return {
+    kind: "expire",
+    sub,
+    next: { ...sub, status: "expired", endedAt: sub.periodEnd, scheduled: null, updatedAt: now },
+    entry: { action: "expire", by: SYSTEM, summary: sub.status === "trialing" ? "Trial ended" : sub.status === "cancelled" ? "Cancellation took effect" : "Period ended" },
+  };
+}
+
+export interface DueItem {
+  userId: string;
+  email: string;
+  action: "apply_scheduled" | "expire";
+  summary: string;
+}
+
+/**
+ * What sweepDue would do at `now`, without doing it: one row per record it
+ * would change. The same decision sweepDue makes, so a preview cannot drift
+ * from the sweep.
+ */
+export async function planDue(now = Date.now()): Promise<DueItem[]> {
+  const out: DueItem[] = [];
+  for (const id of await idsByScore(BY_END, 0, now, 1000)) {
+    const d = await dueChange(await getSubscription(id), now);
+    if (d.kind === "apply_scheduled" || d.kind === "expire") out.push({ userId: d.sub.userId, email: d.sub.email, action: d.kind, summary: d.entry.summary });
+  }
+  return out;
+}
+
 /**
  * Called by /api/cron/downgrade-expired-plans before its Clerk sweep: every
  * record whose period has ended either starts its scheduled plan or ends
@@ -730,55 +798,83 @@ export async function sweepDue(now = Date.now()): Promise<{ changed: number; exp
   let expired = 0;
   const errors: { userId: string; reason: string }[] = [];
   for (const id of await idsByScore(BY_END, 0, now, 1000)) {
-    const sub = await getSubscription(id);
     try {
-      if (!sub || sub.periodEnd == null || sub.status === "paused" || sub.status === "expired") {
-        await kv.zrem(BY_END, id);
-        continue;
+      const d = await dueChange(await getSubscription(id), now);
+      if (d.kind === "drop") await kv.zrem(BY_END, id);
+      else if (d.kind === "reindex") await kv.zadd(BY_END, { score: d.periodEnd, member: id });
+      else {
+        await commit(d.next, d.sub, d.entry);
+        if (d.kind === "apply_scheduled") changed++;
+        else expired++;
       }
-      if (sub.periodEnd > now) {
-        await kv.zadd(BY_END, { score: sub.periodEnd, member: id });
-        continue;
-      }
-      const s = sub.scheduled;
-      if (s && sub.status !== "cancelled") {
-        const plan = await getPlan(s.planId);
-        const version = (await getVersion(s.planId, s.version)) ?? plan?.current;
-        if (plan && version) {
-          const listPrice = espPrice(version.prices, s.cycle);
-          const next: Subscription = {
-            ...sub,
-            planId: plan.id,
-            baseTier: plan.baseTier,
-            version: version.version,
-            snapshot: snapshotOf(version),
-            status: "active",
-            cycle: s.cycle,
-            periodStart: sub.periodEnd,
-            periodEnd: sub.periodEnd + CYCLE_DAYS[s.cycle] * DAY_MS,
-            source: "admin",
-            pricePaid: listPrice ? { amount: listPrice, currency: "ESP" } : null,
-            custom: null,
-            scheduled: null,
-            updatedAt: now,
-          };
-          await commit(next, sub, { action: "scheduled.apply", by: SYSTEM, summary: `Scheduled change applied: ${version.name} (${s.cycle})`, note: `scheduled by ${s.by}` });
-          changed++;
-          continue;
-        }
-      }
-      const next: Subscription = { ...sub, status: "expired", endedAt: sub.periodEnd, scheduled: null, updatedAt: now };
-      await commit(next, sub, {
-        action: "expire",
-        by: SYSTEM,
-        summary: sub.status === "trialing" ? "Trial ended" : sub.status === "cancelled" ? "Cancellation took effect" : "Period ended",
-      });
-      expired++;
     } catch (e) {
       errors.push({ userId: id, reason: e instanceof Error ? e.message : String(e) });
     }
   }
   return { changed, expired, errors };
+}
+
+/* ------------------------- other phases' entry points ---------------------- */
+
+/**
+ * End an account's plan now, for a refund (admin billing). A running
+ * subscription is cancelled as "Cancel now" does: Free at once, a history
+ * entry, Clerk synced, planLimits cleared. An account with a paid plan in
+ * Clerk but no record (from before the catalog) has its plan cleared in
+ * Clerk the way the downgrade cron does. Throws OwnerProtected for the
+ * platform owner. The caller writes the admin audit entry.
+ */
+export async function endSubscriptionNow(
+  userId: string,
+  opts: { actor: Actor; reason: string },
+): Promise<{ ended: "subscription" | "clerk_only" | "nothing"; subscription: Subscription | null }> {
+  const now = Date.now();
+  const current = await getSubscription(userId);
+  if (current && (hasAccess(current, now) || current.status === "paused")) {
+    const planned = await planAction(userId, current.email, current, { action: "cancel", when: "now" }, opts.actor, now);
+    if (!planned.ok) throw new Error(planned.message);
+    await commit(planned.next, current, { action: "admin.cancel", by: opts.actor, summary: "Cancelled now", note: opts.reason });
+    return { ended: "subscription", subscription: planned.next };
+  }
+  const client = await clerkClient();
+  const user = await client.users.getUser(userId);
+  if (isOwnerEmailList(user.emailAddresses as ClerkEmailish[])) throw new OwnerProtected();
+  const meta = { ...((user.publicMetadata ?? {}) as Record<string, unknown>) };
+  if (!meta.plan || meta.plan === "free") return { ended: "nothing", subscription: current };
+  await client.users.updateUserMetadata(userId, {
+    publicMetadata: { ...meta, plan: "free", planExpiresAt: null, planId: null, planVersion: null, planLimits: null },
+  });
+  return { ended: "clerk_only", subscription: current };
+}
+
+/**
+ * Account deletion (data governance): remove the live record and every index
+ * and coupon-use entry that names the account. The history is kept as a
+ * billing record, detached: moved to an anonymous key, with the account's
+ * own userId and email replaced wherever it is the actor (a self-serve
+ * purchase). History entries hold no other personal fields: plan ids,
+ * statuses, dates, amounts, coupon codes and administrators' emails.
+ * Writes nothing to Clerk (the account is being deleted).
+ */
+export async function forgetSubscriptionUser(userId: string): Promise<{ removed: number; historyKey: string | null }> {
+  let removed = 0;
+  if (await kv.get(subKey(userId))) removed += Number(await kv.del(subKey(userId)));
+  removed += Number(await kv.srem(USERS, userId));
+  removed += Number(await kv.zrem(BY_END, userId));
+  removed += Number(await kv.zrem(ENDED, userId));
+  for (const c of await listCoupons()) removed += Number(await kv.srem(`neo:coupon:u:${c.code}`, userId));
+  const history = await getHistory(userId, MAX_HISTORY);
+  let historyKey: string | null = null;
+  if (history.length) {
+    historyKey = `neo:sub:h:forgotten:${crypto.randomUUID()}`;
+    const anon = { userId: "forgotten", email: "deleted account" };
+    // Oldest first, so LPUSH leaves the newest at the head as before.
+    for (const e of [...history].reverse()) {
+      await kv.lpush(historyKey, JSON.stringify(e.by.userId === userId ? { ...e, by: anon } : e));
+    }
+    removed += Number(await kv.del(histKey(userId)));
+  }
+  return { removed, historyKey };
 }
 
 /* --------------------------------- backfill -------------------------------- */

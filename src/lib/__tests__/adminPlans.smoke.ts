@@ -437,6 +437,10 @@ async function main() {
     const up = await call("user_billing", R.subs.GET, { query: "?view=upcoming&days=60" });
     assert.ok(up.body.rows.some((r: { userId: string; scheduled: unknown }) => r.userId === "user_u10" && r.scheduled));
     skew += s.periodEnd! - Date.now() + 1000;
+    // The preview of the daily job names the change and writes nothing.
+    const due = await subs.planDue();
+    assert.ok(due.some((d) => d.userId === "user_u10" && d.action === "apply_scheduled"), JSON.stringify(due));
+    assert.equal((await sub("user_u10")).scheduled?.planId, "starter", "planDue changed nothing");
     const c = await cron();
     assert.equal(c.status, 200, JSON.stringify(c.body));
     assert.ok(c.body.subscriptions.changed >= 1, JSON.stringify(c.body));
@@ -568,6 +572,45 @@ async function main() {
     assert.equal(owner.body.user.isOwner, true);
     const found = await call("user_support", R.lookup.GET, { query: "?q=u10@" });
     assert.equal(found.body.users[0].userId, "user_u10");
+  });
+
+  console.log("entry points for other phases");
+  await t("endSubscriptionNow (a refund) ends a record or a pre-catalog Clerk plan, and refuses the owner", async () => {
+    const actor = { userId: "user_billing", email: "billing@example.com" };
+    assert.ok((await limitsOf("user_u8")).maxParticipants === 1234);
+    const a = await subs.endSubscriptionNow("user_u8", { actor, reason: "refund ref_9" });
+    assert.equal(a.ended, "subscription");
+    assert.equal((await sub("user_u8")).status, "cancelled");
+    assert.equal(meta("user_u8").plan, "free");
+    assert.equal(meta("user_u8").planLimits, null);
+    const h = (await subs.getHistory("user_u8"))[0];
+    assert.equal(h.note, "refund ref_9");
+    assert.equal(h.by.email, "billing@example.com");
+    g.__users.user_plain.plan = "starter";
+    const b = await subs.endSubscriptionNow("user_plain", { actor, reason: "refund" });
+    assert.equal(b.ended, "clerk_only");
+    assert.equal(meta("user_plain").plan, "free");
+    assert.equal((await subs.endSubscriptionNow("user_plain", { actor, reason: "again" })).ended, "nothing");
+    await assert.rejects(subs.endSubscriptionNow("user_owner", { actor, reason: "refund" }), subs.OwnerProtected);
+    assert.equal(meta("user_owner").plan, "starter");
+  });
+
+  await t("forgetSubscriptionUser removes the record, indexes and coupon use; history stays, detached", async () => {
+    const before = await subs.getHistory("user_u5");
+    assert.ok(before.some((e) => e.by.userId === "user_u5"), "a self-serve purchase names the buyer");
+    assert.ok((await call("user_billing", R.subs.GET, { query: "?view=all" })).body.rows.some((r: { userId: string }) => r.userId === "user_u5"));
+    const r = await subs.forgetSubscriptionUser("user_u5");
+    assert.ok(r.removed >= 3, JSON.stringify(r));
+    assert.equal(await subs.getSubscription("user_u5"), null);
+    assert.deepEqual(await subs.getHistory("user_u5"), []);
+    assert.equal((g.__kvStore.get("neo:coupon:u:SAVE10") as Set<string>).has("user_u5"), false);
+    const kept = (g.__kvStore.get(r.historyKey!) as string[]).map((x) => (typeof x === "string" ? JSON.parse(x) : x));
+    assert.equal(kept.length, before.length);
+    assert.equal(JSON.stringify(kept).includes("user_u5"), false);
+    assert.equal(JSON.stringify(kept).includes("u5@example.com"), false);
+    assert.equal(kept[0].ts, before[0].ts, "newest first, as before");
+    assert.ok(!(await call("user_billing", R.subs.GET, { query: "?view=all" })).body.rows.some((r: { userId: string }) => r.userId === "user_u5"));
+    assert.equal((await subs.forgetSubscriptionUser("user_u5")).removed, 0, "nothing left to remove");
   });
 
   console.log(`\n${n} checks passed`);
