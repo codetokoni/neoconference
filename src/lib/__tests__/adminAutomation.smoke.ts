@@ -596,6 +596,38 @@ async function main() {
     assert.equal((await getRule(id)).error, "not_found");
   });
 
+  console.log("purge by retention");
+  await t("a purge rule removes what is past data governance's period, under its lock, step-up first, audited with counts", async () => {
+    const { listNotifications } = await import("../notificationStore");
+    assert.ok((await listNotifications("user_u2")).items.length > 0, "fixture: u2 has bell notifications");
+    await jump(366 * DAY); // past the 365-day notification period
+    const body = { name: "Old notifications", timezone: "UTC", schedule: { type: "cron", expr: "0 4 * * *" }, action: { kind: "purge", target: "notifications" } };
+    stale();
+    assert.equal((await call("user_owner", R.rules.POST, { method: "POST", body })).body.error, "step_up_required", "deleting data always needs a fresh code");
+    await fresh("user_owner");
+    const id = (await create("user_owner", body)).id;
+    const p = await ruleCall("user_owner", R.preview.POST, id);
+    assert.ok(p.body.preview.items.some((i: { label: string }) => i.label === "user user_u2"), JSON.stringify(p.body.preview));
+    assert.ok((await listNotifications("user_u2")).items.length > 0, "a preview removes nothing");
+    // A purge already running (Admin → Data, by hand): the rule run removes nothing and says why.
+    assert.equal(await jobs.acquireJobLock("data-purge", "run_by_hand", 60_000), true);
+    const busy = await ruleCall("user_owner", R.run.POST, id);
+    assert.match(String(busy.body.error), /already running/);
+    assert.ok((await listNotifications("user_u2")).items.length > 0);
+    await jobs.releaseJobLock("data-purge", "run_by_hand");
+    await fresh("user_owner");
+    const r = await ruleCall("user_owner", R.run.POST, id);
+    assert.equal(r.body.run.outcome, "ok", JSON.stringify(r.body));
+    assert.equal((await listNotifications("user_u2")).items.length, 0);
+    const purgeRun = (await jobs.listRuns("data-purge", 1))[0];
+    assert.equal(purgeRun.actor, runner.jobName(id));
+    const { items } = await audit.listAdminAudit({ action: "data.purge" });
+    assert.equal(items[0].targetId, "notifications");
+    assert.equal(items[0].actorId, runner.jobName(id));
+    assert.ok((items[0].after as { removed: number }).removed > 0);
+    assert.deepEqual(Object.keys(items[0].after as object).sort(), ["bytes", "periodDays", "records", "removed"], "counts only");
+  });
+
   console.log(`\n${n} checks passed`);
   process.exit(0);
 }
