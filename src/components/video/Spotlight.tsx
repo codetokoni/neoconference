@@ -47,34 +47,42 @@ export interface SpotlightProps {
 export default function Spotlight({ spot, onClose, onPrev, onNext }: SpotlightProps) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const { videoStream } = useAmsMultitrack(spot.streamId, Boolean(spot.streamId));
-  // Silent unless asked: a board opened full screen is usually projected
-  // in the hall, where a participant's microphone suddenly playing is
-  // unwanted (and echoes). The speaker button or M turns it on.
-  const [sound, setSound] = useState(false);
+  // Full screen always plays the person's sound. Opening it is a click,
+  // so the browser allows sound; if it still refuses, the picture plays
+  // silently and the sound comes on at the next click or key press.
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
-    el.muted = !sound;
-    if (sound) el.play().catch(() => {});
-  }, [sound, videoStream]);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    if (videoStream && el.srcObject !== videoStream) {
-      el.srcObject = videoStream;
+    if (!el || !videoStream) return;
+    if (el.srcObject !== videoStream) el.srcObject = videoStream;
+    el.muted = false;
+    let unlock: (() => void) | null = null;
+    let done = false;
+    el.play().catch(() => {
+      if (done) return;
+      el.muted = true;
       el.play().catch(() => {});
-    }
+      unlock = () => {
+        el.muted = false;
+        el.play().catch(() => {});
+        stop();
+      };
+      window.addEventListener("pointerdown", unlock);
+      window.addEventListener("keydown", unlock);
+    });
+    const stop = () => {
+      done = true;
+      if (!unlock) return;
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+      unlock = null;
+    };
+    return stop;
   }, [videoStream]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         onClose();
-        return;
-      }
-      if (e.key === "m" || e.key === "M") {
-        setSound((on) => !on);
         return;
       }
       // Space also advances so a moderator with a wireless presenter
@@ -99,7 +107,7 @@ export default function Spotlight({ spot, onClose, onPrev, onNext }: SpotlightPr
 
   // Only the person on screen (with the logo and the name card): the
   // controls stay hidden until the pointer reaches the top-right corner,
-  // or a finger taps the screen; Esc, ← → and M work without them.
+  // or a finger taps the screen; Esc and ← → work without them.
   const [tapped, setTapped] = useState(false);
   useEffect(() => {
     if (!tapped) return;
@@ -138,7 +146,7 @@ export default function Spotlight({ spot, onClose, onPrev, onNext }: SpotlightPr
       }}
     >
       {/* The camera fills the screen (cropped at the edges if its shape differs). */}
-      <video ref={ref} playsInline autoPlay muted className="h-full w-full object-cover" />
+      <video ref={ref} playsInline autoPlay className="h-full w-full object-cover" />
 
       {/* Full screen hides the site header: the logo stays on top. */}
       <BrandMark className="absolute left-4 top-4 z-10" />
@@ -167,31 +175,6 @@ export default function Spotlight({ spot, onClose, onPrev, onNext }: SpotlightPr
               ›
             </button>
           )}
-          <button
-            type="button"
-            aria-label={sound ? "Turn sound off (M)" : "Turn sound on (M)"}
-            title={sound ? "Sound on — click or press M to mute" : "Muted — click or press M to hear this person"}
-            aria-pressed={sound}
-            onClick={() => setSound((on) => !on)}
-            className={
-              "flex h-9 w-9 items-center justify-center rounded-md border text-white/85 transition hover:bg-white/10 " +
-              (sound ? "border-emerald-400/60 bg-emerald-500/20" : "border-white/15 bg-black/70")
-            }
-          >
-            {sound ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M11 5 6 9H2v6h4l5 4V5z" />
-                <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-                <path d="M19 5a10 10 0 0 1 0 14" />
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M11 5 6 9H2v6h4l5 4V5z" />
-                <path d="m23 9-6 6" />
-                <path d="m17 9 6 6" />
-              </svg>
-            )}
-          </button>
           <button
             type="button"
             aria-label="Close preview"
