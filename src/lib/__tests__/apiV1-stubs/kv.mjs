@@ -1,10 +1,12 @@
 // In-memory Redis for apiAuth and ncService (which have no fallback of their own).
+// A test that sets KV_REST_API_URL/TOKEN after installing the stubs sends
+// every store through here instead of its in-memory fallback.
 const store = (globalThis.__kvStore ??= new Map());
 const sets = () => new Set();
-// Which keys are hashes / sorted sets (a hash and a JSON value are both plain
-// objects here), and when keys expire — for TYPE, SCAN, PTTL and SET NX PX.
+// Which keys are hashes (a hash and a JSON value are both plain objects
+// here) and when keys expire — for TYPE, PTTL and SET NX PX (the ops job
+// lock and snapshots, src/lib/ops).
 const hashes = (globalThis.__kvHashes ??= new Set());
-const zsets = (globalThis.__kvZsets ??= new Set());
 const expires = (globalThis.__kvExpires ??= new Map());
 // TTLs are kept only when a test asks (globalThis.__kvTtl = true); the older
 // tests were written against a store where nothing expires.
@@ -15,11 +17,17 @@ function alive(k) {
     store.delete(k);
     expires.delete(k);
     hashes.delete(k);
-    zsets.delete(k);
   }
   return store.has(k);
 }
-function glob(pattern) {
+// Upstash JSON-parses what it reads back (a string that is valid JSON comes
+// back as the value), so a stored '"name"' reads as 'name' and '007' as 7.
+const de = (v) => {
+  if (typeof v !== "string") return structuredClone(v);
+  try { return JSON.parse(v); } catch { return v; }
+};
+// Redis glob: * matches anything; a backslash escapes the next character.
+const globRe = (pattern) => {
   let re = "";
   for (let i = 0; i < pattern.length; i++) {
     const c = pattern[i];
@@ -28,32 +36,33 @@ function glob(pattern) {
     else re += c.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
   }
   return new RegExp("^" + re + "$");
-}
+};
 export const kv = {
-  async get(k) { return alive(k) ? structuredClone(store.get(k)) : null; },
-  async set(k, v, opts = {}) {
+  async get(k) { return alive(k) ? de(store.get(k)) : null; },
+  async set(k, v, opts) {
     if (opts?.nx && alive(k)) return null;
     store.set(k, structuredClone(v));
     hashes.delete(k);
-    zsets.delete(k);
     expires.delete(k);
     if (ttlOn() && opts?.px) expires.set(k, Date.now() + opts.px);
     else if (ttlOn() && opts?.ex) expires.set(k, Date.now() + opts.ex * 1000);
     return "OK";
   },
-  async del(k) { hashes.delete(k); zsets.delete(k); expires.delete(k); return store.delete(k) ? 1 : 0; },
+  async del(...ks) { let n = 0; for (const k of ks) { hashes.delete(k); expires.delete(k); if (store.delete(k)) n++; } return n; },
   async sadd(k, ...m) { const s = store.get(k) ?? sets(); m.forEach((x) => s.add(x)); store.set(k, s); return m.length; },
-  async srem(k, ...m) { const s = store.get(k) ?? sets(); m.forEach((x) => s.delete(x)); store.set(k, s); return m.length; },
-  async smembers(k) { return [...(store.get(k) ?? [])]; },
+  // As Redis: how many were actually there to remove.
+  async srem(k, ...m) { const s = store.get(k) ?? sets(); let n = 0; m.forEach((x) => { if (s.delete(x)) n++; }); store.set(k, s); return n; },
+  async smembers(k) { return [...(store.get(k) ?? [])].map(de); },
   async sismember(k, m) { return (store.get(k) ?? sets()).has(m) ? 1 : 0; },
   async incr(k) { const n = (store.get(k) ?? 0) + 1; store.set(k, n); return n; },
   async expire(k, s) { if (ttlOn() && store.has(k)) expires.set(k, Date.now() + s * 1000); return 1; },
   async pexpire(k, ms) { if (ttlOn() && store.has(k)) expires.set(k, Date.now() + ms); return 1; },
   async pttl(k) { if (!alive(k)) return -2; const at = expires.get(k); return at == null ? -1 : at - Date.now(); },
-  async hget(k, f) { return (store.get(k) ?? {})[f] ?? null; },
+  async hget(k, f) { const v = (store.get(k) ?? {})[f]; return v == null ? null : de(v); },
   async hset(k, o) { store.set(k, { ...(store.get(k) ?? {}), ...o }); hashes.add(k); return 1; },
+  async hgetall(k) { const o = store.get(k); return o && Object.keys(o).length ? Object.fromEntries(Object.entries(o).map(([f, v]) => [f, de(v)])) : null; },
+  async hlen(k) { return Object.keys(store.get(k) ?? {}).length; },
   async hincrby(k, f, by) { const o = { ...(store.get(k) ?? {}) }; o[f] = Number(o[f] ?? 0) + by; store.set(k, o); hashes.add(k); return o[f]; },
-  async hgetall(k) { const o = store.get(k); return o && Object.keys(o).length ? structuredClone(o) : null; },
   async hdel(k, ...fields) {
     const o = { ...(store.get(k) ?? {}) };
     let n = 0;
@@ -63,39 +72,39 @@ export const kv = {
   },
   async lpush(k, ...vals) { const l = store.get(k) ?? []; for (const v of vals) l.unshift(structuredClone(v)); store.set(k, l); return l.length; },
   async rpush(k, ...vals) { const l = store.get(k) ?? []; for (const v of vals) l.push(structuredClone(v)); store.set(k, l); return l.length; },
-  async lrange(k, start, end) { const l = store.get(k) ?? []; return structuredClone(l.slice(start, end === -1 ? undefined : end + 1)); },
+  async lrange(k, start, end) { const l = store.get(k) ?? []; return l.slice(start, end === -1 ? undefined : end + 1).map(de); },
   async ltrim(k, start, end) { const l = store.get(k) ?? []; store.set(k, l.slice(start, end === -1 ? undefined : end + 1)); return "OK"; },
-  // Sorted sets as [member, score] pairs kept in score order.
-  async zadd(k, ...members) {
-    const z = new Map((store.get(k) ?? []).map(([m, s]) => [m, s]));
-    for (const { score, member } of members) z.set(member, score);
-    store.set(k, [...z.entries()].sort((a, b) => a[1] - b[1]));
-    zsets.add(k);
-    return members.length;
+  // Sorted sets: a Map member -> score. zrange follows Upstash's byScore
+  // form: (min, max) ascending, or with rev (max, min) descending; bounds may
+  // be "-inf", "+inf" or "(n" (exclusive). Used by userMeetings, scheduler and
+  // the subscription indexes (src/lib/billing/subscriptions.ts).
+  async zadd(k, ...entries) { const z = store.get(k) ?? new Map(); for (const e of entries) z.set(String(e.member), Number(e.score)); store.set(k, z); return entries.length; },
+  async zrem(k, ...members) { const z = store.get(k) ?? new Map(); let n = 0; for (const m of members) if (z.delete(String(m))) n++; store.set(k, z); return n; },
+  async zscore(k, m) { const z = store.get(k); return z?.has(String(m)) ? z.get(String(m)) : null; },
+  async zcard(k) { return (store.get(k) ?? new Map()).size; },
+  async zrange(k, a, b, opts = {}) {
+    const z = store.get(k) ?? new Map();
+    const bound = (x) => (x === "-inf" ? -Infinity : x === "+inf" ? Infinity : String(x).startsWith("(") ? Number(String(x).slice(1)) : Number(x));
+    const open = (x) => String(x).startsWith("(");
+    let rows = [...z.entries()].sort((x, y) => x[1] - y[1]);
+    if (opts.byScore) {
+      const [lo, hi] = opts.rev ? [b, a] : [a, b];
+      rows = rows.filter(([, s]) => (open(lo) ? s > bound(lo) : s >= bound(lo)) && (open(hi) ? s < bound(hi) : s <= bound(hi)));
+      if (opts.rev) rows.reverse();
+    } else {
+      if (opts.rev) rows.reverse();
+      rows = rows.slice(a, b === -1 ? undefined : b + 1);
+    }
+    rows = rows.slice(opts.offset ?? 0, (opts.offset ?? 0) + (opts.count ?? rows.length));
+    return opts.withScores ? rows.flatMap(([m, s]) => [m, s]) : rows.map(([m]) => m);
   },
-  async zrange(k, start, end, opts = {}) {
-    const z = (store.get(k) ?? []).slice(start, end === -1 ? undefined : end + 1);
-    return opts.withScores ? z.flat() : z.map(([m]) => m);
-  },
-  // Glob with * only, which is all the app asks for.
-  async keys(pattern) {
-    const escaped = pattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"));
-    const re = new RegExp("^" + escaped.join(".*") + "$");
-    return [...store.keys()].filter((k) => re.test(k));
-  },
-  // SCAN in pages of `count`; the cursor is an offset into the key list.
-  async scan(cursor, { match = "*", count = 10 } = {}) {
-    const re = glob(match);
-    const all = [...store.keys()].filter((k) => alive(k));
-    const from = Number(cursor) || 0;
-    const page = all.slice(from, from + count).filter((k) => re.test(k));
-    const next = from + count >= all.length ? "0" : String(from + count);
-    return [next, page];
-  },
+  async keys(pattern) { const re = globRe(pattern); return [...store.keys()].filter((k) => alive(k) && re.test(k)); },
+  // One pass: every match and cursor "0" (done).
+  async scan(_cursor, opts = {}) { const re = globRe(opts.match ?? "*"); return ["0", [...store.keys()].filter((k) => alive(k) && re.test(k))]; },
   async type(k) {
     if (!alive(k)) return "none";
     const v = store.get(k);
-    if (zsets.has(k)) return "zset";
+    if (v instanceof Map) return "zset";
     if (v instanceof Set) return "set";
     if (Array.isArray(v)) return "list";
     if (hashes.has(k)) return "hash";
@@ -103,5 +112,5 @@ export const kv = {
   },
   async dbsize() { return [...store.keys()].filter((k) => alive(k)).length; },
 };
-// Values here are already stored as they were written, so the raw client is the same store.
+// Values here are stored as they were written, so the raw client is the same store.
 export const kvRaw = kv;

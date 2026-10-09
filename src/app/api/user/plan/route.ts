@@ -11,7 +11,7 @@
 
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { getPlanForUserId, getPlanLimits } from '@/lib/plan';
+import { getPlanLimitsForUserId } from '@/lib/plan';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,8 +22,7 @@ export async function GET() {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
   }
   try {
-    const plan = await getPlanForUserId(userId);
-    const limits = getPlanLimits(plan);
+    const { plan, limits } = await getPlanLimitsForUserId(userId);
     return NextResponse.json({ ok: true, plan, limits });
   } catch (err) {
     console.error('[user/plan] lookup failed:', err);
