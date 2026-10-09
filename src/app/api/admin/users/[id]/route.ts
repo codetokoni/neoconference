@@ -13,7 +13,6 @@ import { actorOf, can, requireAdmin } from "@/lib/admin/context";
 import { diff, listAdminAudit, recordAdminAction } from "@/lib/admin/audit";
 import { fail, readJson } from "@/lib/admin/http";
 import {
-  DELETION_RETENTION_DAYS,
   accessOf,
   activeSupportSession,
   displayName,
@@ -37,6 +36,7 @@ import { listGroupsForUser } from "@/lib/groupStore";
 import { listUserPayments } from "@/lib/paymentsStore";
 import { getActiveSessions } from "@/lib/sessionStore";
 import { isMailConfigured } from "@/lib/mail";
+import { retentionDays } from "@/lib/dataGov/settings";
 import { listUserActivity } from "@/lib/activity";
 
 export const runtime = "nodejs";
@@ -165,7 +165,7 @@ export async function GET(req: Request, { params }: Params) {
     notes,
     deletion: deletion ? { ...deletion, due: deletion.deleteAfter <= now } : null,
     suspension: user.banned ? suspension : null,
-    retentionDays: DELETION_RETENTION_DAYS,
+    retentionDays: (await retentionDays("accounts")) ?? 30,
     support: { history: support, mine: mine && mine.userId === uid ? mine : null, elsewhere: mine && mine.userId !== uid ? mine : null },
     mailConfigured: isMailConfigured(),
   });

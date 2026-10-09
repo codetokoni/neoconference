@@ -436,6 +436,30 @@ async function main() {
     assert.deepEqual(items.find((e) => e.action === "maintenance.on")!.after && Object.keys(items.find((e) => e.action === "maintenance.on")!.after as object), ["enabled", "message", "endsAt"]);
   });
 
+  await t("ops (incidents, maintenance windows) only turns off what it turned on, and never takes over an administrator's", async () => {
+    const { settingsSurface: ops } = await import("../platform/opsSurface");
+    const on = await ops.startMaintenance("maintenance:w1", "Database upgrade", Date.now() + 30 * 60_000);
+    assert.equal(on.ok, true, on.detail);
+    fresh();
+    assert.equal((await visit("user_free", "/dashboard")).status, 503);
+    assert.equal((await ops.endMaintenance("maintenance:other")).detail, "maintenance mode not this one's");
+    assert.equal((await ops.endMaintenance("maintenance:w1")).detail, "maintenance mode off");
+    fresh();
+    assert.equal((await visit("user_free", "/dashboard")).passed, true);
+    await stepUp("user_ops");
+    await call("user_ops", R.maintenance.PUT, { method: "PUT", body: { enabled: true, message: "Admin's own" } });
+    const refused = await ops.startMaintenance("maintenance:w2", "x", Date.now() + 60_000);
+    assert.equal(refused.ok, false);
+    assert.equal((await ops.endMaintenance("maintenance:w2")).detail, "maintenance mode not this one's");
+    settings.clearSettingsCache();
+    assert.equal((await settings.getFeatureControls()).maintenance.message, "Admin's own");
+    await stepUp("user_ops");
+    await call("user_ops", R.maintenance.PUT, { method: "PUT", body: { enabled: false } });
+    const { items } = await audit.listAdminAudit({ actor: "ops:maintenance:w1" });
+    assert.deepEqual(items.map((e) => e.action).sort(), ["maintenance.off", "maintenance.on"]);
+    fresh();
+  });
+
   /* ------------------------------- registration ------------------------------- */
 
   console.log("registration rules");

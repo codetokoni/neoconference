@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { isR2Configured, listRecordings, signGetUrl, deleteObject, renameObject } from '@/lib/r2';
 import { transcribeStore } from '@/lib/transcribeStore';
+import { tryMoveToTrash } from '@/lib/dataGov/trash';
 import { asReported } from '@/lib/transcribeNotSetUp';
 import { eventStore } from '@/lib/eventStore';
 import { authorize } from '@/lib/authz';
@@ -12,7 +13,7 @@ import {
   stripAudioExt,
   userPrefix,
 } from '@/lib/eventRecordings';
-import { indexDeleted, indexRenamed, trashedKeys } from '@/lib/content/files';
+import { indexDeleted, indexRenamed, indexTrashed, trashedKeys } from '@/lib/content/files';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -162,8 +163,22 @@ export async function DELETE(req: Request) {
           return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 });
     }
     try {
-          await deleteObject(key);
-          await indexDeleted(key);
+          // Moved under trash/ rather than deleted, so an administrator can
+          // restore it for the trash period (src/lib/dataGov/trash.ts). It
+          // leaves the user's list at once, as before. If the move fails the
+          // file is deleted outright, as it always was.
+          const kept = await tryMoveToTrash({
+            kind: 'recording',
+            label: key.split('/').pop() || key,
+            ownerId: userId,
+            ref: key,
+            deletedBy: userId,
+            r2Keys: [key],
+          });
+          if (!kept) await deleteObject(key);
+          // The admin file index (Content): in the trash, or gone.
+          if (kept) await indexTrashed(key, kept.id, userId);
+          else await indexDeleted(key);
           return NextResponse.json({ ok: true, key });
     } catch (e) {
           return NextResponse.json(
