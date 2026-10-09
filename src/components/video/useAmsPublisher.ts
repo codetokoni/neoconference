@@ -25,7 +25,9 @@ export interface PublisherOptions {
   /**
    * Specific camera / microphone to use, from
    * navigator.mediaDevices.enumerateDevices(). Empty string means "let
-   * the browser pick" — same behaviour as omitting the option.
+   * the browser pick" — same behaviour as omitting the option. Changing
+   * either while publishing swaps the track on the open connection
+   * (RTCRtpSender.replaceTrack): no reconnect, the slot stays live.
    */
   videoDeviceId?: string;
   audioDeviceId?: string;
@@ -46,6 +48,9 @@ export interface PublisherResult {
   stop: () => void;
   toggleMic: () => void;
   toggleCam: () => void;
+  /** The device actually in use for each kind (after a fallback, the default's id). */
+  activeVideoDeviceId: string;
+  activeAudioDeviceId: string;
 }
 
 const ICE: RTCConfiguration = {
@@ -91,6 +96,110 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deadRef = useRef(false);
+  // Read when the camera is opened; changes later are switched live below,
+  // so they are not dependencies of the publish effect (which would tear
+  // the broadcast down and start it again).
+  const videoDeviceRef = useRef(videoDeviceId);
+  const audioDeviceRef = useRef(audioDeviceId);
+  const [activeVideoDeviceId, setActiveVideoDeviceId] = useState("");
+  const [activeAudioDeviceId, setActiveAudioDeviceId] = useState("");
+
+  const videoConstraintFor = useCallback(
+    (deviceId: string): MediaTrackConstraints => ({
+      width: { ideal: width },
+      height: { ideal: height },
+      frameRate: { ideal: frameRate, max: frameRate },
+      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+    }),
+    [width, height, frameRate],
+  );
+  const audioConstraintFor = useCallback((deviceId: string): MediaTrackConstraints => {
+    const micBase = { echoCancellation: true, noiseSuppression: true };
+    return deviceId ? { ...micBase, deviceId: { exact: deviceId } } : micBase;
+  }, []);
+
+  /** What a track is actually reading from, for the pickers to show. */
+  const noteActive = useCallback((t: MediaStreamTrack | undefined) => {
+    if (!t) return;
+    const id = t.getSettings?.().deviceId ?? "";
+    if (t.kind === "video") setActiveVideoDeviceId(id);
+    else setActiveAudioDeviceId(id);
+  }, []);
+
+  /**
+   * Swap the camera or mic without dropping the broadcast: open the new
+   * device, hand its track to the existing sender, then close the old one.
+   * Keeps the mute / camera-off state. On failure the old track stays.
+   */
+  const switchTrack = useCallback(
+    async (kind: "video" | "audio", deviceId: string): Promise<boolean> => {
+      const stream = streamRef.current;
+      if (!stream) return false;
+      if (kind === "video" && (audioOnly || source === "screen")) return false;
+      const old = kind === "video" ? stream.getVideoTracks()[0] : stream.getAudioTracks()[0];
+      let fresh: MediaStream;
+      try {
+        fresh = await navigator.mediaDevices.getUserMedia(
+          kind === "video" ? { video: videoConstraintFor(deviceId), audio: false } : { video: false, audio: audioConstraintFor(deviceId) },
+        );
+      } catch {
+        setError(
+          kind === "video"
+            ? "Could not switch to that camera. It may be in use by another app."
+            : "Could not switch to that microphone. It may be in use by another app.",
+        );
+        return false;
+      }
+      const track = kind === "video" ? fresh.getVideoTracks()[0] : fresh.getAudioTracks()[0];
+      if (!track || streamRef.current !== stream) {
+        fresh.getTracks().forEach((t) => t.stop());
+        return false;
+      }
+      track.enabled = old ? old.enabled : true;
+      sourcesRef.current.push(fresh);
+      // By the transceiver, so a sender whose track is momentarily null is still found.
+      const sender = pcRef.current
+        ?.getTransceivers()
+        .find((t) => t.sender.track?.kind === kind || t.receiver.track?.kind === kind)?.sender;
+      try {
+        if (sender) await sender.replaceTrack(track);
+      } catch {
+        track.stop();
+        setError("Could not switch device on the live connection.");
+        return false;
+      }
+      if (old) {
+        stream.removeTrack(old);
+        old.stop();
+      }
+      stream.addTrack(track);
+      // The camera or mic being unplugged mid-broadcast: carry on with the default.
+      track.addEventListener("ended", () => {
+        if (deadRef.current || streamRef.current !== stream || !stream.getTracks().includes(track)) return;
+        void switchTrackRef.current?.(kind, "");
+      });
+      noteActive(track);
+      setError(null);
+      // A new stream object so previews (srcObject) pick up the new track.
+      setLocalStream(new MediaStream(stream.getTracks()));
+      return true;
+    },
+    [audioOnly, source, videoConstraintFor, audioConstraintFor, noteActive],
+  );
+  const switchTrackRef = useRef(switchTrack);
+  switchTrackRef.current = switchTrack;
+
+  // A device chosen while live: switch it in place.
+  useEffect(() => {
+    const changed = videoDeviceRef.current !== videoDeviceId;
+    videoDeviceRef.current = videoDeviceId;
+    if (changed && streamRef.current) void switchTrack("video", videoDeviceId);
+  }, [videoDeviceId, switchTrack]);
+  useEffect(() => {
+    const changed = audioDeviceRef.current !== audioDeviceId;
+    audioDeviceRef.current = audioDeviceId;
+    if (changed && streamRef.current) void switchTrack("audio", audioDeviceId);
+  }, [audioDeviceId, switchTrack]);
 
   const start = useCallback(() => {
     setError(null);
@@ -222,16 +331,8 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
 
       if (!streamRef.current) {
         setState("requesting-camera");
-        const micBase = { echoCancellation: true, noiseSuppression: true };
-        const audioConstraint: MediaTrackConstraints = audioDeviceId
-          ? { ...micBase, deviceId: { exact: audioDeviceId } }
-          : micBase;
-        const videoConstraint: MediaTrackConstraints = {
-          width: { ideal: width },
-          height: { ideal: height },
-          frameRate: { ideal: frameRate, max: frameRate },
-          ...(videoDeviceId ? { deviceId: { exact: videoDeviceId } } : {}),
-        };
+        const audioConstraint = audioConstraintFor(audioDeviceRef.current);
+        const videoConstraint = videoConstraintFor(videoDeviceRef.current);
         try {
           let s: MediaStream;
 
@@ -290,6 +391,18 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
           setLocalStream(s);
           setMicOn(true);
           setCamOn(true);
+          noteActive(s.getVideoTracks()[0]);
+          noteActive(s.getAudioTracks()[0]);
+          // Unplugged mid-broadcast: carry on with the system default.
+          if (source !== "screen") {
+            for (const t of s.getTracks()) {
+              const kind = t.kind as "video" | "audio";
+              t.addEventListener("ended", () => {
+                if (deadRef.current || streamRef.current !== s || !s.getTracks().includes(t)) return;
+                void switchTrackRef.current?.(kind, "");
+              });
+            }
+          }
         } catch {
           setState("denied");
           setError(
@@ -449,13 +562,26 @@ export function useAmsPublisher(opts: PublisherOptions): PublisherResult {
     wsUrl,
     source,
     audioOnly,
-    videoDeviceId,
-    audioDeviceId,
     width,
     height,
     frameRate,
     maxBitrateKbps,
+    videoConstraintFor,
+    audioConstraintFor,
+    noteActive,
   ]);
 
-  return { state, error, localStream, micOn, camOn, start, stop, toggleMic, toggleCam };
+  return {
+    state,
+    error,
+    localStream,
+    micOn,
+    camOn,
+    start,
+    stop,
+    toggleMic,
+    toggleCam,
+    activeVideoDeviceId,
+    activeAudioDeviceId,
+  };
 }
