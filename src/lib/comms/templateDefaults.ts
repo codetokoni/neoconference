@@ -232,6 +232,51 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
         '<p style="font-family:system-ui,sans-serif"><a href="{{origin}}/pricing" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#06b6d4;color:#020617;text-decoration:none;font-weight:600">See the plans</a></p>',
     },
   },
+  // Sent by automation rules (src/lib/automation/actions.ts).
+  {
+    id: "reminder.trial",
+    name: "Trial ending",
+    group: "Usage reminders",
+    description: "When a trial is about to end (an automation rule's \"Trial ends in\" condition, Admin → Automation).",
+    audience: "The account holder",
+    variables: [
+      { name: "name", description: "Their first name, or empty", sample: "Ada" },
+      { name: "planName", description: "The plan they are trying", sample: "Business" },
+      { name: "days", description: "Whole days left", sample: 3 },
+      { name: "endsOn", description: "When the trial ends", sample: "Mon, 12 Oct 2026" },
+      { name: "origin", description: "The site's address", sample: "https://www.neoconference.app" },
+    ],
+    defaults: {
+      subject: "Your {{planName}} trial ends in {{days}} day(s)",
+      short: "Your {{planName}} trial ends on {{endsOn}}. Choose a plan to keep its features.",
+      text:
+        "Hi{{#name}} {{name}}{{/name}},\n\n" +
+        "Your {{planName}} trial ends on {{endsOn}}. After that your account goes back to the Free plan. To keep the {{planName}} features, choose a plan before then.\n\n" +
+        "See the plans: {{origin}}/pricing\n\n— NeoConference",
+      html:
+        '<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a">Hi{{#name}} {{name}}{{/name}},</p>' +
+        '<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a">Your {{planName}} trial ends on {{endsOn}}. After that your account goes back to the Free plan. To keep the {{planName}} features, choose a plan before then.</p>' +
+        '<p style="font-family:system-ui,sans-serif"><a href="{{origin}}/pricing" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#06b6d4;color:#020617;text-decoration:none;font-weight:600">See the plans</a></p>',
+    },
+  },
+  {
+    id: "automation.report",
+    name: "Scheduled report",
+    group: "Automation",
+    description: "A report an automation rule builds and emails on its schedule (Admin → Automation). The tables come as CSV attachments.",
+    audience: "The platform owner (and ops administrators, if the rule says so)",
+    variables: [
+      { name: "reportName", description: "The rule's name", sample: "Weekly summary to the owner" },
+      { name: "period", description: "The days covered", sample: "2026-10-02 to 2026-10-08 (UTC)" },
+      { name: "summary", description: "The headline figures, one per line", sample: "Active users: 120\nMeetings: 48" },
+      { name: "origin", description: "The site's address", sample: "https://www.neoconference.app" },
+    ],
+    defaults: {
+      subject: "NeoConference: {{reportName}} ({{period}})",
+      html: "",
+      text: "{{reportName}}\n{{period}}\n\n{{summary}}\n\nThe tables are attached as CSV. Analytics: {{origin}}/admin/analytics\n\n— NeoConference",
+    },
+  },
 ];
 
 export function templateDef(id: string): TemplateDef | undefined {
