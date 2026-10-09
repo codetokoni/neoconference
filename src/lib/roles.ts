@@ -1,6 +1,8 @@
 import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
 import type { RoleAssignment } from "@/types/event";
 import { can, resolveRole, type Actor } from "@/lib/permissions";
+import { isOwnerEmailList } from "@/lib/admin/owner";
+import { getMember } from "@/lib/admin/store";
 
 export type Role = "admin" | "staff" | "user";
 
@@ -28,7 +30,7 @@ export function readRoleFromMetadata(metadata: unknown): Role {
  * Authority lives in the env var; we do NOT persist these to Clerk so that
  * removing an email from ADMIN_EMAILS revokes admin on the next request.
  */
-function getAdminEmails(): string[] {
+export function getAdminEmails(): string[] {
   return (process.env.ADMIN_EMAILS || "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
@@ -80,6 +82,19 @@ export async function getCurrentRole(): Promise<Role | null> {
   const client = await clerkClient();
   const user = await client.users.getUser(userId);
   const emails = user.emailAddresses?.map((e) => e.emailAddress.toLowerCase()) ?? [];
+
+  // The platform owner is always an admin, whatever the metadata says.
+  if (isOwnerEmailList(user.emailAddresses)) return "admin";
+
+  // An administrator record (src/lib/admin/store.ts) decides before the
+  // older signals: an active one is admin; a suspended or removed one is not,
+  // even while ADMIN_EMAILS or Clerk metadata still say admin.
+  const member = await getMember(userId).catch(() => null);
+  if (member) {
+    if (member.status === "active") return "admin";
+    const r = readRoleFromMetadata(user.publicMetadata);
+    return r === "admin" ? "user" : r;
+  }
 
   if (emails.some((e) => isAdmin(e))) return "admin";
 

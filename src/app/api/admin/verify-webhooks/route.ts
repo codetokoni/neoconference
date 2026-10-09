@@ -12,8 +12,7 @@
 // Platform-admin gated.
 
 import { NextResponse } from "next/server";
-import { auth, currentUser } from "@clerk/nextjs/server";
-import { isAdmin } from "@/lib/roles";
+import { requireAdmin } from "@/lib/admin/context";
 import {
   readWebhookMetrics,
   readWebhookRejections,
@@ -33,16 +32,9 @@ const REQUIRED: Array<WebhookMetric["event"]> = [
   "participant_left",
 ];
 
-export async function GET() {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  const u = await currentUser().catch(() => null);
-  const emails = (u?.emailAddresses || []).map(
-    (e: { emailAddress: string }) => e.emailAddress.toLowerCase(),
-  );
-  if (!emails.some((e) => isAdmin(e))) {
-    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
-  }
+export async function GET(req: Request) {
+  const g = await requireAdmin(req, "ops:read");
+  if (!g.ok) return g.response;
 
   const [metrics, rejections] = await Promise.all([
     readWebhookMetrics(),

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
-import { requireRole, readRoleFromMetadata } from "@/lib/roles";
+import { readRoleFromMetadata } from "@/lib/roles";
+import { requireAdmin } from "@/lib/admin/context";
+import { isOwnerEmailList } from "@/lib/admin/owner";
+import { listMembers } from "@/lib/admin/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,10 +14,8 @@ export const dynamic = "force-dynamic";
  * Only admins may call this.
  */
 export async function GET(req: Request) {
-  const caller = await requireRole(["admin"]);
-  if (!caller) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const g = await requireAdmin(req, "users:read");
+  if (!g.ok) return g.response;
 
   const url = new URL(req.url);
   const limit = Math.min(
@@ -31,13 +32,26 @@ export async function GET(req: Request) {
     query,
   });
 
-  const items = list.data.map((u) => ({
-    id: u.id,
-    name: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.username || "",
-    email: u.emailAddresses?.[0]?.emailAddress ?? "",
-    imageUrl: u.imageUrl,
-    role: readRoleFromMetadata(u.publicMetadata),
-  }));
+  // Platform access comes from the owner list and administrator records,
+  // not the Clerk role, so say which applies.
+  const members = new Map((await listMembers()).map((m) => [m.userId, m]));
+  const items = list.data.map((u) => {
+    const m = members.get(u.id);
+    return {
+      id: u.id,
+      name: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.username || "",
+      email: u.emailAddresses?.[0]?.emailAddress ?? "",
+      imageUrl: u.imageUrl,
+      role: readRoleFromMetadata(u.publicMetadata),
+      access: isOwnerEmailList(u.emailAddresses)
+        ? "owner"
+        : m && m.status !== "removed"
+          ? m.status === "suspended"
+            ? "admin (suspended)"
+            : "admin"
+          : null,
+    };
+  });
 
   return NextResponse.json({ items, total: list.totalCount });
 }

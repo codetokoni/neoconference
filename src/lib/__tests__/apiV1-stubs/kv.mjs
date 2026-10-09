@@ -21,6 +21,9 @@ export const kv = {
     store.set(k, o);
     return n;
   },
+  async lpush(k, ...vals) { const l = store.get(k) ?? []; for (const v of vals) l.unshift(structuredClone(v)); store.set(k, l); return l.length; },
+  async lrange(k, start, end) { const l = store.get(k) ?? []; return structuredClone(l.slice(start, end === -1 ? undefined : end + 1)); },
+  async ltrim(k, start, end) { const l = store.get(k) ?? []; store.set(k, l.slice(start, end === -1 ? undefined : end + 1)); return "OK"; },
   // Glob with * only, which is all the app asks for.
   async keys(pattern) {
     const escaped = pattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"));

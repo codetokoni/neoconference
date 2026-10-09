@@ -20,6 +20,7 @@
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { isAdmin } from "@/lib/roles";
+import { isOwnerEmailList } from "@/lib/admin/owner";
 import {
     type Plan,
     getPlanLimits,
@@ -63,6 +64,10 @@ export async function getCurrentPlan(): Promise<Plan | null> {
     const user = await client.users.getUser(userId);
     const emails = (user.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
 
+  // The platform owner always has the top tier, with nothing to pay and
+  // nothing that can expire: checked before any stored plan.
+  if (isOwnerEmailList(user.emailAddresses)) return "enterprise";
+
   // Permanent admins (ADMIN_EMAILS) get the highest plan tier so the in-room
   // countdown widget and participant cap don't apply to app operators. Not
   // persisted — env var stays authoritative.
@@ -92,6 +97,7 @@ export async function isAdminUserId(userId: string): Promise<boolean> {
     try {
           const client = await clerkClient();
           const user = await client.users.getUser(userId);
+          if (isOwnerEmailList(user.emailAddresses)) return true;
           return (user.emailAddresses || []).some((e) => isAdmin(e.emailAddress.toLowerCase()));
     } catch {
           return false;
@@ -109,6 +115,9 @@ export async function getPlanForUserId(userId: string): Promise<Plan> {
     try {
           const client = await clerkClient();
           const user = await client.users.getUser(userId);
+          // Owner first: a plan stored on the owner's account (an old
+          // purchase, an admin's edit) must not lower it.
+          if (isOwnerEmailList(user.emailAddresses)) return "enterprise";
           const explicit = readPlanFromMetadata(user.publicMetadata);
           if (explicit !== "free") return explicit;
           const emails = (user.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
@@ -138,6 +147,9 @@ export async function checkLifetimeCap(
           const client = await clerkClient();
           const user = await client.users.getUser(userId);
           const emails = (user.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
+          if (isOwnerEmailList(user.emailAddresses)) {
+                  return { blocked: false, used: 0, cap: 0, plan: "enterprise" };
+          }
           if (emails.some((e) => isAdmin(e))) {
                   return { blocked: false, used: 0, cap: 0, plan: "business" };
           }

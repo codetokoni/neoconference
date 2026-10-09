@@ -15,7 +15,7 @@
 // Response: { events: AdminEventView[]; total; page; pageSize; pageCount }
 
 import { NextResponse } from "next/server";
-import { requireRole } from "@/lib/roles";
+import { requireAdmin } from "@/lib/admin/context";
 import { eventStore } from "@/lib/eventStore";
 import {
   toAdminView,
@@ -83,10 +83,8 @@ function sortValue(ev: NeoEvent, key: SortKey): string {
 }
 
 export async function GET(req: Request) {
-  const caller = await requireRole(["admin"]);
-  if (!caller) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
+  const g = await requireAdmin(req, "events:read");
+  if (!g.ok) return g.response;
 
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") || "").trim();
