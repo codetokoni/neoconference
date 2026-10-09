@@ -18,7 +18,9 @@
 // A channel that cannot reach someone (no address, no device, not linked,
 // not configured) is skipped for that person, not treated as an error.
 
-import { isMailConfigured, mailFromAddress, sendMail } from "@/lib/mail";
+import { isMailConfigured, mailFromAddress } from "@/lib/mail";
+import { sendTemplateEmail } from "@/lib/comms/templates";
+import type { TemplateVars } from "@/lib/comms/format";
 import { buildIcsCalendar } from "@/lib/ics";
 import { loadKcTokens } from "@/lib/kc-tokens";
 import { kcIdForClerkUser, sendKcMessage } from "@/lib/kingschat-send";
@@ -59,10 +61,6 @@ const CONCURRENCY = 4;
 /* -------------------------------------------------------------------------- */
 /*  Wording                                                                    */
 /* -------------------------------------------------------------------------- */
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-}
 
 /** "Mon 12 Oct 2026, 10:00 (Africa/Lagos)" in the meeting's own timezone. */
 export function whenText(ev: NeoEvent): string {
@@ -110,6 +108,22 @@ export function wording(events: NeoEvent[], kind: NotifyKind, ctx: NotifyContext
   }
 }
 
+/** What the "group.<kind>" email templates fill in (src/lib/comms/templateDefaults.ts). */
+export function emailVars(events: NeoEvent[], kind: NotifyKind, ctx: NotifyContext): TemplateVars {
+  const first = events[0];
+  const when = whenText(first);
+  return {
+    senderName: ctx.senderName,
+    title: first.name,
+    when,
+    many: events.length > 1 ? ` (${events.length} meetings from ${when})` : ` — ${when}`,
+    count: events.length,
+    series: events.length > 1,
+    link: linkOf(first, ctx.origin),
+    description: first.description || "",
+  };
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Channels                                                                   */
 /* -------------------------------------------------------------------------- */
@@ -134,8 +148,7 @@ async function sendEmailNotices(
   );
   if (addresses.length === 0 || !isMailConfigured()) return outcomes;
 
-  const { subject, line } = wording(events, kind, ctx);
-  const link = linkOf(events[0], ctx.origin);
+  const vars = emailVars(events, kind, ctx);
   const calendar = kind === "scheduled" || kind === "updated" || kind === "cancelled";
   const method = kind === "cancelled" ? "CANCEL" : "REQUEST";
   const host = new URL(ctx.origin).host;
@@ -161,22 +174,13 @@ async function sendEmailNotices(
       ]
     : undefined;
 
-  const html = [
-    `<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a">${escapeHtml(line)}</p>`,
-    kind === "cancelled"
-      ? ""
-      : `<p style="font-family:system-ui,sans-serif"><a href="${escapeHtml(link)}" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#06b6d4;color:#020617;text-decoration:none;font-weight:600">Open the meeting</a></p>`,
-    events[0].description
-      ? `<p style="font-family:system-ui,sans-serif;font-size:14px;color:#334155;white-space:pre-line">${escapeHtml(events[0].description)}</p>`
-      : "",
-  ].join("");
-  const text = kind === "cancelled" ? line : `${line}\n\n${link}`;
-
+  // Subject and body come from the "group.<kind>" email template (Admin →
+  // Email templates); its default is the wording this code always sent.
   for (let i = 0; i < addresses.length; i += EMAIL_BATCH) {
     const batch = addresses.slice(i, i + EMAIL_BATCH);
     if (i > 0) await sleep(EMAIL_SPACING_MS);
     const send = () =>
-      sendMail({ to: mailFromAddress(), bcc: batch, subject, html, text, ...(attachments ? { attachments } : {}) });
+      sendTemplateEmail(`group.${kind}`, vars, { to: mailFromAddress(), bcc: batch, ...(attachments ? { attachments } : {}) });
     let res = await send();
     if (!res.ok && res.error === "rate_limited") {
       await sleep(1_000);

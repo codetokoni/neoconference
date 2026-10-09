@@ -30,6 +30,7 @@ export const kv = {
   async expire() { return 1; },
   async hget(k, f) { const v = (store.get(k) ?? {})[f]; return v == null ? null : de(v); },
   async hset(k, o) { store.set(k, { ...(store.get(k) ?? {}), ...o }); return 1; },
+  async hsetnx(k, f, v) { const o = store.get(k) ?? {}; if (f in o) return 0; store.set(k, { ...o, [f]: structuredClone(v) }); return 1; },
   async hgetall(k) { const o = store.get(k); return o && Object.keys(o).length ? Object.fromEntries(Object.entries(o).map(([f, v]) => [f, de(v)])) : null; },
   async hlen(k) { return Object.keys(store.get(k) ?? {}).length; },
   async hincrby(k, f, by) { const o = { ...(store.get(k) ?? {}) }; o[f] = Number(o[f] ?? 0) + by; store.set(k, o); return o[f]; },

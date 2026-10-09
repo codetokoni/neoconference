@@ -11,7 +11,8 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { eventStore } from "@/lib/eventStore";
-import { isMailConfigured, sendMail } from "@/lib/mail";
+import { isMailConfigured } from "@/lib/mail";
+import { sendTemplateEmail } from "@/lib/comms/templates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,12 +80,12 @@ export async function GET(req: NextRequest) {
       });
       return evName + "\n" + items.join("\n");
     });
-    const text = "NeoConference daily digest\n\n" + slot.count + " redemption" + (slot.count === 1 ? "" : "s") + " in the last 24h:\n\n" + lines2.join("\n\n");
-    const r = await sendMail({
-      to,
-      subject: "NeoConference — " + slot.count + " new redemption" + (slot.count === 1 ? "" : "s") + " today",
-      text,
-    });
+    // Wording: the "digest.redemptions" email template (Admin → Email templates).
+    const r = await sendTemplateEmail(
+      "digest.redemptions",
+      { count: slot.count, plural: slot.count === 1 ? "" : "s", details: lines2.join("\n\n") },
+      { to },
+    );
     sent.push({ ownerId, ok: r.ok, reason: r.ok ? undefined : r.error });
   }
 

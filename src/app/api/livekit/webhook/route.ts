@@ -25,6 +25,7 @@ import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
 import { disconnectReasonName } from '@/lib/disconnectReason';
 import { addRecordedSeconds, egressSeconds } from '@/lib/recordingUsage';
+import { recordingReminder } from '@/lib/comms/reminders';
 import { recordWebhookEvent, recordWebhookRejection } from '@/lib/webhookMetrics';
 import {
   canEnd,
@@ -322,6 +323,7 @@ export async function POST(req: Request) {
         fallbackOwner
       );
       if (!usage.counted) console.warn('[webhook] recording not counted:', usage.reason, filename);
+      else if (usage.owner) await recordingReminder(usage.owner);
     } catch (err) {
       console.warn('[webhook] recording usage failed', err);
     }
