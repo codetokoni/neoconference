@@ -577,9 +577,10 @@ async function main() {
     assert.equal(fresh.body.sources.users.data.total, 12);
     assert.equal(fresh.body.sources.users.data.newUsers.value, 4);
     assert.ok(fresh.body.sources.users.at > a.body.sources.users.at);
-    tick(53_000);
-    assert.equal((await call("user_owner", R.overview.GET, SEPT + "&only=users")).body.sources.users.cached, true, "58 s on: still cached");
-    tick(3_000);
+    // The refresh wrote it again: a minute from now.
+    tick(59_000);
+    assert.equal((await call("user_owner", R.overview.GET, SEPT + "&only=users")).body.sources.users.cached, true, "59 s on: still cached");
+    tick(2_000);
     const later = await call("user_owner", R.overview.GET, SEPT + "&only=users");
     assert.equal(later.body.sources.users.cached, false, "61 s on: expired and recomputed");
     g.__kvTtl = false;
