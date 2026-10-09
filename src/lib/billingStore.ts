@@ -7,6 +7,7 @@
 // TTL: 1 hour. If the user does not finish paying within an hour, the
 // record expires and they need to start over.
 
+import { trackCheckout, trackCheckoutStatus } from "@/lib/finance/checkouts";
 import { kv } from "@/lib/kv";
 import type { BillingCycle } from "./espees";
 import type { Plan } from "./planLimits";
@@ -97,6 +98,8 @@ export async function createPendingPayment(input: {
     offerId: input.offerId ?? null,
   };
   await kv.set(key(input.nonce), record, { ex: TTL_SECONDS });
+  // A lasting copy for the admin's outstanding-payments figures; this one expires.
+  await trackCheckout(record);
 }
 
 export async function readPendingPayment(nonce: string): Promise<PendingPayment | null> {
@@ -112,6 +115,7 @@ export async function updatePaymentStatus(nonce: string, status: PendingPaymentS
   // Keep the record around briefly after resolution so re-hits return a
   // sane response, but expire faster than the original window.
   await kv.set(key(nonce), updated, { ex: 5 * 60 });
+  await trackCheckoutStatus(nonce, status, updated.paymentRef || undefined);
   return updated;
 }
 

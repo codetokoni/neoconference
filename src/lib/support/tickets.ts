@@ -18,7 +18,7 @@
 
 import { randomBytes } from "node:crypto";
 import { kv } from "@/lib/kv";
-import { isR2Configured, putObject, signGetUrl } from "@/lib/r2";
+import { deleteObject, isR2Configured, putObject, signGetUrl } from "@/lib/r2";
 import {
   DEFAULT_SLA,
   cleanSla,
@@ -79,7 +79,7 @@ export async function listTickets(): Promise<Ticket[]> {
 
 /** Everything one account has raised: by user id, and by email for tickets sent before signing in. */
 export function ticketsForAccount(all: Ticket[], userId: string | null, emails: string[]): Ticket[] {
-  const mail = new Set(emails.map((e) => e.toLowerCase()));
+  const mail = new Set(emails.map((e) => e.toLowerCase()).filter(Boolean));
   return all
     .filter((t) => (userId && t.userId === userId) || (!t.userId && mail.has(t.email)))
     .sort((a, b) => b.createdAt - a.createdAt);
@@ -363,4 +363,77 @@ export async function presentAttachments(list: SupportAttachment[]) {
       return { name: a.name, size: a.size, type: a.type, url };
     }),
   );
+}
+
+/* ------------------------------ data retention ------------------------------ */
+// For account deletion and the retention settings (admin data governance).
+
+type Deleter = (key: string) => Promise<void>;
+let deleter: Deleter | null = null;
+
+/** Tests record R2 deletes instead of making them. */
+export function __setSupportDeleter(fn: Deleter | null): void {
+  deleter = fn;
+}
+
+/** Deletes each object; returns how many went. A failure is logged, not thrown. */
+async function deleteAttachments(list: SupportAttachment[]): Promise<number> {
+  let n = 0;
+  for (const a of list) {
+    try {
+      await (deleter ?? deleteObject)(a.key);
+      n++;
+    } catch (err) {
+      console.error("[support] attachment delete failed", a.key, err);
+    }
+  }
+  return n;
+}
+
+async function rewriteMessages(id: string, list: TicketMessage[]): Promise<void> {
+  await kv.del(msgsKey(id));
+  // listMessages() is oldest first; LPUSH of each in turn leaves the newest at the head.
+  for (const m of list) await kv.lpush(msgsKey(id), JSON.stringify(m));
+}
+
+export const DELETED_USER = "Deleted user";
+
+/**
+ * When an account is deleted: its tickets lose who sent them (user id,
+ * email, name) and the files they attached, and keep the text, support's
+ * replies and internal notes, so the support history still reads.
+ */
+export async function anonymiseTicketsForAccount(userId: string, emails: string[]): Promise<{ tickets: number; attachments: number }> {
+  const mine = ticketsForAccount(await listTickets(), userId || null, emails);
+  let attachments = 0;
+  for (const t of mine) {
+    const msgs = await listMessages(t.id);
+    const next: TicketMessage[] = [];
+    for (const m of msgs) {
+      if (m.author !== "user") {
+        next.push(m);
+        continue;
+      }
+      attachments += await deleteAttachments(m.attachments ?? []);
+      next.push({ ...m, authorName: DELETED_USER, attachments: [] });
+    }
+    await rewriteMessages(t.id, next);
+    t.userId = null;
+    t.email = "";
+    t.name = DELETED_USER;
+    await saveTicket(t);
+  }
+  return { tickets: mine.length, attachments };
+}
+
+/** Retention: deletes closed tickets closed before `ts` — the ticket, its conversation, notes and files. */
+export async function purgeTicketsClosedBefore(ts: number): Promise<{ tickets: number }> {
+  const old = (await listTickets()).filter((t) => t.status === "closed" && t.closedAt != null && t.closedAt < ts);
+  for (const t of old) {
+    for (const m of await listMessages(t.id)) await deleteAttachments(m.attachments ?? []);
+    await kv.del(msgsKey(t.id));
+    await kv.del(notesKey(t.id));
+    await kv.hdel(TICKETS, t.id);
+  }
+  return { tickets: old.length };
 }
