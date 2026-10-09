@@ -14,9 +14,8 @@ interface Participant {
 
 interface Draft {
   name: string;
-  condition: string;
-  country: string;
-  contact: string;
+  /** One value per column, keyed by the lowercased column name. */
+  meta: Record<string, string>;
 }
 
 interface RowState {
@@ -27,39 +26,64 @@ interface RowState {
   error: string | null;
 }
 
-const EDITABLE_META = ["condition", "country", "contact"] as const;
+/** Columns that hold long notes get a growing textarea, not a one-line input. */
+const LONG_TEXT = new Set(["condition"]);
 
-function toDraft(p: Participant): Draft {
-  return {
-    name: p.name,
-    condition: p.meta?.condition ?? "",
-    country: p.meta?.country ?? "",
-    contact: p.meta?.contact ?? "",
-  };
+/** A column name as the roster stores it: lowercased, single-spaced. */
+function columnKey(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 60);
 }
 
-function dirty(a: Draft, b: Draft): boolean {
-  return a.name !== b.name || a.condition !== b.condition || a.country !== b.country || a.contact !== b.contact;
+function toDraft(p: Participant, columns: string[]): Draft {
+  const meta: Record<string, string> = {};
+  for (const c of columns) meta[c] = p.meta?.[c] ?? "";
+  return { name: p.name, meta };
+}
+
+function dirty(a: Draft, b: Draft, columns: string[]): boolean {
+  return a.name !== b.name || columns.some((c) => (a.meta[c] ?? "") !== (b.meta[c] ?? ""));
 }
 
 /**
  * Per-slot editor for the participant roster.
  *
- * Loads every participant from /api/video/room?screen=all, renders them
- * as an editable table (Name, Condition, Country, Contact), and saves
- * one row at a time via PATCH /api/video/room/roster/participant. The
- * Save button per row lights up when the row is dirty and fades to a
- * green tick when the PATCH lands — no autosave, so a mid-edit tab
- * refresh loses the draft but never publishes half a change.
+ * Loads every participant from /api/video/room?screen=all and renders them
+ * as an editable table: Name, then one column per roster field — whatever
+ * the uploaded spreadsheet had (Region, Country, Center…; Condition and
+ * Contact for the children's rosters) plus any added here with "Add
+ * column". Rows save one at a time via PATCH
+ * /api/video/room/roster/participant; "Add person" makes a new
+ * participant, and their code, with POST to the same route. No autosave,
+ * so a mid-edit tab refresh loses the draft but never publishes half a
+ * change.
  *
  * Code and streamId are read-only. A code that has already been handed
  * to a participant must not silently change under them.
  */
 export default function RosterEditor({ room }: { room: string }) {
   const [participants, setParticipants] = useState<Participant[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [rows, setRows] = useState<Record<number, RowState>>({});
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  // Columns added in this visit, before any row has a value in them.
+  const [addedColumns, setAddedColumns] = useState<string[]>([]);
+  const [newColumn, setNewColumn] = useState("");
+  const [newPerson, setNewPerson] = useState<Draft>({ name: "", meta: {} });
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [justAdded, setJustAdded] = useState<number | null>(null);
+
+  // Every roster field in use, in the order it first appears, then the
+  // ones added here.
+  const columns = useMemo(() => {
+    const seen: string[] = [];
+    for (const p of participants) {
+      for (const k of Object.keys(p.meta ?? {})) if (!seen.includes(k)) seen.push(k);
+    }
+    for (const k of addedColumns) if (!seen.includes(k)) seen.push(k);
+    return seen;
+  }, [participants, addedColumns]);
 
   const load = useCallback(async () => {
     try {
@@ -77,24 +101,8 @@ export default function RosterEditor({ room }: { room: string }) {
         return;
       }
       setErr(null);
-      const parts = j.participants as Participant[];
-      setParticipants(parts);
-      setRows((prev) => {
-        const next: Record<number, RowState> = { ...prev };
-        for (const p of parts) {
-          // Preserve in-progress drafts across a reload; seed only fresh rows.
-          if (!next[p.slot]) {
-            next[p.slot] = {
-              draft: toDraft(p),
-              saving: false,
-              saved: false,
-              deleting: false,
-              error: null,
-            };
-          }
-        }
-        return next;
-      });
+      setParticipants(j.participants as Participant[]);
+      setLoaded(true);
     } catch {
       /* transient */
     }
@@ -104,24 +112,44 @@ export default function RosterEditor({ room }: { room: string }) {
     load();
   }, [load]);
 
-  const setDraftField = useCallback(
-    (slot: number, field: keyof Draft, value: string) => {
-      setRows((prev) => {
-        const cur = prev[slot];
-        if (!cur) return prev;
-        return {
-          ...prev,
-          [slot]: {
-            ...cur,
-            draft: { ...cur.draft, [field]: value },
-            saved: false,
-            error: null,
-          },
-        };
-      });
-    },
-    [],
-  );
+  // Seed row state for participants that don't have one yet, keeping
+  // in-progress drafts across a reload; a column added later shows up as
+  // an empty field in every draft.
+  useEffect(() => {
+    setRows((prev) => {
+      const next: Record<number, RowState> = { ...prev };
+      for (const p of participants) {
+        const cur = next[p.slot];
+        if (!cur) {
+          next[p.slot] = { draft: toDraft(p, columns), saving: false, saved: false, deleting: false, error: null };
+        } else if (columns.some((c) => !(c in cur.draft.meta))) {
+          const meta = { ...cur.draft.meta };
+          for (const c of columns) if (!(c in meta)) meta[c] = p.meta?.[c] ?? "";
+          next[p.slot] = { ...cur, draft: { ...cur.draft, meta } };
+        }
+      }
+      return next;
+    });
+  }, [participants, columns]);
+
+  const setDraftName = useCallback((slot: number, value: string) => {
+    setRows((prev) => {
+      const cur = prev[slot];
+      if (!cur) return prev;
+      return { ...prev, [slot]: { ...cur, draft: { ...cur.draft, name: value }, saved: false, error: null } };
+    });
+  }, []);
+
+  const setDraftMeta = useCallback((slot: number, column: string, value: string) => {
+    setRows((prev) => {
+      const cur = prev[slot];
+      if (!cur) return prev;
+      return {
+        ...prev,
+        [slot]: { ...cur, draft: { ...cur.draft, meta: { ...cur.draft.meta, [column]: value } }, saved: false, error: null },
+      };
+    });
+  }, []);
 
   const save = useCallback(
     async (p: Participant) => {
@@ -140,15 +168,8 @@ export default function RosterEditor({ room }: { room: string }) {
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              slot: p.slot,
-              name: draft.name,
-              meta: {
-                condition: draft.condition,
-                country: draft.country,
-                contact: draft.contact,
-              },
-            }),
+            // Every column is sent: an emptied field clears that value.
+            body: JSON.stringify({ slot: p.slot, name: draft.name, meta: draft.meta }),
           },
         );
         const j = await r.json();
@@ -164,12 +185,12 @@ export default function RosterEditor({ room }: { room: string }) {
           return;
         }
 
-        const updated: Participant = { ...p, name: draft.name, meta: j.participant.meta };
+        const updated: Participant = { ...p, name: j.participant.name, meta: j.participant.meta };
         setParticipants((prev) => prev.map((x) => (x.slot === p.slot ? updated : x)));
         setRows((prev) => ({
           ...prev,
           [p.slot]: {
-            draft: toDraft(updated),
+            draft: toDraft(updated, columns),
             saving: false,
             saved: true,
             deleting: false,
@@ -194,7 +215,7 @@ export default function RosterEditor({ room }: { room: string }) {
         }));
       }
     },
-    [rows, room],
+    [rows, room, columns],
   );
 
   const remove = useCallback(
@@ -249,6 +270,54 @@ export default function RosterEditor({ room }: { room: string }) {
     [room],
   );
 
+  const addColumn = useCallback(() => {
+    const key = columnKey(newColumn);
+    if (!key || key === "name" || key === "passcode" || key === "code") return;
+    setAddedColumns((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    setNewColumn("");
+  }, [newColumn]);
+
+  const addPerson = useCallback(async () => {
+    const name = newPerson.name.trim();
+    if (!name || adding) return;
+    setAdding(true);
+    setAddError(null);
+    try {
+      const r = await fetch(
+        `/api/video/room/roster/participant?room=${encodeURIComponent(room)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, meta: newPerson.meta }),
+        },
+      );
+      const j = await r.json();
+      if (!j.ok) {
+        setAddError(j.error ?? "Could not add them.");
+        return;
+      }
+      const added = j.participant as Participant;
+      // Taking over an unused "Child N" slot replaces that row; otherwise
+      // the new slot joins the end.
+      setParticipants((prev) =>
+        [...prev.filter((x) => x.slot !== added.slot), { ...added, live: false, claimed: false }].sort(
+          (a, b) => a.slot - b.slot,
+        ),
+      );
+      setRows((prev) => {
+        const next = { ...prev };
+        delete next[added.slot]; // re-seeded from the saved record
+        return next;
+      });
+      setNewPerson({ name: "", meta: {} });
+      setJustAdded(added.slot);
+    } catch {
+      setAddError("Could not add them. Check your connection.");
+    } finally {
+      setAdding(false);
+    }
+  }, [newPerson, adding, room]);
+
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
     if (!q) return participants;
@@ -256,24 +325,22 @@ export default function RosterEditor({ room }: { room: string }) {
       if (String(p.slot).includes(q)) return true;
       if (p.name.toLowerCase().includes(q)) return true;
       if (p.code.toLowerCase().includes(q)) return true;
-      const m = p.meta ?? {};
-      for (const k of EDITABLE_META) {
-        if ((m[k] ?? "").toLowerCase().includes(q)) return true;
-      }
-      return false;
+      return Object.values(p.meta ?? {}).some((v) => v.toLowerCase().includes(q));
     });
   }, [participants, filter]);
 
   if (err && participants.length === 0) {
     return <p className="text-sm text-red-400">{err}</p>;
   }
-  if (participants.length === 0) {
+  if (!loaded) {
     return (
       <p className="font-mono text-xs uppercase tracking-[0.14em] text-white/45">
         Loading…
       </p>
     );
   }
+
+  const added = justAdded != null ? participants.find((p) => p.slot === justAdded) : undefined;
 
   return (
     <div className="flex flex-col gap-3">
@@ -289,7 +356,48 @@ export default function RosterEditor({ room }: { room: string }) {
         <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-white/45">
           {visible.length} of {participants.length} shown
         </span>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            addColumn();
+          }}
+          className="flex items-center gap-2"
+        >
+          <input
+            value={newColumn}
+            onChange={(e) => setNewColumn(e.target.value)}
+            placeholder="New column, e.g. Region"
+            aria-label="New column name"
+            className="w-[190px] rounded-md border border-white/12 bg-[#0B1319] px-3 py-2 text-sm text-white outline-none placeholder:text-white/30 focus:ring-2 focus:ring-emerald-500"
+          />
+          <button
+            type="submit"
+            disabled={!columnKey(newColumn)}
+            className="rounded-md border border-white/15 px-3 py-2 text-xs font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-40"
+          >
+            Add column
+          </button>
+        </form>
+        <a
+          href={`/api/video/room/roster?room=${encodeURIComponent(room)}`}
+          className="rounded-md bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-500"
+        >
+          Download Excel
+        </a>
       </div>
+
+      {addedColumns.some((c) => !participants.some((p) => p.meta?.[c])) && (
+        <p className="text-xs text-white/50">
+          A new column is kept once a row has a value in it: fill it in and press Save on that row.
+        </p>
+      )}
+
+      {added && (
+        <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+          Added <b>{added.name}</b> in slot {added.slot}. Their code is{" "}
+          <span className="font-mono font-semibold">{added.code}</span>.
+        </p>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-white/12 bg-[#101820]">
         <table className="w-full border-collapse text-sm">
@@ -298,18 +406,55 @@ export default function RosterEditor({ room }: { room: string }) {
               <Th>#</Th>
               <Th>Code</Th>
               <Th className="min-w-[180px]">Name</Th>
-              <Th className="min-w-[240px]">Condition</Th>
-              <Th className="min-w-[140px]">Country</Th>
-              <Th className="min-w-[140px]">Contact</Th>
+              {columns.map((c) => (
+                <Th key={c} className={LONG_TEXT.has(c) ? "min-w-[240px]" : "min-w-[140px]"}>
+                  {c}
+                </Th>
+              ))}
               <Th />
             </tr>
           </thead>
           <tbody>
+            <tr className="border-b border-white/10 bg-emerald-500/[0.04]">
+              <Td className="font-mono text-[11px] text-white/45">new</Td>
+              <Td className="font-mono text-[11px] text-white/45">made on add</Td>
+              <Td>
+                <RowInput
+                  value={newPerson.name}
+                  placeholder="Name (required)"
+                  label="New person's name"
+                  onChange={(v) => setNewPerson((d) => ({ ...d, name: v }))}
+                  onEnter={addPerson}
+                />
+              </Td>
+              {columns.map((c) => (
+                <Td key={c}>
+                  <RowInput
+                    value={newPerson.meta[c] ?? ""}
+                    label={`New person's ${c}`}
+                    onChange={(v) => setNewPerson((d) => ({ ...d, meta: { ...d.meta, [c]: v } }))}
+                    onEnter={addPerson}
+                  />
+                </Td>
+              ))}
+              <Td className="whitespace-nowrap">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={!newPerson.name.trim() || adding}
+                    onClick={addPerson}
+                    className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
+                  >
+                    {adding ? "Adding…" : "Add person"}
+                  </button>
+                  {addError && <span className="font-mono text-[10px] text-red-400">{addError}</span>}
+                </div>
+              </Td>
+            </tr>
             {visible.map((p) => {
               const row = rows[p.slot];
               if (!row) return null;
-              const original = toDraft(p);
-              const isDirty = dirty(row.draft, original);
+              const isDirty = dirty(row.draft, toDraft(p, columns), columns);
               return (
                 <tr
                   key={p.streamId}
@@ -322,29 +467,23 @@ export default function RosterEditor({ room }: { room: string }) {
                     <CodeChip code={p.code} />
                   </Td>
                   <Td>
-                    <RowInput
-                      value={row.draft.name}
-                      onChange={(v) => setDraftField(p.slot, "name", v)}
-                    />
+                    <RowInput value={row.draft.name} onChange={(v) => setDraftName(p.slot, v)} />
                   </Td>
-                  <Td>
-                    <RowTextarea
-                      value={row.draft.condition}
-                      onChange={(v) => setDraftField(p.slot, "condition", v)}
-                    />
-                  </Td>
-                  <Td>
-                    <RowInput
-                      value={row.draft.country}
-                      onChange={(v) => setDraftField(p.slot, "country", v)}
-                    />
-                  </Td>
-                  <Td>
-                    <RowInput
-                      value={row.draft.contact}
-                      onChange={(v) => setDraftField(p.slot, "contact", v)}
-                    />
-                  </Td>
+                  {columns.map((c) => (
+                    <Td key={c}>
+                      {LONG_TEXT.has(c) ? (
+                        <RowTextarea
+                          value={row.draft.meta[c] ?? ""}
+                          onChange={(v) => setDraftMeta(p.slot, c, v)}
+                        />
+                      ) : (
+                        <RowInput
+                          value={row.draft.meta[c] ?? ""}
+                          onChange={(v) => setDraftMeta(p.slot, c, v)}
+                        />
+                      )}
+                    </Td>
+                  ))}
                   <Td className="whitespace-nowrap">
                     <div className="flex items-center gap-2">
                       <button
@@ -445,15 +584,24 @@ function CodeChip({ code }: { code: string }) {
 function RowInput({
   value,
   onChange,
+  placeholder,
+  label,
+  onEnter,
 }: {
   value: string;
   onChange: (v: string) => void;
+  placeholder?: string;
+  label?: string;
+  onEnter?: () => void;
 }) {
   return (
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-md border border-white/10 bg-[#0B1319] px-2 py-1.5 text-sm text-white outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/60"
+      onKeyDown={onEnter ? (e) => e.key === "Enter" && onEnter() : undefined}
+      placeholder={placeholder}
+      aria-label={label}
+      className="w-full rounded-md border border-white/10 bg-[#0B1319] px-2 py-1.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/60"
     />
   );
 }

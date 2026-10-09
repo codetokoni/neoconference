@@ -15,8 +15,9 @@ export const metadata: Metadata = {
 
 /**
  * Admin-only roster editor. This is where you fix an xlsx typo — a
- * wrong name, a missing condition — without re-uploading the whole
- * file. Codes and streamIds are read-only; only labels and roster meta
+ * wrong name, a missing condition — add one person or a new column
+ * without re-uploading the whole file, and download the edited roster.
+ * Codes and streamIds are read-only; only labels and roster meta
  * columns are editable.
  */
 export default async function RosterEditPage({
@@ -45,10 +46,11 @@ export default async function RosterEditPage({
           Edit roster · {roomName}
         </span>
         <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-          Fix roster entries
+          Edit roster
         </h1>
         <p className="max-w-[64ch] text-sm text-white/60">
-          Correct names, conditions, countries and contacts one row at a time.
+          Correct any name or field one row at a time, add a person (they get a
+          code at once) or a whole new column, and download the result as Excel.
           Codes and stream ids are permanent — a code you have already sent to
           a participant must not silently change on them.
         </p>
