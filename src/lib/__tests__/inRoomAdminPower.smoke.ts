@@ -47,7 +47,9 @@ async function main() {
     role: await import("../../app/api/events/role/route"),
     wr: await import("../../app/api/waiting-room/route"),
     breakouts: await import("../../app/api/breakouts/[slug]/route"),
+    token: await import("../../app/api/livekit/token/route"),
   };
+  const { NextRequest } = await import("next/server");
 
   const now = Date.now();
   const record = (userId: string, email: string, roleId: string, status: "active" | "suspended" = "active") =>
@@ -107,6 +109,39 @@ async function main() {
     );
   }
 
+  /**
+   * A LiveKit token for the meeting's room, and the role it carries. The
+   * keys are fakes; nothing here calls a LiveKit server (the stub's
+   * RoomServiceClient has no listParticipants, so a wait-for-host check
+   * finds the room empty).
+   */
+  async function token(who: string, slug: string) {
+    g.__who = who;
+    process.env.LIVEKIT_API_KEY = "devkey";
+    process.env.LIVEKIT_API_SECRET = "devsecret-devsecret-devsecret-devsecret";
+    process.env.NEXT_PUBLIC_LIVEKIT_URL = "wss://livekit.example.com";
+    try {
+      const r = await json(
+        await R.token.GET(new NextRequest(`https://www.neoconference.app/api/livekit/token?room=${slug}&event=${slug}`)),
+      );
+      const jwt = typeof r.body.token === "string" ? r.body.token : "";
+      const claims = jwt ? JSON.parse(Buffer.from(jwt.split(".")[1], "base64url").toString()) : {};
+      const role = claims.metadata ? (JSON.parse(claims.metadata).role as string) : undefined;
+      return { ...r, role };
+    } finally {
+      delete process.env.LIVEKIT_API_KEY;
+      delete process.env.LIVEKIT_API_SECRET;
+      delete process.env.NEXT_PUBLIC_LIVEKIT_URL;
+    }
+  }
+
+  /** A fresh meeting with no waiting room and no wait for the host. */
+  async function openMeeting() {
+    const ev = await meeting();
+    await eventStore.update(ev.id, (prev) => ({ ...prev, waitingRoomEnabled: false, waitForHost: false }));
+    return ev;
+  }
+
   async function putBreakouts(who: string, slug: string) {
     g.__who = who;
     const state = { active: true, groups: [{ id: "g1", name: "One" }], assignments: {}, ts: Date.now() };
@@ -143,6 +178,11 @@ async function main() {
     assert.equal(a.r.status, 200, `admit: ${JSON.stringify(a.r.body)}`);
     assert.equal(a.entry?.status, "admitted");
     assert.equal((await putBreakouts(who, ev.slug)).status, 200);
+    // Past the waiting room on a token, and host in the room once there.
+    const gated = await token(who, ev.slug);
+    assert.equal(gated.status, 200, `token: ${JSON.stringify(gated.body)}`);
+    assert.equal(gated.role, "host");
+    assert.equal((await token(who, (await openMeeting()).slug)).role, "host");
   }
 
   async function assertNotHost(who: string) {
@@ -155,6 +195,13 @@ async function main() {
     assert.equal(a.r.status, 403, `admit: ${JSON.stringify(a.r.body)}`);
     assert.equal(a.entry?.status, "pending", "the guest is still waiting");
     assert.equal((await putBreakouts(who, ev.slug)).status, 403);
+    // The waiting room holds them, and an open room seats them as an attendee.
+    const gated = await token(who, ev.slug);
+    assert.equal(gated.status, 403, `token: ${JSON.stringify(gated.body)}`);
+    assert.equal(gated.body.error, "waiting_room");
+    const open = await token(who, (await openMeeting()).slug);
+    assert.equal(open.status, 200, `token: ${JSON.stringify(open.body)}`);
+    assert.equal(open.role, "attendee");
   }
 
   console.log("who is host of someone else's room");
