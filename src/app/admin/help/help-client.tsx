@@ -56,13 +56,13 @@ export default function HelpClient() {
       />
       {error && <Notice kind="err">{error}</Notice>}
       <div className="mb-3 flex flex-wrap gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search titles, summaries, tags" aria-label="Search articles" className={`${field} max-w-xs`} />
-        <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} className={`${field} w-auto`}>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search titles, summaries, tags" aria-label="Search articles" className={`${field} sm:max-w-xs`} />
+        <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} className={`${field} sm:w-48`}>
           <option value="">Any status</option>
           <option value="published">Published</option>
           <option value="draft">Draft</option>
         </select>
-        <select aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value)} className={`${field} w-auto`}>
+        <select aria-label="Category" value={category} onChange={(e) => setCategory(e.target.value)} className={`${field} sm:w-48`}>
           <option value="">Any category</option>
           {HELP_CATEGORIES.map((c) => (
             <option key={c.key} value={c.key}>
