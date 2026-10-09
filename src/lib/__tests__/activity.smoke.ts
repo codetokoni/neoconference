@@ -349,6 +349,11 @@ async function main() {
     assert.ok(swept.expired >= 1, JSON.stringify(swept));
     const [y] = await act.listUserActivity("user_buyer");
     assert.deepEqual([y.type, y.props?.from, y.props?.reason], ["plan.downgraded", "pro", "cancelled"]);
+    // Buying again after the plan ended is a conversion from Free again.
+    await createPendingPayment({ nonce: "n2", userId: "user_buyer", plan: "starter", billingCycle: "monthly", paymentRef: "ref-2" });
+    assert.equal((await raw(null, R.espees.GET, { query: "?nonce=n2" })).status, 303);
+    const [z] = await act.listUserActivity("user_buyer");
+    assert.deepEqual([z.type, z.props?.from, z.props?.to], ["plan.purchased", "free", "starter"]);
   });
 
   await t("a wrong authenticator code is a failed admin sign-in (warning) in the activity log", async () => {
