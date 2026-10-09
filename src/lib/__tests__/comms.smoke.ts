@@ -243,6 +243,14 @@ async function main() {
     assert.deepEqual(named.sample.map((s) => s.uid).sort(), ["u_a", "u_c"]);
     assert.deepEqual(named.unmatched.sort(), ["nobody@example.com", "user_missing"]);
     const choir = await groups.createGroup({ name: "Choir" }, { userId: "u_c", name: "Cy" }, [{ userId: "u_d", name: "Di" }, { userId: "u_b", name: "B" }]);
+    const noFilter = await audiences({ kind: "groups", groupIds: [choir.id] });
+    assert.deepEqual(noFilter.sample.map((s) => s.uid).sort(), ["u_c", "u_d"], "a suspended member is left out unless asked for");
+    const askedFor = await audiences({ kind: "groups", groupIds: [choir.id], statuses: ["suspended"] });
+    assert.deepEqual(askedFor.sample.map((s) => s.uid), ["u_b"]);
+    assert.deepEqual((await audiences({ kind: "users", users: ["u_b"] })).sample.map((s) => s.uid), ["u_b"], "naming someone asks for them");
+    const everyone = await audiences({ kind: "everyone" });
+    assert.equal(everyone.count, 8);
+    assert.ok(!everyone.sample.some((s) => s.uid === "u_b"));
     const viaGroup = await audiences({ kind: "groups", groupIds: [choir.id, "gone"], statuses: ["active"] });
     assert.deepEqual(viaGroup.sample.map((s) => s.uid).sort(), ["u_c", "u_d"], "the banned member is filtered out");
     assert.deepEqual(viaGroup.unmatched, ["group gone"]);
@@ -326,7 +334,8 @@ async function main() {
     await stepUp("user_comms");
     const ok = await call("user_comms", R.confirm.POST, { method: "POST", params: { id: r.body.send.id }, body: { count: r.body.preview.count } });
     assert.equal(ok.status, 200, JSON.stringify(ok.body));
-    assert.equal((ok.body.send as SendBody["send"]).counts.sent.inApp, 9);
+    assert.equal((ok.body.send as SendBody["send"]).counts.sent.inApp, 8, "everyone but the suspended account");
+    assert.equal((await notif.listNotifications("u_b")).items.length, 0);
   });
 
   /* ------------------------------------------------------------------ */
@@ -736,6 +745,13 @@ async function main() {
     assert.equal(bell[0].title, "You've used all 5 meetings on the Free plan");
     const { meetingCapReminder } = await import("../comms/reminders");
     assert.equal(await meetingCapReminder("u_a", 5, 5, "free"), "already_sent");
+    // An automation rule: its own thresholds, a dry run first, the same claim as the events.
+    await call("user_comms", R.reminders.PUT, { method: "PUT", body: { meetings: { enabled: false } } });
+    assert.equal(await meetingCapReminder("u_f", 3, 5, "free"), "off");
+    assert.equal(await meetingCapReminder("u_f", 3, 5, "free", { rule: { thresholds: [60] } as never, dryRun: true }), "would_send:60");
+    assert.equal((await notif.listNotifications("u_f")).items.filter((i) => i.type === "reminder").length, 0, "a dry run sends nothing");
+    assert.match(await meetingCapReminder("u_f", 3, 5, "free", { rule: { enabled: true, thresholds: [60], channels: { email: false, inApp: true } } }), /^sent:60:/);
+    assert.equal(await meetingCapReminder("u_f", 3, 5, "free", { rule: { enabled: true, thresholds: [60], channels: { email: false, inApp: true } }, dryRun: true }), "already_sent");
   });
 
   await t("recording hours: a reminder once the month passes a threshold, on the channels the person allows", async () => {
@@ -748,6 +764,43 @@ async function main() {
     const bell = (await notif.listNotifications("u_c")).items.filter((i) => i.type === "reminder");
     assert.equal(bell[0].title, "85% of this month's recording hours used");
     assert.equal(await recordingReminder("u_c"), "already_sent");
+    assert.equal(await recordingReminder("u_c", Date.now(), { rule: { enabled: true, thresholds: [50], channels: { email: false, inApp: true } }, dryRun: true }), "would_send:50");
+  });
+
+  /* ------------------------------------------------------------------ */
+  console.log("data governance");
+  await t("forgetting a deleted account removes its choices and flags and anonymises its rows", async () => {
+    const forget = await import("../comms/forget");
+    assert.ok(g.__kvStore.has("neo:comms:prefs:u_c"));
+    assert.equal(await logLib.isBounced("c@example.com"), true);
+    assert.ok([...g.__kvStore.keys()].some((k) => k.startsWith("neo:comms:rem:u_c:")));
+    const r = await forget.forgetCommsUser("u_c", ["C@example.com"]);
+    assert.ok(r.removed > 5, JSON.stringify(r));
+    assert.ok(!g.__kvStore.has("neo:comms:prefs:u_c"));
+    assert.equal(await logLib.isBounced("c@example.com"), false);
+    assert.ok(![...g.__kvStore.keys()].some((k) => k.startsWith("neo:comms:rem:u_c:")));
+    const dump = JSON.stringify([...g.__kvStore.entries()].filter(([k]) => k.startsWith("neo:comms:")).map(([k, v]) => [k, v instanceof Set ? [...v] : v]));
+    assert.ok(!dump.includes("c@example.com"), "the address is nowhere in the communication records");
+    const news = (await sends.listSends("News"))[0];
+    const st = await statusOf(news.id, 0, "u_c");
+    assert.deepEqual([st.name, st.email, st.ch.email.s], ["Deleted account", "", "complained"], "the outcome is kept, the person is not");
+    assert.ok((await logLib.listDeliveryEvents()).some((e) => e.to === "Deleted account"));
+    assert.equal((await prefsLib.getPrefs("u_a")).categories.announcements.email, true, "others untouched");
+  });
+
+  await t("a retention purge drops old log lines and finished sends, never a running one", async () => {
+    const forget = await import("../comms/forget");
+    const running = await draft("user_comms", { audience: { kind: "users", users: ["u_a"] }, startsAt: Date.now() + 3_600_000, title: "Later" });
+    await call("user_comms", R.confirm.POST, { method: "POST", params: { id: running.body.send.id }, body: { count: 1 } });
+    const before = (await sends.listSends(undefined, undefined, 1000)).length;
+    tick(60_000);
+    const r = await forget.purgeCommsLogBefore(Date.now());
+    assert.ok(r.removed > 10, JSON.stringify(r));
+    assert.equal((await logLib.listLog()).length, 0);
+    assert.equal((await logLib.listDeliveryEvents()).length, 0);
+    const left = await sends.listSends(undefined, undefined, 1000);
+    assert.deepEqual(left.map((s) => s.id), [running.body.send.id], `${before} sends before`);
+    assert.ok(![...g.__kvStore.keys()].some((k) => k.startsWith(`neo:comms:send:${s1}`)), "a purged send leaves no keys");
   });
 
   console.log(`\n${n} checks passed`);
