@@ -23,4 +23,8 @@ export class EgressClient {
 export class RoomServiceClient {
   async createRoom(o) { return o; }
   async deleteRoom() {}
+  async listRooms() {
+    if (globalThis.__livekitDown) throw new Error("twirp error unavailable");
+    return globalThis.__rooms ?? [];
+  }
 }
