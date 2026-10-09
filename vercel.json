@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/comms",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/automation",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
