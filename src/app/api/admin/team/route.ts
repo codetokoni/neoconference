@@ -13,7 +13,8 @@ import { mfaStatus } from "@/lib/admin/mfa";
 import { recordAdminAction } from "@/lib/admin/audit";
 import { beyondActor, fail, readJson, str } from "@/lib/admin/http";
 import { getAdminEmails } from "@/lib/roles";
-import { isMailConfigured, sendMail } from "@/lib/mail";
+import { isMailConfigured } from "@/lib/mail";
+import { sendTemplateEmail } from "@/lib/comms/templates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -98,18 +99,8 @@ export async function POST(req: Request) {
   if (isMailConfigured()) {
     const origin = new URL(req.url).origin;
     try {
-      const sent = await sendMail({
-        to: email,
-        subject: "You are now a NeoConference administrator",
-        text:
-          `${g.ctx.name} made you an administrator (${role.name}) on NeoConference.\n\n` +
-          `Open ${origin}/admin and set up two-factor authentication with an authenticator app to start.\n\n` +
-          `If you did not expect this, reply to this email.`,
-        html:
-          `<p>${escapeHtml(g.ctx.name)} made you an administrator (<b>${escapeHtml(role.name)}</b>) on NeoConference.</p>` +
-          `<p><a href="${origin}/admin">Open the admin area</a> and set up two-factor authentication with an authenticator app to start.</p>` +
-          `<p>If you did not expect this, reply to this email.</p>`,
-      });
+      // Wording: the "admin.appointed" email template (Admin → Email templates).
+      const sent = await sendTemplateEmail("admin.appointed", { appointer: g.ctx.name, roleName: role.name, origin }, { to: email });
       emailed = sent.ok;
       if (!sent.ok) console.warn("[admin/team] appointment email failed", sent.error);
     } catch (err) {
@@ -117,8 +108,4 @@ export async function POST(req: Request) {
     }
   }
   return NextResponse.json({ ok: true, member: { ...member, roleName: role.name, mfaEnrolled: false }, emailed }, { status: 201 });
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
