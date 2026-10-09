@@ -23,9 +23,12 @@ import { isAdmin } from "@/lib/roles";
 import { isOwnerEmailList } from "@/lib/admin/owner";
 import {
     type Plan,
-    getPlanLimits,
+    type PlanFeatureLimits,
+    extendedLimits,
+    limitsFromMetadata,
     readPlanFromMetadata,
 } from "@/lib/planLimits";
+import { currentFreeLimits } from "@/lib/billing/store";
 
 // Re-export the pure surface so `import { ... } from "@/lib/plan"`
 // keeps working everywhere it did before the split.
@@ -33,13 +36,59 @@ export {
     type Plan,
     type PlanLimits,
     type PlanMetadata,
+    type PlanFeatureLimits,
     PLANS,
     isPlan,
     isPlanExpired,
     computePlanExpiry,
     getPlanLimits,
+    extendedLimits,
+    limitsFromMetadata,
+    mergeLimits,
     readPlanFromMetadata,
 } from "@/lib/planLimits";
+
+/**
+ * Free's limits: the current version of the Free plan in the admin catalog
+ * (nobody bought Free, so an edit reaches every Free account), or the
+ * built-in ones when the catalog cannot be read.
+ */
+async function freeLimits(): Promise<PlanFeatureLimits> {
+    try {
+          return await currentFreeLimits();
+    } catch {
+          return extendedLimits("free");
+    }
+}
+
+type ClerkUserish = { emailAddresses?: { emailAddress: string; verification?: { status?: string | null } | null }[]; publicMetadata?: unknown };
+
+/** The plan and the limits enforced for it, for a Clerk user already fetched. */
+async function planAndLimitsOf(user: ClerkUserish): Promise<{ plan: Plan; limits: PlanFeatureLimits }> {
+    if (isOwnerEmailList(user.emailAddresses)) return { plan: "enterprise", limits: extendedLimits("enterprise") };
+    const explicit = readPlanFromMetadata(user.publicMetadata);
+    if (explicit !== "free") return { plan: explicit, limits: limitsFromMetadata(user.publicMetadata) };
+    const emails = (user.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
+    if (emails.some((e) => isAdmin(e))) return { plan: "enterprise", limits: extendedLimits("enterprise") };
+    return { plan: "free", limits: await freeLimits() };
+}
+
+/**
+ * The plan of `userId` (as getPlanForUserId) and the limits that are
+ * enforced for it: a subscription's own limits (the version bought, its
+ * add-ons and custom terms, from publicMetadata.planLimits), else the tier's
+ * built-in ones; Free's from the catalog. Use this rather than
+ * getPlanLimits(plan) wherever a limit is enforced.
+ */
+export async function getPlanLimitsForUserId(userId: string): Promise<{ plan: Plan; limits: PlanFeatureLimits }> {
+    if (!userId) return { plan: "free", limits: extendedLimits("free") };
+    try {
+          const client = await clerkClient();
+          return await planAndLimitsOf(await client.users.getUser(userId));
+    } catch {
+          return { plan: "free", limits: extendedLimits("free") };
+    }
+}
 
 function readMeetingsCreated(metadata: unknown): number {
     if (metadata && typeof metadata === "object" && "meetingsCreated" in metadata) {
@@ -153,8 +202,7 @@ export async function checkLifetimeCap(
           if (emails.some((e) => isAdmin(e))) {
                   return { blocked: false, used: 0, cap: 0, plan: "business" };
           }
-          const plan = readPlanFromMetadata(user.publicMetadata);
-          const limits = getPlanLimits(plan);
+          const { plan, limits } = await planAndLimitsOf(user);
           const used = readMeetingsCreated(user.publicMetadata);
           const cap = limits.lifetimeMeetingCap;
           if (cap <= 0) return { blocked: false, used, cap: 0, plan };
@@ -177,8 +225,7 @@ export async function incrementMeetingsCreated(userId: string): Promise<void> {
     try {
           const client = await clerkClient();
           const user = await client.users.getUser(userId);
-          const plan = readPlanFromMetadata(user.publicMetadata);
-          const limits = getPlanLimits(plan);
+          const { plan, limits } = await planAndLimitsOf(user);
           if (limits.lifetimeMeetingCap <= 0) return;
           const used = readMeetingsCreated(user.publicMetadata);
           await client.users.updateUserMetadata(userId, {
@@ -187,6 +234,9 @@ export async function incrementMeetingsCreated(userId: string): Promise<void> {
                             meetingsCreated: used + 1,
                   },
           });
+          // A note when the cap is near (off unless an administrator turned it on).
+          const { meetingCapReminder } = await import("@/lib/comms/reminders");
+          await meetingCapReminder(userId, used + 1, limits.lifetimeMeetingCap, plan);
     } catch (e) {
           // eslint-disable-next-line no-console
       console.error("[plan] incrementMeetingsCreated failed:", e);

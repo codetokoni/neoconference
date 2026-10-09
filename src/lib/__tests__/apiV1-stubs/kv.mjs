@@ -22,13 +22,15 @@ export const kv = {
   },
   async del(...ks) { let n = 0; for (const k of ks) if (store.delete(k)) n++; return n; },
   async sadd(k, ...m) { const s = store.get(k) ?? sets(); m.forEach((x) => s.add(x)); store.set(k, s); return m.length; },
-  async srem(k, ...m) { const s = store.get(k) ?? sets(); m.forEach((x) => s.delete(x)); store.set(k, s); return m.length; },
+  // As Redis: how many were actually there to remove.
+  async srem(k, ...m) { const s = store.get(k) ?? sets(); let n = 0; m.forEach((x) => { if (s.delete(x)) n++; }); store.set(k, s); return n; },
   async smembers(k) { return [...(store.get(k) ?? [])].map(de); },
   async sismember(k, m) { return (store.get(k) ?? sets()).has(m) ? 1 : 0; },
   async incr(k) { const n = (store.get(k) ?? 0) + 1; store.set(k, n); return n; },
   async expire() { return 1; },
   async hget(k, f) { const v = (store.get(k) ?? {})[f]; return v == null ? null : de(v); },
   async hset(k, o) { store.set(k, { ...(store.get(k) ?? {}), ...o }); return 1; },
+  async hsetnx(k, f, v) { const o = store.get(k) ?? {}; if (f in o) return 0; store.set(k, { ...o, [f]: structuredClone(v) }); return 1; },
   async hgetall(k) { const o = store.get(k); return o && Object.keys(o).length ? Object.fromEntries(Object.entries(o).map(([f, v]) => [f, de(v)])) : null; },
   async hlen(k) { return Object.keys(store.get(k) ?? {}).length; },
   async hincrby(k, f, by) { const o = { ...(store.get(k) ?? {}) }; o[f] = Number(o[f] ?? 0) + by; store.set(k, o); return o[f]; },
@@ -42,16 +44,27 @@ export const kv = {
   async lpush(k, ...vals) { const l = store.get(k) ?? []; for (const v of vals) l.unshift(structuredClone(v)); store.set(k, l); return l.length; },
   async lrange(k, start, end) { const l = store.get(k) ?? []; return l.slice(start, end === -1 ? undefined : end + 1).map(de); },
   async ltrim(k, start, end) { const l = store.get(k) ?? []; store.set(k, l.slice(start, end === -1 ? undefined : end + 1)); return "OK"; },
-  // Sorted sets: a Map member -> score. zrange covers the byScore + rev form userMeetings uses.
-  async zadd(k, ...entries) { const z = store.get(k) ?? new Map(); for (const e of entries) z.set(e.member, e.score); store.set(k, z); return entries.length; },
-  async zscore(k, m) { const z = store.get(k); return z?.has(m) ? z.get(m) : null; },
-  async zrange(k, hi, lo, opts = {}) {
+  // Sorted sets: a Map member -> score. zrange follows Upstash's byScore
+  // form: (min, max) ascending, or with rev (max, min) descending; bounds may
+  // be "-inf", "+inf" or "(n" (exclusive). Used by userMeetings, scheduler and
+  // the subscription indexes (src/lib/billing/subscriptions.ts).
+  async zadd(k, ...entries) { const z = store.get(k) ?? new Map(); for (const e of entries) z.set(String(e.member), Number(e.score)); store.set(k, z); return entries.length; },
+  async zrem(k, ...members) { const z = store.get(k) ?? new Map(); let n = 0; for (const m of members) if (z.delete(String(m))) n++; store.set(k, z); return n; },
+  async zscore(k, m) { const z = store.get(k); return z?.has(String(m)) ? z.get(String(m)) : null; },
+  async zcard(k) { return (store.get(k) ?? new Map()).size; },
+  async zrange(k, a, b, opts = {}) {
     const z = store.get(k) ?? new Map();
-    const bound = (b) => (b === "-inf" ? -Infinity : b === "+inf" ? Infinity : String(b).startsWith("(") ? Number(String(b).slice(1)) : Number(b));
-    const top = bound(hi);
-    const topOpen = String(hi).startsWith("(");
-    const bottom = bound(lo);
-    let rows = [...z.entries()].filter(([, s]) => (topOpen ? s < top : s <= top) && s >= bottom).sort((a, b) => b[1] - a[1]);
+    const bound = (x) => (x === "-inf" ? -Infinity : x === "+inf" ? Infinity : String(x).startsWith("(") ? Number(String(x).slice(1)) : Number(x));
+    const open = (x) => String(x).startsWith("(");
+    let rows = [...z.entries()].sort((x, y) => x[1] - y[1]);
+    if (opts.byScore) {
+      const [lo, hi] = opts.rev ? [b, a] : [a, b];
+      rows = rows.filter(([, s]) => (open(lo) ? s > bound(lo) : s >= bound(lo)) && (open(hi) ? s < bound(hi) : s <= bound(hi)));
+      if (opts.rev) rows.reverse();
+    } else {
+      if (opts.rev) rows.reverse();
+      rows = rows.slice(a, b === -1 ? undefined : b + 1);
+    }
     rows = rows.slice(opts.offset ?? 0, (opts.offset ?? 0) + (opts.count ?? rows.length));
     return opts.withScores ? rows.flatMap(([m, s]) => [m, s]) : rows.map(([m]) => m);
   },
