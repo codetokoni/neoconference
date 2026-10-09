@@ -38,6 +38,7 @@ type Data = {
   failed: Run[];
   queues: {
     transcription: { byStatus: Record<string, number>; total: number; truncated: boolean; queued: Array<{ id: string; status: string; provider: string; recordingKey?: string; updatedAt?: string }> };
+    sends: { open: number; items: Array<{ id: string; title: string; status: string; audience: string; recipients: number; sent: number; failed: number; lastError: string | null; updatedAt: number }> };
     checkouts: { total: number; byStatus: Record<string, number>; items: Array<{ nonce: string; userId: string; plan: string; billingCycle: string; status: string; createdAt: number }> };
     webhookRejections: Array<{ atMs: number; event: string; room: string; reason: string; state?: string }>;
   };
@@ -201,6 +202,21 @@ export default function OpsJobsClient() {
             <p className="mt-2 text-xs text-zinc-500">Nothing waiting.</p>
           )}
           <p className="mt-2 text-[11px] text-zinc-500">No retry here: every transcription attempt is billed again by the provider.</p>
+        </Panel>
+        <Panel>
+          <h3 className="font-medium text-white">Announcement sends with recipients left</h3>
+          {q.sends.items.length === 0 ? (
+            <p className="mt-2 text-xs text-zinc-500">Nothing waiting.</p>
+          ) : (
+            <ul className="mt-2 space-y-1 text-xs text-zinc-400">
+              {q.sends.items.map((s) => (
+                <li key={s.id} className="truncate" title={s.lastError ?? undefined}>
+                  <StatusBadge status={s.status} /> {s.title} · {s.audience} · {s.sent}/{s.recipients} sent{s.failed ? `, ${s.failed} failed` : ""} · {ago(s.updatedAt)}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-2 text-[11px] text-zinc-500">Delivered by the scheduler every 30 seconds and the daily comms job; controlled from Communication.</p>
         </Panel>
         <Panel>
           <h3 className="font-medium text-white">Pending checkouts (eSPees, 1-hour window)</h3>

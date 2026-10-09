@@ -9,6 +9,10 @@
       "schedule": "0 2 * * *"
     },
     {
+      "path": "/api/cron/comms",
+      "schedule": "30 3 * * *"
+    },
+    {
       "path": "/api/cron/ops-health",
       "schedule": "*/5 * * * *"
     },

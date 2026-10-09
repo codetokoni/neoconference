@@ -30,6 +30,8 @@ const STATUS: Record<string, { tone: "green" | "amber" | "red" | "zinc" | "cyan"
   pending: { tone: "cyan", icon: "○", label: "Pending" },
   live: { tone: "green", icon: "●", label: "Live" },
   off_air: { tone: "zinc", icon: "○", label: "Off air" },
+  sending: { tone: "cyan", icon: "◐", label: "Sending" },
+  paused: { tone: "amber", icon: "‖", label: "Paused" },
   paid: { tone: "green", icon: "✓", label: "Paid" },
   active: { tone: "amber", icon: "●", label: "Active" },
   completed: { tone: "green", icon: "✓", label: "Completed" },

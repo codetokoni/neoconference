@@ -83,6 +83,17 @@ export const JOBS: JobDef[] = [
     load: () => import("@/app/api/cron/downgrade-expired-plans/route") as Promise<RouteModule>,
   }),
   routeJob({
+    name: "comms",
+    label: "Announcement delivery (backstop)",
+    description: "Works through announcements that still have recipients left. The scheduler's 30-second tick does this all day; this daily run is the backstop if that container is down.",
+    schedule: "30 3 * * *",
+    scheduleText: "Daily at 03:30 UTC",
+    retrySafe: true,
+    retryNote: "Each recipient and channel is claimed before anything is sent (at most once, never twice), so a second run only continues where the first stopped.",
+    route: "/api/cron/comms",
+    load: () => import("@/app/api/cron/comms/route") as Promise<RouteModule>,
+  }),
+  routeJob({
     name: "redemption-digest",
     label: "Invite redemption digest",
     description: "Emails each meeting owner the invites redeemed in the last 24 hours.",

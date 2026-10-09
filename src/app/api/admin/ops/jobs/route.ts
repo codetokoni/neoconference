@@ -3,7 +3,7 @@
 // GET (ops:read)  every registered job (schedule, whether it is safe to run
 //                 again, recent runs, whether it is running now), recent
 //                 failed runs of any job, and the queues outside the runner:
-//                 transcription jobs, pending checkouts and webhook events
+//                 transcription jobs, announcement sends, pending checkouts and webhook events
 //                 that changed nothing.
 
 import { NextResponse } from "next/server";
@@ -11,7 +11,7 @@ import { requireAdmin } from "@/lib/admin/context";
 import { JOBS } from "@/lib/ops/jobRegistry";
 import { jobLockHolder, jobNames, listFailedRuns, listRuns } from "@/lib/ops/jobs";
 import { transcriptionJobs } from "@/lib/ops/media";
-import { pendingCheckouts, webhookRejections } from "@/lib/ops/queues";
+import { commsSends, pendingCheckouts, webhookRejections } from "@/lib/ops/queues";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,11 +29,12 @@ export async function GET(req: Request) {
       runs: await listRuns(j.name, 10),
     })),
   );
-  const [failed, transcription, checkouts, rejections] = await Promise.all([
+  const [failed, transcription, checkouts, rejections, sends] = await Promise.all([
     listFailedRuns(50),
     transcriptionJobs(),
     pendingCheckouts(),
     webhookRejections(),
+    commsSends(),
   ]);
   return NextResponse.json({
     ok: true,
@@ -42,6 +43,7 @@ export async function GET(req: Request) {
     queues: {
       transcription: { byStatus: transcription.byStatus, queued: transcription.queued, total: transcription.total, truncated: transcription.truncated },
       checkouts,
+      sends,
       webhookRejections: rejections,
     },
   });

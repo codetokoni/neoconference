@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto';
 import { isR2Configured, putObject, signGetUrl } from '@/lib/r2';
 import { recordMediaEvent } from '@/lib/ops/media';
 import { CHAT_IMAGE_MIMES, CHAT_UPLOAD_ALLOWED, CHAT_UPLOAD_MAX_BYTES, safeFilename } from '@/lib/chatUploadRules';
+import { activity } from '@/lib/activity';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -107,6 +108,7 @@ export async function POST(req: Request) {
   // data channel) so indefinite storage would be paying for URLs no
   // one can reach.
   const url = await signGetUrl(key, 60 * 60 * 24 * 7);
+  await activity.record('upload', { userId, account: userId, props: { where: 'meeting_chat', bytes: file.size, mime } });
   const kind: 'image' | 'file' = IMAGE_MIMES.has(mime) ? 'image' : 'file';
 
   return NextResponse.json({

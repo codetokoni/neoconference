@@ -43,7 +43,12 @@ export function cronRequestFor(
   if (opts.retryOf) headers["x-neo-job-retry-of"] = opts.retryOf;
   const secret = process.env.CRON_SECRET;
   if (secret) headers.authorization = "Bearer " + secret;
-  else headers["x-vercel-cron"] = "1";
+  else {
+    headers["x-vercel-cron"] = "1";
+    // /api/cron/comms takes the dispatch secret when there is no CRON_SECRET.
+    // In-process only: this request never leaves the function.
+    if (process.env.DISPATCH_SECRET) headers.authorization = "Bearer " + process.env.DISPATCH_SECRET;
+  }
   const origin = process.env.NEXT_PUBLIC_SITE_URL || "https://www.neoconference.app";
   return new NextRequest(new URL(path, origin).toString(), { method: "GET", headers });
 }
