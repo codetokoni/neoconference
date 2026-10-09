@@ -5,6 +5,7 @@ import AudioMeter from "./AudioMeter";
 import ChannelRail from "./ChannelRail";
 import LiveChat from "./LiveChat";
 import TranslationOverlay from "./TranslationOverlay";
+import BrandMark from "../BrandMark";
 import { useAmsMultitrack } from "./useAmsMultitrack";
 import { roomMainTrack } from "@/lib/participantCodes";
 import {
@@ -1132,7 +1133,9 @@ export default function SimulcastPlayer({
             {/* language audio for HLS mode */}
             <audio ref={fallbackAudioRef} />
 
-            <div className="absolute left-3 top-3 flex items-center gap-2">
+            {/* Full screen hides the site header: the logo stays on top. */}
+            {isFullscreen && <BrandMark className="absolute left-3 top-3 z-10" />}
+            <div className={"absolute left-3 flex items-center gap-2 " + (isFullscreen ? "top-[3.75rem]" : "top-3")}>
               {live.size > 0 ? (
                 <span className="inline-flex items-center gap-1.5 rounded bg-red-600 px-2 py-1 font-mono text-[10.5px] tracking-[0.14em] text-white">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
