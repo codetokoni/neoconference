@@ -157,7 +157,8 @@ export async function fileReport(
   r: { reason: ReportReason; details: string; reporterId: string | null; sourceHash: string },
   now = Date.now(),
 ): Promise<{ case: ReportCase; duplicate: boolean }> {
-  const existingId = parse<string>(await kv.hget(CASE_FOR, target.targetKey));
+  const raw = await kv.hget(CASE_FOR, target.targetKey);
+  const existingId = typeof raw === "string" ? raw : null;
   let c = existingId ? await getCase(existingId) : null;
   if (!c) {
     c = {
@@ -173,7 +174,7 @@ export async function fileReport(
       history: [],
       notes: [],
     };
-    await kv.hset(CASE_FOR, { [target.targetKey]: JSON.stringify(c.id) });
+    await kv.hset(CASE_FOR, { [target.targetKey]: c.id });
   }
   const dup = c.reports.some((x) => (r.reporterId ? x.reporterId === r.reporterId : x.sourceHash === r.sourceHash));
   if (dup) return { case: c, duplicate: true };

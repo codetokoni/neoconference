@@ -233,7 +233,8 @@ export async function indexEgressEnded(info: EgressInfoish | undefined): Promise
   await safely("indexEgressEnded", async () => {
     const now = Date.now();
     const filename = info.fileResults?.[0]?.filename || info.file?.filename || "";
-    const mapped = parse<string>(await kv.get(egressKey(info.egressId!)));
+    const raw = await kv.get(egressKey(info.egressId!));
+    const mapped = typeof raw === "string" ? raw : null;
     let rec = mapped ? await getFile(mapped) : null;
     if (!rec && filename) rec = await getFileByKey("r2", filename);
     if (!rec && !filename) return; // a livestream, or a failure before any file was named
