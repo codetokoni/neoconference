@@ -121,7 +121,7 @@ const CATEGORIES = [
           id: e.id,
           title: e.invoiceNumber ? `${e.invoiceNumber} · ${e.ref}` : e.ref,
           sub: [fmtMoney(e.amount, e.currency), e.status.replace("_", " "), e.email ?? e.userId, new Date(e.at).toISOString().slice(0, 10)].filter(Boolean).join(" · "),
-          href: `/admin/billing/payments/invoice/${enc(e.id)}`,
+          href: `/admin/billing/payments?open=${enc(e.id)}`,
         })),
         more: page.total > limit ? `/admin/billing/payments?q=${enc(q)}` : null,
       };

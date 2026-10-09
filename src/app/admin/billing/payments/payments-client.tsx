@@ -171,7 +171,12 @@ export default function PaymentsClient() {
           </div>
         </form>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-zinc-500">Dates are whole days in UTC. Times below are in your local time zone.</p>
+          <p className="text-xs text-zinc-500">
+            {/^\d+$/.test(applied.from + applied.to) && applied.from && applied.to
+              ? `Period from the Overview: ${fmtTime(Number(applied.from))} – ${fmtTime(Number(applied.to))}. `
+              : "Dates are whole days in UTC. "}
+            Times below are in your local time zone.
+          </p>
           {can("reports:export") && (
             <div className="flex flex-wrap gap-1.5 text-xs">
               <span className="self-center text-zinc-500">Export</span>

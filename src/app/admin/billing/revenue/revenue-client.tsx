@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useAdmin } from "../../AdminApi";
+import { fmtTime, useAdmin } from "../../AdminApi";
 import { Badge, Loading, Notice, PageHeader, Panel, btn, field } from "../../ui";
 import { currenciesOf, fmtMoney, type ByCurrency } from "@/lib/finance/money";
 import { BarChart, BillingNav, Totals, day } from "../shared";
@@ -128,6 +128,11 @@ export default function RevenueClient() {
           <button type="submit" className={btn.primary}>
             Apply
           </button>
+          {/^\d+$/.test(applied.from + applied.to) && (
+            <p className="basis-full text-xs text-zinc-500">
+              Period from the Overview: {fmtTime(Number(applied.from))} – {fmtTime(Number(applied.to))}.
+            </p>
+          )}
           {can("reports:export") && (
             <span className="ml-auto flex gap-1.5">
               <a className={btn.ghost} href={exportQ("csv")}>

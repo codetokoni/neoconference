@@ -599,7 +599,7 @@ async function main() {
     const ref = await call("user_owner", R.search.GET, "?q=ESP-CARA-FAIL");
     assert.deepEqual(
       cats(ref.body).payments.items.map((p: Body) => p.href),
-      ["/admin/billing/payments/invoice/pay%3AESP-CARA-FAIL"],
+      ["/admin/billing/payments?open=pay%3AESP-CARA-FAIL"],
     );
     const auditHit = await call("user_owner", R.search.GET, "?q=Clerk%20refused");
     assert.equal(cats(auditHit.body).audit.items.length, 1);

@@ -77,7 +77,7 @@ export interface AccountSnapshot {
 
 /** Where the admin area shows an account: its page, or a search for the address. */
 export function adminAccountHref(userId: string | null, email: string): string {
-  return userId ? `/admin/users/${encodeURIComponent(userId)}` : `/admin?q=${encodeURIComponent(email)}`;
+  return userId ? `/admin/users/${encodeURIComponent(userId)}` : `/admin/users?q=${encodeURIComponent(email)}`;
 }
 
 /** The account behind a ticket: by user id, or for a signed-out ticket by its email. */

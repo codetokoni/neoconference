@@ -420,7 +420,7 @@ async function main() {
     assert.ok(history.includes(aliceTicket) && history.includes(aliceGuestTicket));
     const bobs = await call("user_analyst", R.ticket.GET, { params: { id: bobGuestTicket } });
     assert.equal((bobs.body.account as { found: boolean }).found, false, "an unverified address does not tie a ticket to an account");
-    assert.equal((bobs.body.account as { href: string }).href, "/admin?q=alice.old%40example.com", "no account: a search for the address");
+    assert.equal((bobs.body.account as { href: string }).href, "/admin/users?q=alice.old%40example.com", "no account: a search for the address");
   });
 
   await t("an agent turns a NeoSupport chat into a ticket on the right account; audited", async () => {
