@@ -339,18 +339,24 @@ export default function QueueBoard({
 
   if (display) {
     // Projection layout: just the tile grid, edge-to-edge, no
-    // producer chrome. The queue tiles themselves are still marked
-    // with position + NEXT so the room can see who is up.
-    const pages = Math.max(1, Math.ceil(queue.order.length / PAGE_SIZE));
+    // producer chrome. Only the queued people who are connected (camera
+    // live) are shown, in queue order, each keeping their real queue
+    // position; NEXT marks the first of them — who would go on air next.
+    const connected = queue.order
+      .map((sid, i) => ({ sid, position: i + 1 }))
+      .filter((e) => bySid.get(e.sid)?.live);
+    const pages = Math.max(1, Math.ceil(connected.length / PAGE_SIZE));
     const page = Math.min(Math.max(1, screen ?? 1), pages);
     const startIdx = (page - 1) * PAGE_SIZE;
-    const pageEntries = queue.order.slice(startIdx, startIdx + PAGE_SIZE);
+    const pageEntries = connected.slice(startIdx, startIdx + PAGE_SIZE);
     const fit = fitGrid(pageEntries.length, gridBox.w, gridBox.h);
 
-    return queue.order.length === 0 ? (
+    return queue.order.length === 0 || connected.length === 0 ? (
       <div className="flex h-full items-center justify-center bg-[#0F1519] p-6 text-center">
         <p className="font-mono text-sm uppercase tracking-[0.14em] text-white/45">
-          {queue.name} · queue is empty
+          {queue.order.length === 0
+            ? `${queue.name} · queue is empty`
+            : `${queue.name} · nobody in the queue is connected yet`}
         </p>
       </div>
     ) : (
@@ -365,7 +371,7 @@ export default function QueueBoard({
               {queue.name} · screen {page} of {pages}
             </span>
             <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/40">
-              positions {startIdx + 1}–{startIdx + pageEntries.length}
+              {connected.length} connected of {queue.order.length} queued
             </span>
           </div>
         )}
@@ -387,16 +393,16 @@ export default function QueueBoard({
             alignContent: "center",
           }}
         >
-          {pageEntries.map((sid, iOnPage) => {
-            const globalIdx = startIdx + iOnPage;
+          {pageEntries.map(({ sid, position }, iOnPage) => {
+            const idx = startIdx + iOnPage;
             return (
               <QueueTile
                 key={sid}
                 streamId={sid}
                 participant={bySid.get(sid)}
-                position={globalIdx + 1}
-                first={globalIdx === 0}
-                last={globalIdx === queue.order.length - 1}
+                position={position}
+                first={idx === 0}
+                last={idx === connected.length - 1}
                 busy={false}
                 display
                 onOpen={() => {
@@ -423,18 +429,17 @@ export default function QueueBoard({
             spot={spot}
             onClose={() => setSpot(null)}
             onPrev={() => {
-              const order = queue.order;
-              const i = order.findIndex((s) => s === spot.streamId);
+              // Walks the connected people shown, in queue order.
+              const i = connected.findIndex((e) => e.sid === spot.streamId);
               if (i > 0) {
-                const p = bySid.get(order[i - 1]);
+                const p = bySid.get(connected[i - 1].sid);
                 if (p) setSpot(p);
               }
             }}
             onNext={() => {
-              const order = queue.order;
-              const i = order.findIndex((s) => s === spot.streamId);
-              if (i >= 0 && i < order.length - 1) {
-                const p = bySid.get(order[i + 1]);
+              const i = connected.findIndex((e) => e.sid === spot.streamId);
+              if (i >= 0 && i < connected.length - 1) {
+                const p = bySid.get(connected[i + 1].sid);
                 if (p) setSpot(p);
               }
             }}
