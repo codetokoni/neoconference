@@ -22,8 +22,9 @@ import { kv } from "@/lib/kv";
 import type { Rule } from "@/lib/automation/model";
 import { previousRun } from "@/lib/automation/schedule";
 import { addNotification } from "@/lib/notificationStore";
-import { getPlanForUserId } from "@/lib/plan";
-import { getPlanLimits, readPlanFromMetadata } from "@/lib/planLimits";
+import { getPlanLimitsForUserId } from "@/lib/plan";
+import { limitsFromMetadata } from "@/lib/planLimits";
+import { effectivePlan, type ClerkUserish } from "@/lib/admin/users";
 import { usageMonth, recordedSeconds } from "@/lib/recordingUsage";
 import { ownerEmails } from "@/lib/admin/owner";
 import { listByPeriodEnd } from "@/lib/billing/subscriptions";
@@ -103,13 +104,7 @@ function periodOf(ctx: ActionContext): string {
 
 /* ------------------------------ reminders ------------------------------- */
 
-type ClerkUser = {
-  id: string;
-  firstName?: string | null;
-  publicMetadata?: Record<string, unknown>;
-  primaryEmailAddress?: { emailAddress?: string } | null;
-  emailAddresses?: { emailAddress: string }[];
-};
+type ClerkUser = ClerkUserish;
 
 /** Every account, a page at a time, up to `cap`. */
 async function allUsers(cap = 10_000): Promise<ClerkUser[]> {
@@ -176,8 +171,10 @@ const reminder: ActionImpl = {
       case "meeting_cap": {
         const targets: Target[] = [];
         for (const u of await allUsers()) {
-          const plan = readPlanFromMetadata(u.publicMetadata);
-          const cap = getPlanLimits(plan).lifetimeMeetingCap;
+          // The owner and ADMIN_EMAILS accounts are never capped (effectivePlan → enterprise).
+          const plan = effectivePlan(u);
+          if (plan !== "free") continue;
+          const cap = limitsFromMetadata(u.publicMetadata).lifetimeMeetingCap;
           if (cap <= 0) continue;
           const used = Number(u.publicMetadata?.meetingsCreated ?? 0) || 0;
           const pct = Math.round((used / cap) * 100);
@@ -205,7 +202,7 @@ const reminder: ActionImpl = {
         for (const uid of owners) {
           const used = await recordedSeconds(uid, month);
           if (!used) continue;
-          const capHours = getPlanLimits(await getPlanForUserId(uid)).recordingHoursPerMonth;
+          const capHours = (await getPlanLimitsForUserId(uid)).limits.recordingHoursPerMonth;
           if (capHours <= 0) continue;
           const pct = Math.round((used / (capHours * 3600)) * 100);
           if (pct < c.pct!) continue;

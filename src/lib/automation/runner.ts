@@ -361,8 +361,8 @@ export async function ruleHistory(ruleId: string, limit = 30): Promise<(JobRun &
   return Promise.all(runs.map(async (r) => ({ ...r, detail: await getRunDetail(r.id) })));
 }
 
-/** The status shown on the list. */
+/** The status shown on the list. Failing shows even on a paused rule (its Run now failed): the alert is open. */
 export function ruleStatus(rule: Rule, state: RuleState): "active" | "paused" | "failing" {
-  if (rule.status === "paused") return "paused";
-  return state.failing ? "failing" : "active";
+  if (state.failing) return "failing";
+  return rule.status === "paused" ? "paused" : "active";
 }
