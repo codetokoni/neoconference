@@ -97,9 +97,22 @@ export default function Spotlight({ spot, onClose, onPrev, onNext }: SpotlightPr
   const condition = spot.meta?.condition;
   const country = spot.meta?.country;
 
-  // The ID chip and the controls fade out when nobody moves the mouse or
-  // presses a key for a moment, leaving the video (with the logo and the
-  // name card) alone on screen; any movement brings them back.
+  // Only the person on screen (with the logo and the name card): the
+  // controls stay hidden until the pointer reaches the top-right corner,
+  // or a finger taps the screen; Esc, ← → and M work without them.
+  const [tapped, setTapped] = useState(false);
+  useEffect(() => {
+    if (!tapped) return;
+    const t = setTimeout(() => setTapped(false), 3000);
+    return () => clearTimeout(t);
+  }, [tapped]);
+  const controls =
+    "flex items-center gap-2 transition-opacity duration-200 " +
+    (tapped
+      ? "opacity-100"
+      : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100");
+
+  // The mouse pointer hides when it stops moving.
   const [idle, setIdle] = useState(false);
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
@@ -116,81 +129,78 @@ export default function Spotlight({ spot, onClose, onPrev, onNext }: SpotlightPr
       events.forEach((e) => window.removeEventListener(e, wake));
     };
   }, []);
-  const fade = "transition-opacity duration-300 " + (idle ? "pointer-events-none opacity-0" : "opacity-100");
 
   return (
-    <div className={"fixed inset-0 z-[100] flex items-center justify-center bg-black" + (idle ? " cursor-none" : "")}>
+    <div
+      className={"fixed inset-0 z-[100] flex items-center justify-center bg-black" + (idle ? " cursor-none" : "")}
+      onPointerDown={(e) => {
+        if (e.pointerType === "touch") setTapped(true);
+      }}
+    >
       {/* The camera fills the screen (cropped at the edges if its shape differs). */}
       <video ref={ref} playsInline autoPlay muted className="h-full w-full object-cover" />
 
       {/* Full screen hides the site header: the logo stays on top. */}
       <BrandMark className="absolute left-4 top-4 z-10" />
 
-      <span data-spot-chrome className={fade + " pointer-events-none absolute left-4 top-[4.25rem] rounded-md border border-white/15 bg-black/70 px-3 py-1.5 font-mono text-xs text-white/80 backdrop-blur"}>
-        {spot.streamId}
-        {spot.code ? ` · ${spot.code}` : ""}
-      </span>
-
-      {/* Keyboard hint sits under the top-right controls so a
-          first-time viewer sees it immediately. Only shows the
-          arrow-key half when the parent actually wired navigation. */}
-      <div data-spot-chrome className={fade + " absolute right-4 top-4 flex items-center gap-2"}>
-        <span className="pointer-events-none rounded-md border border-white/15 bg-black/70 px-3 py-1.5 font-mono text-[10.5px] uppercase tracking-[0.14em] text-white/60 backdrop-blur">
-          esc close{(onPrev || onNext) ? " · ← prev · → next" : ""} · m sound
-        </span>
-        {onPrev && (
-          <button
-            type="button"
-            aria-label="Previous participant"
-            onClick={onPrev}
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-white/15 bg-black/70 text-lg text-white/85 transition hover:bg-white/10"
-          >
-            ‹
-          </button>
-        )}
-        {onNext && (
-          <button
-            type="button"
-            aria-label="Next participant"
-            onClick={onNext}
-            className="flex h-9 w-9 items-center justify-center rounded-md border border-white/15 bg-black/70 text-lg text-white/85 transition hover:bg-white/10"
-          >
-            ›
-          </button>
-        )}
-        <button
-          type="button"
-          aria-label={sound ? "Turn sound off (M)" : "Turn sound on (M)"}
-          title={sound ? "Sound on — click or press M to mute" : "Muted — click or press M to hear this person"}
-          aria-pressed={sound}
-          onClick={() => setSound((on) => !on)}
-          className={
-            "flex h-9 w-9 items-center justify-center rounded-md border text-white/85 transition hover:bg-white/10 " +
-            (sound ? "border-emerald-400/60 bg-emerald-500/20" : "border-white/15 bg-black/70")
-          }
-        >
-          {sound ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M11 5 6 9H2v6h4l5 4V5z" />
-              <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-              <path d="M19 5a10 10 0 0 1 0 14" />
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M11 5 6 9H2v6h4l5 4V5z" />
-              <path d="m23 9-6 6" />
-              <path d="m17 9 6 6" />
-            </svg>
+      {/* The corner is the hover area: it reaches past the buttons so the
+          pointer finds them before it lands on one. */}
+      <div data-spot-controls className="group absolute right-0 top-0 pb-12 pl-24 pr-4 pt-4">
+        <div className={controls}>
+          {onPrev && (
+            <button
+              type="button"
+              aria-label="Previous participant"
+              onClick={onPrev}
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-white/15 bg-black/70 text-lg text-white/85 transition hover:bg-white/10"
+            >
+              ‹
+            </button>
           )}
-        </button>
-        <button
-          type="button"
-          aria-label="Close preview"
-          onClick={onClose}
-          className="flex h-9 w-9 items-center justify-center rounded-md border border-white/15 bg-black/70 text-lg text-white/85 transition hover:bg-white/10"
-        >
-          ✕
-        </button>
+          {onNext && (
+            <button
+              type="button"
+              aria-label="Next participant"
+              onClick={onNext}
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-white/15 bg-black/70 text-lg text-white/85 transition hover:bg-white/10"
+            >
+              ›
+            </button>
+          )}
+          <button
+            type="button"
+            aria-label={sound ? "Turn sound off (M)" : "Turn sound on (M)"}
+            title={sound ? "Sound on — click or press M to mute" : "Muted — click or press M to hear this person"}
+            aria-pressed={sound}
+            onClick={() => setSound((on) => !on)}
+            className={
+              "flex h-9 w-9 items-center justify-center rounded-md border text-white/85 transition hover:bg-white/10 " +
+              (sound ? "border-emerald-400/60 bg-emerald-500/20" : "border-white/15 bg-black/70")
+            }
+          >
+            {sound ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M11 5 6 9H2v6h4l5 4V5z" />
+                <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                <path d="M19 5a10 10 0 0 1 0 14" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M11 5 6 9H2v6h4l5 4V5z" />
+                <path d="m23 9-6 6" />
+                <path d="m17 9 6 6" />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            aria-label="Close preview"
+            onClick={onClose}
+            className="flex h-9 w-9 items-center justify-center rounded-md border border-white/15 bg-black/70 text-lg text-white/85 transition hover:bg-white/10"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       <div className="absolute bottom-6 left-1/2 flex max-w-[min(720px,92vw)] -translate-x-1/2 flex-col items-center gap-2 rounded-xl border border-white/15 bg-black/70 px-6 py-4 text-center backdrop-blur">
