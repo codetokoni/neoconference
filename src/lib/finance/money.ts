@@ -49,12 +49,18 @@ export function round(amount: number, currency: Currency = "ESP"): number {
   return Math.round(amount * f) / f;
 }
 
-/** "1,250.00 ESP" — the code always follows the number. */
-export function fmtMoney(amount: number, currency: Currency): string {
+/** "1,250.00 ESP" — the code always follows the number. `locale` is the number format (the admin pages pass Settings → Regional's). */
+export function fmtMoney(amount: number, currency: Currency, locale = "en-US"): string {
   const c = normCurrency(currency);
   const d = minorDigits(c);
   const n = Number.isFinite(amount) ? amount : 0;
-  return `${n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d })} ${c}`;
+  let s: string;
+  try {
+    s = n.toLocaleString(locale, { minimumFractionDigits: d, maximumFractionDigits: d });
+  } catch {
+    s = n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  return `${s} ${c}`;
 }
 
 export function currencyName(c: Currency): string {

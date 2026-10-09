@@ -2,21 +2,14 @@
 
 // src/app/admin/analytics/period.tsx — the date filter shared by Analytics,
 // Logs and the printable summary: preset ranges or two dates, kept in the
-// URL so a view can be linked and reloaded. Days are calendar days in the
-// viewer's time zone (the admin time zone setting is not on the platform
-// yet), and the zone is named next to the filter.
+// URL so a view can be linked and reloaded. Days are calendar days on the
+// admin clock (Settings → Regional's admin time zone, or the viewer's own
+// when that is "local"), and the zone is named next to the filter.
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo } from "react";
+import { adminClock, adminZone, zoneLabel } from "../AdminApi";
 import { field } from "../ui";
-
-export function browserTz(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
-  }
-}
 
 export function dayIn(ts: number, tz: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ts));
@@ -44,7 +37,7 @@ export function usePeriod(defaultDays: number): PeriodState {
   const sp = useSearchParams();
   const router = useRouter();
   const pathname = usePathname() || "";
-  const tz = useMemo(browserTz, []);
+  const tz = useMemo(adminZone, []);
   const today = dayIn(Date.now(), tz);
   const to = isDay(sp?.get("to") ?? null) ? (sp!.get("to") as string) : today;
   const from = isDay(sp?.get("from") ?? null) ? (sp!.get("from") as string) : addDays(to, -(defaultDays - 1));
@@ -75,6 +68,7 @@ const PRESETS = [
 export function PeriodBar({ p, compareNote = true }: { p: PeriodState; compareNote?: boolean }) {
   const today = dayIn(Date.now(), p.tz);
   const days = Math.round((Date.parse(p.to) - Date.parse(p.from)) / 86_400_000) + 1;
+  const fromSetting = adminClock().timeZone && adminClock().timeZone !== "local";
   return (
     <div className="mb-4 flex flex-wrap items-end gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-3 print:hidden">
       <div className="flex flex-wrap gap-1" role="group" aria-label="Preset ranges">
@@ -86,7 +80,7 @@ export function PeriodBar({ p, compareNote = true }: { p: PeriodState; compareNo
               type="button"
               aria-pressed={active}
               onClick={() => p.set(addDays(today, -(x.days - 1)), today)}
-              className={`rounded-lg px-2.5 py-1.5 text-xs ${active ? "bg-cyan-400/15 text-cyan-200" : "text-zinc-300 hover:bg-white/5"}`}
+              className={`rounded-lg px-2.5 py-1.5 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 ${active ? "bg-cyan-400/15 text-cyan-200" : "text-zinc-300 hover:bg-white/5"}`}
             >
               {x.label}
             </button>
@@ -101,8 +95,9 @@ export function PeriodBar({ p, compareNote = true }: { p: PeriodState; compareNo
         To
         <input type="date" value={p.to} min={p.from} onChange={(e) => e.target.value && p.set(p.from, e.target.value)} className={`${field} mt-0.5 py-1.5`} />
       </label>
-      <p className="ml-auto text-xs text-zinc-500">
-        Days in <b className="text-zinc-300">{p.tz}</b> (your browser)
+      <p className="min-w-0 text-xs text-zinc-400 sm:ml-auto">
+        Days in <b className="text-zinc-300">{zoneLabel()}</b>
+        {fromSetting ? " (admin time zone)" : ""}
         {compareNote && <> · compared with the {days} days before</>}
       </p>
     </div>

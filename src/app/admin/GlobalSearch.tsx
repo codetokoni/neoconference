@@ -10,7 +10,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { CategoryResult } from "@/lib/admin/search";
-import { useAdmin } from "./AdminApi";
+import { errorText, useAdmin } from "./AdminApi";
 
 type Row = { key: string; title: string; sub: string; href: string; more?: boolean };
 
@@ -27,6 +27,8 @@ export default function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState<CategoryResult[] | null>(null);
+  // The term the shown results belong to (what is typed may already be newer).
+  const [resultsFor, setResultsFor] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState(0);
 
@@ -67,12 +69,13 @@ export default function GlobalSearch() {
       if (mine !== seq.current) return; // a newer search has started
       setBusy(false);
       if (!r.ok) {
-        setError(r.data.message ?? "Search failed.");
+        setError(`Search failed: ${errorText(r)}`);
         setResults(null);
         return;
       }
       setError(null);
       setResults(r.data.categories);
+      setResultsFor(term.trim());
       setActive(0);
     },
     [adminFetch],
@@ -91,7 +94,7 @@ export default function GlobalSearch() {
       c.status === "ok"
         ? [
             ...c.items.map((it) => ({ key: `${c.id}:${it.id}`, title: it.title, sub: it.sub, href: it.href })),
-            ...(c.more ? [{ key: `${c.id}:more`, title: `All matching ${c.label.toLowerCase()} →`, sub: "", href: c.more, more: true }] : []),
+            ...(c.more ? [{ key: `${c.id}:more`, title: `All ${c.label.toLowerCase()} matching “${resultsFor}” →`, sub: "", href: c.more, more: true }] : []),
           ]
         : [];
     const g = { c, rows: own, first: offset };
@@ -124,6 +127,19 @@ export default function GlobalSearch() {
 
   const showPanel = open && q.trim().length >= 2;
   const optionId = (i: number) => `${listId}-opt-${i}`;
+  const found = rows.filter((r) => !r.more).length;
+  // What a screen reader hears as the results change.
+  const announce = !showPanel
+    ? ""
+    : busy
+      ? "Searching…"
+      : error
+        ? ""
+        : results
+          ? results.length === 0
+            ? "Your role cannot search any of these lists."
+            : `${found} result${found === 1 ? "" : "s"} for “${resultsFor}”${found ? ". Use the up and down arrows to choose one." : "."}`
+          : "";
 
   return (
     <div ref={box} className="relative mb-4">
@@ -144,34 +160,43 @@ export default function GlobalSearch() {
         onChange={(e) => {
           setQ(e.target.value);
           setOpen(true);
+          // Say "Searching…" from the first keystroke of every new search, not only the first one.
+          setBusy(e.target.value.trim().length >= 2);
         }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKeyDown}
         placeholder="Search users, groups, meetings, payments, tickets, files, audit…  (Ctrl K)"
-        className="w-full rounded-xl border border-white/12 bg-black/40 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-cyan-400/70"
+        className="w-full rounded-xl border border-white/12 bg-black/40 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-cyan-400/70 focus-visible:ring-2 focus-visible:ring-cyan-400/50"
       />
+      <p role="status" aria-live="polite" className="sr-only">
+        {announce}
+      </p>
       {showPanel && (
         <div className="absolute inset-x-0 top-full z-50 mt-1 max-h-[70vh] overflow-y-auto rounded-xl border border-white/10 bg-[#0B1220] p-1 shadow-2xl">
-          {busy && !results && <p className="px-3 py-2 text-sm text-zinc-500">Searching…</p>}
+          {busy && <p className="px-3 py-2 text-sm text-zinc-400">Searching…</p>}
           {error && (
             <p role="alert" className="px-3 py-2 text-sm text-red-300">
               {error}
             </p>
           )}
-          {results && results.length === 0 && <p className="px-3 py-2 text-sm text-zinc-500">Your role cannot search any of these lists.</p>}
-          {results && results.length > 0 && rows.length === 0 && results.every((c) => c.status === "ok") && (
-            <p className="px-3 py-2 text-sm text-zinc-500">Nothing matches “{q.trim()}”.</p>
+          {results && results.length === 0 && <p className="px-3 py-2 text-sm text-zinc-400">Your role cannot search any of these lists.</p>}
+          {!busy && results && results.length > 0 && rows.length === 0 && results.every((c) => c.status === "ok") && (
+            <p className="px-3 py-2 text-sm text-zinc-400">Nothing matches “{resultsFor}”.</p>
           )}
-          <ul id={listId} role="listbox" aria-label="Search results">
+          <ul id={listId} role="listbox" aria-label={resultsFor ? `Search results for ${resultsFor}` : "Search results"} className={busy ? "opacity-60" : ""}>
             {groups.map(({ c, rows: own, first }) => (
-              <li key={c.id} role="presentation">
-                <p className="px-3 pb-0.5 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-500">{c.label}</p>
+              <li key={c.id} role="group" aria-labelledby={`${listId}-cat-${c.id}`} aria-describedby={own.length === 0 ? `${listId}-note-${c.id}` : undefined}>
+                <p id={`${listId}-cat-${c.id}`} role="presentation" className="px-3 pb-0.5 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-400">
+                  {c.label}
+                </p>
                 {c.status === "error" ? (
-                  <p className="px-3 py-1 text-xs text-red-300">
+                  <p id={`${listId}-note-${c.id}`} role="presentation" className="px-3 py-1 text-xs text-red-300">
                     Could not search {c.label.toLowerCase()}: {c.message}
                   </p>
                 ) : own.length === 0 ? (
-                  <p className="px-3 py-1 text-xs text-zinc-600">No matches</p>
+                  <p id={`${listId}-note-${c.id}`} role="presentation" className="px-3 py-1 text-xs text-zinc-400">
+                    No matches
+                  </p>
                 ) : (
                   <ul role="presentation">
                     {own.map((it, j) => {
@@ -189,7 +214,7 @@ export default function GlobalSearch() {
                           className={`cursor-pointer rounded-lg px-3 py-1.5 ${selected ? "bg-cyan-400/10" : ""}`}
                         >
                           <span className={`block truncate text-sm ${it.more ? "text-cyan-300" : "text-zinc-100"}`}>{it.title}</span>
-                          {it.sub && <span className="block truncate text-xs text-zinc-500">{it.sub}</span>}
+                          {it.sub && <span className="block truncate text-xs text-zinc-400">{it.sub}</span>}
                         </li>
                       );
                     })}

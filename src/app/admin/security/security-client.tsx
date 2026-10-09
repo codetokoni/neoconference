@@ -4,7 +4,8 @@
 // and (for the owner) how ownership is held and transferred.
 
 import { useCallback, useEffect, useState } from "react";
-import { fmtTime, useAdmin } from "../AdminApi";
+import { errorText, fmtTime, useAdmin } from "../AdminApi";
+import { lockAdmin } from "../AdminShell";
 import { Badge, Confirm, Loading, Notice, PageHeader, Panel, btn } from "../ui";
 
 type Me = {
@@ -18,30 +19,55 @@ export default function SecurityClient() {
   const [codes, setCodes] = useState<string[] | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [asking, setAsking] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [copied, setCopied] = useState<"yes" | "no" | null>(null);
+  const [locking, setLocking] = useState(false);
 
   const load = useCallback(async () => {
+    setLoadError(null);
     const r = await adminFetch<Me>("/api/admin/me");
     if (r.ok) setData(r.data);
-    else setMsg({ kind: "err", text: r.data.message ?? "Could not load." });
+    else setLoadError(errorText(r));
   }, [adminFetch]);
   useEffect(() => {
     load();
   }, [load]);
 
   const regenerate = async () => {
-    setAsking(false);
+    setMsg(null);
     const r = await adminFetch<{ recoveryCodes: string[] }>("/api/admin/mfa/recovery", { method: "POST" });
+    setAsking(false);
     if (!r.ok) return setMsg({ kind: "err", text: r.data.message ?? "Could not replace the codes." });
     setCodes(r.data.recoveryCodes);
+    setCopied(null);
+    setMsg({ kind: "ok", text: "Recovery codes replaced. Save the new ones below: they are shown once." });
     load();
   };
 
-  const lock = async () => {
-    await fetch("/api/admin/mfa/lock", { method: "POST" }).catch(() => undefined);
-    window.location.href = "/admin";
+  const copy = async (list: string[]) => {
+    try {
+      await navigator.clipboard.writeText(list.join("\n"));
+      setCopied("yes");
+    } catch {
+      // No clipboard (insecure context, permission refused): say so rather than look done.
+      setCopied("no");
+    }
   };
 
-  if (!data) return msg ? <Notice kind="err">{msg.text}</Notice> : <Loading />;
+  // The shell's own lock (a deliberately plain call: it ends the admin session itself).
+  const lock = async () => {
+    setLocking(true);
+    await lockAdmin();
+  };
+
+  if (!data)
+    return loadError ? (
+      <Notice kind="err" onRetry={load}>
+        {loadError}
+      </Notice>
+    ) : (
+      <Loading />
+    );
   const low = (data.mfa.recoveryLeft ?? 0) <= 3;
 
   return (
@@ -52,6 +78,11 @@ export default function SecurityClient() {
           {msg.text}
         </Notice>
       )}
+      {loadError && (
+        <Notice kind="err" onRetry={load}>
+          Could not refresh: {loadError}
+        </Notice>
+      )}
       <div className="grid gap-3 lg:grid-cols-2">
         <Panel>
           <h2 className="text-sm font-semibold text-white">Two-factor authentication</h2>
@@ -59,7 +90,8 @@ export default function SecurityClient() {
             <Badge tone="green">On</Badge> since {fmtTime(data.mfa.enabledAt)}
           </p>
           <p className="mt-2 text-sm text-zinc-300">
-            Recovery codes left: <b className={low ? "text-amber-300" : "text-white"}>{data.mfa.recoveryLeft ?? 0}</b> of 10
+            Recovery codes left: <b className={low ? "text-amber-300" : "text-white"}>{data.mfa.recoveryLeft ?? 0}</b>
+            {codes && <span className="text-zinc-400"> of {codes.length}</span>}
           </p>
           {low && <p className="mt-1 text-xs text-amber-300">Running low. Replace them so you are not locked out if you lose your phone.</p>}
           <button type="button" className={`${btn.ghost} mt-3`} onClick={() => setAsking(true)}>
@@ -73,16 +105,24 @@ export default function SecurityClient() {
                   <li key={c}>{c}</li>
                 ))}
               </ul>
-              <a
-                className={`${btn.ghost} mt-2`}
-                download="neoconference-admin-recovery-codes.txt"
-                href={`data:text/plain;charset=utf-8,${encodeURIComponent(`NeoConference admin recovery codes for ${me.email}\n\n${codes.join("\n")}\n`)}`}
-              >
-                Download
-              </a>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button type="button" className={btn.ghost} onClick={() => copy(codes)}>
+                  {copied === "yes" ? "Copied" : "Copy"}
+                </button>
+                <a
+                  className={btn.ghost}
+                  download="neoconference-admin-recovery-codes.txt"
+                  href={`data:text/plain;charset=utf-8,${encodeURIComponent(`NeoConference admin recovery codes for ${me.email}\n\n${codes.join("\n")}\n`)}`}
+                >
+                  Download
+                </a>
+                <span role="status" aria-live="polite" className={`text-xs ${copied === "no" ? "text-red-300" : "text-emerald-300"}`}>
+                  {copied === "yes" ? "Copied to the clipboard." : copied === "no" ? "Could not copy: select the codes or use Download." : ""}
+                </span>
+              </div>
             </div>
           )}
-          <p className="mt-3 text-xs text-zinc-500">
+          <p className="mt-3 text-xs text-zinc-400">
             Lost your phone and your codes? Another administrator with “Appoint, edit, suspend and remove administrators” can reset your two-factor after
             confirming who you are.
           </p>
@@ -94,12 +134,12 @@ export default function SecurityClient() {
             Signed in as {me.email} · <span className="text-zinc-400">{me.roleName}</span>
           </p>
           <p className="mt-1 text-sm text-zinc-300">Ends {fmtTime(me.sessionExpiresAt)}, or when you sign out of NeoConference.</p>
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="mt-1 text-xs text-zinc-400">
             Sensitive actions (marked on the Roles page) ask for a fresh code if your last one was more than 10 minutes ago. Five wrong codes lock
             verification for 15 minutes, and every attempt is in the audit log.
           </p>
-          <button type="button" className={`${btn.ghost} mt-3`} onClick={lock}>
-            Lock the admin area now
+          <button type="button" className={`${btn.ghost} mt-3`} onClick={lock} disabled={locking}>
+            {locking ? "Locking…" : "Lock the admin area now"}
           </button>
         </Panel>
 
@@ -129,7 +169,8 @@ export default function SecurityClient() {
           body="Your current codes stop working at once. You will see ten new ones, once."
           confirmLabel="Replace codes"
           onCancel={() => setAsking(false)}
-          onConfirm={regenerate}
+          // The promise keeps the dialog on "Working…" until the new codes arrive.
+          onConfirm={() => regenerate()}
         />
       )}
     </div>

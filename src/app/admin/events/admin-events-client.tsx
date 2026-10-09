@@ -1,30 +1,21 @@
 "use client";
 
 // src/app/admin/events/admin-events-client.tsx
-// Read-only platform-wide events table. Filters, sorts, paginates. No
-// write actions in this PR (Tier 1). Admin actions land in PR C.
+// Every meeting on the platform: search, filters, sort and pages, all kept
+// in the address bar so the Overview ("?state=live"), the admin search and
+// user pages ("?q=") can link straight to a filtered list. Per-row actions
+// live in EventActions.
 
-import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  Globe,
-  Loader2,
-  Radio,
-  Search,
-  Ticket,
-  Video,
-  Link as LinkIcon,
-} from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Globe, Radio, Ticket, Video, Link as LinkIcon } from "lucide-react";
 import type { AdminEventView, EventState, EventVisibility } from "@/types/event";
-import EventActions from "./EventActions";
-import { useToaster, type ToastKind } from "./Toaster";
+import { Time, errorText, fmtNumber, useAdmin } from "../AdminApi";
+import { FilterBar, Labeled, LoadState, Notice, PageHeader, Pager, SortTh, TableWrap, field, useUrlFilters, type SortDir } from "../ui";
+import EventActions, { type ActionResult } from "./EventActions";
 
 type DateRange = "today" | "week" | "month" | "all";
 type SortKey = "createdAt" | "updatedAt" | "name" | "ownerEmail";
-type SortOrder = "asc" | "desc";
 
 interface ApiResponse {
   events: AdminEventView[];
@@ -51,311 +42,223 @@ const VISIBILITY_OPTIONS: ReadonlyArray<{ value: "" | EventVisibility; label: st
   { value: "private", label: "Private" },
 ];
 
+// "Today" is a UTC day on the server; week and month are the last 7 / 30 days.
 const DATE_RANGE_OPTIONS: ReadonlyArray<{ value: DateRange; label: string }> = [
   { value: "all", label: "All time" },
-  { value: "today", label: "Today" },
-  { value: "week", label: "This week" },
-  { value: "month", label: "This month" },
+  { value: "today", label: "Today (UTC)" },
+  { value: "week", label: "Last 7 days" },
+  { value: "month", label: "Last 30 days" },
 ];
 
-const PAGE_SIZE_OPTIONS: ReadonlyArray<number> = [25, 50, 100];
+const SORTS: ReadonlyArray<SortKey> = ["createdAt", "updatedAt", "name", "ownerEmail"];
+const PAGE_SIZES = [25, 50, 100];
 
 const STATE_BADGE: Record<EventState, string> = {
   scheduled: "bg-zinc-700/60 text-zinc-300 border-zinc-600/40",
   waiting: "bg-amber-500/15 text-amber-400 border-amber-400/30",
-  live: "bg-red-500/15 text-red-400 border-red-400/40 animate-pulse",
+  live: "bg-red-500/15 text-red-400 border-red-400/40 motion-safe:animate-pulse",
   ended: "bg-zinc-700/40 text-zinc-400 border-zinc-600/30",
   replay: "bg-cyan-500/15 text-cyan-400 border-cyan-400/30",
-  archived: "bg-zinc-800/60 text-zinc-500 border-zinc-700/40 italic",
+  archived: "bg-zinc-800/60 text-zinc-400 border-zinc-700/40 italic",
 };
 
-function formatRelative(iso: string | undefined): { label: string; full: string } {
-  if (!iso) return { label: "—", full: "" };
-  const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return { label: "—", full: iso };
-  const diff = Date.now() - ms;
-  const sec = Math.floor(diff / 1000);
-  if (sec < 30) return { label: "just now", full: iso };
-  const min = Math.floor(sec / 60);
-  if (min < 60) return { label: `${min}m ago`, full: iso };
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return { label: `${hr}h ago`, full: iso };
-  const day = Math.floor(hr / 24);
-  if (day < 30) return { label: `${day}d ago`, full: iso };
-  const mo = Math.floor(day / 30);
-  if (mo < 12) return { label: `${mo}mo ago`, full: iso };
-  const yr = Math.floor(day / 365);
-  return { label: `${yr}y ago`, full: iso };
+const DEFAULTS = { q: "", state: "", visibility: "", dateRange: "all", sort: "updatedAt", order: "desc", page: "1", pageSize: "25" };
+
+function oneOf<T extends string>(v: string, allowed: ReadonlyArray<T>, fallback: T): T {
+  return (allowed as ReadonlyArray<string>).includes(v) ? (v as T) : fallback;
 }
 
-function useDebounced<T>(value: T, delayMs: number): T {
-  const [v, setV] = useState<T>(value);
-  useEffect(() => {
-    const id = window.setTimeout(() => setV(value), delayMs);
-    return () => window.clearTimeout(id);
-  }, [value, delayMs]);
-  return v;
-}
+const values = <T extends string>(opts: ReadonlyArray<{ value: T }>) => opts.map((o) => o.value);
 
 export default function AdminEventsClient() {
-  // ?q= and ?state= open the list filtered (the Overview and the admin search link here).
-  const sp = useSearchParams();
-  const [q, setQ] = useState(sp?.get("q") ?? "");
-  const debouncedQ = useDebounced(q, 250);
-  const [state, setState] = useState<"" | EventState>(() => {
-    const s = sp?.get("state") ?? "";
-    return STATE_OPTIONS.some((o) => o.value === s) ? (s as EventState) : "";
-  });
-  const [visibility, setVisibility] = useState<"" | EventVisibility>("");
-  const [dateRange, setDateRange] = useState<DateRange>("all");
-  const [sort, setSort] = useState<SortKey>("updatedAt");
-  const [order, setOrder] = useState<SortOrder>("desc");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const { adminFetch, can } = useAdmin();
+  const f = useUrlFilters(DEFAULTS);
+  // The URL is the source of truth; anything it carries that the server would ignore reads as the default.
+  const state = oneOf<"" | EventState>(f.value.state, values(STATE_OPTIONS), "");
+  const visibility = oneOf<"" | EventVisibility>(f.value.visibility, values(VISIBILITY_OPTIONS), "");
+  const dateRange = oneOf<DateRange>(f.value.dateRange, values(DATE_RANGE_OPTIONS), "all");
+  const sort = oneOf<SortKey>(f.value.sort, SORTS, "updatedAt");
+  const order: SortDir = f.value.order === "asc" ? "asc" : "desc";
+  const page = Math.max(1, parseInt(f.value.page, 10) || 1);
+  const pageSize = PAGE_SIZES.includes(Number(f.value.pageSize)) ? Number(f.value.pageSize) : 25;
+  const q = f.value.q.trim();
+
+  // The search box types freely and writes to the URL after a pause; a new
+  // ?q= arriving from elsewhere (the admin search) replaces what is typed.
+  const [text, setText] = useState(f.value.q);
+  const written = useRef(f.value.q);
+  useEffect(() => {
+    if (f.value.q !== written.current) {
+      written.current = f.value.q;
+      setText(f.value.q);
+    }
+  }, [f.value.q]);
+  const { set } = f;
+  useEffect(() => {
+    if (text === written.current) return;
+    const t = window.setTimeout(() => {
+      written.current = text;
+      set({ q: text, page: "1" });
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [text, set]);
 
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [msg, setMsg] = useState<ActionResult | null>(null);
   const reqIdRef = useRef(0);
-  const { pushToast, Toaster } = useToaster();
 
-  // Reset to page 1 whenever a filter/sort/pageSize change would shift results.
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedQ, state, visibility, dateRange, sort, order, pageSize]);
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (state) params.set("state", state);
+  if (visibility) params.set("visibility", visibility);
+  if (dateRange !== "all") params.set("dateRange", dateRange);
+  params.set("sort", sort);
+  params.set("order", order);
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+  const apiQuery = params.toString();
 
   const fetchEvents = useCallback(async () => {
     const myReq = ++reqIdRef.current;
     setLoading(true);
     setError(null);
-    try {
-      const url = new URL("/api/admin/events", window.location.origin);
-      if (debouncedQ) url.searchParams.set("q", debouncedQ);
-      if (state) url.searchParams.set("state", state);
-      if (visibility) url.searchParams.set("visibility", visibility);
-      if (dateRange !== "all") url.searchParams.set("dateRange", dateRange);
-      url.searchParams.set("sort", sort);
-      url.searchParams.set("order", order);
-      url.searchParams.set("page", String(page));
-      url.searchParams.set("pageSize", String(pageSize));
-      const res = await fetch(url, { cache: "no-store" });
-      const json = (await res.json()) as ApiResponse | { error?: string };
-      if (!res.ok) {
-        const msg = (json as { error?: string }).error || `HTTP ${res.status}`;
-        throw new Error(msg);
-      }
-      if (myReq === reqIdRef.current) {
-        setData(json as ApiResponse);
-      }
-    } catch (e) {
-      if (myReq === reqIdRef.current) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    } finally {
-      if (myReq === reqIdRef.current) setLoading(false);
-    }
-  }, [debouncedQ, state, visibility, dateRange, sort, order, page, pageSize]);
+    const r = await adminFetch<ApiResponse>(`/api/admin/events?${apiQuery}`);
+    if (myReq !== reqIdRef.current) return; // a newer request has started
+    setLoading(false);
+    if (r.ok) setData(r.data);
+    else setError(`Could not load the meetings: ${errorText(r)}`);
+  }, [adminFetch, apiQuery]);
 
   useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
 
-  const showingFrom = useMemo(
-    () => (data && data.total > 0 ? (data.page - 1) * data.pageSize + 1 : 0),
-    [data]
-  );
-  const showingTo = useMemo(
-    () => (data ? Math.min(data.page * data.pageSize, data.total) : 0),
-    [data]
-  );
-
-  const toggleSort = (key: SortKey) => {
-    if (sort === key) {
-      setOrder((o) => (o === "asc" ? "desc" : "asc"));
-    } else {
-      setSort(key);
-      setOrder(key === "name" || key === "ownerEmail" ? "asc" : "desc");
-    }
-  };
+  const filtered = !!(q || state || visibility || dateRange !== "all");
+  const canWrite = can("events:write");
+  const canSeeUsers = can("users:read");
 
   return (
-    <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6 sm:py-8 text-zinc-200">
-      <header className="mb-5">
-        <h1 className="text-2xl font-semibold text-cyan-100">Admin · Events</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          All events across the platform.{" "}
-          {data ? (
-            <span className="text-zinc-500">
-              Showing {data.total === 0 ? 0 : `${showingFrom}–${showingTo}`} of {data.total}{" "}
-              {data.total === 1 ? "event" : "events"}
-            </span>
-          ) : null}
-        </p>
-      </header>
+    <div className="text-zinc-200">
+      <PageHeader
+        title="Meetings"
+        sub={
+          <>
+            Every meeting and event on the platform.
+            {data && (
+              <span className="text-zinc-400">
+                {" "}
+                {fmtNumber(data.total)} {filtered ? "match these filters" : "in total"}.
+              </span>
+            )}
+          </>
+        }
+      />
 
-      <div
-        className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border p-3 sm:p-4 backdrop-blur-xl"
-        style={{
-          background: "rgba(0,0,0,0.4)",
-          borderColor: "rgba(255,255,255,0.08)",
-          borderWidth: "0.5px",
+      {msg && (
+        <Notice kind={msg.kind} onClose={() => setMsg(null)}>
+          {msg.text}
+        </Notice>
+      )}
+
+      <FilterBar
+        active={f.active}
+        onClear={() => {
+          written.current = "";
+          setText("");
+          f.reset();
         }}
       >
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" aria-hidden="true" />
-          <input
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search by name, slug, owner..."
-            className="w-full rounded-lg border border-white/10 bg-black/40 py-2 pl-9 pr-3 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-cyan-400/60 focus:ring-1 focus:ring-cyan-400/40"
-          />
-        </div>
-        <FilterSelect
-          value={state}
-          onChange={(v) => setState(v as "" | EventState)}
-          options={STATE_OPTIONS}
-        />
-        <FilterSelect
-          value={visibility}
-          onChange={(v) => setVisibility(v as "" | EventVisibility)}
-          options={VISIBILITY_OPTIONS}
-        />
-        <FilterSelect
-          value={dateRange}
-          onChange={(v) => setDateRange(v as DateRange)}
-          options={DATE_RANGE_OPTIONS}
-        />
-      </div>
+        <Labeled label="Search" className="min-w-[12rem] flex-1">
+          <input type="search" value={text} onChange={(e) => setText(e.target.value)} placeholder="Name, address, owner…" className={field} />
+        </Labeled>
+        <Labeled label="State">
+          <FilterSelect value={state} onChange={(v) => f.set({ state: v, page: "1" })} options={STATE_OPTIONS} />
+        </Labeled>
+        <Labeled label="Visibility">
+          <FilterSelect value={visibility} onChange={(v) => f.set({ visibility: v, page: "1" })} options={VISIBILITY_OPTIONS} />
+        </Labeled>
+        <Labeled label="Created">
+          <FilterSelect value={dateRange} onChange={(v) => f.set({ dateRange: v, page: "1" })} options={DATE_RANGE_OPTIONS} />
+        </Labeled>
+      </FilterBar>
 
-      <div
-        className="overflow-hidden rounded-2xl border backdrop-blur-xl"
-        style={{
-          background: "rgba(0,0,0,0.4)",
-          borderColor: "rgba(255,255,255,0.08)",
-          borderWidth: "0.5px",
-        }}
+      <LoadState
+        data={data}
+        error={error}
+        onRetry={fetchEvents}
+        isEmpty={(d) => d.total === 0}
+        empty={filtered ? "No meetings match these filters." : "No meetings yet."}
       >
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className="border-b border-white/[0.08] text-[10px] font-medium uppercase tracking-widest text-zinc-500">
-              <tr>
-                <SortableTh label="Name" col="name" sort={sort} order={order} onClick={toggleSort} />
-                <th className="px-4 py-3">State</th>
-                <SortableTh label="Owner" col="ownerEmail" sort={sort} order={order} onClick={toggleSort} />
-                <SortableTh label="Created" col="createdAt" sort={sort} order={order} onClick={toggleSort} />
-                <SortableTh label="Last updated" col="updatedAt" sort={sort} order={order} onClick={toggleSort} />
-                <th className="px-4 py-3">Flags</th>
-                <th className="px-2 py-3 w-10">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {error && (
+        {(d) => (
+          <>
+            <p role="status" aria-live="polite" className="sr-only">
+              {loading ? "Refreshing the list…" : ""}
+            </p>
+            {d.events.length === 0 && (
+              <Notice kind="info">
+                This page is past the end of the list.{" "}
+                <button type="button" className="underline" onClick={() => f.set({ page: "1" })}>
+                  Go to the first page
+                </button>
+              </Notice>
+            )}
+            <TableWrap minWidth={860} className={loading ? "opacity-70" : ""}>
+              <thead className="border-b border-white/10 text-xs text-zinc-400">
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-red-400">
-                    Failed to load events: {error}
-                  </td>
+                  <SortTh label="Name" k="name" sort={{ key: sort, dir: order }} onSort={onSort} />
+                  <th className="px-3 py-2 font-medium">State</th>
+                  <SortTh label="Owner" k="ownerEmail" sort={{ key: sort, dir: order }} onSort={onSort} />
+                  <SortTh label="Created" k="createdAt" sort={{ key: sort, dir: order }} onSort={onSort} />
+                  <SortTh label="Last updated" k="updatedAt" sort={{ key: sort, dir: order }} onSort={onSort} />
+                  <th className="px-3 py-2 font-medium">Flags</th>
+                  <th className="w-10 px-2 py-2">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
-              )}
-              {!error && data && data.events.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-zinc-500">
-                    {debouncedQ || state || visibility || dateRange !== "all"
-                      ? "No events match these filters."
-                      : "No events yet."}
-                  </td>
-                </tr>
-              )}
-              {!error &&
-                data &&
-                data.events.map((ev) => (
+              </thead>
+              <tbody>
+                {d.events.map((ev) => (
                   <EventRow
                     key={ev.id}
                     ev={ev}
-                    onActionComplete={fetchEvents}
-                    pushToast={pushToast}
+                    canWrite={canWrite}
+                    canSeeUsers={canSeeUsers}
+                    onStart={() => setMsg(null)}
+                    onDone={(r) => {
+                      setMsg(r);
+                      if (r.kind === "ok") fetchEvents();
+                    }}
                   />
                 ))}
-              {!error && !data && loading && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-zinc-500">
-                    <Loader2 className="mx-auto h-5 w-5 animate-spin text-cyan-300" aria-hidden="true" />
-                    <div className="mt-2">Loading events...</div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <Toaster />
-
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-xs text-zinc-500">
-          {data && (
-            <>
-              Page {data.page} of {data.pageCount} · {data.total} total{" "}
-              {data.total === 1 ? "event" : "events"}
-              {loading && <span className="ml-2 text-cyan-400/60">refreshing...</span>}
-            </>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-zinc-500" htmlFor="page-size">
-            Per page
-          </label>
-          <select
-            id="page-size"
-            value={pageSize}
-            onChange={(e) => setPageSize(parseInt(e.target.value, 10) || 25)}
-            className="rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-xs text-zinc-200 outline-none focus:border-cyan-400/60"
-          >
-            {PAGE_SIZE_OPTIONS.map((n) => (
-              <option key={n} value={n} className="bg-zinc-900 text-zinc-200">
-                {n}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={!data || data.page <= 1}
-            className="rounded-lg border border-white/10 bg-black/40 px-3 py-1 text-xs text-zinc-200 transition hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            Previous
-          </button>
-          <button
-            type="button"
-            onClick={() => setPage((p) => (data ? Math.min(data.pageCount, p + 1) : p))}
-            disabled={!data || data.page >= data.pageCount}
-            className="rounded-lg border border-white/10 bg-black/40 px-3 py-1 text-xs text-zinc-200 transition hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-30"
-          >
-            Next
-          </button>
-        </div>
-      </div>
-    </main>
+              </tbody>
+            </TableWrap>
+            <Pager
+              page={d.page}
+              pageSize={d.pageSize}
+              total={d.total}
+              noun="meeting"
+              onPage={(p) => f.set({ page: String(p) })}
+              onPageSize={(n) => f.set({ pageSize: String(n), page: "1" })}
+              sizes={PAGE_SIZES}
+            />
+          </>
+        )}
+      </LoadState>
+    </div>
   );
+
+  function onSort(k: string, dir: SortDir) {
+    // A new text column starts A→Z; a new date column starts newest first.
+    const first = k !== sort && (k === "name" || k === "ownerEmail") ? "asc" : dir;
+    f.set({ sort: k, order: first, page: "1" });
+  }
 }
 
-function FilterSelect({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: ReadonlyArray<{ value: string; label: string }>;
-}) {
+function FilterSelect({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: ReadonlyArray<{ value: string; label: string }> }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-zinc-200 outline-none transition focus:border-cyan-400/60 focus:ring-1 focus:ring-cyan-400/40"
-    >
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={`${field} w-auto`}>
       {options.map((o) => (
         <option key={o.value} value={o.value} className="bg-zinc-900 text-zinc-200">
           {o.label}
@@ -365,86 +268,49 @@ function FilterSelect({
   );
 }
 
-function SortableTh({
-  label,
-  col,
-  sort,
-  order,
-  onClick,
-}: {
-  label: string;
-  col: SortKey;
-  sort: SortKey;
-  order: SortOrder;
-  onClick: (col: SortKey) => void;
-}) {
-  const active = sort === col;
-  const Icon = !active ? ArrowUpDown : order === "asc" ? ArrowUp : ArrowDown;
-  return (
-    <th className="px-4 py-3">
-      <button
-        type="button"
-        onClick={() => onClick(col)}
-        className={[
-          "inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-widest transition-colors",
-          active ? "text-cyan-300" : "text-zinc-500 hover:text-zinc-300",
-        ].join(" ")}
-      >
-        {label}
-        <Icon className="h-3 w-3" aria-hidden="true" />
-      </button>
-    </th>
-  );
-}
-
 function EventRow({
   ev,
-  onActionComplete,
-  pushToast,
+  canWrite,
+  canSeeUsers,
+  onStart,
+  onDone,
 }: {
   ev: AdminEventView;
-  onActionComplete: () => void;
-  pushToast: (t: { kind: ToastKind; text: string }) => void;
+  canWrite: boolean;
+  canSeeUsers: boolean;
+  onStart: () => void;
+  onDone: (r: ActionResult) => void;
 }) {
-  const created = formatRelative(ev.createdAt);
-  const updated = formatRelative(ev.updatedAt);
   const owner = ev.ownerEmail || ev.ownerName || ev.ownerUserId;
   return (
-    <tr className="border-b border-white/[0.04] last:border-b-0 transition-colors hover:bg-white/[0.03]">
-      <td className="px-4 py-3 align-top">
-        <a
-          href={`/e/${ev.slug}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-medium text-zinc-100 hover:text-cyan-300"
-        >
+    <tr className="border-b border-white/[0.04] transition-colors last:border-b-0 hover:bg-white/[0.03]">
+      <td className="px-3 py-3 align-top">
+        <a href={`/e/${ev.slug}`} target="_blank" rel="noopener noreferrer" className="font-medium text-zinc-100 hover:text-cyan-300">
           {ev.name || ev.slug}
+          <span className="sr-only"> (opens in a new tab)</span>
         </a>
-        <div className="mt-0.5 truncate text-xs text-zinc-500">{ev.slug}</div>
+        <div className="mt-0.5 truncate font-mono text-xs text-zinc-400">{ev.slug}</div>
       </td>
-      <td className="px-4 py-3 align-top">
-        <span
-          className={[
-            "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider",
-            STATE_BADGE[ev.state],
-          ].join(" ")}
-        >
-          {ev.state}
-        </span>
+      <td className="px-3 py-3 align-top">
+        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${STATE_BADGE[ev.state]}`}>{ev.state}</span>
       </td>
-      <td className="px-4 py-3 align-top text-xs text-zinc-300">
-        <div className="truncate">{owner}</div>
-        {ev.ownerEmail && ev.ownerName && (
-          <div className="mt-0.5 truncate text-zinc-500">{ev.ownerName}</div>
+      <td className="px-3 py-3 align-top text-xs text-zinc-300">
+        {canSeeUsers && ev.ownerUserId ? (
+          <Link href={`/admin/users/${encodeURIComponent(ev.ownerUserId)}`} className="block truncate hover:text-cyan-300 hover:underline">
+            {owner}
+          </Link>
+        ) : (
+          <div className="truncate">{owner}</div>
         )}
+        {ev.ownerEmail && ev.ownerName && <div className="mt-0.5 truncate text-zinc-400">{ev.ownerName}</div>}
       </td>
-      <td className="px-4 py-3 align-top text-xs text-zinc-400" title={created.full}>
-        {created.label}
+      <td className="px-3 py-3 align-top text-xs text-zinc-400">
+        <Time ts={ev.createdAt} mode="relative" />
       </td>
-      <td className="px-4 py-3 align-top text-xs text-zinc-400" title={updated.full}>
-        {updated.label}
+      <td className="px-3 py-3 align-top text-xs text-zinc-400">
+        <Time ts={ev.updatedAt} mode="relative" />
       </td>
-      <td className="px-4 py-3 align-top">
+      <td className="px-3 py-3 align-top">
         <div className="flex items-center gap-2 text-zinc-400">
           {ev.hasRecording && (
             <span title={`Recording (${ev.recordingCount})`}>
@@ -476,19 +342,15 @@ function EventRow({
               <span className="sr-only">Custom domain {ev.customDomain}</span>
             </span>
           )}
-          {!ev.hasRecording &&
-            !ev.isStreaming &&
-            !ev.isPaid &&
-            !ev.hasShortlink &&
-            !ev.customDomain && (
-              <span className="text-zinc-700" aria-hidden="true">
-                —
-              </span>
-            )}
+          {!ev.hasRecording && !ev.isStreaming && !ev.isPaid && !ev.hasShortlink && !ev.customDomain && (
+            <span className="text-zinc-700" aria-hidden="true">
+              —
+            </span>
+          )}
         </div>
       </td>
-      <td className="px-2 py-3 align-top text-right">
-        <EventActions ev={ev} onActionComplete={onActionComplete} pushToast={pushToast} />
+      <td className="px-2 py-3 text-right align-top">
+        <EventActions ev={ev} canWrite={canWrite} onStart={onStart} onDone={onDone} />
       </td>
     </tr>
   );

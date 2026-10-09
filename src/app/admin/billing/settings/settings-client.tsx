@@ -5,10 +5,9 @@
 // for failed payments, abandoned checkouts and renewals.
 
 import { useCallback, useEffect, useState } from "react";
-import { fmtTime, useAdmin } from "../../AdminApi";
-import { Badge, Confirm, Empty, Loading, Notice, PageHeader, Panel, btn, field } from "../../ui";
-import { fmtMoney } from "@/lib/finance/money";
-import { BillingNav, day } from "../shared";
+import { Time, fmtMoney, fmtNumber, useAdmin } from "../../AdminApi";
+import { Badge, Confirm, Empty, EmptyLine, Loading, Notice, PageHeader, Pager, Panel, btn, field, useClientTable } from "../../ui";
+import { BillingNav } from "../shared";
 
 // `rate` is kept as typed ("7." on the way to "7.5"); the server reads it as a number.
 type TaxRule = { id?: string; country: string; region?: string; rate: number | string; inclusive: boolean; label: string };
@@ -41,36 +40,67 @@ type Reminders = {
   preview: { ran: boolean; skipped?: string; alreadySent: number; preview?: { kind: string; email: string | null; step: number; subjectLine: string; amount: number | null; currency: string }[] };
 };
 
+const GATEWAY_EFFECT = { espees: "eSPees plan checkout stops taking payments", stripe: "Stripe ticket checkout stops taking payments" } as const;
+const ruleName = (r: TaxRule) => `${r.country || "?"}${r.region ? `/${r.region}` : ""} ${r.label} ${r.rate}%${r.inclusive ? " (in price)" : ""}`;
+
 export default function SettingsClient() {
   const { can, adminFetch } = useAdmin();
   const editable = can("billing:settings");
   const [s, setS] = useState<Settings | null>(null);
+  // What the server holds, to tell which changes switch something off.
+  const [saved, setSaved] = useState<Settings | null>(null);
   const [gateways, setGateways] = useState<Gateway[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState<string[] | null>(null);
 
-  useEffect(() => {
-    adminFetch<{ settings: Settings; gateways: Gateway[] }>("/api/admin/billing/settings").then((r) => {
-      if (r.ok) {
-        setS(r.data.settings);
-        setGateways(r.data.gateways);
-      } else setError(r.data.message ?? "Could not load billing settings.");
-    });
+  const load = useCallback(async () => {
+    setLoadError(null);
+    const r = await adminFetch<{ settings: Settings; gateways: Gateway[] }>("/api/admin/billing/settings");
+    if (r.ok) {
+      setS(r.data.settings);
+      setSaved(r.data.settings);
+      setGateways(r.data.gateways);
+    } else setLoadError(r.data.message ?? "Could not load billing settings.");
   }, [adminFetch]);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Changes that stop something working: confirmed before saving.
+  const risky = (): string[] => {
+    if (!s || !saved) return [];
+    const out: string[] = [];
+    for (const g of ["espees", "stripe"] as const) if (saved.gateways[g].enabled && !s.gateways[g].enabled) out.push(`${GATEWAY_EFFECT[g]}.`);
+    // Rules saved before ids existed are matched by where they apply.
+    const key = (r: TaxRule) => r.id ?? `${r.country}|${r.region ?? ""}`;
+    const kept = new Set(s.tax.rules.map(key));
+    for (const r of saved.tax.rules) if (!kept.has(key(r))) out.push(`Tax rule ${ruleName(r)} is removed from invoices issued from now on.`);
+    return out;
+  };
 
   const save = async () => {
     if (!s) return;
     setBusy(true);
     setError(null);
+    setNotice(null);
     const r = await adminFetch<{ settings: Settings; unchanged?: boolean }>("/api/admin/billing/settings", {
       method: "PUT",
       json: { gateways: s.gateways, tax: s.tax, invoice: s.invoice },
     });
     setBusy(false);
+    setAsking(null);
     if (!r.ok) return setError(r.data.message ?? "Could not save.");
     setS(r.data.settings);
+    setSaved(r.data.settings);
     setNotice(r.data.unchanged ? "Nothing had changed." : "Billing settings saved.");
+  };
+  const askSave = () => {
+    const list = risky();
+    if (list.length) setAsking(list);
+    else save();
   };
 
   return (
@@ -95,30 +125,34 @@ export default function SettingsClient() {
         </Notice>
       )}
       {!s ? (
-        !error && <Loading />
+        loadError ? (
+          <Notice kind="err" onRetry={load}>
+            {loadError}
+          </Notice>
+        ) : (
+          <Loading />
+        )
       ) : (
         <div className="space-y-4">
           <Panel>
             <h2 className="text-sm font-semibold text-white">Payment gateways</h2>
-            <p className="mt-0.5 text-xs text-zinc-500">
+            <p className="mt-0.5 text-xs text-zinc-400">
               Credentials live in the Vercel project&apos;s environment variables, not here. This page only says whether each is set — no value, or any part of one, is ever shown or stored.
             </p>
             <div className="mt-3 grid gap-3 lg:grid-cols-2">
               {gateways.map((g) => {
                 const toggle = g.id === "espees" || g.id === "stripe" ? (g.id as "espees" | "stripe") : null;
                 return (
-                  <div key={g.id} className="rounded-lg border border-white/10 p-3">
-                    <div className="flex items-center justify-between gap-2">
+                  <div key={g.id} className="min-w-0 rounded-lg border border-white/10 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-medium text-zinc-100">{g.name}</p>
                       <Badge tone={g.configured ? "green" : "amber"}>{g.configured ? "Configured" : "Not configured"}</Badge>
                     </div>
                     <ul className="mt-2 space-y-0.5 font-mono text-[11px]">
                       {g.vars.map((v) => (
-                        <li key={v.name} className="flex justify-between gap-2">
-                          <span className="text-zinc-300">{v.name}</span>
-                          <span className={v.set ? "text-emerald-300" : "text-amber-300"}>
-                            {v.set ? (v.secret ? "set · ••••••" : "set") : "missing"}
-                          </span>
+                        <li key={v.name} className="flex flex-wrap justify-between gap-x-2">
+                          <span className="break-all text-zinc-300">{v.name}</span>
+                          <span className={v.set ? "text-emerald-300" : "text-amber-300"}>{v.set ? (v.secret ? "set · ••••••" : "set") : "missing"}</span>
                         </li>
                       ))}
                     </ul>
@@ -153,25 +187,26 @@ export default function SettingsClient() {
 
           <Panel>
             <h2 className="text-sm font-semibold text-white">Tax rules</h2>
-            <p className="mt-0.5 text-xs text-zinc-500">
+            <p className="mt-0.5 text-xs text-zinc-400">
               Applied to invoices by the buyer&apos;s country (from their connection when they paid, or Stripe&apos;s billing address). The most specific rule wins; “*” covers everywhere else. Checkout charges the listed price either way, so an inclusive rule splits the tax out of it, and an exclusive rule shows the tax as still owed.
             </p>
-            {s.tax.rules.length === 0 && <p className="mt-3 text-sm text-zinc-400">No tax rules: invoices show no tax.</p>}
+            {s.tax.rules.length === 0 && <EmptyLine>No tax rules: invoices show no tax.</EmptyLine>}
             <div className="mt-3 space-y-2">
               {s.tax.rules.map((r, i) => {
                 const upd = (patch: Partial<TaxRule>) => setS({ ...s, tax: { rules: s.tax.rules.map((x, j) => (j === i ? { ...x, ...patch } : x)) } });
+                const n = `Rule ${i + 1}`;
                 return (
                   <div key={r.id ?? i} className="grid grid-cols-2 gap-2 sm:grid-cols-[5rem_1fr_6rem_6rem_auto_auto] sm:items-center">
-                    <input aria-label="Country" placeholder="NG or *" value={r.country} disabled={!editable} onChange={(e) => upd({ country: e.target.value.toUpperCase() })} className={field} maxLength={2} />
-                    <input aria-label="Region" placeholder="Region (optional)" value={r.region ?? ""} disabled={!editable} onChange={(e) => upd({ region: e.target.value })} className={field} />
-                    <input aria-label="Rate %" inputMode="decimal" value={String(r.rate)} disabled={!editable} onChange={(e) => upd({ rate: e.target.value.replace(/[^0-9.]/g, "") })} className={field} />
-                    <input aria-label="Label" placeholder="VAT" value={r.label} disabled={!editable} onChange={(e) => upd({ label: e.target.value })} className={field} />
+                    <input aria-label={`${n}: country`} placeholder="NG or *" value={r.country} disabled={!editable} onChange={(e) => upd({ country: e.target.value.toUpperCase() })} className={field} maxLength={2} />
+                    <input aria-label={`${n}: region`} placeholder="Region (optional)" value={r.region ?? ""} disabled={!editable} onChange={(e) => upd({ region: e.target.value })} className={field} />
+                    <input aria-label={`${n}: rate %`} inputMode="decimal" value={String(r.rate)} disabled={!editable} onChange={(e) => upd({ rate: e.target.value.replace(/[^0-9.]/g, "") })} className={field} />
+                    <input aria-label={`${n}: label`} placeholder="VAT" value={r.label} disabled={!editable} onChange={(e) => upd({ label: e.target.value })} className={field} />
                     <label className="flex items-center gap-1.5 text-xs text-zinc-300">
                       <input type="checkbox" checked={r.inclusive} disabled={!editable} onChange={(e) => upd({ inclusive: e.target.checked })} />
                       in price
                     </label>
                     {editable && (
-                      <button type="button" className={btn.ghost} onClick={() => setS({ ...s, tax: { rules: s.tax.rules.filter((_, j) => j !== i) } })}>
+                      <button type="button" className={btn.ghost} aria-label={`Remove ${n.toLowerCase()} (${r.country || "no country"})`} onClick={() => setS({ ...s, tax: { rules: s.tax.rules.filter((_, j) => j !== i) } })}>
                         Remove
                       </button>
                     )}
@@ -184,11 +219,12 @@ export default function SettingsClient() {
                 Add a rule
               </button>
             )}
+            {editable && <p className="mt-2 text-xs text-zinc-400">Removing a rule takes effect when you save the billing settings below.</p>}
           </Panel>
 
           <Panel>
             <h2 className="text-sm font-semibold text-white">Invoice details</h2>
-            <p className="mt-0.5 text-xs text-zinc-500">Printed on invoices issued from now on. An invoice already issued keeps the details it was issued with.</p>
+            <p className="mt-0.5 text-xs text-zinc-400">Printed on invoices issued from now on. An invoice already issued keeps the details it was issued with.</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {(
                 [
@@ -214,13 +250,13 @@ export default function SettingsClient() {
           </Panel>
 
           {editable && (
-            <div className="flex items-center justify-end gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-3">
               {s.updatedAt && (
-                <span className="text-xs text-zinc-500">
-                  Last changed {fmtTime(s.updatedAt)} by {s.updatedBy}
+                <span className="text-xs text-zinc-400">
+                  Last changed <Time ts={s.updatedAt} /> by {s.updatedBy}
                 </span>
               )}
-              <button type="button" className={btn.primary} disabled={busy} onClick={save}>
+              <button type="button" className={btn.primary} disabled={busy} onClick={askSave}>
                 {busy ? "Saving…" : "Save billing settings"}
               </button>
             </div>
@@ -228,6 +264,22 @@ export default function SettingsClient() {
 
           <RemindersPanel editable={editable} />
         </div>
+      )}
+      {asking && (
+        <Confirm
+          title="Save these billing settings?"
+          body={
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {asking.map((l) => (
+                <li key={l}>{l}</li>
+              ))}
+            </ul>
+          }
+          confirmLabel="Save"
+          danger
+          onConfirm={save}
+          onCancel={() => setAsking(null)}
+        />
       )}
     </div>
   );
@@ -241,31 +293,39 @@ const parseDays = (s: string) =>
     .filter(Boolean)
     .map(Number);
 
+type Form = { failed: [boolean, string]; abandoned: [boolean, string]; renewal: [boolean, string] };
+
 function RemindersPanel({ editable }: { editable: boolean }) {
   const { adminFetch } = useAdmin();
   const [d, setD] = useState<Reminders | null>(null);
-  const [form, setForm] = useState<{ failed: [boolean, string]; abandoned: [boolean, string]; renewal: [boolean, string] } | null>(null);
+  const [form, setForm] = useState<Form | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmRun, setConfirmRun] = useState(false);
+  const [confirmSave, setConfirmSave] = useState(false);
+  const log = useClientTable(d?.log, (l) => l.at, { key: "at", dir: "desc", pageSize: 25 });
 
-  const load = useCallback(() => {
-    adminFetch<Reminders>("/api/admin/billing/reminders").then((r) => {
-      if (!r.ok) return setError(r.data.message ?? "Could not load reminders.");
-      setD(r.data);
-      const x = r.data.rules;
-      setForm({
-        failed: [x.failed.enabled, daysText(x.failed.afterDays)],
-        abandoned: [x.abandoned.enabled, daysText(x.abandoned.afterDays)],
-        renewal: [x.renewal.enabled, daysText(x.renewal.beforeDays)],
-      });
+  const load = useCallback(async () => {
+    setLoadError(null);
+    const r = await adminFetch<Reminders>("/api/admin/billing/reminders");
+    if (!r.ok) return setLoadError(r.data.message ?? "Could not load reminders.");
+    setD(r.data);
+    const x = r.data.rules;
+    setForm({
+      failed: [x.failed.enabled, daysText(x.failed.afterDays)],
+      abandoned: [x.abandoned.enabled, daysText(x.abandoned.afterDays)],
+      renewal: [x.renewal.enabled, daysText(x.renewal.beforeDays)],
     });
   }, [adminFetch]);
-  useEffect(load, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const save = async () => {
     if (!form) return;
     setError(null);
+    setNotice(null);
     const r = await adminFetch("/api/admin/billing/reminders", {
       method: "PUT",
       json: {
@@ -274,14 +334,17 @@ function RemindersPanel({ editable }: { editable: boolean }) {
         renewal: { enabled: form.renewal[0], beforeDays: parseDays(form.renewal[1]) },
       },
     });
+    setConfirmSave(false);
     if (!r.ok) return setError(r.data.message ?? "Could not save the reminder rules.");
     setNotice("Reminder rules saved.");
-    load();
+    await load();
   };
 
   const run = async () => {
-    setConfirmRun(false);
+    setError(null);
+    setNotice(null);
     const r = await adminFetch<{ result: { sent: number; failed: number; alreadySent: number; skipped?: string } }>("/api/admin/billing/reminders", { method: "POST" });
+    setConfirmRun(false);
     if (!r.ok) return setError(r.data.message ?? "Could not run the reminders.");
     const x = r.data.result;
     setNotice(
@@ -291,7 +354,7 @@ function RemindersPanel({ editable }: { editable: boolean }) {
           ? "Email is not set up (RESEND_API_KEY), so nothing was sent."
           : `Sent ${x.sent}, failed ${x.failed}, already sent before ${x.alreadySent}.`,
     );
-    load();
+    await load();
   };
 
   const rows: { key: "failed" | "abandoned" | "renewal"; title: string; help: string }[] = [
@@ -304,20 +367,29 @@ function RemindersPanel({ editable }: { editable: boolean }) {
   return (
     <Panel>
       <h2 className="text-sm font-semibold text-white">Reminder emails</h2>
-      <p className="mt-0.5 text-xs text-zinc-500">
+      <p className="mt-0.5 text-xs text-zinc-400">
         Sent once a day at 09:00 UTC by a scheduled job. Each reminder goes to a person once: a rerun, or two runs at once, cannot send it again. If several steps are due together, only the latest is sent. Nothing goes to someone who has paid since.
       </p>
       {d && !d.mailConfigured && <p className="mt-2 text-xs text-amber-200">Email is not set up (RESEND_API_KEY is missing): nothing will be sent until it is.</p>}
-      {notice && (
-        <div className="mt-2">
+      <div className="mt-2">
+        {notice && (
           <Notice kind="ok" onClose={() => setNotice(null)}>
             {notice}
           </Notice>
-        </div>
-      )}
-      {error && <p className="mt-2 text-sm text-red-300">{error}</p>}
+        )}
+        {error && (
+          <Notice kind="err" onClose={() => setError(null)}>
+            {error}
+          </Notice>
+        )}
+        {loadError && (
+          <Notice kind="err" onRetry={load}>
+            {loadError}
+          </Notice>
+        )}
+      </div>
       {!form ? (
-        <Loading />
+        !loadError && <Loading />
       ) : (
         <>
           <div className="mt-3 space-y-2">
@@ -328,58 +400,79 @@ function RemindersPanel({ editable }: { editable: boolean }) {
                   {row.title}
                 </label>
                 <input aria-label={`${row.title}: days`} value={form[row.key][1]} disabled={!editable} onChange={(e) => setForm({ ...form, [row.key]: [form[row.key][0], e.target.value] })} className={field} />
-                <span className="text-xs text-zinc-500">{row.help}, e.g. “1, 3”</span>
+                <span className="text-xs text-zinc-400">{row.help}, e.g. “1, 3”</span>
               </div>
             ))}
           </div>
           {editable && (
             <div className="mt-3 flex flex-wrap justify-end gap-2">
-              <button type="button" className={btn.ghost} onClick={() => setConfirmRun(true)}>
+              <button
+                type="button"
+                className={btn.ghost}
+                onClick={() => {
+                  setNotice(null);
+                  setConfirmRun(true);
+                }}
+              >
                 Run now
               </button>
-              <button type="button" className={btn.primary} onClick={save}>
+              <button
+                type="button"
+                className={btn.primary}
+                onClick={() => {
+                  setNotice(null);
+                  setConfirmSave(true);
+                }}
+              >
                 Save reminder rules
               </button>
             </div>
           )}
 
-          <h3 className="mt-4 text-xs font-semibold uppercase tracking-wider text-zinc-500">Next run would send</h3>
+          <h3 className="mt-4 text-xs font-semibold uppercase tracking-wider text-zinc-400">Next run would send</h3>
           {d?.preview.skipped === "all_off" ? (
-            <p className="mt-1 text-sm text-zinc-400">Nothing: every reminder is switched off.</p>
+            <EmptyLine>Nothing: every reminder is switched off.</EmptyLine>
           ) : preview.length === 0 ? (
-            <p className="mt-1 text-sm text-zinc-400">Nothing is due.{d?.preview.alreadySent ? ` ${d.preview.alreadySent} due reminder(s) were already sent.` : ""}</p>
+            <EmptyLine>Nothing is due.{d?.preview.alreadySent ? ` ${fmtNumber(d.preview.alreadySent)} due reminder(s) were already sent.` : ""}</EmptyLine>
           ) : (
             <ul className="mt-1 divide-y divide-white/5 text-sm">
               {preview.map((p, i) => (
                 <li key={i} className="flex flex-wrap gap-2 py-1.5">
                   <Badge>{p.kind}</Badge>
-                  <span className="text-zinc-200">{p.email ?? "no email on the account"}</span>
+                  <span className="break-all text-zinc-200">{p.email ?? "no email on the account"}</span>
                   <span className="min-w-0 flex-1 truncate text-zinc-400">{p.subjectLine}</span>
-                  {p.amount != null && <span className="text-xs text-zinc-500">{fmtMoney(p.amount, p.currency)}</span>}
+                  {p.amount != null && <span className="text-xs text-zinc-400">{fmtMoney(p.amount, p.currency)}</span>}
                 </li>
               ))}
             </ul>
           )}
 
-          <h3 className="mt-4 text-xs font-semibold uppercase tracking-wider text-zinc-500">Log</h3>
+          <h3 className="mt-4 text-xs font-semibold uppercase tracking-wider text-zinc-400">Log</h3>
           {!d?.log.length ? (
             <Empty>No reminders sent yet.</Empty>
           ) : (
-            <ul className="mt-1 divide-y divide-white/5 text-sm">
-              {d.log.map((l, i) => (
-                <li key={i} className="flex flex-wrap items-center gap-2 py-1.5">
-                  <span className="w-40 text-xs text-zinc-500">{fmtTime(l.at)}</span>
-                  <Badge tone={l.outcome === "sent" ? "green" : l.outcome === "failed" ? "red" : "zinc"}>{l.outcome}</Badge>
-                  <span className="text-zinc-300">{l.kind}</span>
-                  <span className="text-zinc-200">{l.email ?? "—"}</span>
-                  <span className="min-w-0 flex-1 truncate text-xs text-zinc-500">
-                    {l.detail} · {l.by === "cron" ? "scheduled" : `run by ${l.by}`}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="mt-1 divide-y divide-white/5 text-sm">
+                {log.visible.map((l, i) => (
+                  <li key={`${l.at}-${i}`} className="flex flex-wrap items-center gap-2 py-1.5">
+                    <Time ts={l.at} className="w-44 text-xs text-zinc-400" />
+                    <Badge tone={l.outcome === "sent" ? "green" : l.outcome === "failed" ? "red" : "zinc"}>{l.outcome}</Badge>
+                    <span className="text-zinc-300">{l.kind}</span>
+                    <span className="break-all text-zinc-200">{l.email ?? "—"}</span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-zinc-400">
+                      {l.detail} · {l.by === "cron" ? "scheduled" : `run by ${l.by}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {log.total > log.pageSize && <Pager page={log.page} pageSize={log.pageSize} total={log.total} onPage={log.setPage} noun="reminder" />}
+            </>
           )}
-          {d?.rules.updatedAt && <p className="mt-2 text-xs text-zinc-500">Rules last changed {day(d.rules.updatedAt)} by {d.rules.updatedBy}.</p>}
+          {d?.rules.updatedAt && (
+            <p className="mt-2 text-xs text-zinc-400">
+              Rules last changed <Time ts={d.rules.updatedAt} /> by {d.rules.updatedBy}.
+            </p>
+          )}
         </>
       )}
       {confirmRun && (
@@ -389,6 +482,24 @@ function RemindersPanel({ editable }: { editable: boolean }) {
           confirmLabel="Send now"
           onConfirm={run}
           onCancel={() => setConfirmRun(false)}
+        />
+      )}
+      {confirmSave && form && (
+        <Confirm
+          title="Save the reminder rules?"
+          body={
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {rows.map((row) => (
+                <li key={row.key}>
+                  {row.title}: {form[row.key][0] ? `on, ${form[row.key][1] || "no days set"} (${row.help})` : "off"}
+                </li>
+              ))}
+              <li>The next daily run (09:00 UTC) sends by these rules.</li>
+            </ul>
+          }
+          confirmLabel="Save rules"
+          onConfirm={save}
+          onCancel={() => setConfirmSave(false)}
         />
       )}
     </Panel>

@@ -2,8 +2,11 @@
 
 // src/app/admin/support/desk-client.tsx — the ticket desk: the summary,
 // filters, search, sorting, pages, and bulk changes (confirmed first).
+// Filters, sort and page live in the address bar, so a view can be linked
+// (the global search links here with ?q=).
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   PRIORITY_LABEL,
@@ -14,36 +17,62 @@ import {
   categoryLabel,
   fmtDuration,
   type SupportSummary,
+  type TicketPriority,
 } from "@/lib/support/model";
-import { fmtTime, useAdmin } from "../AdminApi";
-import { Confirm, Empty, Loading, Notice, PageHeader, Panel, btn, field } from "../ui";
+import { Time, errorText, fmtNumber, useAdmin } from "../AdminApi";
+import {
+  Confirm,
+  Dialog,
+  FilterBar,
+  Labeled,
+  LoadState,
+  Notice,
+  PageHeader,
+  Pager,
+  SelectBox,
+  SortTh,
+  StatTile,
+  TableWrap,
+  btn,
+  field,
+  useSelection,
+  useUrlFilters,
+} from "../ui";
 import { PriorityBadge, SlaBadge, StatusBadge, assigneeLabel, type Assignee, type Row } from "./shared";
 
 type Page = { items: Row[]; total: number; page: number; pages: number; summary: SupportSummary; assignees: Assignee[]; now: number };
-type Filters = { q: string; status: string; priority: string; category: string; assignee: string; overdue: boolean; sort: string; dir: "asc" | "desc" };
 
-const START: Filters = { q: "", status: "unresolved", priority: "", category: "", assignee: "", overdue: false, sort: "updated", dir: "desc" };
+// "any" stands for no status filter: an empty value would read back as the default.
+const URL_DEFAULTS = { q: "", status: "unresolved", priority: "", category: "", assignee: "", overdue: "", sort: "updated", dir: "desc", page: "1" };
+type Filters = typeof URL_DEFAULTS;
+const PAGE_SIZE = 25;
+const FILTER_KEYS = ["q", "status", "priority", "category", "assignee", "overdue"] as const;
 
 export default function DeskClient() {
   const { can, adminFetch } = useAdmin();
-  const [filters, setFilters] = useState<Filters>(START);
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const f = useUrlFilters(URL_DEFAULTS);
+  const filters = f.value;
+  const [search, setSearch] = useState(filters.q);
   const [data, setData] = useState<Page | null>(null);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState<{ field: "assigneeId" | "status" | "priority"; value: string } | null>(null);
   const [creating, setCreating] = useState(false);
   const write = can("support:write");
+  const page = Math.max(1, Number(filters.page) || 1);
+
+  // The search box follows the address bar (a tile, Clear filters or a link resets it).
+  useEffect(() => setSearch(filters.q), [filters.q]);
 
   const load = useCallback(async () => {
-    setError(null);
-    const u = new URLSearchParams({ page: String(page), limit: "25", sort: filters.sort, dir: filters.dir });
-    for (const k of ["q", "status", "priority", "category", "assignee"] as const) if (filters[k]) u.set(k, filters[k]);
-    if (filters.overdue) u.set("overdue", "1");
+    setLoadErr(null);
+    const u = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE), sort: filters.sort, dir: filters.dir });
+    for (const k of ["q", "priority", "category", "assignee"] as const) if (filters[k]) u.set(k, filters[k]);
+    if (filters.status && filters.status !== "any") u.set("status", filters.status);
+    if (filters.overdue === "1") u.set("overdue", "1");
     const r = await adminFetch<Page>(`/api/admin/support/tickets?${u}`);
-    if (!r.ok) return setError(r.data.message ?? r.data.error ?? `HTTP ${r.status}`);
+    if (!r.ok) return setLoadErr(errorText(r));
     setData(r.data);
   }, [adminFetch, filters, page]);
 
@@ -51,30 +80,32 @@ export default function DeskClient() {
     load();
   }, [load]);
 
-  const set = (patch: Partial<Filters>) => {
-    setFilters((f) => ({ ...f, ...patch }));
-    setPage(1);
-    setSelected(new Set());
-  };
+  const items = data?.items ?? [];
+  const sel = useSelection(items.map((t) => t.id));
+
+  const set = (patch: Partial<Filters>) => f.set({ ...patch, page: "1" });
+  /** A summary tile: every filter back to its default, then this one. */
+  const only = (patch: Partial<Filters>) => f.set({ ...URL_DEFAULTS, ...patch });
+  const isOnly = (patch: Partial<Filters>) => FILTER_KEYS.every((k) => filters[k] === (patch[k] ?? URL_DEFAULTS[k]));
 
   const applyBulk = async () => {
     if (!bulk) return;
+    setError(null);
+    setOk(null);
     const value = bulk.field === "assigneeId" && bulk.value === "none" ? null : bulk.value;
     const r = await adminFetch<{ changed: number }>("/api/admin/support/tickets/bulk", {
       method: "POST",
-      json: { ids: [...selected], set: { [bulk.field]: value } },
+      json: { ids: [...sel.selected], set: { [bulk.field]: value } },
     });
     setBulk(null);
-    if (!r.ok) return setError(r.data.message ?? r.data.error ?? `HTTP ${r.status}`);
-    setOk(`Changed ${r.data.changed} ticket${r.data.changed === 1 ? "" : "s"}.`);
-    setSelected(new Set());
+    if (!r.ok) return setError(errorText(r));
+    setOk(`Changed ${fmtNumber(r.data.changed)} ticket${r.data.changed === 1 ? "" : "s"}.`);
+    sel.clear();
     load();
   };
 
   const s = data?.summary;
   const assignees = data?.assignees ?? [];
-  const items = data?.items ?? [];
-  const allOnPage = items.length > 0 && items.every((t) => selected.has(t.id));
   const bulkLabel = bulk
     ? bulk.field === "assigneeId"
       ? `assign them to ${bulk.value === "none" ? "nobody (unassigned)" : assigneeLabel(bulk.value, assignees)}`
@@ -82,6 +113,8 @@ export default function DeskClient() {
         ? `set their status to ${STATUS_LABEL[bulk.value as keyof typeof STATUS_LABEL]}`
         : `set their priority to ${PRIORITY_LABEL[bulk.value as keyof typeof PRIORITY_LABEL]}`
     : "";
+  const sortState = { key: filters.sort, dir: filters.dir === "asc" ? ("asc" as const) : ("desc" as const) };
+  const onSort = (k: string, dir: "asc" | "desc") => set({ sort: k, dir });
 
   return (
     <div>
@@ -101,228 +134,190 @@ export default function DeskClient() {
           </>
         }
       />
-      {error && <Notice kind="err" onClose={() => setError(null)}>{error}</Notice>}
-      {ok && <Notice kind="ok" onClose={() => setOk(null)}>{ok}</Notice>}
+      {error && (
+        <Notice kind="err" onClose={() => setError(null)}>
+          {error}
+        </Notice>
+      )}
+      {ok && (
+        <Notice kind="ok" onClose={() => setOk(null)}>
+          {ok}
+        </Notice>
+      )}
 
       {s && (
-        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-          <Stat label="Open" value={s.open} onClick={() => set({ ...START })} />
-          <Stat label="Overdue" value={s.overdue} tone={s.overdue ? "red" : undefined} onClick={() => set({ ...START, overdue: true })} />
-          <Stat label="Unassigned" value={s.unassigned} onClick={() => set({ ...START, assignee: "none" })} />
-          <Stat label="Urgent · High" value={`${s.openByPriority.urgent} · ${s.openByPriority.high}`} onClick={() => set({ ...START, sort: "priority" })} />
-          <Stat label="Normal · Low" value={`${s.openByPriority.normal} · ${s.openByPriority.low}`} />
-          <Stat
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <StatTile label="Open" value={fmtNumber(s.open)} hint="not resolved or closed" active={isOnly({})} onClick={() => only({})} />
+          <StatTile label="Overdue" value={fmtNumber(s.overdue)} tone={s.overdue ? "red" : undefined} active={isOnly({ overdue: "1" })} onClick={() => only({ overdue: "1" })} />
+          <StatTile label="Unassigned" value={fmtNumber(s.unassigned)} active={isOnly({ assignee: "none" })} onClick={() => only({ assignee: "none" })} />
+          {(["urgent", "high", "normal", "low"] as TicketPriority[]).map((p) => (
+            <StatTile
+              key={p}
+              label={`${PRIORITY_LABEL[p]} · open`}
+              value={fmtNumber(s.openByPriority[p])}
+              tone={p === "urgent" && s.openByPriority[p] ? "red" : p === "high" && s.openByPriority[p] ? "amber" : undefined}
+              active={isOnly({ priority: p })}
+              onClick={() => only({ priority: p })}
+            />
+          ))}
+          <StatTile
             label="Median first reply"
             value={fmtDuration(s.medianFirstResponseThisWeek)}
-            hint={`last 7 days (${s.answeredThisWeek}) · ${fmtDuration(s.medianFirstResponseLastWeek)} the 7 before (${s.answeredLastWeek})`}
+            hint={`last 7 days (${fmtNumber(s.answeredThisWeek)} replies)`}
           />
+          <StatTile label="The 7 days before" value={fmtDuration(s.medianFirstResponseLastWeek)} hint={`median first reply (${fmtNumber(s.answeredLastWeek)} replies)`} />
         </div>
       )}
 
-      <Panel className="mb-3">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            set({ q: search.trim() });
-          }}
-          className="flex flex-wrap items-end gap-2"
-        >
-          <label className="min-w-[14rem] flex-1 text-xs text-zinc-400">
-            Search
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="#1042, subject, email, tag" className={`${field} mt-1`} />
-          </label>
-          <Select label="Status" value={filters.status} onChange={(v) => set({ status: v })} options={[["", "Any"], ["unresolved", "Unresolved"], ...TICKET_STATUSES.map((x) => [x, STATUS_LABEL[x]] as [string, string])]} />
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          set({ q: search.trim() });
+        }}
+      >
+        <FilterBar active={f.active} onClear={f.reset}>
+          <Labeled label="Search" className="min-w-[12rem] flex-1">
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="#1042, subject, email, tag" className={field} />
+          </Labeled>
+          <Select label="Status" value={filters.status} onChange={(v) => set({ status: v })} options={[["any", "Any"], ["unresolved", "Unresolved"], ...TICKET_STATUSES.map((x) => [x, STATUS_LABEL[x]] as [string, string])]} />
           <Select label="Priority" value={filters.priority} onChange={(v) => set({ priority: v })} options={[["", "Any"], ...TICKET_PRIORITIES.map((x) => [x, PRIORITY_LABEL[x]] as [string, string])]} />
           <Select label="Category" value={filters.category} onChange={(v) => set({ category: v })} options={[["", "Any"], ...TICKET_CATEGORIES.map((c) => [c.key, c.label] as [string, string])]} />
           <Select
             label="Assignee"
             value={filters.assignee}
             onChange={(v) => set({ assignee: v })}
-            options={[["", "Anyone"], ["me", "Me"], ["none", "Unassigned"], ...assignees.map((a) => [a.userId, a.name || a.email] as [string, string])]}
+            options={[
+              ["", "Anyone"],
+              ["me", "Me"],
+              ["none", "Unassigned"],
+              ...(filters.assignee && !["me", "none"].includes(filters.assignee) && !assignees.some((a) => a.userId === filters.assignee)
+                ? [[filters.assignee, filters.assignee] as [string, string]]
+                : []),
+              ...assignees.map((a) => [a.userId, a.name || a.email] as [string, string]),
+            ]}
           />
           <Select
-            label="Sort"
+            label="Sort by"
             value={filters.sort}
             onChange={(v) => set({ sort: v, dir: v === "due" ? "asc" : "desc" })}
             options={[["updated", "Last activity"], ["created", "Opened"], ["priority", "Priority"], ["due", "Next deadline"], ["number", "Number"]]}
           />
-          <button type="button" className={btn.ghost} onClick={() => set({ dir: filters.dir === "asc" ? "desc" : "asc" })} aria-label="Reverse the order">
-            {filters.dir === "asc" ? "↑ Ascending" : "↓ Descending"}
-          </button>
+          <Select label="Order" value={sortState.dir} onChange={(v) => set({ dir: v })} options={[["desc", "Descending"], ["asc", "Ascending"]]} />
           <label className="flex items-center gap-1.5 pb-2 text-sm text-zinc-300">
-            <input type="checkbox" checked={filters.overdue} onChange={(e) => set({ overdue: e.target.checked })} /> Overdue only
+            <input type="checkbox" checked={filters.overdue === "1"} onChange={(e) => set({ overdue: e.target.checked ? "1" : "" })} /> Overdue only
           </label>
           <button type="submit" className={btn.primary}>
             Search
           </button>
-        </form>
-      </Panel>
+        </FilterBar>
+      </form>
 
-      {write && selected.size > 0 && (
+      {write && sel.count > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-400/5 px-3 py-2 text-sm text-cyan-100">
-          <span>{selected.size} selected</span>
+          <span>{fmtNumber(sel.count)} selected</span>
           <BulkSelect label="Assign to" onPick={(v) => setBulk({ field: "assigneeId", value: v })} options={[["none", "Unassigned"], ...assignees.map((a) => [a.userId, a.name || a.email] as [string, string])]} />
           <BulkSelect label="Status" onPick={(v) => setBulk({ field: "status", value: v })} options={TICKET_STATUSES.map((x) => [x, STATUS_LABEL[x]] as [string, string])} />
           <BulkSelect label="Priority" onPick={(v) => setBulk({ field: "priority", value: v })} options={TICKET_PRIORITIES.map((x) => [x, PRIORITY_LABEL[x]] as [string, string])} />
-          <button type="button" className={`${btn.ghost} ml-auto`} onClick={() => setSelected(new Set())}>
-            Clear
+          <button type="button" className={`${btn.ghost} ml-auto`} onClick={sel.clear}>
+            Clear selection
           </button>
         </div>
       )}
 
-      {!data ? (
-        error ? null : <Loading />
-      ) : items.length === 0 ? (
-        <Empty>No tickets match.</Empty>
-      ) : (
-        <Panel className="overflow-x-auto p-0">
-          <table className="w-full min-w-[56rem] text-sm">
-            <thead className="border-b border-white/10 text-left text-xs text-zinc-500">
-              <tr>
-                {write && (
-                  <th className="w-8 px-3 py-2">
-                    <input
-                      type="checkbox"
-                      aria-label="Select every ticket on this page"
-                      checked={allOnPage}
-                      onChange={(e) => setSelected(new Set(e.target.checked ? items.map((t) => t.id) : []))}
-                    />
-                  </th>
-                )}
-                <th className="px-3 py-2">Ticket</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Priority</th>
-                <th className="px-3 py-2">Assignee</th>
-                <th className="px-3 py-2">Response target</th>
-                <th className="px-3 py-2">Last activity</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {items.map((t) => (
-                <tr key={t.id} className={t.sla.overdue ? "bg-red-500/[0.04]" : undefined}>
+      <LoadState data={data} error={loadErr} onRetry={load} empty={f.active ? "No tickets match." : "No open tickets."} isEmpty={(d) => d.items.length === 0}>
+        {(d) => (
+          <>
+            <TableWrap minWidth={896}>
+              <thead className="border-b border-white/10 text-left text-xs text-zinc-400">
+                <tr>
                   {write && (
-                    <td className="px-3 py-2.5">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select #${t.number}`}
-                        checked={selected.has(t.id)}
-                        onChange={(e) =>
-                          setSelected((prev) => {
-                            const n = new Set(prev);
-                            if (e.target.checked) n.add(t.id);
-                            else n.delete(t.id);
-                            return n;
-                          })
-                        }
-                      />
-                    </td>
+                    <th className="w-8 px-3 py-2">
+                      <SelectBox checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label="Select every ticket on this page" />
+                    </th>
                   )}
-                  <td className="max-w-[24rem] px-3 py-2.5">
-                    <Link href={`/admin/support/${t.id}`} className="block truncate font-medium text-zinc-100 hover:text-cyan-200">
-                      <span className="font-mono text-xs text-zinc-500">#{t.number}</span> {t.subject}
-                    </Link>
-                    <span className="block truncate text-xs text-zinc-500">
-                      {t.email} · {categoryLabel(t.category)}
-                      {t.userId ? "" : " · not signed in"}
-                      {t.tags.length ? ` · ${t.tags.join(", ")}` : ""}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <StatusBadge status={t.status} />
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <PriorityBadge priority={t.priority} />
-                  </td>
-                  <td className="px-3 py-2.5 text-zinc-300">{assigneeLabel(t.assigneeId, assignees, t.assigneeEmail)}</td>
-                  <td className="px-3 py-2.5">
-                    <SlaBadge sla={t.sla} now={data.now} />
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2.5 text-xs text-zinc-400">{fmtTime(t.updatedAt)}</td>
+                  <SortTh label="Ticket" k="number" sort={sortState} onSort={onSort} />
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <SortTh label="Priority" k="priority" sort={sortState} onSort={onSort} />
+                  <th className="px-3 py-2 font-medium">Assignee</th>
+                  <SortTh label="Response target" k="due" sort={sortState} onSort={onSort} />
+                  <SortTh label="Last activity" k="updated" sort={sortState} onSort={onSort} />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </Panel>
-      )}
-
-      {data && data.pages > 1 && (
-        <div className="mt-3 flex items-center justify-between text-sm text-zinc-400">
-          <span>
-            {data.total} tickets · page {data.page} of {data.pages}
-          </span>
-          <div className="flex gap-2">
-            <button type="button" className={btn.ghost} disabled={data.page <= 1} onClick={() => setPage(data.page - 1)}>
-              Previous
-            </button>
-            <button type="button" className={btn.ghost} disabled={data.page >= data.pages} onClick={() => setPage(data.page + 1)}>
-              Next
-            </button>
-          </div>
-        </div>
-      )}
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {d.items.map((t) => (
+                  <tr key={t.id} className={t.sla.overdue ? "bg-red-500/[0.04]" : undefined}>
+                    {write && (
+                      <td className="px-3 py-2.5">
+                        <SelectBox checked={sel.selected.has(t.id)} onChange={() => sel.toggle(t.id)} label={`Select #${t.number}`} />
+                      </td>
+                    )}
+                    <td className="max-w-[24rem] px-3 py-2.5">
+                      <Link href={`/admin/support/${t.id}`} className="block truncate font-medium text-zinc-100 hover:text-cyan-200">
+                        <span className="font-mono text-xs text-zinc-400">#{t.number}</span> {t.subject}
+                      </Link>
+                      <span className="block truncate text-xs text-zinc-400">
+                        {t.email} · {categoryLabel(t.category)}
+                        {t.userId ? "" : " · not signed in"}
+                        {t.tags.length ? ` · ${t.tags.join(", ")}` : ""}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <StatusBadge status={t.status} />
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <PriorityBadge priority={t.priority} />
+                    </td>
+                    <td className="px-3 py-2.5 text-zinc-300">{assigneeLabel(t.assigneeId, d.assignees, t.assigneeEmail)}</td>
+                    <td className="px-3 py-2.5">
+                      <SlaBadge sla={t.sla} now={d.now} />
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-xs text-zinc-400">
+                      <Time ts={t.updatedAt} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableWrap>
+            <Pager page={d.page} pageSize={PAGE_SIZE} total={d.total} onPage={(p) => f.set({ page: String(p) })} noun="ticket" />
+          </>
+        )}
+      </LoadState>
 
       {bulk && (
         <Confirm
-          title={`Change ${selected.size} ticket${selected.size === 1 ? "" : "s"}?`}
+          title={`Change ${fmtNumber(sel.count)} ticket${sel.count === 1 ? "" : "s"}?`}
           body={<>This will {bulkLabel}. Each change is recorded in the audit log.</>}
           confirmLabel="Apply"
           onConfirm={applyBulk}
           onCancel={() => setBulk(null)}
         />
       )}
-      {creating && (
-        <NewTicket
-          onClose={() => setCreating(false)}
-          onCreated={(id) => {
-            setCreating(false);
-            window.location.href = `/admin/support/${id}`;
-          }}
-        />
-      )}
+      {creating && <NewTicket onClose={() => setCreating(false)} />}
     </div>
-  );
-}
-
-function Stat({ label, value, hint, tone, onClick }: { label: string; value: number | string; hint?: string; tone?: "red"; onClick?: () => void }) {
-  const body = (
-    <>
-      <span className="block text-xs text-zinc-500">{label}</span>
-      <span className={`mt-0.5 block text-xl font-semibold ${tone === "red" ? "text-red-300" : "text-zinc-100"}`}>{value}</span>
-      {hint && <span className="mt-0.5 block text-[11px] leading-tight text-zinc-500">{hint}</span>}
-    </>
-  );
-  const cls = "rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left";
-  return onClick ? (
-    <button type="button" onClick={onClick} className={`${cls} hover:bg-white/[0.06]`}>
-      {body}
-    </button>
-  ) : (
-    <div className={cls}>{body}</div>
   );
 }
 
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: [string, string][] }) {
   return (
-    <label className="text-xs text-zinc-400">
-      {label}
-      <select value={value} onChange={(e) => onChange(e.target.value)} className={`${field} mt-1 w-auto`}>
+    <Labeled label={label}>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={`${field} w-auto`}>
         {options.map(([v, l]) => (
           <option key={v} value={v}>
             {l}
           </option>
         ))}
       </select>
-    </label>
+    </Labeled>
   );
 }
 
 function BulkSelect({ label, options, onPick }: { label: string; options: [string, string][]; onPick: (v: string) => void }) {
   return (
     <select
-      aria-label={label}
+      aria-label={`${label} (for the selected tickets)`}
       value=""
       onChange={(e) => e.target.value && onPick(e.target.value)}
-      className="rounded-lg border border-white/12 bg-black/40 px-2 py-1 text-sm text-zinc-100"
+      className="max-w-full rounded-lg border border-white/12 bg-black/40 px-2 py-1 text-sm text-zinc-100"
     >
       <option value="">{label}…</option>
       {options.map(([v, l]) => (
@@ -334,8 +329,9 @@ function BulkSelect({ label, options, onPick }: { label: string; options: [strin
   );
 }
 
-function NewTicket({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+function NewTicket({ onClose }: { onClose: () => void }) {
   const { adminFetch } = useAdmin();
+  const router = useRouter();
   const [f, setF] = useState({ email: "", name: "", subject: "", category: "other", priority: "normal", body: "", chatRef: "", notifyUser: false });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -344,18 +340,18 @@ function NewTicket({ onClose, onCreated }: { onClose: () => void; onCreated: (id
     setBusy(true);
     setError(null);
     const r = await adminFetch<{ ticket: { id: string } }>("/api/admin/support/tickets", { method: "POST", json: f });
-    setBusy(false);
-    if (!r.ok) return setError(r.data.message ?? r.data.error ?? `HTTP ${r.status}`);
-    onCreated(r.data.ticket.id);
+    if (!r.ok) {
+      setBusy(false);
+      return setError(errorText(r));
+    }
+    // Stays "Creating…" until the ticket page takes over.
+    router.push(`/admin/support/${r.data.ticket.id}`);
   };
   const up = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setF((x) => ({ ...x, [k]: e.target.type === "checkbox" ? (e.target as HTMLInputElement).checked : e.target.value }));
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="new-ticket-title" className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto bg-black/70 p-4">
-      <form onSubmit={submit} className="w-full max-w-lg space-y-3 rounded-2xl border border-white/10 bg-[#0B1220] p-5 shadow-2xl">
-        <h2 id="new-ticket-title" className="text-base font-semibold text-white">
-          New ticket
-        </h2>
+    <Dialog title="New ticket" onClose={() => !busy && onClose()} wide>
+      <form onSubmit={submit} className="mt-1 space-y-3">
         <p className="text-sm text-zinc-400">
           For a NeoSupport chat that needs following up, or a request that came in another way. Paste the chat and its conversation reference so the history stays together.
         </p>
@@ -395,8 +391,8 @@ function NewTicket({ onClose, onCreated }: { onClose: () => void; onCreated: (id
             </select>
           </label>
           <label className="text-xs text-zinc-400">
-            Chat reference
-            <input value={f.chatRef} onChange={up("chatRef")} placeholder="optional" className={`${field} mt-1`} />
+            Chat reference (optional)
+            <input value={f.chatRef} onChange={up("chatRef")} className={`${field} mt-1`} />
           </label>
         </div>
         <label className="block text-xs text-zinc-400">
@@ -406,9 +402,13 @@ function NewTicket({ onClose, onCreated }: { onClose: () => void; onCreated: (id
         <label className="flex items-center gap-2 text-sm text-zinc-300">
           <input type="checkbox" checked={f.notifyUser} onChange={up("notifyUser")} /> Email the customer that we opened a ticket
         </label>
-        {error && <p className="text-sm text-red-300">{error}</p>}
+        {error && (
+          <Notice kind="err" onClose={() => setError(null)}>
+            {error}
+          </Notice>
+        )}
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className={btn.ghost}>
+          <button type="button" onClick={onClose} disabled={busy} className={btn.ghost}>
             Cancel
           </button>
           <button type="submit" disabled={busy} className={btn.primary}>
@@ -416,6 +416,6 @@ function NewTicket({ onClose, onCreated }: { onClose: () => void; onCreated: (id
           </button>
         </div>
       </form>
-    </div>
+    </Dialog>
   );
 }

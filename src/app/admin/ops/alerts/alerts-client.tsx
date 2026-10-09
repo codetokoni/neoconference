@@ -1,12 +1,33 @@
 "use client";
 
-// Alerts: what fired, acknowledge / resolve, and the rules (thresholds,
-// cooldown, channels). Rules are evaluated after every 5-minute health check.
+// Alerts: what fired, acknowledge / resolve (one at a time or a selection),
+// and the rules (thresholds, cooldown, channels). Rules are evaluated after
+// every 5-minute health check. The status filter and search are kept in the
+// address bar.
 
 import { useCallback, useEffect, useState } from "react";
-import { fmtTime, useAdmin } from "../../AdminApi";
-import { Badge, Confirm, Empty, Loading, Notice, PageHeader, Panel, btn, field } from "../../ui";
-import { StatusBadge, ago } from "../opsUi";
+import { Time, errorText, fmtNumber, useAdmin } from "../../AdminApi";
+import {
+  Badge,
+  Confirm,
+  Dialog,
+  Empty,
+  FilterBar,
+  Labeled,
+  LoadState,
+  Notice,
+  PageHeader,
+  Pager,
+  Panel,
+  SelectBox,
+  TableWrap,
+  btn,
+  field,
+  useClientTable,
+  useSelection,
+  useUrlFilters,
+} from "../../ui";
+import { StatusBadge } from "../opsUi";
 
 type Kind = { kind: string; label: string; unit: string };
 type Rule = { id: string; kind: string; target: string; threshold: number; cooldownMinutes: number; enabled: boolean; email: boolean; inApp: boolean; updatedBy?: string };
@@ -35,50 +56,81 @@ type Data = {
   recipients: { email: string; owner: boolean }[];
   emailConfigured: boolean;
 };
+type Ask = { action: "acknowledge" | "resolve"; alerts: Alert[] };
+
+// The server sends at most this many alerts.
+const SENT = 200;
 
 const blank: Rule = { id: "", kind: "service_down", target: "*", threshold: 10, cooldownMinutes: 60, enabled: true, email: true, inApp: true };
 
 export default function OpsAlertsClient() {
   const { can, adminFetch } = useAdmin();
   const write = can("ops:write");
+  const filters = useUrlFilters({ status: "active", q: "" });
+  const status = filters.value.status;
   const [data, setData] = useState<Data | null>(null);
-  const [filter, setFilter] = useState<"active" | "all">("active");
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [edit, setEdit] = useState<Rule | null>(null);
   const [del, setDel] = useState<Rule | null>(null);
+  const [ask, setAsk] = useState<Ask | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   const load = useCallback(async () => {
-    const r = await adminFetch<Data>(`/api/admin/ops/alerts${filter === "active" ? "?status=active" : ""}`);
-    if (r.ok) setData(r.data);
-    else setMsg({ kind: "err", text: r.data.message ?? "Could not load alerts." });
-  }, [adminFetch, filter]);
+    const qs = status === "active" || status === "resolved" ? `?status=${status}` : "";
+    const r = await adminFetch<Data>(`/api/admin/ops/alerts${qs}`);
+    if (r.ok) {
+      setData(r.data);
+      setLoadErr(null);
+    } else setLoadErr(`Could not load alerts. ${errorText(r)}`);
+  }, [adminFetch, status]);
   useEffect(() => {
     load();
   }, [load]);
 
-  const act = async (a: Alert, action: "acknowledge" | "resolve") => {
-    const r = await adminFetch(`/api/admin/ops/alerts/${encodeURIComponent(a.id)}`, { method: "PATCH", json: { action } });
-    if (!r.ok) setMsg({ kind: "err", text: r.data.message ?? "That did not work." });
-    load();
+  const needle = filters.value.q.trim().toLowerCase();
+  const shown = data ? (needle ? data.alerts.filter((a) => `${a.title} ${a.message}`.toLowerCase().includes(needle)) : data.alerts) : null;
+  const table = useClientTable(shown, (a, k) => (k === "occurrences" ? a.occurrences : k === "openedAt" ? a.openedAt : a.lastSeenAt), { key: "lastSeenAt", dir: "desc" });
+  const actionable = table.visible.filter((a) => a.status !== "resolved");
+  const sel = useSelection(actionable.map((a) => a.id));
+  const selected = actionable.filter((a) => sel.selected.has(a.id));
+
+  // One PATCH per alert, the same call the row buttons make.
+  const run = async ({ action, alerts }: Ask, note: string) => {
+    setMsg(null);
+    let done = 0;
+    const failed: string[] = [];
+    for (const a of alerts) {
+      const r = await adminFetch(`/api/admin/ops/alerts/${encodeURIComponent(a.id)}`, { method: "PATCH", json: action === "resolve" && note ? { action, note } : { action } });
+      if (r.ok) done++;
+      else failed.push(`${a.title}: ${errorText(r)}`);
+      if (r.data?.error === "cancelled") break;
+    }
+    const verb = action === "acknowledge" ? "Acknowledged" : "Resolved";
+    const noun = (n: number) => (alerts.length === 1 ? `"${alerts[0].title}"` : `${n} alert${n === 1 ? "" : "s"}`);
+    if (failed.length) setMsg({ kind: "err", text: `${done ? `${verb} ${noun(done)}. ` : ""}${failed.length} did not change — ${failed[0]}` });
+    else setMsg({ kind: "ok", text: `${verb} ${noun(done)}.` });
+    sel.clear();
+    setAsk(null);
+    await load();
   };
-  const save = async (rule: Rule) => {
+  // Returns the error to show inside the rule dialog, or null when saved.
+  const save = async (rule: Rule): Promise<string | null> => {
+    setMsg(null);
     const r = await adminFetch("/api/admin/ops/alerts/rules", { method: "POST", json: { ...rule, id: rule.id || undefined } });
-    if (!r.ok) return setMsg({ kind: "err", text: r.data.message ?? "Could not save the rule." });
+    if (!r.ok) return `Could not save the rule. ${errorText(r)}`;
     setEdit(null);
-    setMsg({ kind: "ok", text: "Rule saved." });
-    load();
+    setMsg({ kind: "ok", text: rule.id ? "Rule saved." : "Rule created." });
+    await load();
+    return null;
   };
   const remove = async (rule: Rule) => {
-    setDel(null);
+    setMsg(null);
     const r = await adminFetch(`/api/admin/ops/alerts/rules?id=${encodeURIComponent(rule.id)}`, { method: "DELETE" });
-    if (!r.ok) return setMsg({ kind: "err", text: r.data.message ?? "Could not delete the rule." });
-    load();
+    setDel(null);
+    if (!r.ok) return setMsg({ kind: "err", text: `Could not delete the rule. ${errorText(r)}` });
+    setMsg({ kind: "ok", text: "Rule deleted." });
+    await load();
   };
-
-  if (!data) return <Loading />;
-  const kindOf = (k: string) => data.kinds.find((x) => x.kind === k);
-  const targetLabel = (r: Rule) =>
-    r.target === "*" ? (r.kind.startsWith("service") ? "any service" : r.kind === "job_failures" ? "any job" : "") : [...data.targets.services, ...data.targets.jobs].find((t) => t.id === r.target)?.label ?? r.target;
 
   return (
     <div>
@@ -91,134 +143,258 @@ export default function OpsAlertsClient() {
           {msg.text}
         </Notice>
       )}
-      <Panel className="mb-4 text-sm text-zinc-400">
-        Notified: {data.recipients.length ? data.recipients.map((r) => `${r.email}${r.owner ? " (owner)" : ""}`).join(", ") : "nobody yet"} — in the app&apos;s notification bell
-        {data.emailConfigured ? " and by email." : ". Email is not configured (RESEND_API_KEY is not set), so alerts are in-app only."}
-      </Panel>
+      <LoadState data={data} error={loadErr} onRetry={load}>
+        {(d) => {
+          const kindOf = (k: string) => d.kinds.find((x) => x.kind === k);
+          const targetLabel = (r: Rule) =>
+            r.target === "*"
+              ? r.kind.startsWith("service")
+                ? "any service"
+                : r.kind === "job_failures"
+                  ? "any job"
+                  : ""
+              : [...d.targets.services, ...d.targets.jobs].find((t) => t.id === r.target)?.label ?? r.target;
+          const ruleName = (r: Rule) => `${kindOf(r.kind)?.label ?? r.kind}${targetLabel(r) ? ` · ${targetLabel(r)}` : ""}`;
+          return (
+            <>
+              <Panel className="mb-4 text-sm text-zinc-400">
+                Notified: {d.recipients.length ? d.recipients.map((r) => `${r.email}${r.owner ? " (owner)" : ""}`).join(", ") : "nobody yet"} — in the app&apos;s notification bell
+                {d.emailConfigured ? " and by email." : ". Email is not configured (RESEND_API_KEY is not set), so alerts are in-app only."}
+              </Panel>
 
-      <div className="mb-2 flex items-center gap-2">
-        <h2 className="text-lg font-semibold text-cyan-50">History</h2>
-        <div className="ml-auto flex gap-1" role="group" aria-label="Show">
-          {(["active", "all"] as const).map((f) => (
-            <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)} className={`${btn.ghost} ${filter === f ? "bg-white/10" : ""}`}>
-              {f === "active" ? "Open" : "All"}
-            </button>
-          ))}
-        </div>
-      </div>
-      {data.alerts.length === 0 ? (
-        <Empty>{filter === "active" ? "Nothing open." : "No alerts yet."}</Empty>
-      ) : (
-        <div className="grid gap-2">
-          {data.alerts.map((a) => (
-            <Panel key={a.id}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 max-w-3xl">
-                  <p className="font-medium text-white">
-                    <StatusBadge status={a.status} /> {a.title}
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-400">{a.message}</p>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    Opened <span title={fmtTime(a.openedAt)}>{ago(a.openedAt)}</span> · seen {a.occurrences}× (last {ago(a.lastSeenAt)}) ·{" "}
-                    {a.notified
-                      ? `notified ${a.notifyResult?.recipients ?? 0} (email ${a.notifyResult?.emailed ?? 0}${a.notifyResult?.emailSkipped ? `, ${a.notifyResult.emailSkipped}` : ""}, in-app ${a.notifyResult?.inApp ?? 0})`
-                      : a.suppressed === "cooldown"
-                        ? "not notified (cooldown)"
-                        : "not notified (channels off)"}
-                    {a.acknowledgedBy ? ` · acknowledged by ${a.acknowledgedBy}` : ""}
-                    {a.resolvedAt ? ` · resolved by ${a.resolvedBy} ${ago(a.resolvedAt)}${a.resolution ? ` (${a.resolution})` : ""}` : ""}
-                  </p>
-                </div>
-                {write && a.status !== "resolved" && (
-                  <div className="flex shrink-0 gap-2">
-                    {a.status === "open" && (
-                      <button type="button" className={btn.ghost} onClick={() => act(a, "acknowledge")}>
-                        Acknowledge
+              <h2 className="mb-2 text-lg font-semibold text-cyan-50">History</h2>
+              <FilterBar active={filters.active} onClear={filters.reset}>
+                <Labeled label="Show">
+                  <select className={`${field} w-auto`} value={status} onChange={(e) => filters.set({ status: e.target.value })}>
+                    <option value="active">Open or acknowledged</option>
+                    <option value="resolved">Resolved</option>
+                    <option value="all">All</option>
+                  </select>
+                </Labeled>
+                <Labeled label="Search" className="min-w-[12rem] flex-1">
+                  <input type="search" className={field} value={filters.value.q} placeholder="Title or message" onChange={(e) => filters.set({ q: e.target.value })} />
+                </Labeled>
+                <Labeled label="Sort by">
+                  <select className={`${field} w-auto`} value={table.sort.key} onChange={(e) => table.onSort(e.target.value, "desc")}>
+                    <option value="lastSeenAt">Last seen</option>
+                    <option value="openedAt">Opened</option>
+                    <option value="occurrences">Times seen</option>
+                  </select>
+                </Labeled>
+              </FilterBar>
+
+              {write && actionable.length > 0 && (
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-sm text-zinc-400">
+                  <SelectBox checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label="Select every open alert on this page" />
+                  <span>{sel.count ? `${sel.count} selected` : "Select alerts to acknowledge or resolve them together"}</span>
+                  {sel.count > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        className={btn.ghost}
+                        disabled={!selected.some((a) => a.status === "open")}
+                        onClick={() => setAsk({ action: "acknowledge", alerts: selected.filter((a) => a.status === "open") })}
+                      >
+                        Acknowledge selected
                       </button>
-                    )}
-                    <button type="button" className={btn.ghost} onClick={() => act(a, "resolve")}>
-                      Resolve
-                    </button>
-                  </div>
+                      <button type="button" className={btn.ghost} onClick={() => setAsk({ action: "resolve", alerts: selected })}>
+                        Resolve selected
+                      </button>
+                      {!selected.some((a) => a.status === "open") && <span className="text-xs text-zinc-400">All selected are already acknowledged.</span>}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {table.total === 0 ? (
+                <Empty>
+                  {needle ? "No alerts match this search." : status === "active" ? "Nothing open." : status === "resolved" ? "No resolved alerts." : "No alerts yet."}
+                </Empty>
+              ) : (
+                <div className="grid gap-2">
+                  {table.visible.map((a) => (
+                    <Panel key={a.id} className="min-w-0">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex min-w-0 max-w-3xl items-start gap-3">
+                          {write && a.status !== "resolved" && (
+                            <span className="pt-0.5">
+                              <SelectBox checked={sel.selected.has(a.id)} onChange={() => sel.toggle(a.id)} label={`Select ${a.title}`} />
+                            </span>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-medium text-white">
+                              <StatusBadge status={a.status} /> {a.title}
+                            </p>
+                            <p className="mt-1 break-words text-sm text-zinc-400">{a.message}</p>
+                            <p className="mt-1 text-xs text-zinc-400">
+                              Opened <Time ts={a.openedAt} mode="relative" /> · seen {fmtNumber(a.occurrences)}× (last <Time ts={a.lastSeenAt} mode="relative" />) ·{" "}
+                              {a.notified
+                                ? `notified ${a.notifyResult?.recipients ?? 0} (email ${a.notifyResult?.emailed ?? 0}${a.notifyResult?.emailSkipped ? `, ${a.notifyResult.emailSkipped}` : ""}, in-app ${a.notifyResult?.inApp ?? 0})`
+                                : a.suppressed === "cooldown"
+                                  ? "not notified (cooldown)"
+                                  : "not notified (channels off)"}
+                              {a.acknowledgedBy ? ` · acknowledged by ${a.acknowledgedBy}` : ""}
+                              {a.resolvedAt && (
+                                <>
+                                  {" "}
+                                  · resolved by {a.resolvedBy} <Time ts={a.resolvedAt} mode="relative" />
+                                  {a.resolution ? ` (${a.resolution})` : ""}
+                                </>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                        {write && a.status !== "resolved" && (
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            {a.status === "open" && (
+                              <button type="button" className={btn.ghost} aria-label={`Acknowledge: ${a.title}`} onClick={() => setAsk({ action: "acknowledge", alerts: [a] })}>
+                                Acknowledge
+                              </button>
+                            )}
+                            <button type="button" className={btn.ghost} aria-label={`Resolve: ${a.title}`} onClick={() => setAsk({ action: "resolve", alerts: [a] })}>
+                              Resolve
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </Panel>
+                  ))}
+                </div>
+              )}
+              {table.total > 0 && <Pager page={table.page} pageSize={table.pageSize} total={table.total} onPage={table.setPage} onPageSize={table.setPageSize} noun="alert" />}
+              {d.alerts.length >= SENT && <p className="mt-1 text-xs text-zinc-400">Only the latest {SENT} alerts are listed here.</p>}
+
+              <div className="mb-2 mt-6 flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold text-cyan-50">Rules</h2>
+                {write && (
+                  <button type="button" className={`${btn.ghost} ml-auto`} onClick={() => setEdit({ ...blank })}>
+                    New rule
+                  </button>
                 )}
               </div>
-            </Panel>
-          ))}
-        </div>
-      )}
+              {d.rules.length === 0 ? (
+                <Empty>No rules — nothing raises an alert.</Empty>
+              ) : (
+                <TableWrap minWidth={640}>
+                  <thead className="text-xs text-zinc-400">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">When</th>
+                      <th className="px-3 py-2 font-medium">Threshold</th>
+                      <th className="px-3 py-2 font-medium">Cooldown</th>
+                      <th className="px-3 py-2 font-medium">Notify</th>
+                      <th className="px-3 py-2 font-medium">
+                        <span className="sr-only">Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {d.rules.map((r) => (
+                      <tr key={r.id} className="border-t border-white/5">
+                        <td className="px-3 py-2 text-zinc-200">
+                          {kindOf(r.kind)?.label ?? r.kind} {targetLabel(r) && <span className="text-zinc-400">· {targetLabel(r)}</span>} {!r.enabled && <Badge>Off</Badge>}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-zinc-300">
+                          {fmtNumber(r.threshold)} {kindOf(r.kind)?.unit}
+                        </td>
+                        <td className="px-3 py-2 text-zinc-400">{fmtNumber(r.cooldownMinutes)} min</td>
+                        <td className="px-3 py-2 text-zinc-400">{[r.email && "email", r.inApp && "in-app"].filter(Boolean).join(", ") || "—"}</td>
+                        <td className="px-3 py-2 text-right">
+                          {write && (
+                            <span className="flex justify-end gap-2">
+                              <button type="button" className={btn.ghost} aria-label={`Edit rule: ${ruleName(r)}`} onClick={() => setEdit({ ...r })}>
+                                Edit
+                              </button>
+                              <button type="button" className={btn.ghost} aria-label={`Delete rule: ${ruleName(r)}`} onClick={() => setDel(r)}>
+                                Delete
+                              </button>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </TableWrap>
+              )}
 
-      <div className="mb-2 mt-6 flex items-center gap-2">
-        <h2 className="text-lg font-semibold text-cyan-50">Rules</h2>
-        {write && (
-          <button type="button" className={`${btn.ghost} ml-auto`} onClick={() => setEdit({ ...blank })}>
-            New rule
-          </button>
-        )}
-      </div>
-      <Panel className="overflow-x-auto p-0">
-        <table className="w-full min-w-[640px] text-left text-sm">
-          <thead className="text-xs text-zinc-500">
-            <tr>
-              <th className="px-3 py-2 font-medium">When</th>
-              <th className="px-3 py-2 font-medium">Threshold</th>
-              <th className="px-3 py-2 font-medium">Cooldown</th>
-              <th className="px-3 py-2 font-medium">Notify</th>
-              <th className="px-3 py-2 font-medium" />
-            </tr>
-          </thead>
-          <tbody>
-            {data.rules.map((r) => (
-              <tr key={r.id} className="border-t border-white/5">
-                <td className="px-3 py-2 text-zinc-200">
-                  {kindOf(r.kind)?.label ?? r.kind} {targetLabel(r) && <span className="text-zinc-400">· {targetLabel(r)}</span>} {!r.enabled && <Badge>Off</Badge>}
-                </td>
-                <td className="px-3 py-2 font-mono text-zinc-300">
-                  {r.threshold.toLocaleString()} {kindOf(r.kind)?.unit}
-                </td>
-                <td className="px-3 py-2 text-zinc-400">{r.cooldownMinutes} min</td>
-                <td className="px-3 py-2 text-zinc-400">{[r.email && "email", r.inApp && "in-app"].filter(Boolean).join(", ") || "—"}</td>
-                <td className="px-3 py-2 text-right">
-                  {write && (
-                    <span className="flex justify-end gap-2">
-                      <button type="button" className={btn.ghost} onClick={() => setEdit({ ...r })}>
-                        Edit
-                      </button>
-                      <button type="button" className={btn.ghost} onClick={() => setDel(r)}>
-                        Delete
-                      </button>
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Panel>
+              {edit && <RuleForm rule={edit} data={d} onSave={save} onCancel={() => setEdit(null)} />}
+              {del && (
+                <Confirm
+                  title="Delete this rule?"
+                  body={
+                    <>
+                      <b className="text-zinc-200">{ruleName(del)}</b> stops raising alerts. Open alerts it raised stay until resolved.
+                    </>
+                  }
+                  confirmLabel="Delete rule"
+                  danger
+                  typeToConfirm="delete"
+                  onConfirm={() => remove(del)}
+                  onCancel={() => setDel(null)}
+                />
+              )}
+            </>
+          );
+        }}
+      </LoadState>
 
-      {edit && <RuleForm rule={edit} data={data} onSave={save} onCancel={() => setEdit(null)} />}
-      {del && (
-        <Confirm title="Delete this rule?" body="Open alerts it raised stay until resolved." confirmLabel="Delete" danger onConfirm={() => remove(del)} onCancel={() => setDel(null)} />
+      {ask && (
+        <Confirm
+          title={
+            ask.action === "acknowledge"
+              ? ask.alerts.length === 1
+                ? "Acknowledge this alert?"
+                : `Acknowledge ${ask.alerts.length} alerts?`
+              : ask.alerts.length === 1
+                ? "Resolve this alert?"
+                : `Resolve ${ask.alerts.length} alerts?`
+          }
+          body={
+            <>
+              {ask.alerts.length === 1 ? <b className="text-zinc-200">{ask.alerts[0].title}</b> : `${ask.alerts.length} alerts`}
+              {ask.action === "acknowledge"
+                ? " — marked as seen by you. It stays open and keeps counting repeats until it is resolved."
+                : " — closed now. If the condition is still there it opens again on the next check."}
+            </>
+          }
+          confirmLabel={ask.action === "acknowledge" ? "Acknowledge" : "Resolve"}
+          withReason={ask.action === "resolve" ? "Resolution note (optional)" : undefined}
+          onConfirm={(note) => run(ask, note)}
+          onCancel={() => setAsk(null)}
+        />
       )}
     </div>
   );
 }
 
-function RuleForm({ rule, data, onSave, onCancel }: { rule: Rule; data: Data; onSave: (r: Rule) => void; onCancel: () => void }) {
+function RuleForm({ rule, data, onSave, onCancel }: { rule: Rule; data: Data; onSave: (r: Rule) => Promise<string | null>; onCancel: () => void }) {
   const [r, setR] = useState<Rule>(rule);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const unit = data.kinds.find((k) => k.kind === r.kind)?.unit;
   const targets = r.kind.startsWith("service") ? data.targets.services : r.kind === "job_failures" ? data.targets.jobs : null;
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="rule-title" className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4">
+    <Dialog title={rule.id ? "Edit rule" : "New rule"} onClose={() => !saving && onCancel()}>
       <form
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
-          onSave(r);
+          if (saving) return;
+          setSaving(true);
+          setErr(null);
+          const e2 = await onSave(r);
+          // On success the dialog is already gone.
+          if (e2) {
+            setErr(e2);
+            setSaving(false);
+          }
         }}
-        className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0B1220] p-5 shadow-2xl"
       >
-        <h2 id="rule-title" className="text-base font-semibold text-white">
-          {rule.id ? "Edit rule" : "New rule"}
-        </h2>
+        {err && (
+          <div className="mt-3">
+            <Notice kind="err" onClose={() => setErr(null)}>
+              {err}
+            </Notice>
+          </div>
+        )}
         <label className="mt-3 block text-sm text-zinc-300">
           Alert when
           <select className={`${field} mt-1`} value={r.kind} onChange={(e) => setR({ ...r, kind: e.target.value, target: "*" })}>
@@ -262,14 +438,14 @@ function RuleForm({ rule, data, onSave, onCancel }: { rule: Rule; data: Data; on
           </label>
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <button type="button" className={btn.ghost} onClick={onCancel}>
+          <button type="button" className={btn.ghost} disabled={saving} onClick={onCancel}>
             Cancel
           </button>
-          <button type="submit" className={btn.primary}>
-            Save
+          <button type="submit" className={btn.primary} disabled={saving} aria-busy={saving}>
+            {saving ? "Saving…" : "Save"}
           </button>
         </div>
       </form>
-    </div>
+    </Dialog>
   );
 }

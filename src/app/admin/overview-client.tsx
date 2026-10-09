@@ -14,38 +14,26 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import type { Overview, SourceResult } from "@/lib/admin/overview/aggregate";
 import { COMPARES, RANGES, queryString, readQuery, type Delta, type MoneyDelta, type OverviewQuery } from "@/lib/admin/overview/period";
 import type { SourceData, SourceId } from "@/lib/admin/overview/sources";
-import { fmtMoney, currenciesOf } from "@/lib/finance/money";
+import { currenciesOf } from "@/lib/finance/money";
 import { formatBytes } from "@/lib/content/model";
-import { adminClock, fmtTime, useAdmin } from "./AdminApi";
+import { adminZone, errorText, fmtDay, fmtMoney, fmtNumber, fmtTime, useAdmin, zoneLabel } from "./AdminApi";
 import { DailyBars, HBars } from "./analytics/charts";
-import { PageHeader, btn, field } from "./ui";
+import { EmptyLine, Loading, Notice, PageHeader, Panel, btn, field } from "./ui";
 
 type Answer = Overview & { query: OverviewQuery };
 
-/** The zone the Overview's days are in: Settings → Regional's admin time zone, or the viewer's own when that is "local". */
-function overviewZone(): { tz: string; source: "setting" | "local" } {
-  const set = adminClock().timeZone;
-  if (set && set !== "local") return { tz: set, source: "setting" };
-  try {
-    return { tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", source: "local" };
-  } catch {
-    return { tz: "UTC", source: "local" };
-  }
-}
+// Counts in the admin number format.
+const n = (v: number) => fmtNumber(v);
 
-const n = (v: number) => v.toLocaleString("en-US");
-
-function shortDate(day: string): string {
-  return new Date(day + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-}
+const linkFocus = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400";
 
 export default function OverviewClient() {
   const { adminFetch } = useAdmin();
   const sp = useSearchParams();
   const router = useRouter();
   const pathname = usePathname() || "/admin";
-  const zone = useMemo(overviewZone, []);
-  const tz = zone.tz;
+  // The Overview's days are calendar days on the admin clock (Settings → Regional; "local" = this browser's zone).
+  const tz = useMemo(adminZone, []);
   const query = useMemo(() => {
     const p = new URLSearchParams(sp?.toString() ?? "");
     p.set("tz", tz);
@@ -61,11 +49,13 @@ export default function OverviewClient() {
   const load = useCallback(
     async (opts: { refresh?: boolean; only?: SourceId } = {}) => {
       setBusy(true);
+      // A whole reload starts clean, so "Loading…" shows again rather than the last error.
+      if (!opts.only) setError(null);
       const extra = `${opts.refresh ? "&refresh=1" : ""}${opts.only ? `&only=${opts.only}` : ""}`;
       const r = await adminFetch<Answer>(`/api/admin/overview?${qs}${extra}`);
       setBusy(false);
       if (!r.ok) {
-        setError(r.data.message ?? r.data.error ?? `HTTP ${r.status}`);
+        setError(`Could not load the figures: ${errorText(r)}`);
         return;
       }
       setError(null);
@@ -138,19 +128,20 @@ export default function OverviewClient() {
           >
             <label className="text-xs text-zinc-400">
               From
-              <input type="date" aria-label="Period from" value={custom.from} max={custom.to || undefined} onChange={(e) => setCustom({ ...custom, from: e.target.value })} className={`${field} mt-0.5 py-1.5`} />
+              <input type="date" value={custom.from} max={custom.to || undefined} onChange={(e) => setCustom({ ...custom, from: e.target.value })} className={`${field} mt-0.5 py-1.5`} />
             </label>
             <label className="text-xs text-zinc-400">
               To
-              <input type="date" aria-label="Period to" value={custom.to} min={custom.from || undefined} onChange={(e) => setCustom({ ...custom, to: e.target.value })} className={`${field} mt-0.5 py-1.5`} />
+              <input type="date" value={custom.to} min={custom.from || undefined} onChange={(e) => setCustom({ ...custom, to: e.target.value })} className={`${field} mt-0.5 py-1.5`} />
             </label>
             <button type="submit" className={`${btn.ghost} py-1.5 text-xs`} aria-pressed={query.range === "custom"} disabled={!custom.from || !custom.to}>
               Apply dates
             </button>
+            <span className="pb-2 text-[11px] text-zinc-400">Days in {zoneLabel()}</span>
           </form>
           <label className="text-xs text-zinc-400">
             Compare with
-            <select aria-label="Compare with" value={query.compare} onChange={(e) => setQuery({ compare: e.target.value as OverviewQuery["compare"] })} className={`${field} mt-0.5 py-1.5`}>
+            <select value={query.compare} onChange={(e) => setQuery({ compare: e.target.value as OverviewQuery["compare"] })} className={`${field} mt-0.5 py-1.5`}>
               {COMPARES.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.label}
@@ -160,24 +151,25 @@ export default function OverviewClient() {
           </label>
         </div>
         {cur && prev && (
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-zinc-400">
             <b className="text-zinc-300">
-              {shortDate(cur.from)}
-              {cur.to !== cur.from && ` – ${shortDate(cur.to)}`}
+              {fmtDay(cur.from)}
+              {cur.to !== cur.from && ` – ${fmtDay(cur.to)}`}
             </b>{" "}
-            compared with {shortDate(prev.from)}
-            {prev.to !== prev.from && ` – ${shortDate(prev.to)}`} · days in <b className="text-zinc-300">{cur.tz}</b> ({zone.source === "setting" ? "the admin time zone" : "your time zone"})
+            compared with {fmtDay(prev.from)}
+            {prev.to !== prev.from && ` – ${fmtDay(prev.to)}`} · days in <b className="text-zinc-300">{cur.tz === tz ? zoneLabel() : cur.tz}</b>
+            {cur.tz === tz ? " (the admin time zone)" : ""}
           </p>
         )}
       </div>
 
       {error && (
-        <p role="alert" className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        <Notice kind="err" onRetry={() => load({ refresh: true })} onClose={data ? () => setError(null) : undefined}>
           {error}
-        </p>
+        </Notice>
       )}
 
-      {!data && !error && <p className="px-1 py-6 text-sm text-zinc-500">Loading the figures…</p>}
+      {!data && !error && <Loading label="Loading the figures…" />}
 
       {s && cur && (
         <>
@@ -212,7 +204,7 @@ export default function OverviewClient() {
                 retry={retry("online")}
                 foot={(d) => (d.configured ? "People connected to meeting rooms, as LiveKit counts them (recording and caption agents included)." : "LiveKit is not configured on this deployment.")}
               >
-                {(d) => (d.configured ? <Figure href={d.links.live} value={n(d.participants)} label={`in ${n(d.rooms)} meeting room${d.rooms === 1 ? "" : "s"}`} /> : <Unavailable>Not configured</Unavailable>)}
+                {(d) => (d.configured ? <Figure href={d.links.live} value={n(d.participants)} label={`in ${n(d.rooms)} meeting room${d.rooms === 1 ? "" : "s"}`} /> : <EmptyLine>Not configured</EmptyLine>)}
               </Card>
             )}
             {s.subscriptions && (
@@ -257,7 +249,7 @@ export default function OverviewClient() {
                 {(d) => (
                   <>
                     <Figure href={d.links.storage} value={formatBytes(d.bytes)} label={`in ${n(d.files)} file${d.files === 1 ? "" : "s"}${d.complete ? "" : " (at least)"}`} />
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-zinc-400">
                       Bandwidth: <span className="text-zinc-400">not available</span>
                     </p>
                   </>
@@ -273,7 +265,7 @@ export default function OverviewClient() {
                     <Figure
                       href={d.links.health}
                       value={checked ? `${n(d.counts.up)} / ${n(checked)}` : "—"}
-                      label={bad ? `services up · ${d.counts.down} down, ${d.counts.degraded} degraded` : "services up"}
+                      label={bad ? `services up · ${n(d.counts.down)} down, ${n(d.counts.degraded)} degraded` : "services up"}
                       tone={d.counts.down ? "bad" : d.counts.degraded ? "warn" : "ok"}
                     />
                   );
@@ -343,31 +335,31 @@ export default function OverviewClient() {
 
           <section aria-label="Breakdowns" className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
             {s.subscriptions?.status === "ok" && (
-              <Panel title="Subscriptions by plan">
+              <Breakdown title="Subscriptions by plan">
                 {s.subscriptions.data.byPlan.length ? (
-                  <HBars rows={s.subscriptions.data.byPlan.map((p) => ({ label: p.name, value: p.total, sub: `${p.live} giving a plan now`, href: p.href }))} />
+                  <HBars rows={s.subscriptions.data.byPlan.map((p) => ({ label: p.name, value: p.total, sub: `${n(p.live)} giving a plan now`, href: p.href }))} />
                 ) : (
-                  <Quiet>No subscription records yet.</Quiet>
+                  <EmptyLine>No subscription records yet.</EmptyLine>
                 )}
                 {s.subscriptions.data.byStatus.length > 0 && (
                   <>
-                    <h3 className="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-zinc-500">By status</h3>
+                    <h3 className="mb-1 mt-4 text-xs font-medium uppercase tracking-wide text-zinc-400">By status</h3>
                     <HBars rows={s.subscriptions.data.byStatus.map((x) => ({ label: x.status, value: x.count, href: x.href }))} />
                   </>
                 )}
-              </Panel>
+              </Breakdown>
             )}
             {s.activity?.status === "ok" && (
-              <Panel title="Feature usage" note={s.activity.data.comparable ? undefined : activityFoot(s.activity.data)}>
+              <Breakdown title="Feature usage" note={s.activity.data.comparable ? undefined : activityFoot(s.activity.data)}>
                 {s.activity.data.features.some((f) => f.count.value > 0) ? (
                   <HBars rows={s.activity.data.features.filter((f) => f.count.value > 0).map((f) => ({ label: f.label, value: f.count.value, sub: pctText(f.count), href: f.href }))} />
                 ) : (
-                  <Quiet>No feature use recorded in this period.</Quiet>
+                  <EmptyLine>No feature use recorded in this period.</EmptyLine>
                 )}
-              </Panel>
+              </Breakdown>
             )}
             {s.health?.status === "ok" && (
-              <Panel title="Services" more={{ href: s.health.data.links.health, label: "Service health" }}>
+              <Breakdown title="Services" more={{ href: s.health.data.links.health, label: "Service health" }}>
                 {s.health.data.services.length ? (
                   <ul className="divide-y divide-white/5 text-sm">
                     {s.health.data.services.map((x) => (
@@ -380,18 +372,18 @@ export default function OverviewClient() {
                     ))}
                   </ul>
                 ) : (
-                  <Quiet>No health check has run yet.</Quiet>
+                  <EmptyLine>No health check has run yet.</EmptyLine>
                 )}
-              </Panel>
+              </Breakdown>
             )}
             {(incidents || jobs) && (
-              <Panel title="Incidents and jobs">
+              <Breakdown title="Incidents and jobs">
                 {incidents &&
                   (incidents.open.length ? (
                     <ul className="mb-3 space-y-1 text-sm">
                       {incidents.open.map((i) => (
                         <li key={i.id}>
-                          <Link href={incidents.links.incidents} className="flex justify-between gap-2 rounded px-1 py-0.5 hover:bg-white/5">
+                          <Link href={incidents.links.incidents} className={`flex justify-between gap-2 rounded px-1 py-0.5 hover:bg-white/5 ${linkFocus}`}>
                             <span className="truncate text-zinc-200">{i.title}</span>
                             <span className="shrink-0 text-xs text-red-300">
                               {i.impact} · {i.status}
@@ -401,13 +393,13 @@ export default function OverviewClient() {
                       ))}
                     </ul>
                   ) : (
-                    <Quiet>No open incidents.</Quiet>
+                    <EmptyLine>No open incidents.</EmptyLine>
                   ))}
                 {jobs && (
                   <ul className="divide-y divide-white/5 text-sm">
                     {jobs.jobs.slice(0, 8).map((j) => (
                       <li key={j.name}>
-                        <Link href={j.href} className="flex items-center justify-between gap-2 rounded px-1 py-1.5 hover:bg-white/5">
+                        <Link href={j.href} className={`flex items-center justify-between gap-2 rounded px-1 py-1.5 hover:bg-white/5 ${linkFocus}`}>
                           <span className="min-w-0 truncate font-mono text-xs text-zinc-300">{j.name}</span>
                           <span className={`shrink-0 text-xs ${j.failingRuns ? "text-red-300" : j.outcome === "ok" ? "text-emerald-300" : "text-zinc-400"}`}>
                             {j.failingRuns ? `failed ${j.failingRuns}× in a row` : (j.outcome ?? "never ran")}
@@ -418,12 +410,12 @@ export default function OverviewClient() {
                     ))}
                   </ul>
                 )}
-              </Panel>
+              </Breakdown>
             )}
             {s.storage?.status === "ok" && s.storage.data.byType.length > 0 && (
-              <Panel title="Storage by type">
+              <Breakdown title="Storage by type">
                 <HBars rows={s.storage.data.byType.map((t) => ({ label: t.label, value: t.files, sub: formatBytes(t.bytes), href: t.href }))} unit="files" />
-              </Panel>
+              </Breakdown>
             )}
           </section>
         </>
@@ -468,21 +460,16 @@ function Card<T>({
 }) {
   return (
     <article className={`flex min-w-0 flex-col rounded-xl border border-white/10 bg-white/[0.03] p-3 ${wide ? "sm:col-span-2" : ""}`} aria-label={title}>
-      <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">{title}</h2>
+      <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">{title}</h2>
       {r.status === "error" ? (
-        <div role="alert" className="flex flex-1 flex-col items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-200">
-          <span>
-            <b>Could not load.</b> {r.message}
-          </span>
-          <button type="button" onClick={retry} className="rounded border border-red-400/40 px-2 py-0.5 hover:bg-red-400/10">
-            Try again
-          </button>
-        </div>
+        <Notice kind="err" onRetry={retry}>
+          <b>Could not load.</b> {r.message}
+        </Notice>
       ) : (
         <div className="flex flex-1 flex-col gap-2">{children(r.data)}</div>
       )}
       {r.status === "ok" && (
-        <p className="mt-2 text-[11px] leading-snug text-zinc-500">
+        <p className="mt-2 text-[11px] leading-snug text-zinc-400">
           {foot ? <>{foot(r.data)} </> : null}
           <span title={r.cached ? "Kept from an earlier load (up to a minute old)" : "Just computed"}>As of {fmtTime(r.at)}.</span>
         </p>
@@ -494,7 +481,7 @@ function Card<T>({
 function Figure({ href, value, label, change, small, tone }: { href: string; value: string; label: string; change?: ReactNode; small?: boolean; tone?: "ok" | "warn" | "bad" }) {
   const color = tone === "bad" ? "text-red-300" : tone === "warn" ? "text-amber-200" : "text-cyan-50";
   return (
-    <Link href={href} className="group block rounded-lg px-1 py-0.5 hover:bg-white/5">
+    <Link href={href} className={`group block rounded-lg px-1 py-0.5 hover:bg-white/5 ${linkFocus}`}>
       <span className={`block font-semibold tabular-nums ${small ? "text-lg" : "text-2xl"} ${color} group-hover:underline`}>{value}</span>
       <span className="block text-xs text-zinc-400">{label}</span>
       {change && <span className="block text-xs">{change}</span>}
@@ -504,28 +491,28 @@ function Figure({ href, value, label, change, small, tone }: { href: string; val
 
 /** "+12% (34 → 38)" against the comparison period. Up is green unless more is worse. */
 function Change({ d, goodWhenUp = true, comparable = true }: { d: Delta; goodWhenUp?: boolean; comparable?: boolean }) {
-  if (!comparable) return <span className="text-zinc-500">no earlier data to compare</span>;
-  if (d.diff === 0) return <span className="text-zinc-500">no change ({n(d.previous)} before)</span>;
+  if (!comparable) return <span className="text-zinc-400">no earlier data to compare</span>;
+  if (d.diff === 0) return <span className="text-zinc-400">no change ({n(d.previous)} before)</span>;
   const up = d.diff > 0;
   const good = up === goodWhenUp;
   const pct = d.pct == null ? "new" : `${up ? "+" : ""}${d.pct}%`;
   return (
     <span className={good ? "text-emerald-300" : "text-red-300"}>
-      {up ? "▲" : "▼"} {pct} <span className="text-zinc-500">({n(d.previous)} before)</span>
+      {up ? "▲" : "▼"} {pct} <span className="text-zinc-400">({n(d.previous)} before)</span>
     </span>
   );
 }
 
 function MoneyRows({ href, m, label, empty, goodWhenUp = true }: { href: string; m: MoneyDelta; label: string; empty?: string; goodWhenUp?: boolean }) {
   const cs = currenciesOf(Object.fromEntries(Object.entries(m).map(([c, d]) => [c, d.value])));
-  if (!cs.length) return empty ? <p className="text-sm text-zinc-500">{empty}</p> : null;
+  if (!cs.length) return empty ? <EmptyLine>{empty}</EmptyLine> : null;
   return (
     <ul className="space-y-1">
       {cs.map((c) => {
         const d = m[c];
         return (
           <li key={c}>
-            <Link href={href} className="group flex flex-wrap items-baseline justify-between gap-x-3 rounded-lg px-1 py-0.5 hover:bg-white/5">
+            <Link href={href} className={`group flex flex-wrap items-baseline justify-between gap-x-3 rounded-lg px-1 py-0.5 hover:bg-white/5 ${linkFocus}`}>
               <span className="text-xl font-semibold tabular-nums text-cyan-50 group-hover:underline">{fmtMoney(d.value, c)}</span>
               <span className="text-xs">
                 <span className="text-zinc-400">{label} · </span>
@@ -540,11 +527,11 @@ function MoneyRows({ href, m, label, empty, goodWhenUp = true }: { href: string;
 }
 
 function MoneyChange({ d, c, goodWhenUp }: { d: Delta; c: string; goodWhenUp: boolean }) {
-  if (d.diff === 0) return <span className="text-zinc-500">no change</span>;
+  if (d.diff === 0) return <span className="text-zinc-400">no change</span>;
   const up = d.diff > 0;
   return (
     <span className={up === goodWhenUp ? "text-emerald-300" : "text-red-300"}>
-      {up ? "▲" : "▼"} {d.pct == null ? "new" : `${up ? "+" : ""}${d.pct}%`} <span className="text-zinc-500">({fmtMoney(d.previous, c)} before)</span>
+      {up ? "▲" : "▼"} {d.pct == null ? "new" : `${up ? "+" : ""}${d.pct}%`} <span className="text-zinc-400">({fmtMoney(d.previous, c)} before)</span>
     </span>
   );
 }
@@ -555,20 +542,21 @@ function AmountList({ amounts }: { amounts: Record<string, number> }) {
   return <p className="text-xs text-zinc-400">{cs.map((c) => fmtMoney(amounts[c], c)).join(" · ")}</p>;
 }
 
-function Panel({ title, note, more, children }: { title: string; note?: string; more?: { href: string; label: string }; children: ReactNode }) {
+/** A breakdown under the figures: the shared Panel with a title, an optional link to the full list and a note. */
+function Breakdown({ title, note, more, children }: { title: string; note?: string; more?: { href: string; label: string }; children: ReactNode }) {
   return (
-    <section className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+    <Panel className="min-w-0 p-3">
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <h2 className="text-sm font-medium text-zinc-100">{title}</h2>
         {more && (
-          <Link href={more.href} className="text-xs text-cyan-300 hover:underline">
+          <Link href={more.href} className={`text-xs text-cyan-300 hover:underline ${linkFocus}`}>
             {more.label} →
           </Link>
         )}
       </div>
       {children}
-      {note && <p className="mt-2 text-[11px] text-zinc-500">{note}</p>}
-    </section>
+      {note && <p className="mt-2 text-[11px] text-zinc-400">{note}</p>}
+    </Panel>
   );
 }
 
@@ -576,12 +564,4 @@ function StatusPill({ status }: { status: string }) {
   const tone =
     status === "up" ? "bg-emerald-500/15 text-emerald-300" : status === "degraded" ? "bg-amber-400/15 text-amber-300" : status === "down" ? "bg-red-500/15 text-red-300" : "bg-white/5 text-zinc-400";
   return <span className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium ${tone}`}>{status.replace("_", " ")}</span>;
-}
-
-function Unavailable({ children }: { children: ReactNode }) {
-  return <p className="text-sm text-zinc-500">{children}</p>;
-}
-
-function Quiet({ children }: { children: ReactNode }) {
-  return <p className="text-sm text-zinc-500">{children}</p>;
 }
