@@ -9,6 +9,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { runReminders } from "@/lib/finance/reminders";
+import { cronRoute } from "@/lib/ops/cron";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,8 +25,12 @@ function isAuthed(req: NextRequest): boolean {
   return auth === "Bearer " + secret;
 }
 
-export async function GET(req: NextRequest) {
+async function handle(req: NextRequest) {
   if (!isAuthed(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const result = await runReminders(Date.now(), { by: "cron" });
   return NextResponse.json({ ok: true, ...result });
 }
+
+// Recorded and locked by the ops job runner (Operations > Jobs); the
+// schedule and what the route does are unchanged.
+export const GET = cronRoute("billing-reminders", handle);

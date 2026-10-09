@@ -3,6 +3,8 @@ import { createHash } from 'crypto';
 import { activity } from '@/lib/activity';
 import { kv } from '@/lib/kv';
 import { getPlanForUserId } from '@/lib/plan';
+import { featureDecision } from '@/lib/platform/features';
+import { featureRefusalMessage } from '@/lib/platform/model';
 
 export type ApiPlan = 'free' | 'starter' | 'pro' | 'business' | 'enterprise';
 
@@ -95,6 +97,10 @@ export async function authenticate(req: NextRequest): Promise<AuthContext> {
   // 'free' — a paying customer's key capped at free limits — and it never
   // followed an upgrade or a downgrade.
   record.plan = await currentPlan(record.ownerUserId);
+  // Feature controls (admin): the API turned off everywhere, or for the
+  // key's account, refuses every call — the key itself stays valid.
+  const api = await featureDecision('developer_api', { userId: record.ownerUserId, plan: record.plan });
+  if (!api.enabled) throw new ApiError(403, 'feature_disabled', featureRefusalMessage(api));
 
   try {
     record.lastUsedAt = Date.now();

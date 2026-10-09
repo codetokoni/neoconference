@@ -346,6 +346,7 @@ async function main() {
     assert.deepEqual(dg.runs.map((x) => x.outcome).slice(0, 2), ["failed", "ok"]);
     assert.equal(list.find((j) => j.name === "redemption-digest")!.retrySafe, false);
     assert.equal(list.find((j) => j.name === "comms")!.retrySafe, true, "announcement delivery claims each recipient before sending");
+    assert.equal(list.find((j) => j.name === "billing-reminders")!.retrySafe, true, "each reminder is sent at most once");
     assert.deepEqual((r.body.queues as { sends: { open: number } }).sends.open, 0);
     assert.ok(list.some((j) => j.name === "smoke-slow"), "unregistered jobs that ran are listed too");
     noSecrets(r.text, "GET jobs");

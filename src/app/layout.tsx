@@ -11,6 +11,9 @@ import AndroidAppGate from "@/components/AndroidAppGate";
 import SessionBootstrap from "@/components/SessionBootstrap";
 import PushRegistrar from "@/components/notifications/PushRegistrar";
 import IncomingCall from "@/components/notifications/IncomingCall";
+import PlatformNotice from "@/components/PlatformNotice";
+import { getPlatformSettings } from "@/lib/platform/settings";
+import { DEFAULT_PLATFORM_NAME, noticeActive } from "@/lib/platform/model";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -32,20 +35,30 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const role = await getCurrentRole();
+  // Admin settings (KV, cached a few seconds): name, logo, banner, language.
+  const settings = await getPlatformSettings();
+  const { branding } = settings;
+  const customName = branding.platformName !== DEFAULT_PLATFORM_NAME;
   return (
     <ClerkProvider>
-      <html lang="en" className={inter.variable}>
+      <html lang={settings.regional.defaultLanguage || "en"} className={inter.variable}>
         <body className={inter.className}>
+          {noticeActive(settings.notice) && <PlatformNotice notice={settings.notice} />}
           <header className="sticky top-0 z-40 backdrop-blur-xl bg-[rgba(4,8,16,0.55)] border-b border-white/5">
             <div className="mx-auto max-w-7xl px-4 sm:px-6 py-3 flex items-center justify-between">
               <Link href="/" className="group inline-flex items-center gap-2.5">
-                {/* The app icon's tile: its gradient, the mark half its width. */}
-                <span className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#A5FBF9_0%,#56D2FB_50%,#1F66FB_100%)] shadow-[0_0_24px_rgba(34,211,238,0.55)]">
-                  <span className="absolute inset-0 rounded-xl ring-1 ring-white/30" />
-                  <NeoMark className="w-4" />
-                </span>
+                {branding.logoKey ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- served by our own route from R2; next/image would need the R2 host configured
+                  <img src={`/api/platform/logo?v=${branding.logoVersion}`} alt="" className="h-8 w-8 rounded-xl object-contain" />
+                ) : (
+                  /* The app icon's tile: its gradient, the mark half its width. */
+                  <span className="relative inline-flex h-8 w-8 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#A5FBF9_0%,#56D2FB_50%,#1F66FB_100%)] shadow-[0_0_24px_rgba(34,211,238,0.55)]">
+                    <span className="absolute inset-0 rounded-xl ring-1 ring-white/30" />
+                    <NeoMark className="w-4" />
+                  </span>
+                )}
                 <span className="font-semibold tracking-tight text-cyan-100 text-[17px]">
-                  Neo<span className="neo-gradient-text">Conference</span>
+                  {customName ? branding.platformName : <>Neo<span className="neo-gradient-text">Conference</span></>}
                 </span>
               </Link>
 

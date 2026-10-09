@@ -22,6 +22,8 @@ export async function putObject(key, body, contentType) {
   if (globalThis.__r2PutFails) throw new Error("stub put failed");
   bytes().set(key, new Uint8Array(body));
   stamps().set(key, { contentType, lastModified: new Date().toISOString() });
+  // And what was uploaded as, in globalThis.__r2Puts (key -> { type, bytes }).
+  (globalThis.__r2Puts ??= new Map()).set(key, { type: contentType, bytes: body.length });
 }
 export async function getObjectBytes(key) {
   const b = bytes().get(key);
@@ -35,6 +37,7 @@ export async function deleteObject(key) {
   globalThis.__r2Writes = [...(globalThis.__r2Writes ?? []), { op: "delete", key }];
   bytes().delete(key);
   globalThis.__objects = (globalThis.__objects ?? []).filter((o) => o.key !== key);
+  globalThis.__r2Puts?.delete(key);
 }
 export async function bucketUsage() {
   if (globalThis.__r2Down) throw new Error("connect ECONNREFUSED r2.test");

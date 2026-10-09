@@ -174,6 +174,12 @@ export interface RequireOptions {
   stepUp?: boolean;
   /** Allow before two-factor is set up (the enrollment routes themselves). */
   allowWithoutMfa?: boolean;
+  /**
+   * Reading what a sensitive permission controls (the feature switches, the
+   * integration list) needs the permission but not a fresh code; changing
+   * it does. Never set on a route that changes anything.
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -197,7 +203,7 @@ export async function requireAdmin(
   const needed = permission == null ? [] : Array.isArray(permission) ? permission : [permission];
   const missing = needed.filter((p) => !ctx.permissions.includes(p));
   if (missing.length) return { ok: false, response: refuse("forbidden", { permission: missing[0] }) };
-  const sensitive = opts.stepUp || needed.some((p) => SENSITIVE_PERMISSIONS.has(p));
+  const sensitive = opts.stepUp || (!opts.readOnly && needed.some((p) => SENSITIVE_PERMISSIONS.has(p)));
   if (sensitive && !ctx.mfa.stepUpFresh) return { ok: false, response: refuse("step_up_required") };
   return { ok: true, ctx };
 }

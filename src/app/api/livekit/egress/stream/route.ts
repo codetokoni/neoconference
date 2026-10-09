@@ -20,6 +20,7 @@ import { eventStore } from "@/lib/eventStore";
 import { authorize } from "@/lib/authz";
 import { errorMessage } from "@/lib/errorMessage";
 import { getPlanLimitsForUserId, isAdminUserId } from "@/lib/plan";
+import { featureDecision, featureRefusal } from "@/lib/platform/features";
 import { activity } from "@/lib/activity";
 import {
   destinationProblem,
@@ -114,7 +115,16 @@ export async function POST(req: Request) {
   // per host. Operators are exempt.
   const owner = ev.ownerUserId || "";
   const { plan: ownerPlan, limits: ownerLimits } = await getPlanLimitsForUserId(owner);
-  if (!ownerLimits.livestream && !(owner && (await isAdminUserId(owner)))) {
+  // Feature controls (admin) first: off everywhere or for this account
+  // beats the plan and the operator exemption.
+  const feature = await featureDecision("livestream", {
+    userId: owner,
+    plan: ownerPlan,
+    planAllows: ownerLimits.livestream,
+    exempt: !!owner && (await isAdminUserId(owner)),
+  });
+  if (!feature.enabled && feature.source !== "plan_default") return featureRefusal(feature);
+  if (!feature.enabled) {
     return NextResponse.json(
       {
         ok: false,

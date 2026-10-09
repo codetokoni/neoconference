@@ -25,6 +25,7 @@ import { ESPEES_AMOUNTS } from "@/lib/espees";
 import { recordPayment, updatePaymentRecord } from "@/lib/paymentsStore";
 import { applyPurchase } from "@/lib/billing/subscriptions";
 import { redeemCoupon } from "@/lib/billing/store";
+import { readNonce, traceEspees } from "@/lib/espeesTrace";
 
 /**
  * Where to send the buyer once the upgrade has landed.
@@ -54,24 +55,32 @@ function siteOrigin(req: Request): string {
 
 export async function GET(req: Request): Promise<Response> {
   const url = new URL(req.url);
-  const nonce = (url.searchParams.get("nonce") || "").trim();
+  const { nonce, shape } = readNonce(url);
   const origin = siteOrigin(req);
+  // One line per request saying which branch ran (src/lib/espeesTrace.ts).
+  const trace = (outcome: string, extra: Record<string, string | number | boolean | null | undefined> = {}) =>
+    traceEspees("return", outcome, url, shape, extra);
 
   if (!nonce) {
+    trace("missing_nonce");
     return NextResponse.redirect(origin + "/pricing?error=missing_nonce", { status: 303 });
   }
 
   const record = await readPendingPayment(nonce);
   if (!record) {
+    trace("expired_or_unknown");
     return NextResponse.redirect(origin + "/pricing?error=expired_or_unknown", { status: 303 });
   }
 
+  const who = { plan: record.plan, cycle: record.billingCycle, app: isAppCallback(record.returnTo), ageS: Math.round((Date.now() - record.createdAt) / 1000) };
   if (record.status === "paid") {
     // Idempotent: a refresh on the success page should not error.
+    trace("already_paid", who);
     return upgradedRedirect(origin, record);
   }
 
   if (record.status !== "pending") {
+    trace("already_resolved", { ...who, status: record.status });
     return NextResponse.redirect(origin + "/pricing?error=already_resolved", { status: 303 });
   }
 
@@ -104,6 +113,7 @@ export async function GET(req: Request): Promise<Response> {
     planExpiresAt = applied.periodEnd;
   } catch (e) {
     console.warn("[espees-return] applying the purchase failed", e);
+    trace("apply_failed", { ...who, error: e instanceof Error ? e.message.slice(0, 200) : "unknown" });
     // Mark failed so user can retry; surface error to /pricing.
     await updatePaymentStatus(nonce, "failed");
     const msg = encodeURIComponent("clerk_update_failed");
@@ -173,5 +183,6 @@ export async function GET(req: Request): Promise<Response> {
   const country = req.headers.get("x-vercel-ip-country");
   if (paymentCreated && country) await updatePaymentRecord(paymentRef, { country }).catch(() => null);
 
+  trace("upgraded", { ...who, recorded: paymentCreated, amountEsp });
   return upgradedRedirect(origin, record);
 }

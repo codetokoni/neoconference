@@ -26,6 +26,7 @@ import {
 import { eventAttendees } from "@/lib/groupAttendees";
 import { notifyInvitees } from "@/lib/groupNotify";
 import { ringNow } from "@/lib/ringEngine";
+import { getPlatformSettings } from "@/lib/platform/settings";
 import {
   groupErrorResponse,
   invalidBody,
@@ -92,7 +93,9 @@ export async function POST(req: Request, ctx: Ctx) {
   }
 
   try {
-    const fields = cleanMeetingFields(body, mode);
+    // No zone given: the platform's default (Settings → Regional).
+    const timezone = body.timezone === undefined ? (await getPlatformSettings()).regional.defaultTimezone : body.timezone;
+    const fields = cleanMeetingFields({ ...body, timezone }, mode);
     const origin = siteOrigin(req);
     const { events, seriesId } = await createGroupMeetings(
       { group: gate.group, creator: gate.member, kind: mode, fields, extras, origin },

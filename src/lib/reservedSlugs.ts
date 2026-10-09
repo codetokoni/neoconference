@@ -8,6 +8,6 @@
 export const RESERVED_SHORT_URL_SLUGS = new Set([
   'admin', 'api', 'app', 'dashboard', 'docs', 'e', 'embed', 'explore', 'fonts',
   'groups', 'help', 'i', 'pricing', 'room', 'share', 'support', 'video',
-  'sign-in', 'sign-up', 'sign-out',
+  'sign-in', 'sign-up', 'sign-out', 'access-blocked',
   '_next', '_vercel',
 ]);
