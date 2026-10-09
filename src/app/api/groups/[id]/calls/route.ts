@@ -17,6 +17,9 @@ import {
   requireGroupPermission,
 } from "@/lib/groupAuthz";
 import { meetingGates, siteOrigin } from "@/lib/groupPeople";
+import { getPlanForUserId } from "@/lib/plan";
+import { featureDecision, featureRefusal } from "@/lib/platform/features";
+import { getPlatformSettings } from "@/lib/platform/settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +28,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const gate = await requireGroupPermission(id, "group:call");
   if (!gate.ok) return gate.response;
+  // Feature controls (admin), for the caller, who owns the call's meeting.
+  const caller = gate.member.userId;
+  const calls = await featureDecision("group_calls", { userId: caller, plan: await getPlanForUserId(caller) });
+  if (!calls.enabled) return featureRefusal(calls);
 
   const body = await readJsonObject(req);
   if (!body) return invalidBody();
@@ -45,7 +52,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           typeof body.title === "string" && body.title.trim()
             ? body.title
             : `${gate.member.name}'s call · ${gate.group.name}`.slice(0, 120),
-        timezone: typeof body.timezone === "string" ? body.timezone : undefined,
+        timezone: typeof body.timezone === "string" ? body.timezone : (await getPlatformSettings()).regional.defaultTimezone,
       },
       "call"
     );

@@ -8,6 +8,7 @@
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { loadAdminForPage, publicContext } from "@/lib/admin/context";
+import { getPlatformSettings } from "@/lib/platform/settings";
 import AdminShell from "./AdminShell";
 import { AdminRefused, MfaEnroll, MfaVerify } from "./AdminGate";
 
@@ -27,5 +28,11 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const { ctx } = who;
   if (!ctx.mfa.enrolled) return <MfaEnroll email={ctx.email} isOwner={ctx.isOwner} />;
   if (!ctx.mfa.verified) return <MfaVerify email={ctx.email} />;
-  return <AdminShell me={publicContext(ctx)}>{children}</AdminShell>;
+  const { regional } = await getPlatformSettings();
+  const clock = { timeZone: regional.adminTimezone, dateStyle: regional.dateStyle, numberLocale: regional.numberLocale };
+  return (
+    <AdminShell me={publicContext(ctx)} clock={clock}>
+      {children}
+    </AdminShell>
+  );
 }

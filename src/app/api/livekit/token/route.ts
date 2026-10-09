@@ -3,6 +3,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { getPlanForUserId, getPlanLimits, type Plan } from "@/lib/plan";
 import { isAdmin } from "@/lib/roles";
+import { featureDecisions } from "@/lib/platform/features";
 import { rejoinDropsToAttendee, reopensOnJoin } from "@/lib/meetingLifecycle";
 import { gateStatus } from "@/lib/waitingRoom";
 
@@ -202,6 +203,7 @@ export async function GET(req: NextRequest) {
     //      joiner's plan was the reason /room/hsmanagers hit "room_full"
     //      at 30 people even after the host paid to raise the cap.
     let hostPlan: Plan | null = null;
+    let hostOwnerId: string | null = null;
     try {
       let hostUserId: string | undefined;
       const { eventStore: __es } = await import("@/lib/eventStore");
@@ -227,7 +229,10 @@ export async function GET(req: NextRequest) {
       // check entirely below — better to admit everyone into a room
       // nobody owns than to punish a free joiner with the free-plan
       // cap for a room somebody else provisioned.
-      if (hostUserId) hostPlan = await getPlanForUserId(hostUserId);
+      if (hostUserId) {
+        hostPlan = await getPlanForUserId(hostUserId);
+        hostOwnerId = hostUserId;
+      }
     } catch (planErr) {
       console.error("[livekit/token] plan lookup failed:", planErr);
     }
@@ -415,7 +420,22 @@ export async function GET(req: NextRequest) {
     // expose premium features. The cap check above is deliberately
     // NOT gated on this — see comment there for why.
     const metadataPlan: Plan = hostPlan ?? "free";
-    const metadataLimits = planLimits ?? getPlanLimits(metadataPlan);
+    const metadataLimits = { ...(planLimits ?? getPlanLimits(metadataPlan)) };
+    // Feature controls (admin) over the plan's switches, so the room's
+    // controls (breakouts, Record, Go live) follow a feature turned off
+    // everywhere or for the host's account. Best effort: the routes that
+    // start a recording or a stream check again.
+    try {
+      const switches = ["recording", "breakouts", "livestream", "translation", "branding"] as const;
+      const fx = await featureDecisions([...switches], {
+        userId: hostOwnerId,
+        plan: metadataPlan,
+        planAllows: Object.fromEntries(switches.map((f) => [f, metadataLimits[f]])),
+      });
+      for (const f of switches) metadataLimits[f] = fx[f].enabled;
+    } catch (featureErr) {
+      console.error("[livekit/token] feature controls unavailable:", featureErr);
+    }
     at.metadata = JSON.stringify({
       planLimits: metadataLimits,
       hostPlan: metadataPlan,

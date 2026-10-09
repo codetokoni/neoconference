@@ -32,6 +32,25 @@ function defaultFrom(): string {
   return process.env.MAIL_FROM || "NeoConference <onboarding@resend.dev>";
 }
 
+/**
+ * MAIL_FROM's address under the platform name from the admin settings
+ * (only when it was changed from the default, so MAIL_FROM's own display
+ * name still applies otherwise), and the support email as reply-to.
+ */
+async function brandedSender(): Promise<{ from: string; replyTo: string | undefined }> {
+  try {
+    const { getPlatformSettings } = await import("@/lib/platform/settings");
+    const { DEFAULT_PLATFORM_NAME, DEFAULT_SUPPORT_EMAIL } = await import("@/lib/platform/model");
+    const s = await getPlatformSettings();
+    const name = s.branding.platformName.replace(/["<>\r\n]/g, "").trim();
+    const from = name && name !== DEFAULT_PLATFORM_NAME ? `${name} <${mailFromAddress()}>` : defaultFrom();
+    const support = s.contacts.supportEmail;
+    return { from, replyTo: support && support !== DEFAULT_SUPPORT_EMAIL ? support : undefined };
+  } catch {
+    return { from: defaultFrom(), replyTo: undefined };
+  }
+}
+
 /** The address mail is sent from, without its display name. */
 export function mailFromAddress(): string {
   const from = defaultFrom();
@@ -42,15 +61,18 @@ export function mailFromAddress(): string {
 export async function sendMail(input: SendMailInput): Promise<SendMailResult> {
   const key = process.env.RESEND_API_KEY;
   if (!key) return { ok: false, error: "mail_not_configured" };
+  // The platform name and support address set in /admin/settings: the
+  // sender's display name, and where replies go unless the caller says.
+  const branding = await brandedSender();
   const body: Record<string, unknown> = {
-    from: input.from || defaultFrom(),
+    from: input.from || branding.from,
     to: Array.isArray(input.to) ? input.to : [input.to],
     subject: input.subject,
   };
   if (input.bcc && input.bcc.length > 0) body.bcc = input.bcc;
   if (input.html) body.html = input.html;
   if (input.text) body.text = input.text;
-  if (input.replyTo) body.reply_to = input.replyTo;
+  if (input.replyTo || branding.replyTo) body.reply_to = input.replyTo || branding.replyTo;
   if (input.attachments && input.attachments.length > 0) {
     // Resend takes attachment content base64-encoded.
     body.attachments = input.attachments.map((a) => ({

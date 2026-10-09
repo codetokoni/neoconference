@@ -13,6 +13,8 @@ import { auth } from '@clerk/nextjs/server';
 import { AgentDispatchClient } from 'livekit-server-sdk';
 import { eventStore } from '@/lib/eventStore';
 import { authorize } from '@/lib/authz';
+import { getPlanForUserId } from '@/lib/plan';
+import { featureDecision, featureRefusal } from '@/lib/platform/features';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -56,6 +58,10 @@ export async function POST(req: NextRequest) {
     }
     const gate = await authorize(ev, 'captions:dispatch');
     if (!gate.ok) return gate.response;
+    // Feature controls (admin), for the meeting's owner.
+    const owner = ev.ownerUserId || '';
+    const captions = await featureDecision('captions', { userId: owner, plan: await getPlanForUserId(owner) });
+    if (!captions.enabled) return featureRefusal(captions);
   } catch (e) {
     console.error('[captions/dispatch] event lookup failed', e);
     return NextResponse.json({ error: 'event_lookup_failed' }, { status: 500 });

@@ -10,6 +10,7 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
 import type { PublicAdminContext } from "@/lib/admin/context";
 import type { AdminPermission } from "@/lib/admin/catalog";
+import { dateTimeFormat, type DateStyle } from "@/lib/platform/model";
 
 export type ApiResult<T = Record<string, unknown>> = {
   ok: boolean;
@@ -31,7 +32,9 @@ export function useAdmin(): Ctx {
   return c;
 }
 
-export function AdminProvider({ me, children }: { me: PublicAdminContext; children: ReactNode }) {
+export function AdminProvider({ me, clock, children }: { me: PublicAdminContext; clock?: AdminClock; children: ReactNode }) {
+  // Before the children render, so their first fmtTime() already uses it.
+  setAdminClock(clock);
   const [prompt, setPrompt] = useState<{ reason: string } | null>(null);
   const waiter = useRef<((ok: boolean) => void) | null>(null);
 
@@ -152,15 +155,49 @@ function CodePrompt({ reason, onDone }: { reason: string; onDone: (ok: boolean) 
   );
 }
 
-/** Local time with the zone spelled out, so nobody guesses which clock a timestamp is on. */
+/**
+ * The admin area's clock, from Settings → Regional (set by the layout via
+ * AdminProvider): the zone timestamps are shown in ("local" = each
+ * administrator's own), the date style and the number format.
+ */
+export type AdminClock = { timeZone: string; dateStyle: DateStyle; numberLocale: string };
+let clock: AdminClock = { timeZone: "local", dateStyle: "medium", numberLocale: "en-US" };
+
+export function setAdminClock(c: AdminClock | null | undefined) {
+  if (c) clock = c;
+}
+
+export function adminClock(): AdminClock {
+  return clock;
+}
+
+function zoneName(d: Date, timeZone: string | undefined): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "short" }).formatToParts(d).find((p) => p.type === "timeZoneName")?.value ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** A timestamp on the admin clock with the zone spelled out, so nobody guesses which clock it is on. */
 export function fmtTime(ts: number | null | undefined): string {
   if (!ts) return "—";
-  return new Date(ts).toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short",
-  });
+  const d = new Date(ts);
+  const timeZone = clock.timeZone && clock.timeZone !== "local" ? clock.timeZone : undefined;
+  try {
+    const { locale, options } = dateTimeFormat(clock.dateStyle, timeZone);
+    return `${new Intl.DateTimeFormat(locale, options).format(d)} ${zoneName(d, timeZone)}`.trim();
+  } catch {
+    return d.toISOString();
+  }
+}
+
+/** A number in the admin's number format. */
+export function fmtNumber(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+  try {
+    return new Intl.NumberFormat(clock.numberLocale).format(n);
+  } catch {
+    return String(n);
+  }
 }

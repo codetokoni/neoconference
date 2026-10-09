@@ -11,7 +11,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import type { AdminPermission } from "@/lib/admin/catalog";
 import type { PublicAdminContext } from "@/lib/admin/context";
-import { AdminProvider } from "./AdminApi";
+import { AdminProvider, type AdminClock } from "./AdminApi";
 
 type Section = { label: string; href: string; permission: AdminPermission | null; group: string };
 
@@ -23,9 +23,12 @@ export const SECTIONS: Section[] = [
   { label: "Roles", href: "/admin/roles", permission: "admins:read", group: "Access" },
   { label: "Audit log", href: "/admin/audit-log", permission: "audit:read", group: "Access" },
   { label: "Security", href: "/admin/security", permission: null, group: "Access" },
+  { label: "Settings", href: "/admin/settings", permission: "settings:write", group: "Settings" },
+  { label: "Features", href: "/admin/features", permission: "features:write", group: "Settings" },
+  { label: "Integrations", href: "/admin/integrations", permission: "integrations:write", group: "Settings" },
 ];
 
-export default function AdminShell({ me, children }: { me: PublicAdminContext; children: ReactNode }) {
+export default function AdminShell({ me, clock, children }: { me: PublicAdminContext; clock?: AdminClock; children: ReactNode }) {
   const pathname = usePathname() || "";
   const visible = SECTIONS.filter((s) => !s.permission || me.permissions.includes(s.permission));
   const groups = [...new Set(visible.map((s) => s.group))];
@@ -37,7 +40,7 @@ export default function AdminShell({ me, children }: { me: PublicAdminContext; c
   };
 
   return (
-    <AdminProvider me={me}>
+    <AdminProvider me={me} clock={clock}>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:gap-6">
         <aside className="lg:w-56 lg:shrink-0">
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
@@ -79,6 +82,9 @@ export default function AdminShell({ me, children }: { me: PublicAdminContext; c
               </div>
             ))}
           </nav>
+          <p className="mt-2 hidden px-3 text-[11px] text-zinc-500 lg:block" data-admin-clock>
+            Times shown in {!clock || clock.timeZone === "local" ? "your local time zone" : clock.timeZone}
+          </p>
         </aside>
         <div className="min-w-0 flex-1">{children}</div>
       </div>

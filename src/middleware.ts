@@ -2,6 +2,7 @@ import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse, type NextRequest } from 'next/server';
 import { kv } from '@/lib/kv';
 import { RESERVED_SHORT_URL_SLUGS } from '@/lib/reservedSlugs';
+import { platformGate } from '@/lib/platform/gate';
 import {
   SESSION_COOKIE,
   generateDeviceFingerprint,
@@ -41,6 +42,10 @@ const isPublicRoute = createRouteMatcher([
   // Help & support: the app's sign-in screen opens it for people who
   // cannot sign in, so it must not ask them to sign in first.
   '/support',
+  // Where a new account the registration rules refuse is told why.
+  '/access-blocked',
+  // The platform logo (admin settings), shown in the header to everyone.
+  '/api/platform/logo',
   '/e/(.*)',
   '/embed/(.*)',
   '/share/(.*)',
@@ -310,6 +315,12 @@ async function enforcePersistentSession(req: NextRequest): Promise<NextResponse 
 export default clerkMiddleware(
   async (auth, req) => {
     const nextReq = req as unknown as NextRequest;
+    // Maintenance mode and the registration rules (admin settings) come
+    // before everything else. Who is asking is looked up only when one of
+    // them is on (src/lib/platform/gate.ts); the owner, administrators and
+    // /admin always get through.
+    const gated = await platformGate(nextReq, async () => (await auth()).userId ?? null);
+    if (gated) return gated;
     // Custom-domain rewrite runs first because it's tenant-scoped and
     // consumes the whole path. Short-meeting-URL rewrite runs second so
     // it only sees canonical-domain requests.

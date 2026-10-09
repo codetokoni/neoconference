@@ -11,3 +11,10 @@ export async function listRecordings(prefix = "", max = 200) {
 export async function signGetUrl(key, expiresIn = 3600) {
   return `https://signed.test/${key}?expires=${expiresIn}`;
 }
+// Uploads land in globalThis.__r2Puts (key -> { type, bytes }).
+export async function putObject(key, body, contentType) {
+  (globalThis.__r2Puts ??= new Map()).set(key, { type: contentType, bytes: body.length });
+}
+export async function deleteObject(key) {
+  (globalThis.__r2Puts ??= new Map()).delete(key);
+}
