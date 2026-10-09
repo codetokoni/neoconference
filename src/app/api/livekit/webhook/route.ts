@@ -32,6 +32,7 @@ import {
   goesLiveWhenRoomStarts,
 } from '@/lib/meetingLifecycle';
 import { clearedForNewSession } from '@/lib/waitingRoom';
+import { egressOutcome, recordMediaEvent } from '@/lib/ops/media';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -271,6 +272,16 @@ export async function POST(req: Request) {
     }
 
     const egressInfo = event.egressInfo;
+
+    // Operations > Media: every egress outcome (recordings, their audio
+    // sidecars and livestreams), with the failures. Awaited; never throws.
+    const egress = egressOutcome(egressInfo?.status, egressInfo?.error);
+    await recordMediaEvent(
+      'recording',
+      egress.ok,
+      [egressInfo?.roomName, egressInfo?.egressId].filter(Boolean).join(' ') || 'egress',
+      egress.ok ? undefined : `${egress.label}${egressInfo?.error ? ': ' + egressInfo.error : ''}`
+    );
 
     // A livestream that ended — stopped, the room closed, or every
     // destination failed — must stop being "live on YouTube" on the event.

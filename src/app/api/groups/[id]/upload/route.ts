@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { isR2Configured, putObject, signGetUrl } from "@/lib/r2";
+import { recordMediaEvent } from "@/lib/ops/media";
 import { CHAT_IMAGE_MIMES, CHAT_UPLOAD_ALLOWED, CHAT_UPLOAD_MAX_BYTES, safeFilename } from "@/lib/chatUploadRules";
 import { requireGroupPermission } from "@/lib/groupAuthz";
 
@@ -46,8 +47,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     await putObject(key, Buffer.from(await file.arrayBuffer()), mime, { cacheControl: "private, max-age=86400" });
   } catch (err) {
     console.error("[groups/upload] R2 put failed", err);
+    await recordMediaEvent("upload", false, key, (err as Error)?.message);
     return NextResponse.json({ error: "upload_failed" }, { status: 502 });
   }
+  await recordMediaEvent("upload", true, key);
   return NextResponse.json({
     ok: true,
     attachment: {

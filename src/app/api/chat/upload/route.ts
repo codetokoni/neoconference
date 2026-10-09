@@ -21,6 +21,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { randomUUID } from 'node:crypto';
 import { isR2Configured, putObject, signGetUrl } from '@/lib/r2';
+import { recordMediaEvent } from '@/lib/ops/media';
 import { CHAT_IMAGE_MIMES, CHAT_UPLOAD_ALLOWED, CHAT_UPLOAD_MAX_BYTES, safeFilename } from '@/lib/chatUploadRules';
 
 export const runtime = 'nodejs';
@@ -92,11 +93,14 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     console.error('[chat/upload] R2 put failed', e);
+    await recordMediaEvent('upload', false, key, (e as Error).message);
     return NextResponse.json(
       { error: 'upload_failed', detail: (e as Error).message.slice(0, 200) },
       { status: 502 },
     );
   }
+
+  await recordMediaEvent('upload', true, key);
 
   // 7-day GET signature — enough for the meeting itself plus a
   // reasonable read-after window; chat history is ephemeral (LiveKit

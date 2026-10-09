@@ -45,3 +45,23 @@ export const kv: Redis = new Proxy({} as Redis, {
     return Reflect.get(client, prop);
   },
 });
+
+let rawClient: Redis | null = null;
+
+/**
+ * The same store without Upstash's JSON (de)serialisation: values come back
+ * exactly as stored, as strings. For copying keys verbatim (the ops
+ * snapshot and restore in src/lib/ops/backup.ts) — a value read through
+ * `kv` and written back can change ('"x"' comes back as x).
+ */
+export const kvRaw: Redis = new Proxy({} as Redis, {
+  get(_target, prop) {
+    if (!rawClient) {
+      const url = process.env.KV_REST_API_URL;
+      const token = process.env.KV_REST_API_TOKEN;
+      if (!url || !token) throw new Error("kv: Missing required environment variables KV_REST_API_URL and KV_REST_API_TOKEN");
+      rawClient = new Redis({ cache: "default", enableAutoPipelining: true, automaticDeserialization: false, url, token });
+    }
+    return Reflect.get(rawClient, prop);
+  },
+});

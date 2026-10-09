@@ -121,6 +121,17 @@ export function isFcmConfigured(): boolean {
   return serviceAccount() !== null;
 }
 
+/**
+ * For the ops health page: can the service account still get an access
+ * token from Google? Read-only — sends no message. Throws with the reason.
+ */
+export async function checkFcmCredentials(): Promise<{ projectId: string }> {
+  const sa = serviceAccount();
+  if (!sa) throw new Error("FIREBASE_SERVICE_ACCOUNT is missing or unreadable");
+  await accessToken(sa);
+  return { projectId: sa.projectId };
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Access token                                                               */
 /* -------------------------------------------------------------------------- */

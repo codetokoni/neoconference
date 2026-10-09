@@ -7,6 +7,14 @@
     {
       "path": "/api/cron/downgrade-expired-plans",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/ops-health",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/ops-backup",
+      "schedule": "30 3 * * *"
     }
   ]
 }

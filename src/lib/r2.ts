@@ -85,6 +85,38 @@ export async function listRecordings(prefix?: string, max = 200): Promise<R2Obje
   return items;
 }
 
+/**
+ * Objects and bytes in the bucket, for the ops health page. Pages through
+ * the listing (1000 keys a page) up to `maxPages`; `truncated` means there
+ * were more, so the totals are a lower bound.
+ */
+export async function bucketUsage(maxPages = 20): Promise<{ objects: number; bytes: number; truncated: boolean }> {
+  const s3 = r2Client();
+  const Bucket = requiredEnv('S3_BUCKET');
+  let objects = 0;
+  let bytes = 0;
+  let token: string | undefined;
+  for (let page = 0; page < maxPages; page++) {
+    const out = await s3.send(new ListObjectsV2Command({ Bucket, MaxKeys: 1000, ContinuationToken: token }));
+    for (const o of out.Contents || []) {
+      objects++;
+      bytes += o.Size || 0;
+    }
+    if (!out.IsTruncated || !out.NextContinuationToken) return { objects, bytes, truncated: false };
+    token = out.NextContinuationToken;
+  }
+  return { objects, bytes, truncated: true };
+}
+
+/** A whole object's bytes. For small objects (the ops snapshots); not streamed. */
+export async function getObjectBytes(key: string): Promise<Uint8Array> {
+  if (!isR2Configured()) throw new Error('R2 not configured');
+  const s3 = r2Client();
+  const out = await s3.send(new GetObjectCommand({ Bucket: requiredEnv('S3_BUCKET'), Key: key }));
+  if (!out.Body) throw new Error('empty body');
+  return await (out.Body as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray();
+}
+
 export async function signGetUrl(key: string, expiresIn = 3600): Promise<string> {
   const s3 = r2Client();
   const cmd = new GetObjectCommand({
