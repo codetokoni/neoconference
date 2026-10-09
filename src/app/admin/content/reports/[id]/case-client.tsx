@@ -197,7 +197,7 @@ export default function CaseClient({ id }: { id: string }) {
                   </button>
                 )}
                 {file && !trashed && (
-                  <button type="button" className={btn.danger} disabled={busy} onClick={() => setAsk({ action: "trash", title: "Move to trash", body: "It leaves every list and public page. Nothing is deleted from storage now; it can be restored until the trash window closes.", label: "Move to trash", danger: true })}>
+                  <button type="button" className={btn.danger} disabled={busy} onClick={() => setAsk({ action: "trash", title: "Move to trash", body: "It leaves every list and public page. It goes to the trash, where it can be restored until the trash window closes; after that the retention purge removes it.", label: "Move to trash", danger: true })}>
                     Move to trash
                   </button>
                 )}

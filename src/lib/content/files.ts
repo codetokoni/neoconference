@@ -17,6 +17,8 @@
 
 import { createHash } from "node:crypto";
 import { kv } from "@/lib/kv";
+import { retentionDays } from "@/lib/dataGov/settings";
+import { expiresAt, listTrash, trashWindowMs } from "@/lib/dataGov/trash";
 import {
   classifyKey,
   guessContentType,
@@ -32,9 +34,6 @@ const FILES = "neo:content:files";
 const HIDDEN_EVENTS = "neo:content:hidden-events";
 const egressKey = (egressId: string) => `neo:content:egress:${egressId}`;
 const EGRESS_TTL_S = 3 * 24 * 60 * 60;
-/** Where phase 11 keeps retention settings ({ values: { trash: days } }). */
-const RETENTION = "neo:data:retention";
-export const TRASH_DAYS_DEFAULT = 30;
 
 export function fileId(storage: Storage, key: string): string {
   return "f_" + createHash("sha256").update(`${storage}:${key}`).digest("base64url").slice(0, 20);
@@ -394,16 +393,13 @@ export async function setHiddenEvent(slug: string, h: HiddenEvent | null): Promi
 
 /* ------------------------------ moderation state -------------------------- */
 
-/** Restore window for the trash: phase 11's "trash" retention, else 30 days. */
+/** The trash window in days: phase 11's "trash" retention, 30 until it is set. */
 export async function trashWindowDays(): Promise<number> {
   try {
-    const v = parse<{ values?: { trash?: unknown } }>(await kv.get(RETENTION));
-    const d = v?.values?.trash;
-    if (typeof d === "number" && d > 0) return d;
+    return (await retentionDays("trash")) ?? 30;
   } catch {
-    // fall through to the default
+    return 30;
   }
-  return TRASH_DAYS_DEFAULT;
 }
 
 export function setState(rec: FileRecord, state: FileState, by: { userId: string }, reason: string, now = Date.now()): FileRecord {
@@ -422,15 +418,29 @@ export function effectiveVisibility(
   return rec.visibility;
 }
 
-/** The trashed records an administrator can still restore, with when each window closes. */
-export async function listTrashedFiles(now = Date.now()): Promise<{ record: FileRecord; restoreUntil: number; expired: boolean }[]> {
-  const days = await trashWindowDays();
-  return (await allFiles())
-    .filter((r) => r.state === "trashed")
-    .map((record) => {
-      const restoreUntil = (record.stateAt ?? record.updatedAt) + days * 24 * 60 * 60 * 1000;
-      return { record, restoreUntil, expired: restoreUntil <= now };
-    })
-    .sort((a, b) => (b.record.stateAt ?? 0) - (a.record.stateAt ?? 0));
+
+
+/** The files that went to phase 11's trash (an owner's delete, or an administrator's), as the index knows them. */
+export async function indexTrashed(key: string, trashId: string, byUserId: string): Promise<void> {
+  await safely("indexTrashed", async () => {
+    const rec = (await getFileByKey("r2", key)) ?? recordFromKey("r2", key, { source: "backfill" });
+    const reason = rec.ownerId && rec.ownerId === byUserId ? "Deleted by its owner" : "Moved to the trash";
+    await putFile({ ...setState(rec, "trashed", { userId: byUserId }, reason), trashId, trashedFrom: rec.state === "trashed" ? rec.trashedFrom : rec.state });
+  });
 }
 
+/**
+ * The content items in phase 11's trash — recordings and uploaded files —
+ * each with its index record (when there is one) and when its restore
+ * window closes.
+ */
+export async function listContentTrash(now = Date.now()) {
+  const windowMs = await trashWindowMs();
+  const items = (await listTrash()).filter((t) => t.kind === "recording" || t.kind === "upload");
+  return Promise.all(
+    items.map(async (item) => {
+      const restoreUntil = expiresAt(item, windowMs);
+      return { item, record: await getFileByKey("r2", item.ref), restoreUntil, expired: restoreUntil <= now };
+    }),
+  );
+}

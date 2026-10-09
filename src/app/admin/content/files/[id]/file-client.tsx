@@ -226,7 +226,7 @@ export default function FileClient({ id }: { id: string }) {
           body={
             pending.action === "hide"
               ? "The file stops showing on replay pages and share links. The owner still sees it. You can unhide it."
-              : "The file leaves every list and public page. Nothing is deleted from storage now; an administrator can restore it until the trash window closes."
+              : "The file leaves every list and public page. It goes to the trash, where an administrator can restore it until the trash window closes; after that the retention purge removes it."
           }
           confirmLabel={pending.action === "hide" ? "Hide" : "Move to trash"}
           danger={pending.action === "trash"}

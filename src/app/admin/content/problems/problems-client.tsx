@@ -150,7 +150,7 @@ export default function ProblemsClient() {
           title={confirm.action === "trash" ? "Move to trash" : "Remove from the index"}
           body={
             confirm.action === "trash"
-              ? "It leaves every list and public page. Nothing is deleted from storage now; it can be restored until the trash window closes."
+              ? "It leaves every list and public page. It goes to the trash, where it can be restored until the trash window closes; after that the retention purge removes it."
               : "Only possible when the file is no longer in storage: its index entry is removed. The audit log keeps what it was."
           }
           confirmLabel={confirm.action === "trash" ? "Move to trash" : "Remove"}

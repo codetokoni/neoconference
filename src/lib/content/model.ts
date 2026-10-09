@@ -82,6 +82,8 @@ export interface FileRecord {
   source: "upload" | "egress" | "transcribe" | "backfill";
   /** When a complete backfill pass last saw the object in R2. */
   r2SeenAt?: number;
+  /** Phase 11 trash item holding the file while it is trashed (src/lib/dataGov/trash.ts). */
+  trashId?: string;
   /** The state it was in before the trash, so a restore puts it back. */
   trashedFrom?: FileState;
   /** Problem kinds an administrator chose to ignore for this file. */

@@ -12,6 +12,7 @@
 
 import { kv } from "@/lib/kv";
 import { listObjectsPage, type R2Object } from "@/lib/r2";
+import { TRASH_PREFIX } from "@/lib/dataGov/trash";
 import { getGroup } from "@/lib/groupStore";
 import { checksumFromEtag, type FileRecord } from "@/lib/content/model";
 import { allFiles, fileId, putFiles, recordFromKey } from "@/lib/content/files";
@@ -116,6 +117,8 @@ export async function runBackfill(opts: { maxObjects?: number; maxMs?: number; r
     for (const o of page.objects) {
       if (!o.key) continue;
       run.scanned++;
+      // Trashed files live under trash/: their record is the original key's, marked trashed.
+      if (o.key.startsWith(TRASH_PREFIX)) continue;
       run.bytes += o.size;
       const rec = await toRecord(o, known.get(fileId("r2", o.key)) ?? null, passStartedAt, groupOwner);
       // Every record seen is written: r2SeenAt is how a complete pass proves a file is still there.

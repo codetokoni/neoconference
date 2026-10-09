@@ -648,6 +648,29 @@ async function main() {
     assert.match(e.note!, new RegExp(`case ${fileCase}`));
   });
 
+  await t("recovery: an owner's delete goes to phase 11's trash; an administrator restores it (audited)", async () => {
+    const k = "recordings/user_alice/alice-weekly/2026-10-01-09-00-00.mp4";
+    const del = await call("user_alice", R.recordings.DELETE as unknown as Handler<unknown>, { method: "DELETE", query: `?key=${encodeURIComponent(k)}` });
+    assert.equal(del.status, 200, JSON.stringify(del.body));
+    const f = await rec(k);
+    assert.equal(f.state, "trashed");
+    assert.equal(f.stateReason, "Deleted by its owner");
+    assert.ok(f.trashId);
+    const list = (await call("user_analyst", R.trash.GET as unknown as Handler<unknown>)).body.items as { trashId: string; key: string; byOwner: boolean; expired: boolean }[];
+    const it = list.find((x) => x.key === k)!;
+    assert.equal(it.byOwner, true);
+    assert.equal(it.expired, false);
+    assert.equal((await call("user_analyst", R.trash.POST as unknown as Handler<unknown>, { method: "POST", body: { id: it.trashId } })).body.permission, "content:moderate");
+    const r = await call("user_mod", R.trash.POST as unknown as Handler<unknown>, { method: "POST", body: { id: it.trashId, reason: "Deleted by mistake (ticket 77)" } });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal((await rec(k)).state, "active");
+    assert.equal((await rec(k)).trashId, undefined);
+    assert.ok(g.__objects.some((o) => o.key === k), "back in storage");
+    const e = (await audits("content.trash.restore"))[0];
+    assert.deepEqual([(e.before as { state: string }).state, (e.after as { state: string }).state], ["trashed", "active"]);
+    assert.equal((await call("user_mod", R.trash.POST as unknown as Handler<unknown>, { method: "POST", body: { id: it.trashId } })).body.error, "not_in_trash", "restored once");
+  });
+
   await t("trash needs a fresh code, hides it from the owner too, and restores within the window", async () => {
     tick(11 * 60_000);
     assert.equal((await call("user_mod", R.case.POST as unknown as Handler<unknown>, { method: "POST", params: { id: fileCase }, body: { action: "trash", note: "x" } })).body.error, "step_up_required");
@@ -655,15 +678,21 @@ async function main() {
     const tr = await call("user_mod", R.case.POST as unknown as Handler<unknown>, { method: "POST", params: { id: fileCase }, body: { action: "trash", note: "Confirmed infringing" } });
     assert.equal(tr.status, 200, JSON.stringify(tr.body));
     assert.equal((await rec(videoKey)).state, "trashed");
-    assert.ok(g.__objects.some((o) => o.key === videoKey), "trash moves nothing in storage");
+    // Phase 11's trash: the object moves under trash/, it is not deleted.
+    assert.ok(g.__objects.some((o) => o.key === `trash/${videoKey}`), "kept under trash/");
+    assert.ok(!g.__objects.some((o) => o.key === videoKey));
+    assert.ok(!g.__r2Writes!.some((w) => w.op === "delete" && w.key.endsWith(videoKey)), "nothing deleted");
     assert.ok(!((await call("user_alice", R.recordings.GET as unknown as Handler<unknown>)).body.recordings as { key: string }[]).some((x) => x.key === videoKey), "not in the owner's list");
     const trash = await call("user_analyst", R.trash.GET as unknown as Handler<unknown>);
     assert.equal(trash.body.days, 30);
-    const item = (trash.body.items as { id: string; restoreUntil: number }[])[0];
-    assert.equal(item.id, files.fileId("r2", videoKey));
+    const item = (trash.body.items as { key: string; fileId: string; byOwner: boolean; trashId: string }[]).find((x) => x.key === videoKey)!;
+    assert.equal(item.fileId, files.fileId("r2", videoKey));
+    assert.equal(item.byOwner, false);
+    assert.equal(item.trashId, (await rec(videoKey)).trashId);
     const back = await call("user_mod", R.action.POST as unknown as Handler<unknown>, { method: "POST", params: fid(videoKey), body: { action: "restore" } });
     assert.equal(back.status, 200, JSON.stringify(back.body));
     assert.equal((await rec(videoKey)).state, "hidden", "back to how it was before the trash");
+    assert.ok(g.__objects.some((o) => o.key === videoKey), "the file is back where it was");
     // Past the window it cannot be restored.
     await stepUp("user_mod");
     await call("user_mod", R.action.POST as unknown as Handler<unknown>, { method: "POST", params: fid(videoKey), body: { action: "trash", reason: "again" } });

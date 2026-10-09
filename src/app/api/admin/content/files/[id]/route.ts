@@ -9,7 +9,8 @@ import { NextResponse } from "next/server";
 import { can, requireAdmin } from "@/lib/admin/context";
 import { fail } from "@/lib/admin/http";
 import { loadRows, ownerInfo } from "@/lib/content/admin";
-import { getFile, trashWindowDays } from "@/lib/content/files";
+import { getFile } from "@/lib/content/files";
+import { expiresAt, getTrashItem, trashWindowMs } from "@/lib/dataGov/trash";
 import { listCases } from "@/lib/content/reports";
 import { recordingAnalytics } from "@/lib/analytics";
 import { activeSupportSession } from "@/lib/admin/users";
@@ -34,13 +35,13 @@ export async function GET(req: Request, { params }: Params) {
   const cases = (await listCases()).filter((c) => c.fileId === rec.id || (rec.eventSlug && c.eventSlug === rec.eventSlug));
   const stats = rec.type === "recording" && rec.storage === "r2" ? await recordingAnalytics.getStats(rec.key) : null;
   const support = await activeSupportSession(g.ctx.userId);
-  const trashDays = await trashWindowDays();
+  const trashItem = rec.state === "trashed" && rec.trashId ? await getTrashItem(rec.trashId) : null;
   return NextResponse.json({
     file: row,
     owner,
     cases: cases.map((c) => ({ id: c.id, status: c.status, reportCount: c.reportCount, label: c.label, updatedAt: c.updatedAt })),
     stats,
-    restoreUntil: rec.state === "trashed" ? (rec.stateAt ?? rec.updatedAt) + trashDays * 86_400_000 : null,
+    restoreUntil: trashItem ? expiresAt(trashItem, await trashWindowMs()) : null,
     // What opening the contents would need, so the page can say so before asking.
     access: {
       private: row.effectiveVisibility === "private",
