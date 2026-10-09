@@ -4,7 +4,6 @@
 // Both reach users only through the Settings area's site notice and
 // maintenance mode — there is no second banner or switch here.
 
-import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { fmtTime, useAdmin } from "../../AdminApi";
 import { Confirm, Empty, Loading, Notice, PageHeader, Panel, btn, field } from "../../ui";
@@ -49,15 +48,17 @@ export default function OpsIncidentsClient() {
   const write = can("ops:write");
   const canMode = can("features:write");
   const [data, setData] = useState<Data | null>(null);
-  // ?status=open lists only unresolved incidents (the Overview links here).
-  const sp = useSearchParams();
-  const [onlyOpen, setOnlyOpen] = useState(sp?.get("status") === "open");
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [inc, setInc] = useState({ title: "", impact: "minor", status: "investigating", message: "", services: [] as string[], showBanner: true });
   const [upd, setUpd] = useState<Record<string, { status: string; message: string }>>({});
   const now = Date.now();
   const [mw, setMw] = useState({ title: "", message: "", startsAt: localInput(now + 3600_000), endsAt: localInput(now + 2 * 3600_000), maintenanceMode: false, announceMinutes: 60 });
   const [cancel, setCancel] = useState<Window | null>(null);
+  // ?status=open (the Overview's link): unresolved incidents only.
+  const [onlyOpen, setOnlyOpen] = useState(false);
+  useEffect(() => {
+    setOnlyOpen(new URLSearchParams(window.location.search).get("status") === "open");
+  }, []);
 
   const load = useCallback(async () => {
     const r = await adminFetch<Data>("/api/admin/ops/incidents");
@@ -100,6 +101,7 @@ export default function OpsIncidentsClient() {
 
   if (!data) return <Loading />;
   const label = (id: string) => data.services.find((s) => s.id === id)?.label ?? id;
+  const incidents = onlyOpen ? data.incidents.filter((i) => i.status !== "resolved") : data.incidents;
 
   return (
     <div>
@@ -169,17 +171,17 @@ export default function OpsIncidentsClient() {
         </Panel>
       )}
 
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold text-cyan-50">{onlyOpen ? "Open incidents" : "Incidents"}</h2>
-        <button type="button" className={btn.ghost} onClick={() => setOnlyOpen(!onlyOpen)} aria-pressed={onlyOpen}>
-          {onlyOpen ? "Show resolved too" : "Only open"}
-        </button>
+      <div className="mb-2 flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-cyan-50">Incidents</h2>
+        <label className="ml-auto flex items-center gap-2 text-sm text-zinc-400">
+          <input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} /> Open only
+        </label>
       </div>
-      {data.incidents.filter((i) => !onlyOpen || i.status !== "resolved").length === 0 ? (
+      {incidents.length === 0 ? (
         <Empty>{onlyOpen ? "No open incidents." : "No incidents."}</Empty>
       ) : (
         <div className="grid gap-3">
-          {data.incidents.filter((i) => !onlyOpen || i.status !== "resolved").map((i) => (
+          {incidents.map((i) => (
             <Panel key={i.id}>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>

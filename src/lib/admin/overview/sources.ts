@@ -321,7 +321,8 @@ const storage: SourceDef<StorageData> = {
       bytes: usage.total.bytes,
       byType: usage.byType.map((t) => ({ ...t, label: contentTypeLabel(t.type), href: L.storageByType(t.type) })),
       trashed: { files: bin.length, bytes: bin.reduce((s, f) => s + f.size, 0) },
-      complete: !!state.lastCompletePass,
+      // Partial until one full listing has finished, and again while a new one is part-way through.
+      complete: !!state.lastCompletePass && !state.token,
       lastCompletePassAt: state.lastCompletePass?.finishedAt ?? null,
       bandwidth: { available: false, reason: BANDWIDTH_UNAVAILABLE },
       links: { storage: L.storage() },

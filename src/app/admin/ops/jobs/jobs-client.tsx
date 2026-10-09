@@ -5,7 +5,6 @@
 // outside the runner (transcription, pending checkouts, webhook events that
 // changed nothing).
 
-import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { fmtTime, useAdmin } from "../../AdminApi";
 import { Badge, Confirm, Empty, Loading, Notice, PageHeader, Panel, btn } from "../../ui";
@@ -51,9 +50,15 @@ export default function OpsJobsClient() {
   const { can, adminFetch } = useAdmin();
   const write = can("ops:write");
   const [data, setData] = useState<Data | null>(null);
-  // ?job=<name> opens that job's runs (the Overview links here).
-  const sp = useSearchParams();
-  const [open, setOpen] = useState<string | null>(sp?.get("job") || null);
+  const [open, setOpen] = useState<string | null>(null);
+  // ?job=<name> and ?outcome=failed (the Overview's links) as starting filters.
+  const [only, setOnly] = useState<{ job: string | null; failed: boolean }>({ job: null, failed: false });
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const job = q.get("job");
+    setOnly({ job, failed: q.get("outcome") === "failed" });
+    if (job) setOpen(job);
+  }, []);
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -83,6 +88,13 @@ export default function OpsJobsClient() {
 
   if (!data) return <Loading />;
   const byName = new Map(data.jobs.map((j) => [j.name, j]));
+  const failedRun = (r: Run) => r.outcome === "failed" || r.outcome === "abandoned";
+  const jobsShown = data.jobs
+    .filter((j) => !only.job || j.name === only.job)
+    .filter((j) => !only.failed || j.runs.some(failedRun))
+    .map((j) => (only.failed ? { ...j, runs: j.runs.filter(failedRun) } : j));
+  const failedShown = only.job ? data.failed.filter((r) => r.job === only.job) : data.failed;
+  const filtered = !!only.job || only.failed;
   const q = data.queues;
 
   return (
@@ -98,7 +110,17 @@ export default function OpsJobsClient() {
       )}
 
       <div className="grid gap-3">
-        {data.jobs.map((j) => {
+        {filtered && (
+          <p className="text-sm text-zinc-400">
+            Showing {only.job ? <b className="font-mono text-zinc-200">{only.job}</b> : "jobs"}
+            {only.failed ? " with failed runs" : ""}.{" "}
+            <button type="button" className="text-cyan-300 underline" onClick={() => setOnly({ job: null, failed: false })}>
+              Show all jobs
+            </button>
+          </p>
+        )}
+        {filtered && jobsShown.length === 0 && <Empty>No matching jobs.</Empty>}
+        {jobsShown.map((j) => {
           const last = j.runs[0];
           return (
             <Panel key={j.name}>
@@ -139,10 +161,8 @@ export default function OpsJobsClient() {
         })}
       </div>
 
-      <h2 id="failed-runs" className="mb-2 mt-6 scroll-mt-4 text-lg font-semibold text-cyan-50">
-        Failed runs
-      </h2>
-      {data.failed.length === 0 ? (
+      <h2 className="mb-2 mt-6 text-lg font-semibold text-cyan-50">Failed runs</h2>
+      {failedShown.length === 0 ? (
         <Empty>No failed runs.</Empty>
       ) : (
         <Panel className="overflow-x-auto p-0">
@@ -156,7 +176,7 @@ export default function OpsJobsClient() {
               </tr>
             </thead>
             <tbody>
-              {data.failed.map((r) => {
+              {failedShown.map((r) => {
                 const j = byName.get(r.job);
                 return (
                   <tr key={r.id} className="border-t border-white/5 align-top">
