@@ -586,7 +586,10 @@ async function main() {
       call(null, R.cron.GET as never, { headers: { authorization: "Bearer cron_SECRET_VALUE" } }),
       call(null, R.cron.GET as never, { headers: { authorization: "Bearer cron_SECRET_VALUE" } }),
     ]);
-    assert.equal((a.body.sent as number) + (b.body.sent as number), 1);
+    // The ops job runner's lock turns the second of two simultaneous runs
+    // away (409 already_running); either way the reminder goes out once.
+    assert.equal(((a.body.sent as number) ?? 0) + ((b.body.sent as number) ?? 0), 1);
+    assert.ok([a, b].every((r) => r.body.sent !== undefined || r.body.skipped === "already_running"), JSON.stringify([a.body, b.body]));
     assert.equal(sentMail().length, before + 2, "one failed attempt, one delivered");
     assert.equal(sentMail().at(-1)!.to[0], "four@example.com");
     assert.match(sentMail().at(-1)!.subject, /Finish upgrading/);
