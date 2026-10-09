@@ -78,7 +78,7 @@ export const RETENTION: RetentionDef[] = [
   {
     id: "notifications",
     label: "Notification history",
-    meaning: "In-app notifications (the bell) older than this are removed. Each person's list also keeps at most the newest 100.",
+    meaning: "In-app notifications (the bell), the email delivery log and finished announcements older than this are removed. Each person's bell also keeps at most the newest 100.",
     defaultDays: 365,
     minDays: 7,
     maxDays: 3650,

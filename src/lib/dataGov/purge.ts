@@ -17,6 +17,8 @@ import { expiresAt, listTrash, purgeTrashItem, trashWindowMs, type TrashItem } f
 import { EXPORT_R2_PREFIX } from "@/lib/dataGov/export";
 import { listPrefix, parseJson, rewriteList, scanKeys } from "@/lib/dataGov/util";
 import { purgeAuditMonths } from "@/lib/admin/audit";
+import { listTickets, purgeTicketsClosedBefore } from "@/lib/support/tickets";
+import { purgeCommsLogBefore } from "@/lib/comms/forget";
 
 export type PurgeCategory = Exclude<RetentionCategory, "accounts"> | "exports";
 
@@ -41,6 +43,22 @@ const FILE_PREFIXES = ["recordings/", "chat/", "groups/"];
 export const EXPORT_KEEP_DAYS = 7;
 
 const notAvailable = (phase: string) => () => `Arrives with ${phase}; the setting is kept until then.`;
+
+const COMMS_RECORD = "comms:log";
+
+/** What purgeCommsLogBefore(cutoff) would remove: log lines, delivery reports, finished sends. */
+async function commsOlderThan(cutoff: number): Promise<number> {
+  let n = 0;
+  for (const key of ["neo:comms:log", "neo:comms:events"]) {
+    const raw = ((await kv.lrange(key, 0, -1)) ?? []) as unknown[];
+    n += raw.filter((r) => (parseJson<{ ts?: number }>(r)?.ts ?? 0) < cutoff).length;
+  }
+  for (const id of ((await kv.lrange("neo:comms:sends", 0, -1)) ?? []).map(String)) {
+    const send = parseJson<{ createdAt: number; status: string }>(await kv.get(`neo:comms:send:${id}`));
+    if (send && ["done", "cancelled", "draft"].includes(send.status) && send.createdAt < cutoff) n++;
+  }
+  return n;
+}
 
 export const PURGES: PurgeDef[] = [
   {
@@ -100,7 +118,7 @@ export const PURGES: PurgeDef[] = [
   },
   {
     id: "notifications",
-    label: "In-app notifications past the notification period",
+    label: "In-app notifications and the email delivery log past the notification period",
     unavailable: (days) => (days == null ? "Notifications are kept (each list holds the newest 100)." : null),
     find: async (days, now) => {
       const cutoff = cutoffFor(days, now);
@@ -112,12 +130,19 @@ export const PURGES: PurgeDef[] = [
         const old = raw.filter((r) => (parseJson<{ ts?: number }>(r)?.ts ?? Infinity) < cutoff).length;
         if (old) out.push({ id: k, fingerprint: `${raw.length}:${old}`, entries: old, view: { list: k.replace(/^neo:notif:/, "user "), entries: old } });
       }
+      // The email delivery log and finished announcements (src/lib/comms) go by the same period.
+      const comms = await commsOlderThan(cutoff);
+      if (comms) out.push({ id: COMMS_RECORD, fingerprint: String(comms), entries: comms, view: { list: "email delivery log and finished announcements", entries: comms } });
       return out;
     },
     remove: async (records, days, now) => {
       const cutoff = cutoffFor(days, now) ?? 0;
       let removed = 0;
       for (const r of records) {
+        if (r.id === COMMS_RECORD) {
+          removed += (await purgeCommsLogBefore(cutoff)).removed;
+          continue;
+        }
         const raw = ((await kv.lrange(r.id, 0, -1)) ?? []) as unknown[];
         const keep = raw.filter((x) => (parseJson<{ ts?: number }>(x)?.ts ?? Infinity) >= cutoff);
         removed += raw.length - keep.length;
@@ -167,17 +192,63 @@ export const PURGES: PurgeDef[] = [
   },
   {
     id: "activity",
-    label: "Raw activity events",
-    unavailable: notAvailable("the analytics phase (activity log)"),
-    find: async () => [],
-    remove: async () => ({ removed: 0, bytes: 0 }),
+    label: "Raw activity events past the activity period",
+    unavailable: () => null,
+    find: async (days, now) => {
+      const cutoff = cutoffFor(days, now);
+      if (cutoff == null) return [];
+      const cutoffDay = new Date(cutoff).toISOString().slice(0, 10);
+      const out: PurgeRecord[] = [];
+      // Whole days of the raw log before the cutoff day.
+      for (const k of await scanKeys("neo:act:log:*")) {
+        const day = k.slice("neo:act:log:".length);
+        if (day >= cutoffDay) continue;
+        const n = Number(await kv.llen(k));
+        out.push({ id: k, fingerprint: String(n), entries: n, view: { day, events: n } });
+      }
+      // Older events in each person's own stream.
+      for (const k of await scanKeys("neo:act:u:*")) {
+        const raw = ((await kv.lrange(k, 0, -1)) ?? []) as unknown[];
+        const old = raw.filter((r) => (parseJson<{ ts?: number }>(r)?.ts ?? Infinity) < cutoff).length;
+        if (old) out.push({ id: k, fingerprint: `${raw.length}:${old}`, entries: old, view: { stream: "one person", events: old } });
+      }
+      return out;
+    },
+    remove: async (records, days, now) => {
+      const cutoff = cutoffFor(days, now) ?? 0;
+      let removed = 0;
+      for (const r of records) {
+        if (r.id.startsWith("neo:act:log:")) {
+          removed += Number(await kv.llen(r.id));
+          await kv.del(r.id);
+        } else {
+          const raw = ((await kv.lrange(r.id, 0, -1)) ?? []) as unknown[];
+          const keep = raw.filter((x) => (parseJson<{ ts?: number }>(x)?.ts ?? Infinity) >= cutoff);
+          removed += raw.length - keep.length;
+          await rewriteList(r.id, keep);
+        }
+      }
+      return { removed, bytes: 0 };
+    },
   },
   {
     id: "tickets",
-    label: "Closed support tickets",
-    unavailable: notAvailable("the support phase (tickets)"),
-    find: async () => [],
-    remove: async () => ({ removed: 0, bytes: 0 }),
+    label: "Closed support tickets past the tickets period",
+    unavailable: (days) => (days == null ? "Closed tickets are kept (no period set)." : null),
+    find: async (days, now) => {
+      const cutoff = cutoffFor(days, now);
+      if (cutoff == null) return [];
+      return (await listTickets())
+        .filter((t) => t.status === "closed" && t.closedAt != null && t.closedAt < cutoff)
+        .map((t) => ({ id: t.id, fingerprint: String(t.closedAt), view: { number: t.number, closedAt: t.closedAt, messages: t.messageCount } }));
+    },
+    remove: async (records) => {
+      if (!records.length) return { removed: 0, bytes: 0 };
+      // Exactly the previewed set: every closed ticket closed before the newest of them.
+      const closed = new Map((await listTickets()).map((t) => [t.id, t.closedAt ?? 0]));
+      const bound = Math.max(...records.map((r) => closed.get(r.id) ?? 0)) + 1;
+      return { removed: (await purgeTicketsClosedBefore(bound)).tickets, bytes: 0 };
+    },
   },
   {
     id: "backups",

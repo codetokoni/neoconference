@@ -31,6 +31,10 @@ import { getMember, saveMember } from "@/lib/admin/store";
 import { getHold } from "@/lib/dataGov/requests";
 import { identitiesOf, forgetExports } from "@/lib/dataGov/export";
 import { listTrash, purgeTrashItem, TRASH_PREFIX } from "@/lib/dataGov/trash";
+import { forgetSubscriptionUser, getHistory, getSubscription } from "@/lib/billing/subscriptions";
+import { anonymiseFinanceForUser, financeRecordsForUser } from "@/lib/finance/governance";
+import { anonymiseTicketsForAccount, listTickets, ticketsForAccount } from "@/lib/support/tickets";
+import { forgetCommsUser } from "@/lib/comms/forget";
 import { DELETED_NAME, deletePrefix, fromB64Url, listPrefix, parseJson, rewriteList, rewriteValue, scanKeys } from "@/lib/dataGov/util";
 
 export interface Person {
@@ -414,6 +418,102 @@ export const ERASE_STEPS: EraseStep[] = [
       if (!dry) {
         await logout(p.uid, null, "all");
         await kv.del(`neo:sessions:${p.uid}`, ...devices);
+      }
+      return n;
+    },
+  },
+  {
+    id: "subscriptions",
+    label: "Subscription (removed) and its history (kept as a billing record, detached)",
+    covers: ["kv.subscriptions"],
+    run: async (p, dry) => {
+      if (dry) return ((await getSubscription(p.uid)) ? 1 : 0) + (await getHistory(p.uid, 1000)).length;
+      return (await forgetSubscriptionUser(p.uid)).removed;
+    },
+  },
+  {
+    id: "finance",
+    label: "Ticket purchases, invoices and reminders (kept, names and emails blanked)",
+    covers: ["kv.finance"],
+    run: async (p, dry) => {
+      if (dry) {
+        const f = await financeRecordsForUser(p.uid);
+        return f.invoices.length + f.payments.filter((x) => x.kind === "ticket").length + f.reminders.length;
+      }
+      let n = (await anonymiseFinanceForUser(p.uid, { email: p.emails[0] })).records;
+      // Guest ticket purchases under any other address of theirs.
+      for (const email of p.emails.slice(1)) n += (await anonymiseFinanceForUser(p.uid, { email })).records;
+      return n;
+    },
+  },
+  {
+    id: "tickets",
+    label: "Support tickets (kept for support history, requester removed, attachments deleted)",
+    covers: ["kv.supportTickets"],
+    run: async (p, dry) => {
+      if (dry) return ticketsForAccount(await listTickets(), p.uid, p.emails).length;
+      return (await anonymiseTicketsForAccount(p.uid, p.emails)).tickets;
+    },
+  },
+  {
+    id: "comms",
+    label: "Notification preferences, reminder flags, bounce flags; delivery logs anonymised",
+    covers: ["kv.comms"],
+    run: async (p, dry) => {
+      if (dry) {
+        return (
+          (await delKeys([`neo:comms:prefs:${p.uid}`, ...p.emails.map((e) => `neo:comms:bounced:${e}`)], true)) +
+          (await scanKeys(`neo:comms:rem:${p.uid}:*`)).length
+        );
+      }
+      return (await forgetCommsUser(p.uid, p.emails)).removed;
+    },
+  },
+  {
+    id: "activity",
+    label: "Activity log: the person's own stream deleted; raw events and daily counts keep only the pseudonym",
+    covers: ["kv.activity"],
+    run: async (p, dry) => {
+      let n = await delKeys([`neo:act:u:${p.uid}`], dry);
+      if (Number(await kv.sismember("neo:act:users", p.uid)) === 1) {
+        n++;
+        if (!dry) await kv.srem("neo:act:users", p.uid);
+      }
+      for (const k of [...(await scanKeys("neo:act:dau:*")), ...(await scanKeys("neo:act:new:*"))]) {
+        if (Number(await kv.sismember(k, p.uid)) !== 1) continue;
+        n++;
+        if (!dry) {
+          await kv.srem(k, p.uid);
+          await kv.sadd(k, p.pseudonym);
+        }
+      }
+      for (const k of await scanKeys("neo:act:acct:*")) {
+        const all = ((await kv.hgetall(k)) ?? {}) as Record<string, unknown>;
+        for (const [field, v] of Object.entries(all)) {
+          if (!field.startsWith(`${p.uid}|`)) continue;
+          n++;
+          if (!dry) {
+            await kv.hincrby(k, p.pseudonym + field.slice(p.uid.length), Number(v) || 0);
+            await kv.hdel(k, field);
+          }
+        }
+      }
+      for (const k of await scanKeys("neo:act:log:*")) {
+        const raw = ((await kv.lrange(k, 0, -1)) ?? []) as unknown[];
+        let changed = 0;
+        const next = raw.map((r) => {
+          const e = parseJson<Record<string, unknown>>(r);
+          if (!e || (e.userId !== p.uid && e.account !== p.uid)) return r;
+          changed++;
+          return {
+            ...e,
+            ...(e.userId === p.uid ? { userId: p.pseudonym } : {}),
+            ...(e.account === p.uid ? { account: p.pseudonym } : {}),
+            ...(e.props ? { props: JSON.parse(scrub(p, JSON.stringify(e.props))) } : {}),
+          };
+        });
+        n += changed;
+        if (changed && !dry) await rewriteList(k, next);
       }
       return n;
     },

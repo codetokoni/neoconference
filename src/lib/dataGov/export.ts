@@ -36,6 +36,11 @@ import { getDeletion, getSuspension, listSupportSessions, type ClerkUserish } fr
 import { buildZip, toCsv, type ZipEntry } from "@/lib/dataGov/zip";
 import { fromB64Url, listPrefix, parseJson, scanKeys } from "@/lib/dataGov/util";
 import { DATA_MAP } from "@/lib/dataMap";
+import { getHistory, getSubscription } from "@/lib/billing/subscriptions";
+import { financeRecordsForUser } from "@/lib/finance/governance";
+import { listMessages, listTickets, ticketsForAccount } from "@/lib/support/tickets";
+import { listUserActivity } from "@/lib/activity";
+import { getPrefs } from "@/lib/comms/prefs";
 
 export const EXPORT_TTL_S = 7 * 24 * 60 * 60;
 const PART_TTL_S = 24 * 60 * 60;
@@ -223,7 +228,8 @@ const SECTIONS: Section[] = [
         .map((r) => parseJson<Record<string, unknown>>(r))
         .filter((n): n is Record<string, unknown> => !!n)
         .map((n) => ({ at: iso(n.ts), type: n.type, title: n.title, body: n.body, url: n.url, read: !!n.read }));
-      return { json: rows, csv: rows, count: rows.length };
+      const preferences = await getPrefs(uid);
+      return { json: { notifications: rows, preferences }, csv: rows, count: rows.length };
     },
   },
   {
@@ -252,6 +258,82 @@ const SECTIONS: Section[] = [
         periodEnd: iso(p.periodEnd),
         invoiceNumber: p.invoiceNumber ?? null,
       }));
+      return { json: rows, csv: rows, count: rows.length };
+    },
+  },
+  {
+    name: "subscription",
+    label: "Subscription and its history",
+    run: async (uid) => {
+      const sub = await getSubscription(uid);
+      // Who changed it: "you" or "an administrator" — not which one.
+      const history = (await getHistory(uid, 200)).map((h) => ({
+        at: iso(h.ts),
+        action: h.action,
+        by: h.by.userId === uid ? "you" : "an administrator",
+        summary: h.summary,
+        before: h.before,
+        after: h.after,
+      }));
+      const current = sub
+        ? {
+            planId: sub.planId,
+            plan: sub.snapshot?.name ?? sub.baseTier,
+            status: sub.status,
+            cycle: sub.cycle,
+            periodStart: iso(sub.periodStart),
+            periodEnd: iso(sub.periodEnd),
+          }
+        : null;
+      return {
+        json: { current, history },
+        csv: history.map((h) => ({ at: h.at, action: h.action, by: h.by, summary: h.summary })),
+        count: (current ? 1 : 0) + history.length,
+      };
+    },
+  },
+  {
+    name: "billing",
+    label: "Ticket purchases, invoices and payment reminders",
+    run: async (uid) => {
+      const f = await financeRecordsForUser(uid);
+      const rows = f.payments.map((p) => ({ ...p }));
+      return { json: f, csv: rows as Record<string, unknown>[], count: f.payments.length + f.invoices.length + f.checkouts.length + f.reminders.length };
+    },
+  },
+  {
+    name: "support-tickets",
+    label: "Support tickets",
+    run: async (uid) => {
+      const u = await clerkUser(uid);
+      const emails = (u.emailAddresses ?? []).map((e) => e.emailAddress.trim().toLowerCase());
+      const tickets = ticketsForAccount(await listTickets(), uid, emails);
+      const out = [];
+      for (const t of tickets) {
+        // The conversation, without support's internal notes or the agents' names.
+        const messages = (await listMessages(t.id)).map((m) => ({
+          at: iso(m.ts),
+          from: m.author === "user" ? "you" : m.author === "agent" ? "NeoConference support" : "system",
+          body: m.body,
+          attachments: m.attachments.map((a) => a.name).join("; "),
+        }));
+        out.push({ number: t.number, subject: t.subject, category: t.category, status: t.status, createdAt: iso(t.createdAt), messages });
+      }
+      return {
+        json: out,
+        csv: out.map(({ messages, ...t }) => ({ ...t, messages: messages.length })),
+        count: out.length,
+      };
+    },
+  },
+  {
+    name: "activity",
+    label: "Your activity log",
+    run: async (uid) => {
+      const rows = (await listUserActivity(uid, { limit: 500 })).map((e) => {
+        const x = e as unknown as Record<string, unknown>;
+        return { at: iso(x.ts as number), type: x.type, props: x.props ?? null };
+      });
       return { json: rows, csv: rows, count: rows.length };
     },
   },

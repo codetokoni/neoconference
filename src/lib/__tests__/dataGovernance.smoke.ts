@@ -93,6 +93,8 @@ async function main() {
   const fcm = await import("../fcmStore");
   const kcTokens = await import("../kc-tokens");
   const groupChat = await import("../groupChat");
+  const { activity } = await import("../activity");
+  const tickets = await import("../support/tickets");
   const { eventStore } = await import("../eventStore");
   const { kv } = await import("../kv");
   const { DATA_MAP, erasableLocations } = await import("../dataMap");
@@ -269,6 +271,25 @@ async function main() {
   await kv.hset("neo:rec-usage:user_alice", { "2026-10": 600 });
   await kv.set("neo:personal-room:user_alice", "ev_alice");
   await users.addNote("user_alice", { byId: "user_super", byEmail: "super@example.com", text: "VIP customer note" });
+  // Stores the other admin phases added: activity, a support ticket, notification preferences, a subscription.
+  await activity.record("meeting.joined", { userId: "user_alice", account: "user_bob", props: { room: "bob-standup" } });
+  await activity.record("signin", { userId: "user_bob" });
+  const ticket = await tickets.createTicket({
+    subject: "Help with ALICE-TICKET",
+    category: "account",
+    body: "ALICE-TICKET-BODY",
+    userId: "user_alice",
+    email: "alice@example.com",
+    name: "Alicia Zephyr",
+    source: "web",
+  });
+  await tickets.appendMessage(ticket, { author: "agent", authorName: "Agent Smithers", body: "SUPPORT-REPLY", attachments: [] });
+  await tickets.addNote(ticket, { userId: "user_super", email: "super@example.com" }, "INTERNAL-NOTE-ABOUT-ALICE");
+  await kv.set("neo:comms:prefs:user_alice", { product: { email: false, inApp: true, push: true }, updatedAt: Date.now(), updatedVia: "settings" });
+  await kv.set("neo:sub:user_alice", { userId: "user_alice", email: "alice@example.com", planId: "pro", baseTier: "pro", version: 1, snapshot: { name: "Pro", prices: {}, limits: {} }, status: "active", cycle: "monthly", periodStart: Date.now(), periodEnd: Date.now() + 30 * day, source: "self" });
+  await kv.sadd("neo:subs:users", "user_alice");
+  await kv.lpush("neo:sub:h:user_alice", JSON.stringify({ ts: Date.now(), action: "purchase", by: { userId: "user_alice", email: "alice@example.com" }, summary: "Bought Pro", before: null, after: null }));
+  await kv.lpush("neo:sub:h:user_alice", JSON.stringify({ ts: Date.now(), action: "extend", by: { userId: "user_super", email: "super@example.com" }, summary: "Extended by a week", before: null, after: null }));
 
   /* ------------------------------- data map ------------------------------- */
   console.log("data map");
@@ -302,12 +323,12 @@ async function main() {
     const obj = g.__objects.find((o) => o.key.startsWith("data-exports/user_alice/"));
     assert.ok(obj?.body);
     aliceZip = readZip(obj!.body!);
-    for (const f of ["README.txt", "manifest.json", "profile.json", "meetings.json", "meetings.csv", "attendance.json", "chat.json", "groups.json", "notifications.json", "devices.json", "payments.json", "api-keys.json", "recordings.json"]) {
+    for (const f of ["README.txt", "manifest.json", "profile.json", "meetings.json", "meetings.csv", "attendance.json", "chat.json", "groups.json", "notifications.json", "devices.json", "payments.json", "api-keys.json", "recordings.json", "subscription.json", "billing.json", "support-tickets.json", "activity.json"]) {
       assert.ok(aliceZip.has(f), `missing ${f}`);
     }
     const all = [...aliceZip.values()].map((b) => b.toString("utf8")).join("\n");
     // Theirs:
-    for (const s of ["alice@example.com", "ALICE-OWN-ROOM", "ALICE-IN-BOB-ROOM", "ALICE-GROUP-MESSAGE", "pay_alice_1", "CI key", "alice-weekly", "Book club", "aliciakc", "203.0.113.77", "Bob Brown is calling"]) {
+    for (const s of ["alice@example.com", "ALICE-OWN-ROOM", "ALICE-IN-BOB-ROOM", "ALICE-GROUP-MESSAGE", "pay_alice_1", "CI key", "alice-weekly", "Book club", "aliciakc", "203.0.113.77", "Bob Brown is calling", "ALICE-TICKET-BODY", "SUPPORT-REPLY", "meeting.joined", "Bought Pro", "Extended by a week", "an administrator"]) {
       assert.ok(all.includes(s), `export lacks ${s}`);
     }
     // Not theirs, or secret:
@@ -329,6 +350,8 @@ async function main() {
       "VIP customer note",
       "super@example.com",
       "recordings/user_bob",
+      "Agent Smithers",
+      "INTERNAL-NOTE-ABOUT-ALICE",
     ]) {
       assert.ok(!all.includes(s), `export leaks ${s}`);
     }
@@ -442,7 +465,7 @@ async function main() {
     assert.equal(p.body.count, 1);
     assert.equal(p.body.confirmPhrase, "complete 1");
     const plan = (p.body.extra as { plans: Record<string, Record<string, number>> }).plans.user_alice;
-    for (const step of ["groups", "ownedEvents", "othersEvents", "fieldsInOthers", "meetingChat", "attendance", "reports", "groupChat", "personalKeys", "payments", "apiKeys", "recordingMeta", "r2", "exports", "admin"]) {
+    for (const step of ["groups", "ownedEvents", "othersEvents", "fieldsInOthers", "meetingChat", "attendance", "reports", "groupChat", "personalKeys", "subscriptions", "tickets", "comms", "activity", "payments", "apiKeys", "recordingMeta", "r2", "exports", "admin"]) {
       assert.ok(plan[step] > 0, `preview counts nothing for ${step}: ${JSON.stringify(plan)}`);
     }
     assert.ok(g.__users.user_alice, "a preview changes nothing");
@@ -679,9 +702,29 @@ async function main() {
     assert.ok((tp.body.count as number) >= 1);
     assert.equal((await bulk("user_super", "purge", "apply", { selection: { category: "trash" }, token: tp.body.token, confirm: tp.body.confirmPhrase })).status, 200);
     assert.ok(!g.__objects.some((o) => o.key.startsWith("trash/") && o.key.includes("bob-retro")));
+    const backups = await bulk("user_super", "purge", "preview", { selection: { category: "backups" } });
+    assert.equal(backups.body.count, 0);
+    assert.match(String((backups.body.extra as { unavailable: string }).unavailable), /Arrives with/);
+    // Raw activity past its period goes by whole days; Bob's sign-in is weeks old by now.
     const act = await bulk("user_super", "purge", "preview", { selection: { category: "activity" } });
-    assert.equal(act.body.count, 0);
-    assert.match(String((act.body.extra as { unavailable: string }).unavailable), /Arrives with/);
+    assert.equal(act.status, 200, JSON.stringify(act.body));
+    assert.equal((await bulk("user_super", "purge", "apply", { selection: { category: "activity" }, token: act.body.token, confirm: act.body.confirmPhrase })).status, 200);
+    assert.ok((act.body.count as number) >= 1, JSON.stringify(act.body));
+    assert.ok(!kvText(() => false).some((l) => l.startsWith("neo:act:log:") && l.includes("signin")), "the old raw day is gone");
+    // Closed tickets go once a period is set; open ones and recent ones stay.
+    const oldT = await tickets.createTicket({ subject: "Old one", category: "account", body: "x", userId: "user_bob", email: "bob@example.com", name: "Bob Brown", source: "web" });
+    await tickets.saveTicket({ ...oldT, status: "closed", closedAt: Date.now() - 200 * day });
+    const openT = await tickets.createTicket({ subject: "Still open", category: "account", body: "x", userId: "user_bob", email: "bob@example.com", name: "Bob Brown", source: "web" });
+    const tp0 = await bulk("user_super", "purge", "preview", { selection: { category: "tickets" } });
+    assert.match(String((tp0.body.extra as { unavailable: string }).unavailable), /kept/);
+    const rt = await bulk("user_super", "retention", "preview", { selection: { category: "tickets", days: 90 } });
+    assert.equal(rt.body.count, 1, "the change preview lists the ticket it would make purgeable");
+    assert.equal((await bulk("user_super", "retention", "apply", { selection: { category: "tickets", days: 90 }, token: rt.body.token })).status, 200);
+    const tk = await bulk("user_super", "purge", "preview", { selection: { category: "tickets" } });
+    assert.equal(tk.body.count, 1);
+    assert.equal((await bulk("user_super", "purge", "apply", { selection: { category: "tickets" }, token: tk.body.token, confirm: "purge 1" })).status, 200);
+    assert.equal(await tickets.getTicket(oldT.id), null);
+    assert.ok(await tickets.getTicket(openT.id));
     const files = await bulk("user_super", "purge", "preview", { selection: { category: "files" } });
     assert.equal(files.body.count, 0, "files are kept by default");
   });
