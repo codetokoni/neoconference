@@ -404,10 +404,11 @@ body.neo-room-idle .lk-control-bar {
   text-underline-offset: 2px;
 }
 
-/* Full screen: the logo (FullscreenBrand) takes the top-left corner; a
-   tile's role badge moves below it. */
+/* Full screen shows only the person: a tile's role badge (Owner / Host /
+   Moderator) is hidden, leaving the logo (FullscreenBrand) alone in the
+   top-left corner. */
 :fullscreen [data-tile-role-badge] {
-  top: 60px !important;
+  display: none !important;
 }
 
 /* A meeting tile in full screen (double-click or its expand button): the
