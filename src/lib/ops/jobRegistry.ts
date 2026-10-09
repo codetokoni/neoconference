@@ -115,6 +115,17 @@ export const JOBS: JobDef[] = [
     route: "/api/cron/redemption-digest",
     load: () => import("@/app/api/cron/redemption-digest/route") as Promise<RouteModule>,
   }),
+  routeJob({
+    name: "automation-dispatch",
+    label: "Automation rules",
+    description: "Runs each active automation rule whose time has come (Admin → Automation), and keeps the crons that rules replace from also running.",
+    schedule: "*/5 * * * *",
+    scheduleText: "Every 5 minutes",
+    retrySafe: true,
+    retryNote: "Runs only rules that are due; each rule claims every person and period before acting, so a second run does nothing twice.",
+    route: "/api/cron/automation",
+    load: () => import("@/app/api/cron/automation/route") as Promise<RouteModule>,
+  }),
   {
     name: "meeting-sweep",
     label: "Stale meeting sweep",

@@ -14,6 +14,7 @@ import { statusBadges, type UserRow } from "../../admin-client";
 import { SUPPORT_CHANGED } from "../../AdminShell";
 import SubscriptionPanel from "../../subscriptions/SubscriptionPanel";
 import { LIMIT_FIELDS, type LimitField } from "@/lib/billing/model";
+import ExportPanel from "./ExportPanel";
 import { ACTIVITY_TYPES } from "@/lib/activityTypes";
 import type { ActivityEvent } from "@/lib/activity";
 
@@ -549,20 +550,10 @@ export default function UserClient({ id }: { id: string }) {
                     className={btn.danger}
                     disabled={!d.deletion.due}
                     title={d.deletion.due ? undefined : `Available from ${fmtTime(d.deletion.deleteAfter)}`}
-                    onClick={() =>
-                      setAsk({
-                        title: `Delete ${label} for good?`,
-                        body: "The Clerk account is deleted, they are removed from their groups, and the notes and tags here are dropped. The audit log keeps the record. This cannot be undone.",
-                        confirmLabel: "Delete now",
-                        danger: true,
-                        typeToConfirm: "delete",
-                        run: () => adminFetch(`${base}/deletion/purge`, { method: "POST" }),
-                        done: "Account deleted.",
-                        after: () => window.location.assign("/admin?deleted=1"),
-                      })
-                    }
+                    // The Data page previews what completing removes (every place in the data map) first.
+                    onClick={() => window.location.assign(`/admin/data?complete=${encodeURIComponent(u.id)}`)}
                   >
-                    Delete now
+                    Delete now…
                   </button>
                 </>
               ) : (
@@ -637,6 +628,12 @@ export default function UserClient({ id }: { id: string }) {
               {!u.passwordEnabled && <p className="mt-2 text-xs text-zinc-500">This account has no password: it signs in with a social account, KingsChat or an email code.</p>}
             </div>
           )}
+        </Section>
+      )}
+
+      {can("data:export") && !blocked && (
+        <Section title="Data export">
+          <ExportPanel userId={u.id} />
         </Section>
       )}
 

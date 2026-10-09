@@ -24,6 +24,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
 import { assertOwnerOrAdmin } from '@/lib/roles';
+import { meetingTrashInput, tryMoveToTrash, withGroupIndex } from '@/lib/dataGov/trash';
 import { RoomServiceClient, DataPacket_Kind } from 'livekit-server-sdk';
 
 export const runtime = 'nodejs';
@@ -91,6 +92,9 @@ export async function POST(req: Request) {
           console.warn('[events/delete] sendData failed:', e);
         }
 
+    // Keep a copy an administrator can restore for the trash period
+    // (src/lib/dataGov/trash.ts). To the user the meeting is gone as before.
+    await tryMoveToTrash(() => withGroupIndex(meetingTrashInput(ev, userId), ev));
     const ok = await eventStore.delete(ev.id);
     if (!ok) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
