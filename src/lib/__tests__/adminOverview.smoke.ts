@@ -551,6 +551,8 @@ async function main() {
     assert.equal(f.href, "/admin/logs?type=meeting.created&from=2026-09-01&to=2026-09-30");
     assert.equal(ok<Body>(first, "incidents").links.incidents, overviewLinks.incidents());
     assert.equal(ok<Body>(first, "jobs").jobs[0].href, "/admin/ops/jobs?job=billing-reminders");
+    assert.equal(ok<Body>(first, "jobs").links.failed, "/admin/ops/jobs?outcome=failed");
+    assert.equal(ok<Body>(first, "incidents").links.incidents, "/admin/ops/incidents?status=open");
     assert.equal(ok<Body>(first, "online").links.live, "/admin/events?state=live");
   });
 
