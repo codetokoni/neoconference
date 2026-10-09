@@ -55,6 +55,7 @@ const KIND_LABEL = { announcement: "Announcement", product: "Product update", se
 const STATUS_TONE = { draft: "zinc", queued: "cyan", sending: "cyan", paused: "amber", cancelled: "red", done: "green" } as const;
 
 export default function CommsClient() {
+  const { can } = useAdmin();
   const [tab, setTab] = useState<"compose" | "history" | "delivery" | "reminders" | "prefs">("compose");
   const [openId, setOpenId] = useState<string | null>(null);
   const tabs = [
@@ -68,7 +69,19 @@ export default function CommsClient() {
     <div>
       <PageHeader
         title="Communication"
-        sub="Announcements and service notices to the bell, push and email; what was sent and what became of it. A site-wide banner is set in Settings."
+        sub={
+          <>
+            Announcements and service notices to the bell, push and email; what was sent and what became of it. A site-wide banner is set in{" "}
+            {can("settings:write") ? (
+              <a href="/admin/settings" className="text-cyan-300 hover:text-cyan-200">
+                Settings → Notice banner tab
+              </a>
+            ) : (
+              "Settings → Notice banner (needs the settings:write permission)"
+            )}
+            .
+          </>
+        }
       />
       <div role="tablist" aria-label="Communication" className="mb-4 flex gap-1 overflow-x-auto border-b border-white/10">
         {tabs.map(([k, l]) => (
