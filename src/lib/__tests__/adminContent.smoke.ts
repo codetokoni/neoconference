@@ -358,9 +358,11 @@ async function main() {
   // In the index before any scan, and not in storage: "missing" after a complete pass.
   const missingKey = "chat/user_alice/99999999-9999-9999-9999-999999999999-vanished.png";
   await files.putFile({ ...files.recordFromKey("r2", missingKey, { source: "upload", ownerId: "user_alice", size: 77 }, Date.now() - day) });
-  const objectCount = g.__objects.length;
+  // What storage holds: the listed objects and the uploads the stub stored.
+  const stored = ((await import("../r2")) as unknown as { allStoredObjects: () => Obj[] }).allStoredObjects();
+  const objectCount = stored.length;
   // Uploads the stub stored, and the finished recording, are indexed already.
-  const preIndexed = (await Promise.all(g.__objects.map((o) => files.getFileByKey("r2", o.key)))).filter(Boolean).length;
+  const preIndexed = (await Promise.all(stored.map((o) => files.getFileByKey("r2", o.key)))).filter(Boolean).length;
 
   await t("analyst may read the backfill state but not run it", async () => {
     assert.equal((await call("user_analyst", R.backfill.GET as unknown as Handler<unknown>)).status, 200);

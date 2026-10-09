@@ -31,6 +31,12 @@ export const SECTIONS: Section[] = [
   { label: "Email templates", href: "/admin/email-templates", permission: "notifications:send", group: "Communication" },
   { label: "Tickets", href: "/admin/support", permission: "support:read", group: "Support" },
   { label: "Help centre", href: "/admin/help", permission: "support:read", group: "Support" },
+  { label: "Service health", href: "/admin/ops", permission: "ops:read", group: "Operations" },
+  { label: "Jobs & queues", href: "/admin/ops/jobs", permission: "ops:read", group: "Operations" },
+  { label: "Media pipeline", href: "/admin/ops/media", permission: "ops:read", group: "Operations" },
+  { label: "Alerts", href: "/admin/ops/alerts", permission: "ops:read", group: "Operations" },
+  { label: "Incidents", href: "/admin/ops/incidents", permission: "ops:read", group: "Operations" },
+  { label: "Backups", href: "/admin/ops/backups", permission: "ops:read", group: "Operations" },
   { label: "Administrators", href: "/admin/team", permission: "admins:read", group: "Access" },
   { label: "Roles", href: "/admin/roles", permission: "admins:read", group: "Access" },
   { label: "Audit log", href: "/admin/audit-log", permission: "audit:read", group: "Access" },
@@ -41,8 +47,15 @@ export default function AdminShell({ me, children }: { me: PublicAdminContext; c
   const pathname = usePathname() || "";
   const visible = SECTIONS.filter((s) => !s.permission || me.permissions.includes(s.permission));
   const groups = [...new Set(visible.map((s) => s.group))];
-  const isActive = (href: string) =>
-    href === "/admin" ? pathname === "/admin" || pathname.startsWith("/admin/users/") : pathname === href || pathname.startsWith(href + "/");
+  // The longest section path that contains this page, so /admin/ops/jobs lights "Jobs", not also "Service health".
+  const current = visible
+    .filter((s) =>
+      s.href === "/admin"
+        ? pathname === "/admin" || pathname.startsWith("/admin/users/")
+        : pathname === s.href || pathname.startsWith(s.href + "/"),
+    )
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+  const isActive = (href: string) => href === current;
 
   const lock = async () => {
     await fetch("/api/admin/mfa/lock", { method: "POST" }).catch(() => undefined);

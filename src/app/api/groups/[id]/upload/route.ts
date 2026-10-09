@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { isR2Configured, putObject, signGetUrl } from "@/lib/r2";
+import { recordMediaEvent } from "@/lib/ops/media";
 import { CHAT_IMAGE_MIMES, safeFilename } from "@/lib/chatUploadRules";
 import { requireGroupPermission } from "@/lib/groupAuthz";
 import { refuseUpload, uploadRule } from "@/lib/content/limits";
@@ -51,9 +52,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   } catch (err) {
     console.error("[groups/upload] R2 put failed", err);
     await indexUploadFailed({ ...indexed, detail: (err as Error)?.message || "upload failed" });
+    await recordMediaEvent("upload", false, key, (err as Error)?.message);
     return NextResponse.json({ error: "upload_failed" }, { status: 502 });
   }
   await indexUpload(indexed);
+  await recordMediaEvent("upload", true, key);
   await activity.record("upload", { userId: gate.member.userId, account: gate.member.userId, props: { where: "group", groupId: id, bytes: file.size, mime } });
   return NextResponse.json({
     ok: true,

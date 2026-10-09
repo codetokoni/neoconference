@@ -26,6 +26,7 @@ import { clerkClient } from "@clerk/nextjs/server";
 import { isPlanExpired } from "@/lib/plan";
 import { sweepDue } from "@/lib/billing/subscriptions";
 import { activity } from "@/lib/activity";
+import { cronRoute } from "@/lib/ops/cron";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,7 +44,7 @@ function isAuthed(req: NextRequest): boolean {
   return auth === ("Bearer " + secret);
 }
 
-export async function GET(req: NextRequest) {
+async function handle(req: NextRequest) {
   if (!isAuthed(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -134,3 +135,7 @@ export async function GET(req: NextRequest) {
         : subscriptions,
   });
 }
+
+// Recorded and locked by the ops job runner (Operations > Jobs); the
+// schedule and what the route does are unchanged.
+export const GET = cronRoute("downgrade-expired-plans", handle);
