@@ -1022,7 +1022,9 @@ export default function SimulcastPlayer({
               playsInline
               autoPlay
               muted
-              className="h-full w-full object-contain"
+              // Full screen: the picture covers the whole screen, no black
+              // bands (edges trimmed when its shape differs from the screen).
+              className={"h-full w-full " + (isFullscreen ? "object-cover" : "object-contain")}
               data-stream-id={broadcasterId}
               data-phase={phase}
               onPlaying={() => setPlayBlocked(false)}
@@ -1036,7 +1038,7 @@ export default function SimulcastPlayer({
               playsInline
               autoPlay
               muted
-              className="absolute inset-0 h-full w-full object-contain"
+              className={"absolute inset-0 h-full w-full " + (isFullscreen ? "object-cover" : "object-contain")}
               style={{ display: onAir && !pictureLocked ? "block" : "none" }}
             />
             <audio ref={featAudioRef} autoPlay muted />
