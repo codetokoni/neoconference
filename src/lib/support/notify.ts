@@ -63,7 +63,8 @@ export async function notifyTicketReceived(t: Ticket, origin: string): Promise<S
 /** A public reply from support: email, and the bell for an account. */
 export async function notifyTicketReply(t: Ticket, body: string, agentName: string, origin: string) {
   const subject = `[#${t.number}] Reply from NeoConference support: ${t.subject}`;
-  const mail = await send({
+  // An anonymised ticket (deleted account) has no address left to write to.
+  const mail: SendMailResult = !t.email ? { ok: false, error: "no_email" } : await send({
     to: t.email,
     subject,
     text: `${agentName} replied to your ticket #${t.number}:\n\n${body}\n\n${origin}/support/tickets/${t.id}`,
