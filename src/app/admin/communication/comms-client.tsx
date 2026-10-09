@@ -359,10 +359,13 @@ function Compose({ onSent }: { onSent: (id: string) => void }) {
             ))}
           </div>
           {aKind === "groups" && (
-            <label className="mt-3 block text-sm text-zinc-300">
-              Group ids (the last part of a group&apos;s address, /dashboard/groups/<i>id</i>), separated by spaces or commas
-              <textarea value={groupIds} onChange={(e) => setGroupIds(e.target.value)} rows={2} className={`${field} mt-1 font-mono`} />
-            </label>
+            <>
+              <GroupPicker onPick={(id) => setGroupIds((cur) => (cur.split(/[\s,;]+/).includes(id) ? cur : `${cur.trim()} ${id}`.trim()))} />
+              <label className="mt-3 block text-sm text-zinc-300">
+                Group ids, separated by spaces or commas
+                <textarea value={groupIds} onChange={(e) => setGroupIds(e.target.value)} rows={2} className={`${field} mt-1 font-mono`} />
+              </label>
+            </>
           )}
           {aKind === "users" && (
             <label className="mt-3 block text-sm text-zinc-300">
@@ -426,6 +429,55 @@ function Compose({ onSent }: { onSent: (id: string) => void }) {
         {busy ? "Counting recipients…" : "Preview"}
       </button>
     </form>
+  );
+}
+
+function GroupPicker({ onPick }: { onPick: (id: string) => void }) {
+  const { adminFetch } = useAdmin();
+  const [q, setQ] = useState("");
+  const [items, setItems] = useState<Array<{ id: string; name: string; ownerName: string | null; memberCount: number }> | null>(null);
+  const search = async () => {
+    const r = await adminFetch<{ items: Array<{ id: string; name: string; ownerName: string | null; memberCount: number }> }>(`/api/admin/comms/groups?q=${encodeURIComponent(q.trim())}`);
+    setItems(r.ok ? r.data.items : []);
+  };
+  return (
+    <div className="mt-3">
+      <div className="flex gap-2">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              search();
+            }
+          }}
+          placeholder="Find a group by name"
+          aria-label="Find a group"
+          className={field}
+        />
+        <button type="button" className={btn.ghost} onClick={search}>
+          Find
+        </button>
+      </div>
+      {items && (
+        <ul className="mt-2 max-h-48 divide-y divide-white/5 overflow-y-auto rounded-lg border border-white/10 text-sm">
+          {items.length === 0 && <li className="px-3 py-2 text-zinc-500">No group matches.</li>}
+          {items.map((g) => (
+            <li key={g.id} className="flex items-center gap-2 px-3 py-1.5">
+              <span className="min-w-0 flex-1 truncate text-zinc-100">{g.name}</span>
+              <span className="text-xs text-zinc-500">
+                {g.memberCount} member{g.memberCount === 1 ? "" : "s"}
+                {g.ownerName ? ` · ${g.ownerName}` : ""}
+              </span>
+              <button type="button" className={`${btn.ghost} px-2 py-0.5 text-xs`} onClick={() => onPick(g.id)}>
+                Add
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

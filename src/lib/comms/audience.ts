@@ -12,9 +12,10 @@
 // everyone/filter, 100 ids a request for groups/users), so a send of any
 // size is resolved a page at a time by the send job, never in one request.
 //
-// Groups: there is no platform-wide group index on main yet, so a group is
-// named by its id (the last part of /dashboard/groups/<id>) and its members
-// come from groupStore.listMembers().
+// Groups are named by id: the admin screen finds them in the platform-wide
+// group index (/api/admin/comms/groups → src/lib/admin/groups.ts). Members
+// come from groupStore.listMembers(); people added by email who have no
+// account yet (pending members) have nowhere to receive a notice.
 
 import { clerkClient } from "@clerk/nextjs/server";
 import { isPlan, readPlanFromMetadata, type Plan } from "@/lib/planLimits";

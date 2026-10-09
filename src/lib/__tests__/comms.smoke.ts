@@ -111,6 +111,7 @@ async function main() {
     test: await import("../../app/api/admin/comms/templates/[id]/test/route"),
     delivery: await import("../../app/api/admin/comms/delivery/route"),
     prefs: await import("../../app/api/admin/comms/prefs/route"),
+    groups: await import("../../app/api/admin/comms/groups/route"),
     reminders: await import("../../app/api/admin/comms/reminders/route"),
     myPrefs: await import("../../app/api/me/comms-prefs/route"),
     unsub: await import("../../app/api/comms/unsubscribe/route"),
@@ -205,6 +206,7 @@ async function main() {
       ["revert", R.revert.POST as never, "POST", tid],
       ["test send", R.test.POST as never, "POST", tid],
       ["delivery", R.delivery.GET as never, "GET"],
+      ["groups", R.groups.GET as never, "GET"],
       ["reminders GET", R.reminders.GET as never, "GET"],
       ["reminders PUT", R.reminders.PUT as never, "PUT"],
     ];
@@ -245,6 +247,8 @@ async function main() {
     assert.deepEqual(viaGroup.sample.map((s) => s.uid).sort(), ["u_c", "u_d"], "the banned member is filtered out");
     assert.deepEqual(viaGroup.unmatched, ["group gone"]);
     assert.deepEqual(viaGroup.groups, [{ id: choir.id, name: "Choir" }, { id: "gone", missing: true }]);
+    const found = await call("user_comms", R.groups.GET, { query: "?q=choi" });
+    assert.deepEqual((found.body.items as { id: string; name: string; memberCount: number }[]).map((x) => [x.id, x.name, x.memberCount]), [[choir.id, "Choir", 3]], "found in the platform-wide group index");
     assert.equal((await draft("user_comms", { audience: { kind: "filter" } })).body.error, "invalid_audience");
     assert.equal((await draft("user_comms", { audience: { kind: "everyone" }, channels: {} })).body.error, "invalid_message");
     assert.equal((await draft("user_comms", { audience: { kind: "everyone" }, url: "https://evil.test/" })).body.error, "invalid_message");
