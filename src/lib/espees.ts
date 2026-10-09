@@ -9,12 +9,14 @@
 // fail_url after the user completes (or cancels) the payment.
 //
 // Single-SKU model: every paid plan posts the same product_sku
-// (process.env.ESPEES_PRODUCT_SKU); the per-plan amount comes from
-// ESPEES_AMOUNTS below. This replaces the older per-plan SKU env vars
+// (process.env.ESPEES_PRODUCT_SKU); the amount is passed in by the checkout
+// route, which reads it from the admin plan catalog (src/lib/billing) and
+// applies any coupon or offer. ESPEES_AMOUNTS below is the catalog's
+// version 1 of each tier, not what checkout charges. This replaces the older per-plan SKU env vars
 // (ESPEES_STARTER_SKU / ESPEES_PRO_SKU / ESPEES_BUSINESS_SKU), which are
 // no longer read by this file but are left in Vercel for rollback safety.
 //
-// Pricing:
+// Built-in pricing (version 1 in the catalog):
 //   Starter  monthly 10 ESP / annual 100 ESP
 //   Pro      monthly 20 ESP / annual 200 ESP
 //   Business monthly 30 ESP / annual 300 ESP
@@ -34,7 +36,8 @@ export type EspeesProduct = {
   narration: string;
 };
 
-// Per-plan amounts in ESP. Single source of truth for checkout pricing.
+// Per-plan amounts in ESP before the plan catalog: the catalog's version 1
+// of each tier. Checkout charges the catalog's current price instead.
 export const ESPEES_AMOUNTS: Record<EspeesPlan, Record<BillingCycle, number>> = {
   starter: { monthly: 10, annual: 100 },
   pro: { monthly: 20, annual: 200 },
@@ -63,7 +66,11 @@ export const ESPEES_PRODUCTS: Record<EspeesPlan, EspeesProduct> = {
 };
 
 export type InitiateInput = {
-  plan: EspeesPlan;
+  /** Catalog plan id (one of the tiers, or a plan made in the admin). */
+  plan: string;
+  planName: string;
+  /** What to charge, in ESP, after any discount. */
+  amountEsp: number;
   billingCycle: BillingCycle;
   nonce: string;
   successUrl: string;
@@ -89,15 +96,12 @@ export async function initiatePayment(input: InitiateInput): Promise<InitiateRes
   const sku = (process.env.ESPEES_PRODUCT_SKU || "").trim();
   if (!sku) return { ok: false, error: "ESPEES_PRODUCT_SKU not configured" };
 
-  const product = ESPEES_PRODUCTS[input.plan];
-  if (!product) return { ok: false, error: "Unknown plan: " + input.plan };
-
-  const amount = ESPEES_AMOUNTS[input.plan]?.[input.billingCycle];
-  if (!amount) return { ok: false, error: "Unknown plan/cycle: " + input.plan + "/" + input.billingCycle };
+  const amount = input.amountEsp;
+  if (!(amount > 0)) return { ok: false, error: "No price for plan/cycle: " + input.plan + "/" + input.billingCycle };
 
   const body = {
     product_sku: sku,
-    narration: product.narration + " (" + input.billingCycle + ")",
+    narration: "NeoConference " + input.planName + " - " + (input.billingCycle === "annual" ? "Annual" : "Monthly") + " subscription",
     price: amount,
     merchant_wallet: wallet,
     success_url: input.successUrl,

@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 
-type Plan = "starter" | "pro" | "business";
 type BillingCycle = "monthly" | "annual";
 
 export default function TierCheckoutButton({
@@ -12,9 +11,13 @@ export default function TierCheckoutButton({
   billingCycle,
   label,
   highlight,
+  coupon,
 }: {
-  plan: Plan;
+  /** A plan id from the admin plan catalog. */
+  plan: string;
   billingCycle: BillingCycle;
+  /** Optional coupon code; the checkout route checks and applies it. */
+  coupon?: string;
   label: string;
   highlight?: boolean;
 }) {
@@ -42,11 +45,11 @@ export default function TierCheckoutButton({
       const res = await fetch("/api/billing/espees/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, billingCycle }),
+        body: JSON.stringify({ plan, billingCycle, ...(coupon?.trim() ? { coupon: coupon.trim() } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.url) {
-        setError(data?.error || "Could not start checkout. Please try again.");
+        setError(data?.message || data?.error || "Could not start checkout. Please try again.");
         setLoading(false);
         return;
       }
