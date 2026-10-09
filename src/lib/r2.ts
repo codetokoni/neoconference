@@ -149,3 +149,25 @@ export async function putObject(
     })
   );
 }
+
+/**
+ * Every object under `prefix`, paging through the listing (1000 keys a
+ * page) up to `maxPages`. For data governance: an account's recordings and
+ * uploads, files past their retention. `truncated` means there were more.
+ */
+export async function listAllObjects(prefix: string, maxPages = 50): Promise<{ items: R2Object[]; truncated: boolean }> {
+  if (!isR2Configured()) return { items: [], truncated: false };
+  const s3 = r2Client();
+  const Bucket = requiredEnv('S3_BUCKET');
+  const items: R2Object[] = [];
+  let token: string | undefined;
+  for (let page = 0; page < maxPages; page++) {
+    const out = await s3.send(new ListObjectsV2Command({ Bucket, Prefix: prefix, MaxKeys: 1000, ContinuationToken: token }));
+    for (const o of out.Contents || []) {
+      items.push({ key: o.Key || '', size: o.Size || 0, lastModified: o.LastModified ? o.LastModified.toISOString() : undefined, etag: o.ETag });
+    }
+    if (!out.IsTruncated || !out.NextContinuationToken) return { items, truncated: false };
+    token = out.NextContinuationToken;
+  }
+  return { items, truncated: true };
+}
