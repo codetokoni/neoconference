@@ -12,7 +12,7 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { eventStore, adoptOrphanRoom } from "@/lib/eventStore";
-import { isAdmin } from "@/lib/roles";
+import { hasMeetingAdminPower } from "@/lib/roles";
 import { endNeedsPin } from "@/lib/meetingLifecycle";
 
 export const runtime = "nodejs";
@@ -52,12 +52,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ id: ev.id, livekitRoom: ev.livekitRoom || slug, role: "guest", preApproved: false, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired: Boolean(ev.endPin), inactivity: ev.inactivity ?? null });
   }
 
+  // Platform-admin power over this meeting follows the admin's role
+  // (hasMeetingAdminPower): a read-only, suspended or removed administrator
+  // is not host here, which is what /end and the other host routes decide.
+  const isPlatformAdmin = await hasMeetingAdminPower(userId, u?.emailAddresses);
+
   // Whether this caller would be asked for the End Meeting PIN. Admins pass
   // without it (endNeedsPin), so their app and web room must not ask — a
   // prompt whose answer is ignored is worse than none.
-  const endPinRequired = endNeedsPin(ev, {
-    isPlatformAdmin: userEmails.some((e) => isAdmin(e)),
-  });
+  const endPinRequired = endNeedsPin(ev, { isPlatformAdmin });
 
   // Owner check runs BEFORE the platform-admin branch. Previously they were
   // in the opposite order, so a user who was both an ADMIN_EMAILS admin AND
@@ -71,10 +74,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ id: ev.id, livekitRoom: ev.livekitRoom || slug, role: "host", preApproved: true, isOwner: true, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired, inactivity: ev.inactivity ?? null });
   }
 
-  // Permanent admins (ADMIN_EMAILS env var) who are NOT the actual event
+  // Platform admins with power over meetings who are NOT the actual event
   // owner are treated as host of any room they join. Keep isOwner=false —
   // they are *acting as* host, not the actual owner of the event record.
-  if (userEmails.some((e) => isAdmin(e))) {
+  if (isPlatformAdmin) {
     return NextResponse.json({ id: ev.id, livekitRoom: ev.livekitRoom || slug, role: "host", preApproved: true, isOwner: false, ownerUserId: ev.ownerUserId || null, isLocked: Boolean(ev.isLocked), endPinRequired, inactivity: ev.inactivity ?? null });
   }
 

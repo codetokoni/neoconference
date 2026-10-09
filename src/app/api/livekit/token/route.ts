@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { getPlanLimits, getPlanLimitsForUserId, type Plan, type PlanFeatureLimits } from "@/lib/plan";
-import { isAdmin } from "@/lib/roles";
+import { hasMeetingAdminPower, isAdmin } from "@/lib/roles";
 import { featureDecisions } from "@/lib/platform/features";
 import { rejoinDropsToAttendee, reopensOnJoin } from "@/lib/meetingLifecycle";
 import { gateStatus } from "@/lib/waitingRoom";
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
         const kcHandle = typeof kcMeta?.username === "string" ? kcMeta.username : "";
 
         const isOwner = ev.ownerUserId === userId;
-        const isAdminCaller = emails.some((e) => isAdmin(e));
+        const isAdminCaller = await hasMeetingAdminPower(userId, u?.emailAddresses);
 
         const legacyRole = (ev.roles || []).find((r) => {
           const id = r.identifier.toLowerCase();
@@ -353,7 +353,7 @@ export async function GET(req: NextRequest) {
             const emailsRole = (uRole?.emailAddresses || []).map(
               (e: { emailAddress: string }) => e.emailAddress.toLowerCase()
             );
-            const isAdminCallerRole = emailsRole.some((e) => isAdmin(e));
+            const isAdminCallerRole = await hasMeetingAdminPower(userId, uRole?.emailAddresses);
             if (isAdminCallerRole || __evRole.ownerUserId === userId) {
               participantRole = "host";
               participantIsOwner = __evRole.ownerUserId === userId;
