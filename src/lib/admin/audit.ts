@@ -14,12 +14,18 @@
 // Someone with direct database access still could, so every entry carries a
 // sequence number: a removed entry leaves a gap that checkAuditIntegrity()
 // reports on the Audit log page.
+//
+// The one exception is the audit retention period (src/lib/dataGov), off by
+// default and never shorter than a year: purgeAuditMonths() removes whole
+// months older than it, and records the highest sequence number removed
+// (neo:admin:audit:purgedThrough) so those gaps are not reported as tampering.
 
 import { kv } from "@/lib/kv";
 import { activity } from "@/lib/activity";
 
 const MONTHS = "neo:admin:audit:months";
 const SEQ = "neo:admin:audit:seq";
+const PURGED_THROUGH = "neo:admin:audit:purgedThrough";
 const monthKey = (m: string) => `neo:admin:audit:${m}`;
 
 export interface AdminAuditEntry {
@@ -163,8 +169,9 @@ export async function listAdminAudit(query: AuditQuery = {}): Promise<{ items: A
 }
 
 /** Every number handed out should still be in the log; any that is not was removed outside the app. */
-export async function checkAuditIntegrity(): Promise<{ expected: number; present: number; missing: number[] }> {
+export async function checkAuditIntegrity(): Promise<{ expected: number; present: number; missing: number[]; purgedThrough: number }> {
   const expected = Number((await kv.get(SEQ)) ?? 0);
+  const purgedThrough = Number((await kv.get(PURGED_THROUGH)) ?? 0);
   const seen = new Set<number>();
   for (const m of await monthsNewestFirst()) {
     const raw = ((await kv.lrange(monthKey(m), 0, -1)) ?? []) as unknown[];
@@ -174,8 +181,35 @@ export async function checkAuditIntegrity(): Promise<{ expected: number; present
     }
   }
   const missing: number[] = [];
-  for (let i = 1; i <= expected && missing.length < 50; i++) if (!seen.has(i)) missing.push(i);
-  return { expected, present: seen.size, missing };
+  for (let i = purgedThrough + 1; i <= expected && missing.length < 50; i++) if (!seen.has(i)) missing.push(i);
+  return { expected, present: seen.size, missing, purgedThrough };
+}
+
+/**
+ * Remove whole months under the audit retention period. Only the data
+ * governance purge calls this, after a preview the administrator confirmed;
+ * the purge itself is then audited (in the current month, which is never
+ * removed).
+ */
+export async function purgeAuditMonths(months: string[]): Promise<{ months: number; entries: number; purgedThrough: number }> {
+  const current = monthOf(Date.now());
+  let entries = 0;
+  let removedMonths = 0;
+  let highest = Number((await kv.get(PURGED_THROUGH)) ?? 0);
+  for (const m of months) {
+    if (!/^\d{4}-\d{2}$/.test(m) || m >= current) continue;
+    const raw = ((await kv.lrange(monthKey(m), 0, -1)) ?? []) as unknown[];
+    for (const r of raw) {
+      const e = parse(r);
+      if (e && e.seq > highest) highest = e.seq;
+    }
+    entries += raw.length;
+    removedMonths++;
+    await kv.del(monthKey(m));
+    await kv.srem(MONTHS, m);
+  }
+  await kv.set(PURGED_THROUGH, highest);
+  return { months: removedMonths, entries, purgedThrough: highest };
 }
 
 /** What changed between two flat records, for compact before/after display. */
