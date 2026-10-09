@@ -23,4 +23,6 @@ export class EgressClient {
 export class RoomServiceClient {
   async createRoom(o) { return o; }
   async deleteRoom() {}
+  // Rooms open now: globalThis.__rooms = [{ name, numParticipants }].
+  async listRooms() { return (globalThis.__rooms ?? []).map((r) => ({ ...r })); }
 }

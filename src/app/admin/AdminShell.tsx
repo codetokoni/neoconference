@@ -7,16 +7,18 @@
 // Lock button that ends the admin session without signing out of the app.
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { AdminPermission } from "@/lib/admin/catalog";
 import type { PublicAdminContext } from "@/lib/admin/context";
-import { AdminProvider } from "./AdminApi";
+import { AdminProvider, useAdmin } from "./AdminApi";
+import GlobalSearch from "./GlobalSearch";
 
 type Section = { label: string; href: string; permission: AdminPermission | null; group: string };
 
 export const SECTIONS: Section[] = [
-  { label: "Users", href: "/admin", permission: "users:read", group: "Platform" },
+  { label: "Overview", href: "/admin", permission: "overview:read", group: "Platform" },
+  { label: "Users", href: "/admin/users", permission: "users:read", group: "Platform" },
   { label: "Groups", href: "/admin/groups", permission: "users:read", group: "Platform" },
   { label: "Meetings", href: "/admin/events", permission: "events:read", group: "Platform" },
   { label: "Metrics", href: "/admin/metrics", permission: "analytics:read", group: "Platform" },
@@ -32,8 +34,7 @@ export default function AdminShell({ me, children }: { me: PublicAdminContext; c
   const pathname = usePathname() || "";
   const visible = SECTIONS.filter((s) => !s.permission || me.permissions.includes(s.permission));
   const groups = [...new Set(visible.map((s) => s.group))];
-  const isActive = (href: string) =>
-    href === "/admin" ? pathname === "/admin" || pathname.startsWith("/admin/users/") : pathname === href || pathname.startsWith(href + "/");
+  const isActive = (href: string) => (href === "/admin" ? pathname === "/admin" : pathname === href || pathname.startsWith(href + "/"));
 
   const lock = async () => {
     await fetch("/api/admin/mfa/lock", { method: "POST" }).catch(() => undefined);
@@ -85,6 +86,7 @@ export default function AdminShell({ me, children }: { me: PublicAdminContext; c
           </nav>
         </aside>
         <div className="min-w-0 flex-1">
+          <GlobalSearch />
           <SupportBanner pathname={pathname} />
           {children}
         </div>
@@ -153,6 +155,25 @@ function SupportBanner({ pathname }: { pathname: string }) {
 }
 
 /** Shown by a page whose permission the role lacks (the API refuses too). */
+export function firstSectionFor(permissions: readonly string[]): Section {
+  return SECTIONS.find((s) => s.href !== "/admin" && (!s.permission || permissions.includes(s.permission))) ?? SECTIONS[SECTIONS.length - 1];
+}
+
+/** /admin for a role without overview:read: straight on to the first section it opens. */
+export function GoToFirstSection() {
+  const { me } = useAdmin();
+  const router = useRouter();
+  const target = firstSectionFor(me.permissions);
+  useEffect(() => {
+    router.replace(target.href);
+  }, [router, target.href]);
+  return (
+    <p className="px-1 py-6 text-sm text-zinc-500">
+      Opening <Link href={target.href} className="text-cyan-300 underline">{target.label}</Link>…
+    </p>
+  );
+}
+
 export function NoAccess({ permission }: { permission: string }) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-6">

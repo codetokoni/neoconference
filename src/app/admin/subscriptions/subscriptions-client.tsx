@@ -6,6 +6,7 @@
 // SubscriptionPanel.
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { SUB_STATUSES } from "@/lib/billing/model";
 import type { SubRow } from "@/lib/billing/adminViews";
@@ -18,9 +19,18 @@ type Found = { userId: string; email: string; name: string; plan: string; isOwne
 
 export default function SubscriptionsClient() {
   const { can, adminFetch } = useAdmin();
-  const [view, setView] = useState<View>("upcoming");
-  const [days, setDays] = useState(30);
-  const [status, setStatus] = useState("");
+  // ?view= &days= &status= &plan= open the list filtered (the Overview links here).
+  const sp = useSearchParams();
+  const [view, setView] = useState<View>(() => {
+    const v = sp?.get("view");
+    return v === "ended" || v === "all" ? v : "upcoming";
+  });
+  const [days, setDays] = useState(() => Math.max(1, Math.min(Number(sp?.get("days")) || 30, 3650)));
+  const [status, setStatus] = useState(() => {
+    const s = sp?.get("status") ?? "";
+    return (SUB_STATUSES as string[]).includes(s) ? s : "";
+  });
+  const [plan, setPlan] = useState(sp?.get("plan") ?? "");
   const [rows, setRows] = useState<SubRow[] | null>(null);
   const [counts, setCounts] = useState<Record<string, number> | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -30,13 +40,13 @@ export default function SubscriptionsClient() {
 
   const load = useCallback(async () => {
     setRows(null);
-    const qs = new URLSearchParams({ view, days: String(days), ...(status ? { status } : {}) });
+    const qs = new URLSearchParams({ view, days: String(days), ...(status ? { status } : {}), ...(view === "all" && plan ? { plan } : {}) });
     const r = await adminFetch<{ rows: SubRow[]; counts?: Record<string, number> }>(`/api/admin/subscriptions?${qs}`);
     if (r.ok) {
       setRows(r.data.rows);
       if (r.data.counts) setCounts(r.data.counts);
     } else setMsg({ kind: "err", text: r.data.message ?? "Could not load subscriptions." });
-  }, [adminFetch, view, days, status]);
+  }, [adminFetch, view, days, status, plan]);
   useEffect(() => {
     load();
   }, [load]);
@@ -137,6 +147,11 @@ export default function SubscriptionsClient() {
               </option>
             ))}
           </select>
+        )}
+        {view === "all" && plan && (
+          <button type="button" className={btn.ghost} onClick={() => setPlan("")} title="Show every plan">
+            Plan: {plan} ✕
+          </button>
         )}
       </div>
 

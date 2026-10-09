@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { fmtTime, useAdmin, type ApiResult } from "../../AdminApi";
 import { Badge, Confirm, Empty, Loading, Notice, PageHeader, Panel, btn, field } from "../../ui";
-import { statusBadges, type UserRow } from "../../admin-client";
+import { statusBadges, type UserRow } from "../users-client";
 import { SUPPORT_CHANGED } from "../../AdminShell";
 
 type Email = { id: string; address: string; verified: boolean; status: string | null; primary: boolean };
@@ -169,7 +169,7 @@ export default function UserClient({ id }: { id: string }) {
 
   return (
     <div className="space-y-4">
-      <Link href="/admin" className="text-sm text-cyan-300 hover:underline">
+      <Link href="/admin/users" className="text-sm text-cyan-300 hover:underline">
         ← Users
       </Link>
       <PageHeader
@@ -522,7 +522,7 @@ export default function UserClient({ id }: { id: string }) {
                         typeToConfirm: "delete",
                         run: () => adminFetch(`${base}/deletion/purge`, { method: "POST" }),
                         done: "Account deleted.",
-                        after: () => window.location.assign("/admin?deleted=1"),
+                        after: () => window.location.assign("/admin/users?deleted=1"),
                       })
                     }
                   >

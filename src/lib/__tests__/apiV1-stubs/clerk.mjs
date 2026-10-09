@@ -67,12 +67,18 @@ const SORT_FIELD = { created_at: "createdAt", last_sign_in_at: "lastSignInAt", l
 export async function clerkClient() {
   return {
     users: {
+      // globalThis.__clerkCountFails makes it throw, as Clerk does when it is down.
+      async getCount() {
+        if (globalThis.__clerkCountFails) throw Object.assign(new Error("Clerk API unavailable"), { status: 503 });
+        return Object.keys(users()).length;
+      },
       async getUser(id) {
         const u = toUser(id);
         if (!u) throw notFound();
         return u;
       },
       async getUserList(params = {}) {
+        if (globalThis.__clerkListFails) throw Object.assign(new Error("Clerk API unavailable"), { status: 503 });
         let ids = Object.keys(users());
         if (params.emailAddress?.length) {
           const want = params.emailAddress.map((e) => e.toLowerCase());

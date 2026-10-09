@@ -4,6 +4,7 @@
 // Read-only platform-wide events table. Filters, sorts, paginates. No
 // write actions in this PR (Tier 1). Admin actions land in PR C.
 
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
@@ -97,9 +98,14 @@ function useDebounced<T>(value: T, delayMs: number): T {
 }
 
 export default function AdminEventsClient() {
-  const [q, setQ] = useState("");
+  // ?q= and ?state= open the list filtered (the Overview and the admin search link here).
+  const sp = useSearchParams();
+  const [q, setQ] = useState(sp?.get("q") ?? "");
   const debouncedQ = useDebounced(q, 250);
-  const [state, setState] = useState<"" | EventState>("");
+  const [state, setState] = useState<"" | EventState>(() => {
+    const s = sp?.get("state") ?? "";
+    return STATE_OPTIONS.some((o) => o.value === s) ? (s as EventState) : "";
+  });
   const [visibility, setVisibility] = useState<"" | EventVisibility>("");
   const [dateRange, setDateRange] = useState<DateRange>("all");
   const [sort, setSort] = useState<SortKey>("updatedAt");

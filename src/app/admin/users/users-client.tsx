@@ -8,8 +8,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { PLANS } from "@/lib/planLimits";
-import { fmtTime, useAdmin } from "./AdminApi";
-import { Badge, Empty, Loading, Notice, PageHeader, Panel, btn, field } from "./ui";
+import { fmtTime, useAdmin } from "../AdminApi";
+import { Badge, Empty, Loading, Notice, PageHeader, Panel, btn, field } from "../ui";
 
 export type UserRow = {
   id: string;
@@ -40,12 +40,14 @@ type Filters = {
   tag: string;
   from: string;
   to: string;
+  /** The zone `from` and `to` are calendar days in; empty = UTC. Set by links from the Overview. */
+  tz: string;
   sort: string;
   page: number;
   pageSize: number;
 };
 
-const EMPTY: Filters = { q: "", plan: "", access: "", verified: "", status: "", tag: "", from: "", to: "", sort: "-created_at", page: 1, pageSize: 25 };
+const EMPTY: Filters = { q: "", plan: "", access: "", verified: "", status: "", tag: "", from: "", to: "", tz: "", sort: "-created_at", page: 1, pageSize: 25 };
 
 const SORTS: [string, string][] = [
   ["-created_at", "Newest sign-ups"],
@@ -86,7 +88,7 @@ export function statusBadges(u: Pick<UserRow, "access" | "banned" | "locked" | "
   );
 }
 
-export default function AdminClient() {
+export default function UsersClient() {
   const { adminFetch } = useAdmin();
   const [filters, setFilters] = useState<Filters | null>(null);
   const [draft, setDraft] = useState<Filters>(EMPTY);
@@ -104,7 +106,7 @@ export default function AdminClient() {
     async (f: Filters) => {
       setItems(null);
       setError(null);
-      window.history.replaceState(null, "", `/admin${toQuery(f)}`);
+      window.history.replaceState(null, "", `/admin/users${toQuery(f)}`);
       const r = await adminFetch<{ items: UserRow[]; total: number; scanned: number | null; capped: boolean }>(`/api/admin/users${toQuery(f)}`);
       if (!r.ok) {
         setError(r.data.message ?? r.data.error ?? `HTTP ${r.status}`);
@@ -212,6 +214,7 @@ export default function AdminClient() {
               Clear filters
             </button>
           )}
+          {(draft.from || draft.to) && <span className="self-center text-xs text-zinc-500">Sign-up dates are days in {draft.tz || "UTC"}.</span>}
         </div>
       </form>
       {error && <Notice kind="err">{error}</Notice>}

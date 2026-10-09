@@ -5,6 +5,7 @@
 // transferred and members removed.
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { fmtTime, useAdmin } from "../AdminApi";
 import { Empty, Loading, Notice, PageHeader, Panel, btn, field } from "../ui";
@@ -26,8 +27,10 @@ export default function GroupsClient() {
   const [items, setItems] = useState<GroupRow[] | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [q, setQ] = useState("");
-  const [query, setQuery] = useState("");
+  // ?q= opens the list searched (the admin search's "all matching groups" links here).
+  const sp = useSearchParams();
+  const [q, setQ] = useState(sp?.get("q") ?? "");
+  const [query, setQuery] = useState(sp?.get("q") ?? "");
   const [backfilledAt, setBackfilledAt] = useState<number | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const pageSize = 25;
