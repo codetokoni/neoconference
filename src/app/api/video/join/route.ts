@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { kv } from "@/lib/kv";
-import { AMS_WS, SIMULCAST_MAIN } from "@/lib/simulcast";
+import { AMS_WS, SIMULCAST_MAIN, isBroadcasting } from "@/lib/simulcast";
 import { claimCode, releaseCode, roomMainTrack } from "@/lib/participantCodes";
 
 export const runtime = "nodejs";
@@ -64,14 +64,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, left: true });
   }
 
-  const claim = await claimCode(r, code, deviceId);
+  const claim = await claimCode(r, code, deviceId, isBroadcasting);
   if (!claim.ok) {
     return NextResponse.json(
       {
         ok: false,
         error:
           claim.reason === "in_use"
-            ? "That code is already in use on another device."
+            ? "That code is live on another device right now. Press Leave there, or close it, then try again."
             : "That code is not on the list for this event.",
       },
       { status: claim.reason === "in_use" ? 409 : 404 },
