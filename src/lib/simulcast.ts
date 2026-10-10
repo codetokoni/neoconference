@@ -274,6 +274,25 @@ export async function isSurelyBroadcasting(streamId: string): Promise<boolean> {
   }
 }
 
+/**
+ * What AMS says about this stream, keeping "it did not answer" apart from
+ * "not live" — isBroadcasting below folds an unanswered call into "live".
+ */
+export async function liveState(streamId: string): Promise<"live" | "not_live" | "no_answer"> {
+  try {
+    const r = await fetch(`${AMS_REST}/broadcasts/${encodeURIComponent(streamId)}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(4000),
+    });
+    if (r.status === 404) return "not_live";
+    if (!r.ok) return "no_answer";
+    const b = (await r.json()) as AmsBroadcast;
+    return b?.status === "broadcasting" ? "live" : "not_live";
+  } catch {
+    return "no_answer";
+  }
+}
+
 export async function isBroadcasting(streamId: string): Promise<boolean> {
   try {
     const r = await fetch(
