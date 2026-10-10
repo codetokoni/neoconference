@@ -470,11 +470,18 @@ export type ClaimResult =
  * Claims a code for one device. The same device may re-claim its own code
  * freely — participants reload, lose wifi and come back, and being locked out
  * of your own slot mid-event is worse than the sharing it would prevent.
+ *
+ * Another device's claim only stands while that slot is live (`isLive`, the
+ * slot's stream on AMS). A claim outlives its device — a closed tab, the
+ * link opened in WhatsApp then in Chrome, a phone swapped for a laptop —
+ * and held the person's own code away from them for 12 hours. When nothing
+ * is sending on the slot, the new device takes the code over.
  */
 export async function claimCode(
   room: string,
   raw: string,
   deviceId: string,
+  isLive: (streamId: string) => Promise<boolean>,
 ): Promise<ClaimResult> {
   const entry = await lookupCode(room, raw);
   if (!entry) return { ok: false, reason: "unknown_code" };
@@ -488,7 +495,9 @@ export async function claimCode(
     await kv.expire(key, CLAIM_TTL_SECONDS);
     return { ok: true, entry, rejoined: true };
   }
-  return { ok: false, reason: "in_use" };
+  if (await isLive(entry.streamId)) return { ok: false, reason: "in_use" };
+  await kv.set(key, deviceId, { ex: CLAIM_TTL_SECONDS });
+  return { ok: true, entry, rejoined: false };
 }
 
 /** Staff override, and the participant's own "leave" action. */

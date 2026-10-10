@@ -61,6 +61,9 @@ interface Slot {
   rejoined: boolean;
 }
 
+/** Without storage (some in-app browsers), at least stable for this page. */
+let pageDeviceId: string | null = null;
+
 /** Stable per-browser id so a participant can rejoin their own slot. */
 function deviceId(): string {
   try {
@@ -70,7 +73,8 @@ function deviceId(): string {
     localStorage.setItem(DEVICE_KEY, made);
     return made;
   } catch {
-    return "nostore-" + Math.random().toString(36).slice(2);
+    pageDeviceId ??= "nostore-" + Math.random().toString(36).slice(2);
+    return pageDeviceId;
   }
 }
 
