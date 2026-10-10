@@ -67,8 +67,9 @@ function Tile({
   const [over, setOver] = useState(false);
 
   const enabled = p.live && Boolean(p.streamId);
-  const { videoStream, restart } = useAmsMultitrack(p.streamId, enabled);
-  useStallRestart(ref, enabled, restart);
+  const { videoStream, restart, state, refusal } = useAmsMultitrack(p.streamId, enabled);
+  useStallRestart(ref, enabled && state === "playing", restart);
+  const serverBusy = enabled && refusal === "highResourceUsage";
 
   useEffect(() => {
     const el = ref.current;
@@ -129,6 +130,11 @@ function Tile({
       {!p.live && (
         <span className="absolute inset-0 flex items-center justify-center font-mono text-[9px] uppercase tracking-[0.14em] text-white/35">
           {p.claimed ? "joined, no camera" : "not joined"}
+        </span>
+      )}
+      {serverBusy && (
+        <span className="absolute inset-0 flex items-center justify-center px-1 text-center font-mono text-[9px] uppercase tracking-[0.14em] text-amber-300/80">
+          Video server busy · retrying
         </span>
       )}
 

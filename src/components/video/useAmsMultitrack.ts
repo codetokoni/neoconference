@@ -22,6 +22,12 @@ export interface MultitrackResult {
    *  receiving actual frames from the publisher). Distinguishes a real
    *  broadcast from a phantom slot AMS advertised without media. */
   activeVideoKeys: string[];
+  /**
+   * Why AMS last refused to play (its error definition, e.g.
+   * "highResourceUsage" when the server is overloaded), until a session
+   * plays. Null while playing or when nothing was refused.
+   */
+  refusal: string | null;
   /** Ask AMS to start/stop sending one subtrack. Optional bandwidth control. */
   setTrackEnabled: (trackId: string, enabled: boolean) => void;
   restart: () => void;
@@ -54,6 +60,7 @@ export function useAmsMultitrack(
   const [liveTrackIds, setLiveTrackIds] = useState<string[]>([]);
   const [activeVideoKeys, setActiveVideoKeys] = useState<string[]>([]);
   const [nonce, setNonce] = useState(0);
+  const [refusal, setRefusal] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -152,6 +159,7 @@ export function useAmsMultitrack(
             iceGraceRef.current = null;
           }
           attempt = 0;
+          setRefusal(null);
           setState("playing");
         } else if (s === "failed") {
           // "closed" is intentionally excluded: pc.close() inside teardown()
@@ -353,7 +361,9 @@ export function useAmsMultitrack(
         }
 
         if (m.command === "error") {
-          // no_stream_exist: the venue has not started pushing yet
+          // no_stream_exist: the venue has not started pushing yet;
+          // highResourceUsage: AMS is overloaded and turns new viewers away.
+          setRefusal(m.definition ?? "error");
           setState("waiting");
           teardown();
           scheduleRetry();
@@ -391,5 +401,5 @@ export function useAmsMultitrack(
     };
   }, [mainTrack, enabled, nonce, trackKey, clearMedia]);
 
-  return { state, videoStream, videoStreams, audioStreams, liveTrackIds, activeVideoKeys, setTrackEnabled, restart };
+  return { state, videoStream, videoStreams, audioStreams, liveTrackIds, activeVideoKeys, refusal, setTrackEnabled, restart };
 }
