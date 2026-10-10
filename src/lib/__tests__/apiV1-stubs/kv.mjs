@@ -56,6 +56,7 @@ const base = {
   async smembers(k) { return [...(store.get(k) ?? [])].map(de); },
   async sismember(k, m) { return (store.get(k) ?? sets()).has(m) ? 1 : 0; },
   async incr(k) { const n = Number(store.get(k) ?? 0) + 1; store.set(k, n); return n; },
+  async incrby(k, by) { const n = Number(store.get(k) ?? 0) + Number(by); store.set(k, n); return n; },
   async scard(k) { return (store.get(k) ?? sets()).size; },
   async expire(k, s) { if (ttlOn() && store.has(k)) expires.set(k, Date.now() + s * 1000); return 1; },
   async pexpire(k, ms) { if (ttlOn() && store.has(k)) expires.set(k, Date.now() + ms); return 1; },

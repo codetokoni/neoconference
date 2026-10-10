@@ -44,6 +44,7 @@ export const INTEGRATIONS: Integration[] = [
   { id: "deepgram", name: "Deepgram", purpose: "Recording transcripts and live translation speech", vars: [v("DEEPGRAM_API_KEY"), v("TRANSCRIBE_PROVIDER", false, false)], console: "https://console.deepgram.com" },
   { id: "assemblyai", name: "AssemblyAI", purpose: "Recording transcripts (alternative provider)", vars: [v("ASSEMBLYAI_API_KEY")], console: "https://www.assemblyai.com/app/account" },
   { id: "deepl", name: "DeepL", purpose: "Text translation", vars: [v("DEEPL_API_KEY")], console: "https://www.deepl.com/your-account/keys" },
+  { id: "cartesia", name: "Cartesia", purpose: "Meeting translations in the speaker's own cloned voice", vars: [v("CARTESIA_API_KEY"), v("CARTESIA_MODEL", false, false), v("VOICE_ROOM_DAILY_CHARS", false, false)], console: "https://play.cartesia.ai/keys" },
   {
     id: "ai",
     name: "OpenAI / Vercel AI Gateway",
