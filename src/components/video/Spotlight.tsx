@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAmsMultitrack } from "./useAmsMultitrack";
 import BrandMark from "../BrandMark";
 
@@ -47,13 +47,49 @@ export interface SpotlightProps {
 export default function Spotlight({ spot, onClose, onPrev, onNext }: SpotlightProps) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const { videoStream } = useAmsMultitrack(spot.streamId, Boolean(spot.streamId));
+
+  // No black screen while full screen connects. A board tile already
+  // playing this person (camera board, queue) lends its picture at once;
+  // full screen switches to its own session once that has frames.
+  const tileStream = useMemo(() => playingTileStream(spot.streamId), [spot.streamId]);
+  const [ownReady, setOwnReady] = useState(false);
+  useEffect(() => {
+    setOwnReady(false);
+    const track = videoStream?.getVideoTracks()[0];
+    if (!track) return;
+    if (!track.muted) {
+      setOwnReady(true);
+      return;
+    }
+    // A remote track stays muted until its first frame arrives.
+    const on = () => setOwnReady(true);
+    track.addEventListener("unmute", on);
+    return () => track.removeEventListener("unmute", on);
+  }, [videoStream]);
+  const shown = ownReady ? videoStream : (tileStream ?? videoStream);
+
+  // With nothing to lend (the name board), the board stays in view until
+  // the first frame plays — or 4 s, so a camera that never comes still
+  // opens full screen.
+  const [visible, setVisible] = useState(Boolean(tileStream));
+  useEffect(() => {
+    if (visible) return;
+    const t = setTimeout(() => setVisible(true), 4000);
+    return () => clearTimeout(t);
+  }, [visible]);
+
   // Full screen always plays the person's sound. Opening it is a click,
   // so the browser allows sound; if it still refuses, the picture plays
   // silently and the sound comes on at the next click or key press.
   useEffect(() => {
     const el = ref.current;
-    if (!el || !videoStream) return;
-    if (el.srcObject !== videoStream) el.srcObject = videoStream;
+    if (!el) return;
+    if (!shown) {
+      // Never the previous person's last frame under this person's name.
+      el.srcObject = null;
+      return;
+    }
+    if (el.srcObject !== shown) el.srcObject = shown;
     el.muted = false;
     let unlock: (() => void) | null = null;
     let done = false;
@@ -77,7 +113,7 @@ export default function Spotlight({ spot, onClose, onPrev, onNext }: SpotlightPr
       unlock = null;
     };
     return stop;
-  }, [videoStream]);
+  }, [shown]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -140,13 +176,23 @@ export default function Spotlight({ spot, onClose, onPrev, onNext }: SpotlightPr
 
   return (
     <div
-      className={"fixed inset-0 z-[100] flex items-center justify-center bg-black" + (idle ? " cursor-none" : "")}
+      className={
+        "fixed inset-0 z-[100] flex items-center justify-center bg-black" +
+        (idle ? " cursor-none" : "") +
+        (visible ? "" : " pointer-events-none opacity-0")
+      }
       onPointerDown={(e) => {
         if (e.pointerType === "touch") setTapped(true);
       }}
     >
       {/* The camera fills the screen (cropped at the edges if its shape differs). */}
-      <video ref={ref} playsInline autoPlay className="h-full w-full object-cover" />
+      <video
+        ref={ref}
+        playsInline
+        autoPlay
+        onPlaying={() => setVisible(true)}
+        className="h-full w-full object-cover"
+      />
 
       {/* Full screen hides the site header: the logo stays on top. */}
       <BrandMark className="absolute left-4 top-4 z-10" />
@@ -204,4 +250,15 @@ export default function Spotlight({ spot, onClose, onPrev, onNext }: SpotlightPr
       </div>
     </div>
   );
+}
+
+/** The stream a board tile is already playing for this person, if any. */
+function playingTileStream(streamId: string): MediaStream | null {
+  if (!streamId || typeof document === "undefined") return null;
+  for (const v of document.querySelectorAll<HTMLVideoElement>("video[data-stream-id]")) {
+    if (v.dataset.streamId !== streamId) continue;
+    const s = v.srcObject;
+    if (s instanceof MediaStream && v.readyState >= 2 && s.getVideoTracks().some((t) => t.readyState === "live")) return s;
+  }
+  return null;
 }

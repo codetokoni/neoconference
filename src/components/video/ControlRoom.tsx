@@ -125,7 +125,7 @@ function Tile({
         over ? "ring-2 ring-emerald-400" : "",
       ].join(" ")}
     >
-      <video ref={ref} playsInline autoPlay muted className="h-full w-full object-cover" />
+      <video ref={ref} data-stream-id={p.streamId} playsInline autoPlay muted className="h-full w-full object-cover" />
 
       {!p.live && (
         <span className="absolute inset-0 flex items-center justify-center font-mono text-[9px] uppercase tracking-[0.14em] text-white/35">
