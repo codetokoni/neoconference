@@ -93,6 +93,8 @@ interface Diagnostics {
   translateAttempts: number;
   translateOk: number;
   spoke: number;
+  /** Of those, spoken in the speaker's own (cloned) voice. */
+  voiced: number;
   lastError: string | null;
   lastSample: string | null;
 }
@@ -103,6 +105,7 @@ const EMPTY_DIAG: Diagnostics = {
   translateAttempts: 0,
   translateOk: 0,
   spoke: 0,
+  voiced: 0,
   lastError: null,
   lastSample: null,
 };
@@ -302,9 +305,153 @@ export default function LiveTranslation() {
 
     const seenFinalIds = new Set<string>();
 
+    // Ducking, ref-counted across back-to-back sentences so the room audio
+    // does not pump: lowered when the first starts, restored when the last
+    // ends — for the computer voice and the speaker's cloned voice alike.
+    const duckOn = () => {
+      activeUtteranceCount.current += 1;
+      if (activeUtteranceCount.current === 1) {
+        const level = duckLevelRef.current;
+        // Every media element in the room — <audio> AND <video>.
+        // Original ducker only touched <audio>, but a
+        // participant tile's <video> can also carry the audio
+        // track in some LiveKit component setups, which is
+        // exactly the "I put floor to zero and still hear" bug
+        // the operator hit. Ducking both covers it. And at
+        // level 0 we hard-mute via el.muted because volume=0
+        // alone still leaks decoded frames in some browsers.
+        const els = document.querySelectorAll('audio, video');
+        els.forEach((raw) => {
+          const el = raw as HTMLMediaElement;
+          if (!preDuckState.current.has(el)) {
+            preDuckState.current.set(el, {
+              volume: el.volume,
+              muted: el.muted,
+            });
+          }
+          el.volume = level;
+          if (level === 0) el.muted = true;
+        });
+      }
+    };
+    const duckOff = () => {
+      activeUtteranceCount.current = Math.max(
+        0,
+        activeUtteranceCount.current - 1,
+      );
+      if (activeUtteranceCount.current === 0) {
+        // Restore each element to its PRE-DUCK state, not
+        // blindly to volume=1 / muted=false. LiveKit
+        // legitimately keeps some <video> elements muted
+        // (own preview to prevent echo, participants who
+        // muted themselves) and we mustn't clobber that.
+        preDuckState.current.forEach((prev, el) => {
+          if (!document.body.contains(el)) return;
+          el.volume = prev.volume;
+          el.muted = prev.muted;
+        });
+        preDuckState.current.clear();
+      }
+    };
+
+    // Sentences play one after another, in the order they were said.
+    let cancelled = false;
+    let playChain: Promise<void> = Promise.resolve();
+    let currentClip: HTMLAudioElement | null = null;
+
+    // The speaker's own voice (Cartesia, via /api/voice/speak), when they
+    // have one. Speakers without one, languages not offered, a meeting past
+    // its daily cap: remembered, so those sentences skip straight to the
+    // computer voice without asking again.
+    const noVoice = new Set<string>();
+    let voiceUnavailable = false;
+    const fetchClip = async (text: string, identity: string): Promise<Blob | null> => {
+      if (!identity || voiceUnavailable || noVoice.has(identity) || !room.name) return null;
+      try {
+        const res = await fetch('/api/voice/speak', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ room: room.name, identity, lang: targetLang, text }),
+        });
+        if (res.status === 200) return await res.blob();
+        const why = res.headers.get('X-Voice-Status') || '';
+        if (why === 'no_voice') noVoice.add(identity);
+        if (why === 'language' || why === 'capped' || why === 'not_configured' || res.status === 401) {
+          voiceUnavailable = true;
+        }
+      } catch {
+        /* the computer voice says it instead */
+      }
+      return null;
+    };
+    const playClip = (clip: Blob): Promise<boolean> =>
+      new Promise((resolve) => {
+        const url = URL.createObjectURL(clip);
+        const a = new Audio(url);
+        currentClip = a;
+        let started = false;
+        const done = (ok: boolean) => {
+          if (started) duckOff();
+          URL.revokeObjectURL(url);
+          if (currentClip === a) currentClip = null;
+          resolve(ok);
+        };
+        a.onplaying = () => {
+          if (started) return;
+          started = true;
+          duckOn();
+        };
+        a.onended = () => done(true);
+        a.onerror = () => done(started);
+        a.play().catch(() => done(false));
+      });
+    const speakComputerVoice = (text: string): Promise<void> =>
+      new Promise((resolve) => {
+        const utt = new SpeechSynthesisUtterance(text);
+        utt.lang = targetLang;
+        if (voice) utt.voice = voice;
+        utt.rate = 1.15;
+        // Duck the LiveKit room audio while the interpreter is
+        // speaking so the translation dominates. SpeechSynthesis
+        // output goes straight to the OS speaker (not through Web
+        // Audio) so we can't boost the TTS above 1.0; the reliable
+        // path is to lower the competing source audio instead.
+        let started = false;
+        utt.onstart = () => {
+          started = true;
+          duckOn();
+        };
+        utt.onend = () => {
+          if (started) duckOff();
+          resolve();
+        };
+        utt.onerror = (ev) => {
+          bumpDiag({ lastError: 'TTS error: ' + (ev.error || 'unknown') });
+          if (started) duckOff();
+          resolve();
+        };
+        window.speechSynthesis.speak(utt);
+      });
+    const enqueue = (text: string, identity: string) => {
+      // Ask for the clip now, so it is ready by the time its turn comes.
+      const clip = fetchClip(text, identity);
+      playChain = playChain.then(async () => {
+        if (cancelled) return;
+        const blob = await clip;
+        if (cancelled) return;
+        if (blob && (await playClip(blob))) {
+          bumpDiag({ spoke: diagRef.current.spoke + 1, voiced: diagRef.current.voiced + 1 });
+          return;
+        }
+        if (cancelled) return;
+        bumpDiag({ spoke: diagRef.current.spoke + 1 });
+        await speakComputerVoice(text);
+      });
+    };
+
     const handler = async (
       segments: TranscriptionSegment[],
-      _participant?: Participant,
+      participant?: Participant,
       _publication?: TrackPublication,
     ) => {
       bumpDiag({ captionsSeen: diagRef.current.captionsSeen + segments.length });
@@ -366,70 +513,7 @@ export default function LiveTranslation() {
             lastSample: out.length > 60 ? out.slice(0, 57) + '…' : out,
           });
 
-          const utt = new SpeechSynthesisUtterance(out);
-          utt.lang = targetLang;
-          if (voice) utt.voice = voice;
-          utt.rate = 1.15;
-          // Duck the LiveKit room audio while the interpreter is
-          // speaking so the translation dominates. SpeechSynthesis
-          // output goes straight to the OS speaker (not through Web
-          // Audio) so we can't boost the TTS above 1.0; the reliable
-          // path is to lower the competing source audio instead.
-          // Ref-count active utterances so back-to-back captions
-          // don't cause volume pumping — restore only when the LAST
-          // utterance ends.
-          utt.onstart = () => {
-            bumpDiag({ spoke: diagRef.current.spoke + 1 });
-            activeUtteranceCount.current += 1;
-            if (activeUtteranceCount.current === 1) {
-              const level = duckLevelRef.current;
-              // Every media element in the room — <audio> AND <video>.
-              // Original ducker only touched <audio>, but a
-              // participant tile's <video> can also carry the audio
-              // track in some LiveKit component setups, which is
-              // exactly the "I put floor to zero and still hear" bug
-              // the operator hit. Ducking both covers it. And at
-              // level 0 we hard-mute via el.muted because volume=0
-              // alone still leaks decoded frames in some browsers.
-              const els = document.querySelectorAll('audio, video');
-              els.forEach((raw) => {
-                const el = raw as HTMLMediaElement;
-                if (!preDuckState.current.has(el)) {
-                  preDuckState.current.set(el, {
-                    volume: el.volume,
-                    muted: el.muted,
-                  });
-                }
-                el.volume = level;
-                if (level === 0) el.muted = true;
-              });
-            }
-          };
-          const restoreVolume = () => {
-            activeUtteranceCount.current = Math.max(
-              0,
-              activeUtteranceCount.current - 1,
-            );
-            if (activeUtteranceCount.current === 0) {
-              // Restore each element to its PRE-DUCK state, not
-              // blindly to volume=1 / muted=false. LiveKit
-              // legitimately keeps some <video> elements muted
-              // (own preview to prevent echo, participants who
-              // muted themselves) and we mustn't clobber that.
-              preDuckState.current.forEach((prev, el) => {
-                if (!document.body.contains(el)) return;
-                el.volume = prev.volume;
-                el.muted = prev.muted;
-              });
-              preDuckState.current.clear();
-            }
-          };
-          utt.onend = restoreVolume;
-          utt.onerror = (ev) => {
-            bumpDiag({ lastError: 'TTS error: ' + (ev.error || 'unknown') });
-            restoreVolume();
-          };
-          window.speechSynthesis.speak(utt);
+          enqueue(out, participant?.identity ?? '');
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           bumpDiag({ lastError: 'Network: ' + msg });
@@ -441,6 +525,12 @@ export default function LiveTranslation() {
     room.on(RoomEvent.TranscriptionReceived, handler);
     return () => {
       room.off(RoomEvent.TranscriptionReceived, handler);
+      cancelled = true;
+      try {
+        currentClip?.pause();
+      } catch {
+        // ignore
+      }
       try {
         window.speechSynthesis.cancel();
       } catch {
@@ -694,6 +784,7 @@ export default function LiveTranslation() {
           <StatusRow label="Final sentences" value={diag.finalsSeen} good={diag.finalsSeen > 0} />
           <StatusRow label="Translations OK" value={`${diag.translateOk} / ${diag.translateAttempts}`} good={diag.translateOk > 0} />
           <StatusRow label="Spoke aloud" value={diag.spoke} good={diag.spoke > 0} />
+          <StatusRow label="In the speaker's own voice" value={diag.voiced} good={diag.voiced > 0} />
           {diag.captionsSeen === 0 && (
             <div style={{ color: '#fbbf24', marginTop: 6 }}>
               No captions received yet — ask the host to turn Captions ON.

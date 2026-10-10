@@ -48,6 +48,7 @@ export const SECTIONS: Section[] = [
   { label: "Settings", href: "/admin/settings", permission: "settings:write", group: "Settings" },
   { label: "Features", href: "/admin/features", permission: "features:write", group: "Settings" },
   { label: "Integrations", href: "/admin/integrations", permission: "integrations:write", group: "Settings" },
+  { label: "Speaker voices", href: "/admin/voices", permission: "voices:manage", group: "Settings" },
 ];
 
 export default function AdminShell({ me, clock, children }: { me: PublicAdminContext; clock?: AdminClock; children: ReactNode }) {

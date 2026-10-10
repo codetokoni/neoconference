@@ -34,6 +34,7 @@ export const ADMIN_PERMISSIONS = [
   { key: "settings:write", group: "Settings", label: "Branding, notices, regional and registration settings" },
   { key: "features:write", group: "Settings", label: "Turn features on or off, maintenance mode", sensitive: true },
   { key: "integrations:write", group: "Settings", label: "Integrations, API credentials and webhooks", sensitive: true },
+  { key: "voices:manage", group: "Settings", label: "Create and remove cloned speaker voices (with the speaker's consent)", sensitive: true },
 
   { key: "notifications:send", group: "Communication", label: "Send announcements and edit email templates" },
 
