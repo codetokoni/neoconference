@@ -14,6 +14,8 @@ export default function QueueList({ room }: { room: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  // New queues fill themselves with whoever is live, unless unticked.
+  const [auto, setAuto] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -53,7 +55,7 @@ export default function QueueList({ room }: { room: string }) {
         const r = await fetch(`/api/video/queues?room=${encodeURIComponent(room)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug: slug.trim() || undefined, name: finalName }),
+          body: JSON.stringify({ slug: slug.trim() || undefined, name: finalName, auto }),
         });
         const j = await r.json();
         if (!j.ok) {
@@ -68,7 +70,7 @@ export default function QueueList({ room }: { room: string }) {
         setBusy(false);
       }
     },
-    [name, slug, busy, room, load],
+    [name, slug, auto, busy, room, load],
   );
 
   return (
@@ -104,6 +106,15 @@ export default function QueueList({ room }: { room: string }) {
             placeholder="testimonies"
             className="w-full rounded-md border border-white/12 bg-[#0B1319] px-3 py-2 font-mono text-sm text-white outline-none placeholder:text-white/30 focus:ring-2 focus:ring-emerald-500"
           />
+        </label>
+        <label className="flex cursor-pointer items-center gap-2 self-center pb-0.5 text-xs text-white/75">
+          <input
+            type="checkbox"
+            checked={auto}
+            onChange={(e) => setAuto(e.target.checked)}
+            className="h-3.5 w-3.5 accent-emerald-500"
+          />
+          Add live people automatically
         </label>
         <button
           type="submit"

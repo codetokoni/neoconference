@@ -6,6 +6,7 @@ import {
   isValidSlug,
   listQueues,
   normaliseSlug,
+  publicQueue,
   RESERVED_QUEUE_SLUGS,
 } from "@/lib/videoQueues";
 
@@ -34,7 +35,7 @@ export async function GET(req: Request) {
   const r = room(req);
   const queues = await listQueues(r);
   return NextResponse.json(
-    { ok: true, room: r, queues },
+    { ok: true, room: r, queues: queues.map(publicQueue) },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
@@ -45,7 +46,7 @@ export async function POST(req: Request) {
   if (denied) return denied;
   const r = room(req);
 
-  let body: { slug?: unknown; name?: unknown };
+  let body: { slug?: unknown; name?: unknown; auto?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -77,6 +78,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Bad slug." }, { status: 400 });
   }
 
-  const queue = await createQueue(r, slug, name);
-  return NextResponse.json({ ok: true, queue });
+  const queue = await createQueue(r, slug, name, body.auto === true);
+  return NextResponse.json({ ok: true, queue: publicQueue(queue) });
 }

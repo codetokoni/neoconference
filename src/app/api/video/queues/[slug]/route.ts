@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
-import { deleteQueue, getQueue, updateQueue } from "@/lib/videoQueues";
+import { addLiveToQueue, deleteQueue, getQueue, publicQueue, updateQueue } from "@/lib/videoQueues";
+import { liveStreamsInSlotOrder } from "@/lib/liveParticipants";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,10 +34,15 @@ export async function GET(req: Request, ctx: { params: { slug: string } }) {
   if (denied) return denied;
   const r = room(req);
   const slug = slugFromParams(ctx.params);
-  const q = await getQueue(r, slug);
+  let q = await getQueue(r, slug);
   if (!q) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+  // Auto-add: everyone live who has never been in the queue joins its end.
+  // Done on read, so the queue fills while any board has it open.
+  if (q.auto) q = await addLiveToQueue(r, q, await liveStreamsInSlotOrder(r));
   return NextResponse.json(
-    { ok: true, queue: q },
+    // `at` is the server clock at this read; a save sends it back as
+    // `since` so entries added after it are kept.
+    { ok: true, queue: publicQueue(q), at: Date.now() },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
@@ -54,14 +60,16 @@ export async function PATCH(req: Request, ctx: { params: { slug: string } }) {
   const r = room(req);
   const slug = slugFromParams(ctx.params);
 
-  let body: { name?: unknown; order?: unknown };
+  let body: { name?: unknown; order?: unknown; auto?: unknown; since?: unknown };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ ok: false, error: "Bad request." }, { status: 400 });
   }
 
-  const patch: { name?: string; order?: string[] } = {};
+  const patch: { name?: string; order?: string[]; auto?: boolean; since?: number } = {};
+  if (typeof body.auto === "boolean") patch.auto = body.auto;
+  if (typeof body.since === "number" && Number.isFinite(body.since)) patch.since = body.since;
   if (typeof body.name === "string") {
     patch.name = body.name.slice(0, 60).trim();
     if (!patch.name) {
@@ -73,12 +81,12 @@ export async function PATCH(req: Request, ctx: { params: { slug: string } }) {
       .filter((x): x is string => typeof x === "string")
       .map((x) => x.replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 128))
       .filter(Boolean)
-      .slice(0, 200);
+      .slice(0, 5000);
   }
 
   const q = await updateQueue(r, slug, patch);
   if (!q) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
-  return NextResponse.json({ ok: true, queue: q });
+  return NextResponse.json({ ok: true, queue: publicQueue(q), at: Date.now() });
 }
 
 export async function DELETE(req: Request, ctx: { params: { slug: string } }) {
