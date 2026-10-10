@@ -9,7 +9,7 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { useRoomContext } from "@livekit/components-react";
+import { useRoomInfo } from "@livekit/components-react";
 import CatchUp from "@/components/video/CatchUp";
 import { TRANSLATION_LANGUAGES } from "@/lib/translationLanguages";
 
@@ -30,11 +30,13 @@ function startingLang(roomName: string): string {
 }
 
 export default function MeetingCatchUp() {
-  const room = useRoomContext();
+  // The room has no name until it has connected; useRoomInfo re-renders when
+  // it does. (Reading room.name once, as at first, hid the button for good.)
+  const { name: roomName } = useRoomInfo();
   const [open, setOpen] = useState(false);
   const [lang, setLang] = useState("en");
 
-  if (!room?.name) return null;
+  if (!roomName) return null;
   const label = LANGS.find((l) => l.code === lang)?.label ?? lang;
 
   return (
@@ -43,7 +45,7 @@ export default function MeetingCatchUp() {
         type="button"
         className={TOOLBAR_BTN_CLASS}
         onClick={() => {
-          if (!open) setLang(startingLang(room.name));
+          if (!open) setLang(startingLang(roomName));
           setOpen((o) => !o);
         }}
         aria-expanded={open}
@@ -75,7 +77,7 @@ export default function MeetingCatchUp() {
               </select>
             </label>
             <CatchUp
-              src={`/api/meeting-catchup?room=${encodeURIComponent(room.name)}`}
+              src={`/api/meeting-catchup?room=${encodeURIComponent(roomName)}`}
               lang={lang}
               label={label}
               startOpen
