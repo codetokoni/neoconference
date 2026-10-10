@@ -1317,7 +1317,7 @@ export default function SimulcastPlayer({
 
           {/* For someone joining late: the programme so far, in their language. */}
           <CatchUp
-            room={room}
+            src={`/api/video/catchup?room=${encodeURIComponent(room)}`}
             lang={(languagesLocked ? videoChannel : activeChannel).lang}
             label={(languagesLocked ? videoChannel : activeChannel).label}
           />
