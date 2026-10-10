@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 /**
  * Interactive API reference. Renders the OpenAPI spec at /openapi.json using
@@ -38,33 +38,47 @@ const BRAND_CSS = `
   }
 `;
 
+// Pinned: the unversioned URL followed Scalar's latest release, which read
+// the old script tag's inline '{}' as an empty spec and showed no endpoints.
+const SCALAR_SRC =
+  'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.1/dist/browser/standalone.js';
+
+type ScalarGlobal = {
+  createApiReference: (target: Element, config: Record<string, unknown>) => { destroy?: () => void };
+};
+
 export default function DocsPage() {
+  const target = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
+    let app: { destroy?: () => void } | null = null;
+    let cancelled = false;
     const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/@scalar/api-reference';
+    script.src = SCALAR_SRC;
     script.async = true;
+    script.onload = () => {
+      const scalar = (window as unknown as { Scalar?: ScalarGlobal }).Scalar;
+      if (cancelled || !scalar || !target.current) return;
+      app = scalar.createApiReference(target.current, {
+        url: '/openapi.json',
+        theme: 'none',
+        darkMode: true,
+        hideDarkModeToggle: true,
+        metaData: { title: 'NeoConference API Reference' },
+      });
+    };
     document.body.appendChild(script);
     return () => {
-      document.body.removeChild(script);
+      cancelled = true;
+      app?.destroy?.();
+      script.remove();
     };
   }, []);
 
   return (
     <main style={{ minHeight: '100vh', background: '#03050a' }}>
       <style dangerouslySetInnerHTML={{ __html: BRAND_CSS }} />
-      {/* Scalar reads configuration from this script tag's data attributes. */}
-      <script
-        id="api-reference"
-        type="application/json"
-        data-url="/openapi.json"
-        data-configuration={JSON.stringify({
-          theme: 'none',
-          darkMode: true,
-          hideDarkModeToggle: true,
-          metaData: { title: 'NeoConference API Reference' },
-        })}
-        dangerouslySetInnerHTML={{ __html: '{}' }}
-      />
+      <div ref={target} />
     </main>
   );
 }
