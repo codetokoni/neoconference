@@ -327,7 +327,10 @@ function Row({
           `?codes=1` to opt in; the code text scales up so they can
           read it from a normal seating distance. */}
       {!display && (
-        <span className="font-mono text-[10px] text-white/45">{p.code}</span>
+        <span className="flex items-baseline gap-1.5" title="The code this person enters on the join page">
+          <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">Code</span>
+          <span className="font-mono text-sm font-semibold tracking-[0.12em] text-amber-200">{p.code}</span>
+        </span>
       )}
       {display && showCodes && (
         <span className="font-mono text-base text-amber-200/85">{p.code}</span>
