@@ -662,8 +662,9 @@ function QueueTile({
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const enabled = Boolean(participant?.live) && Boolean(streamId);
-  const { videoStream, restart } = useAmsMultitrack(streamId, enabled);
-  useStallRestart(ref, enabled, restart);
+  const { videoStream, restart, state, refusal } = useAmsMultitrack(streamId, enabled);
+  useStallRestart(ref, enabled && state === "playing", restart);
+  const serverBusy = enabled && refusal === "highResourceUsage";
 
   useEffect(() => {
     const el = ref.current;
@@ -715,6 +716,11 @@ function QueueTile({
       {!participant?.live && (
         <span className="absolute inset-0 flex items-center justify-center px-1 text-center font-mono text-[8.5px] uppercase tracking-[0.14em] text-white/40">
           {status}
+        </span>
+      )}
+      {serverBusy && (
+        <span className="absolute inset-0 flex items-center justify-center px-1 text-center font-mono text-[8.5px] uppercase tracking-[0.14em] text-amber-300/80">
+          Video server busy · retrying
         </span>
       )}
 
