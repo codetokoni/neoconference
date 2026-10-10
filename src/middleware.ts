@@ -109,6 +109,9 @@ const isPublicRoute = createRouteMatcher([
   // render the overlay; POST/PATCH/DELETE guard themselves via
   // auth() in the route so they're fine to expose here too.
   '/api/video/room/timer',
+  // "What did I miss?" on the player, which the streaming link shows to
+  // viewers without an account. Cost-bounded in src/lib/catchUp.ts.
+  '/api/video/catchup',
   // Participants have no account; the personal code is the credential and
   // the route rate limits hard. /api/video/codes and /feature stay staff-only.
   '/video/join',

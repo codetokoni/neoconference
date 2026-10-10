@@ -18,6 +18,7 @@ import {
   type SimulcastChannel,
 } from "@/lib/simulcast";
 import { PHASE_TEXT, RESTART_EVERY_MS, STALL_MS, shouldRestart, viewerPhase } from "@/lib/viewerPhase";
+import CatchUp from "./CatchUp";
 
 // `channelByIdInList` is the exported helper; imported under an alias so the
 // local callback below can be named `channelById` for readability.
@@ -1313,6 +1314,13 @@ export default function SimulcastPlayer({
               />
             </div>
           )}
+
+          {/* For someone joining late: the programme so far, in their language. */}
+          <CatchUp
+            room={room}
+            lang={(languagesLocked ? videoChannel : activeChannel).lang}
+            label={(languagesLocked ? videoChannel : activeChannel).label}
+          />
 
           {/* Floor-level slider. Only relevant when a translation is
               picked — no reason to show it while the floor IS the
