@@ -121,7 +121,7 @@ export async function getCatchUp(
       temperature: 0.2,
       maxTokens: 700,
       system:
-        `You help someone who joined a live programme late catch up. You are given the live ` +
+        `You help someone who joined a live programme or meeting late catch up. You are given the live ` +
         `transcript so far (speech-to-text, so expect small errors). Write in ${name} only. ` +
         `Reply as JSON: {"summary": string, "points": string[]}. "summary": 2-4 plain sentences ` +
         `on what has happened so far, most important first. "points": 3-6 short key points, ` +

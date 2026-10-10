@@ -15,8 +15,23 @@ interface Ready {
  * the browser can read aloud. The summary is shared and refreshed every
  * couple of minutes on the server (src/lib/catchUp.ts).
  */
-export default function CatchUp({ room, lang, label }: { room: string; lang: string; label: string }) {
-  const [open, setOpen] = useState(false);
+export default function CatchUp({
+  src,
+  lang,
+  label,
+  emptyText = "Nothing has been said yet. Check again once the programme is under way.",
+  startOpen = false,
+  onClose,
+}: {
+  /** The catch-up endpoint with its room, without the language. */
+  src: string;
+  lang: string;
+  label: string;
+  emptyText?: string;
+  startOpen?: boolean;
+  onClose?: () => void;
+}) {
+  const [open, setOpen] = useState(startOpen);
   const [state, setState] = useState<"idle" | "loading" | "ready" | "nothing" | "failed">("idle");
   const [data, setData] = useState<Ready | null>(null);
   const [speaking, setSpeaking] = useState(false);
@@ -36,7 +51,7 @@ export default function CatchUp({ room, lang, label }: { room: string; lang: str
     setState("loading");
     asked.current = lang;
     try {
-      const r = await fetch(`/api/video/catchup?room=${encodeURIComponent(room)}&lang=${encodeURIComponent(lang)}`, {
+      const r = await fetch(`${src}${src.includes("?") ? "&" : "?"}lang=${encodeURIComponent(lang)}`, {
         cache: "no-store",
       });
       const j = (await r.json()) as { ok?: boolean; status?: string } & Partial<Ready>;
@@ -120,6 +135,7 @@ export default function CatchUp({ room, lang, label }: { room: string; lang: str
           onClick={() => {
             stopSpeaking();
             setOpen(false);
+            onClose?.();
           }}
           aria-label="Close"
           className="ml-auto rounded-md px-2 py-0.5 text-white/60 hover:bg-white/10 hover:text-white"
@@ -130,7 +146,7 @@ export default function CatchUp({ room, lang, label }: { room: string; lang: str
 
       {state === "loading" && <p className="text-sm text-white/60">Catching you up…</p>}
       {state === "nothing" && (
-        <p className="text-sm text-white/70">Nothing has been said yet. Check again once the programme is under way.</p>
+        <p className="text-sm text-white/70">{emptyText}</p>
       )}
       {state === "failed" && (
         <p className="text-sm text-white/70">

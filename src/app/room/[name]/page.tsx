@@ -37,6 +37,8 @@ import {
   type BackgroundMode,
 } from "@/lib/backgroundEffects";
 import LiveCaptions from "@/components/LiveCaptions";
+import MeetingCatchUp from "@/components/MeetingCatchUp";
+import MeetingScribe from "@/components/MeetingScribe";
 import CaptionsToggle from "@/components/CaptionsToggle";
 import LiveTranslation from "@/components/LiveTranslation";
 import ReactionsBar from "@/components/ReactionsBar";
@@ -1065,6 +1067,7 @@ function RoomContainer({
             onConfigChanged={setInactivityConfig}
           />
           <LiveTranslation />
+          <MeetingCatchUp />
           <DesktopMoreMenu />
 
           <div className="self-stretch w-px bg-white/15" aria-hidden />
@@ -1091,6 +1094,7 @@ function RoomContainer({
         <BackgroundContinuity eventName={roomName} eventSlug={eventSlug} />
         <HiddenVideoOverlay />
         <LiveCaptions />
+        <MeetingScribe />
         <TranscriptNoticeBanner />
         <MeetingTimer
           slug={eventSlug}
