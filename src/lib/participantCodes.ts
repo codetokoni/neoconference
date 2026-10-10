@@ -445,6 +445,7 @@ export async function wipeRoom(room: string): Promise<void> {
   const patterns = [
     `neo:video:layout:${room}:*`,
     `neo:video:claim:${room}:*`,
+    `neo:video:signout:${room}:*`,
     `neo:video:queues:${room}:*`,
     `neo:video:rosterbatch:${room}:*`,
   ];
@@ -518,6 +519,69 @@ export async function claimCode(
 /** Staff override, and the participant's own "leave" action. */
 export async function releaseCode(room: string, raw: string): Promise<void> {
   await kv.del(claimKey(room, keyForCode(raw)));
+}
+
+/*
+ * Join sessions. Freeing a code at the server is not enough to sign someone
+ * out: their page keeps its camera and reconnects to AMS on its own. Each
+ * successful join gets a session token; the page checks it every few
+ * seconds and stops when it was signed out or the code moved to another
+ * device. The token is unguessable, so the check needs no rate limit and
+ * tells a stranger nothing about any code.
+ */
+const sessionKey = (token: string) => `neo:video:session:${token}`;
+const signOutKey = (room: string, code: string) => `neo:video:signout:${room}:${code}`;
+
+interface JoinSession {
+  room: string;
+  code: string; // the normalised code key, as in claimKey
+  deviceId: string;
+  at: number;
+}
+
+export async function createJoinSession(room: string, raw: string, deviceId: string): Promise<string> {
+  const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+  const s: JoinSession = { room, code: keyForCode(raw), deviceId, at: Date.now() };
+  await kv.set(sessionKey(token), JSON.stringify(s), { ex: CLAIM_TTL_SECONDS });
+  return token;
+}
+
+export type SessionCheck =
+  | { keep: true }
+  | { keep: false; reason: "signed_out" | "elsewhere"; room: string; slot: number | null };
+
+/**
+ * Whether the page holding this session should keep its slot. An unknown
+ * or expired session keeps it — stopping a live camera on a missing record
+ * would be worse than the 12-hour expiry it guards against.
+ */
+export async function checkJoinSession(token: string): Promise<SessionCheck> {
+  if (!/^[a-f0-9]{64}$/.test(token)) return { keep: true };
+  const raw = await kv.get<JoinSession | string>(sessionKey(token));
+  if (!raw) return { keep: true };
+  const s = typeof raw === "string" ? (JSON.parse(raw) as JoinSession) : raw;
+  const slotOf = async () => (await lookupCode(s.room, s.code))?.slot ?? null;
+
+  const out = await kv.get<number | string>(signOutKey(s.room, s.code));
+  if (out && Number(out) >= s.at) {
+    return { keep: false, reason: "signed_out", room: s.room, slot: await slotOf() };
+  }
+  const holder = await kv.get<string>(claimKey(s.room, s.code));
+  if (holder && holder !== s.deviceId) {
+    return { keep: false, reason: "elsewhere", room: s.room, slot: await slotOf() };
+  }
+  return { keep: true };
+}
+
+/**
+ * A moderator signs a participant out: the code is freed and every page
+ * that joined with it before now is told to stop. Signing in again with
+ * the code works straight away.
+ */
+export async function signOutCode(room: string, raw: string): Promise<void> {
+  const code = keyForCode(raw);
+  await kv.set(signOutKey(room, code), Date.now(), { ex: CLAIM_TTL_SECONDS });
+  await kv.del(claimKey(room, code));
 }
 
 export async function claimedCodes(room: string): Promise<Set<string>> {

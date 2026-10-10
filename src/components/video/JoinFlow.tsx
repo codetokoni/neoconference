@@ -59,6 +59,8 @@ interface Slot {
   mainTrack: string;
   wsUrl: string;
   rejoined: boolean;
+  /** Checked every few seconds; a moderator can sign this page out. */
+  session: string;
 }
 
 /** Without storage (some in-app browsers), at least stable for this page. */
@@ -215,6 +217,7 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
           mainTrack: j.mainTrack,
           wsUrl: j.wsUrl,
           rejoined: Boolean(j.rejoined),
+          session: String(j.session ?? ""),
         });
       } catch {
         setError("Could not reach the event. Check your connection.");
@@ -239,6 +242,52 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
     setSlot(null);
     setCode("");
   }, [pub, code, room]);
+
+  // Every 10 s (and on coming back to the tab) ask whether this page may
+  // keep its slot. Signed out by a moderator, or the code moved to another
+  // device: stop the camera here so it cannot reconnect, and say why.
+  const session = slot?.session ?? "";
+  // The publisher object is new on every render; reach its stop() through a
+  // ref so the timer is not reset each time.
+  const stopRef = useRef(pub.stop);
+  stopRef.current = pub.stop;
+  useEffect(() => {
+    if (!session) return;
+    let gone = false;
+    const check = async () => {
+      if (gone) return;
+      try {
+        const r = await fetch(`/api/video/join?room=${encodeURIComponent(room)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ check: session }),
+        });
+        const j = (await r.json()) as { keep?: boolean; reason?: string };
+        if (gone || j.keep !== false) return;
+        gone = true;
+        stopRef.current();
+        setSlot(null);
+        setCode("");
+        setError(
+          j.reason === "signed_out"
+            ? "A moderator signed you out. Enter your code to join again."
+            : "Your code is now in use on another device.",
+        );
+      } catch {
+        /* offline for a moment: ask again next time */
+      }
+    };
+    const timer = setInterval(check, 10_000);
+    const onShow = () => {
+      if (document.visibilityState === "visible") void check();
+    };
+    document.addEventListener("visibilitychange", onShow);
+    return () => {
+      gone = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onShow);
+    };
+  }, [session, room]);
 
   const statusLine = (() => {
     switch (pub.state) {
