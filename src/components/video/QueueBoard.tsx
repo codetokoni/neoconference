@@ -26,6 +26,8 @@ interface Queue {
   slug: string;
   name: string;
   order: string[];
+  /** Live people are added to the end automatically. */
+  auto?: boolean;
 }
 
 /**
@@ -96,6 +98,9 @@ export default function QueueBoard({
   const [busy, setBusy] = useState(false);
   const [addInput, setAddInput] = useState("");
   const [spot, setSpot] = useState<Participant | null>(null);
+  // Server clock at the last read; saves send it back so people auto-added
+  // after it are kept instead of dropped by a list this page never saw.
+  const syncedAt = useRef(0);
 
   const load = useCallback(async () => {
     try {
@@ -121,6 +126,7 @@ export default function QueueBoard({
       if (!sJ.ok) return;
       setErr(null);
       setQueue(qJ.queue);
+      if (typeof qJ.at === "number") syncedAt.current = qJ.at;
 
       const screens: number = sJ.screens ?? 1;
       const results = await Promise.all(
@@ -156,7 +162,7 @@ export default function QueueBoard({
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ order: nextOrder }),
+            body: JSON.stringify({ order: nextOrder, since: syncedAt.current || undefined }),
           },
         );
       } catch {
@@ -301,6 +307,28 @@ export default function QueueBoard({
       }
     },
     [room],
+  );
+
+  // Turning auto-add on fills the queue with everyone live right away (on
+  // the next read); off stops adding, and leaves the queue as it is.
+  const setAuto = useCallback(
+    async (on: boolean) => {
+      setQueue((q) => (q ? { ...q, auto: on } : q));
+      try {
+        await fetch(
+          `/api/video/queues/${encodeURIComponent(slug)}?room=${encodeURIComponent(room)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ auto: on }),
+          },
+        );
+      } catch {
+        /* next poll reconciles */
+      }
+      void load();
+    },
+    [room, slug, load],
   );
 
   const removeQueueEntirely = useCallback(async () => {
@@ -460,6 +488,15 @@ export default function QueueBoard({
             /{queue.slug} · {queue.order.length} staged · {liveCount} live
           </span>
         </div>
+        <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-md border border-white/12 px-3 py-1.5 text-xs text-white/75 hover:bg-white/5">
+          <input
+            type="checkbox"
+            checked={Boolean(queue.auto)}
+            onChange={(e) => setAuto(e.target.checked)}
+            className="h-3.5 w-3.5 accent-emerald-500"
+          />
+          Add live people automatically
+        </label>
         <button
           type="button"
           onClick={removeQueueEntirely}
