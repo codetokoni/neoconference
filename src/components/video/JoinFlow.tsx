@@ -85,6 +85,8 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [slot, setSlot] = useState<Slot | null>(null);
+  // Join page locked by the moderators (see the effect below).
+  const [locked, setLocked] = useState(false);
   // A code was accepted on this visit. Unlocks the languages, and keeps
   // them unlocked after Leave: the code is what's asked for, not the camera.
   const [unlocked, setUnlocked] = useState(false);
@@ -206,6 +208,11 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
         });
         const j = await r.json();
         if (!j.ok) {
+          if (j.locked) {
+            setLocked(true);
+            setError(null);
+            return;
+          }
           setError(j.error ?? "That code did not work.");
           return;
         }
@@ -246,6 +253,30 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
   // Every 10 s (and on coming back to the tab) ask whether this page may
   // keep its slot. Signed out by a moderator, or the code moved to another
   // device: stop the camera here so it cannot reconnect, and say why.
+  // The join page can be locked by the moderators: codes do not work until
+  // they open it. Asked on arrival and every 15 s until joined, so the page
+  // opens by itself the moment they do.
+  const joined = Boolean(slot);
+  useEffect(() => {
+    if (joined) return;
+    let stop = false;
+    const ask = async () => {
+      try {
+        const r = await fetch(`/api/video/join?room=${encodeURIComponent(room)}`, { cache: "no-store" });
+        const j = (await r.json()) as { locked?: boolean };
+        if (!stop) setLocked(Boolean(j.locked));
+      } catch {
+        /* ask again next time */
+      }
+    };
+    void ask();
+    const t = setInterval(ask, 15_000);
+    return () => {
+      stop = true;
+      clearInterval(t);
+    };
+  }, [room, joined]);
+
   const session = slot?.session ?? "";
   // The publisher object is new on every render; reach its stop() through a
   // ref so the timer is not reset each time.
@@ -362,14 +393,21 @@ export default function JoinFlow({ room = SIMULCAST_MAIN }: { room?: string }) {
             className="w-full rounded-lg border border-white/12 bg-[#0B1319] px-4 py-3 text-center font-mono text-xl tracking-[0.28em] text-white outline-none placeholder:text-white/30 focus:ring-2 focus:ring-emerald-500"
           />
 
+          {locked && (
+            <p role="status" className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+              Joining is not open yet. Your code will work as soon as the moderators open it; this
+              page opens by itself.
+            </p>
+          )}
+
           {error && <p className="text-sm text-red-400">{error}</p>}
 
           <button
             type="submit"
-            disabled={!code.trim() || checking}
+            disabled={!code.trim() || checking || locked}
             className="rounded-lg bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-40"
           >
-            {checking ? "Checking…" : "Continue"}
+            {checking ? "Checking…" : locked ? "Waiting to open…" : "Continue"}
           </button>
 
           {/* Already listening: the speaker can be chosen before the code. */}

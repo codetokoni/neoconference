@@ -62,6 +62,7 @@ const t = async (name: string, fn: () => Promise<void>) => {
 async function main() {
   const route = await import("../../app/api/video/join/route");
   const roomRoute = await import("../../app/api/video/room/route");
+  const lockRoute = await import("../../app/api/video/room/join-lock/route");
   const codes = await import("../participantCodes");
   const { kv } = await import("../kv");
 
@@ -289,6 +290,71 @@ async function main() {
     const p = await row(grace.slot);
     assert.deepEqual([p.live, p.claimed, p.signedOut], [true, true, false]);
     assert.deepEqual(amsStops, []);
+  });
+
+  console.log("video join: locking the join page");
+  async function setLock(locked: boolean, who: string | null = "user_mod") {
+    (globalThis as { __who?: string }).__who = who ?? undefined;
+    const res = await lockRoute.POST(
+      new Request(`https://www.neoconference.app/api/video/room/join-lock?room=${ROOM}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ locked }),
+      }),
+    );
+    return { status: res.status, body: await res.json() };
+  }
+  async function publicLock() {
+    const res = await route.GET(new Request(`https://www.neoconference.app/api/video/join?room=${ROOM}`));
+    return (await res.json()) as { locked: boolean };
+  }
+
+  await t("the join page starts open", async () => {
+    assert.equal((await publicLock()).locked, false);
+  });
+
+  await t("locking needs a signed-in moderator", async () => {
+    const r = await setLock(true, null);
+    assert.equal(r.status, 401);
+    assert.equal((await publicLock()).locked, false);
+  });
+
+  await t("locked: the public page sees it, and a code lets nobody new in", async () => {
+    const r = await setLock(true);
+    assert.deepEqual([r.status, r.body.locked], [200, true]);
+    assert.equal(lastLog().outcome, "join_locked");
+    assert.equal((await publicLock()).locked, true);
+    await codes.releaseCode(ROOM, tunde.code);
+    const j = await join({ code: tunde.code, deviceId: "t-tablet" });
+    assert.equal(j.status, 423);
+    assert.equal(j.body.locked, true);
+    assert.match(j.body.error, /not open yet/);
+    assert.equal(await holder(tunde.code), null);
+    assert.deepEqual(lastLog(), { room: ROOM, slot: tunde.slot, outcome: "locked", device: fp("t-tablet") });
+  });
+
+  await t("locked: someone already in can come back on the same device", async () => {
+    const j = await join({ code: grace.code, deviceId: "phone" });
+    assert.equal(j.status, 200, JSON.stringify(j.body));
+    assert.equal(j.body.rejoined, true);
+    sessions.push(j.body.session);
+  });
+
+  await t("locked: a second device for a code already in is refused too", async () => {
+    live.delete(grace.streamId);
+    const j = await join({ code: grace.code, deviceId: "laptop" });
+    assert.equal(j.status, 423);
+    assert.equal(await holder(grace.code), "phone");
+  });
+
+  await t("opened: the code works at once", async () => {
+    const r = await setLock(false);
+    assert.deepEqual([r.status, r.body.locked], [200, false]);
+    assert.equal(lastLog().outcome, "join_opened");
+    assert.equal((await publicLock()).locked, false);
+    const j = await join({ code: tunde.code, deviceId: "t-tablet" });
+    assert.equal(j.status, 200, JSON.stringify(j.body));
+    sessions.push(j.body.session);
   });
 
   await t("no log line ever carries a code or a raw device id", async () => {

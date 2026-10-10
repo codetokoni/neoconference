@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import BroadcasterCard from "./BroadcasterCard";
 import HealthStrip from "./HealthStrip";
+import JoinLockToggle from "./JoinLockToggle";
 import RecordingPanel from "./RecordingPanel";
 import RosterPanel from "./RosterPanel";
 import TimerControl from "./TimerControl";
@@ -147,6 +148,9 @@ export default function RoomHub({
           whoever's watching the boards spots a translation-worker
           outage or an AMS drop before the audience does. */}
       <HealthStrip room={s.room} />
+
+      {/* Lock the join page before the programme, open it when ready. */}
+      <JoinLockToggle room={s.room} />
 
       <div className="grid gap-4 rounded-xl border border-white/12 bg-[#141C22] p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
         <div className="flex flex-col gap-1">

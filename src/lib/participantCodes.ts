@@ -517,6 +517,13 @@ export async function claimCode(
 }
 
 /** Staff override, and the participant's own "leave" action. */
+/** The device currently holding this code, if any. */
+export async function codeHolder(room: string, raw: string): Promise<string | null> {
+  const key = keyForCode(raw);
+  if (!key) return null;
+  return (await kv.get<string>(claimKey(room, key))) ?? null;
+}
+
 export async function releaseCode(room: string, raw: string): Promise<void> {
   await kv.del(claimKey(room, keyForCode(raw)));
 }
