@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { kv } from "@/lib/kv";
-import { AMS_WS, SIMULCAST_MAIN, isBroadcasting } from "@/lib/simulcast";
-import { claimCode, releaseCode, roomMainTrack } from "@/lib/participantCodes";
+import { createHash } from "node:crypto";
+import { AMS_WS, SIMULCAST_MAIN, liveState } from "@/lib/simulcast";
+import { claimCode, lookupCode, releaseCode, roomMainTrack } from "@/lib/participantCodes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,11 @@ const RATE_MAX = 10; // code attempts per window per IP
 function room(req: Request) {
   const r = new URL(req.url).searchParams.get("room")?.trim();
   return (r || SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 64);
+}
+
+/** 8 hex characters standing for a device id in the logs. */
+function fingerprint(id: string) {
+  return createHash("sha256").update(id).digest("hex").slice(0, 8);
 }
 
 function clientIp(req: Request) {
@@ -60,11 +66,43 @@ export async function POST(req: Request) {
   }
 
   if (body.leave) {
+    const left = await lookupCode(r, code);
     await releaseCode(r, code);
+    console.info(
+      "[video-join] " +
+        JSON.stringify({ room: r, slot: left?.slot ?? null, outcome: "left", device: fingerprint(deviceId) }),
+    );
     return NextResponse.json({ ok: true, left: true });
   }
 
-  const claim = await claimCode(r, code, deviceId, isBroadcasting);
+  // Whether AMS said the slot was live when another device held the code;
+  // an unanswered call counts as live, so the lock stands on a guess.
+  let ams: "live" | "not_live" | "no_answer" | "not_asked" = "not_asked";
+  const claim = await claimCode(r, code, deviceId, async (streamId) => {
+    ams = await liveState(streamId);
+    return ams !== "not_live";
+  });
+
+  // One line per attempt, so a "code in use" complaint can be checked
+  // against what happened: the slot, the outcome, what AMS said, and short
+  // fingerprints of the device trying and the device holding the code.
+  // Never the code itself — it is the participant's credential.
+  console.info(
+    "[video-join] " +
+      JSON.stringify({
+        room: r,
+        slot: claim.ok || claim.reason === "in_use" ? claim.entry.slot : null,
+        outcome: claim.ok ? claim.how : claim.reason,
+        ams,
+        device: fingerprint(deviceId),
+        holder: !claim.ok && claim.reason === "in_use"
+          ? fingerprint(claim.holder)
+          : claim.ok && claim.previousHolder
+            ? fingerprint(claim.previousHolder)
+            : null,
+      }),
+  );
+
   if (!claim.ok) {
     return NextResponse.json(
       {

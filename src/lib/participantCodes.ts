@@ -463,8 +463,18 @@ export async function lookupCode(room: string, raw: string): Promise<Participant
 }
 
 export type ClaimResult =
-  | { ok: true; entry: ParticipantCode; rejoined: boolean }
-  | { ok: false; reason: "unknown_code" | "in_use" };
+  | {
+      ok: true;
+      entry: ParticipantCode;
+      rejoined: boolean;
+      /** How the code was got: a free code, this device's own, or taken
+       *  over from another device whose slot was not live. */
+      how: "new" | "rejoined" | "took_over";
+      /** The device that held it before a takeover. */
+      previousHolder?: string;
+    }
+  | { ok: false; reason: "unknown_code" }
+  | { ok: false; reason: "in_use"; entry: ParticipantCode; holder: string };
 
 /**
  * Claims a code for one device. The same device may re-claim its own code
@@ -488,16 +498,21 @@ export async function claimCode(
 
   const key = claimKey(room, keyForCode(raw));
   const won = await kv.set(key, deviceId, { nx: true, ex: CLAIM_TTL_SECONDS });
-  if (won) return { ok: true, entry, rejoined: false };
+  if (won) return { ok: true, entry, rejoined: false, how: "new" };
 
   const holder = await kv.get<string>(key);
   if (holder && holder === deviceId) {
     await kv.expire(key, CLAIM_TTL_SECONDS);
-    return { ok: true, entry, rejoined: true };
+    return { ok: true, entry, rejoined: true, how: "rejoined" };
   }
-  if (await isLive(entry.streamId)) return { ok: false, reason: "in_use" };
+  if (!holder) {
+    // The lock expired between the two reads.
+    await kv.set(key, deviceId, { ex: CLAIM_TTL_SECONDS });
+    return { ok: true, entry, rejoined: false, how: "new" };
+  }
+  if (await isLive(entry.streamId)) return { ok: false, reason: "in_use", entry, holder };
   await kv.set(key, deviceId, { ex: CLAIM_TTL_SECONDS });
-  return { ok: true, entry, rejoined: false };
+  return { ok: true, entry, rejoined: false, how: "took_over", previousHolder: holder };
 }
 
 /** Staff override, and the participant's own "leave" action. */
