@@ -15,6 +15,8 @@ interface Participant {
   streamId: string;
   live: boolean;
   claimed: boolean;
+  /** Signed out by a moderator; nobody has joined with the code since. */
+  signedOut?: boolean;
   meta?: Record<string, string>;
 }
 
@@ -129,7 +131,7 @@ function Tile({
 
       {!p.live && (
         <span className="absolute inset-0 flex items-center justify-center font-mono text-[9px] uppercase tracking-[0.14em] text-white/35">
-          {p.claimed ? "joined, no camera" : "not joined"}
+          {p.signedOut ? "signed out" : p.claimed ? "joined, no camera" : "not joined"}
         </span>
       )}
       {serverBusy && (

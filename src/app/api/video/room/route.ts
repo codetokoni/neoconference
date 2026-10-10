@@ -14,6 +14,7 @@ import {
   lookupCode,
   roomMainTrack,
   signOutCode,
+  signedOutCodes,
 } from "@/lib/participantCodes";
 
 export const runtime = "nodejs";
@@ -118,6 +119,39 @@ export async function GET(req: Request) {
     featured = null;
   }
 
+  // Signed out by a moderator, and nobody has joined with the code since.
+  // A page opened before join sessions keeps reconnecting its camera, so
+  // such a slot is never shown live, and its stream is stopped again (at
+  // most every 5 s per slot) whenever a board refreshes.
+  const signedOut = await signedOutCodes(r, codes, claimed);
+  const kicks = codes.filter((c) => signedOut.has(c.code) && liveIds.has(c.streamId));
+  // Nor stays on air: their old page would bring them back to air.
+  if (featured && codes.some((c) => signedOut.has(c.code) && c.streamId === featured!.streamId)) {
+    await kv.del(featuredKey(r)).catch(() => {});
+    featured = null;
+  }
+  await Promise.all(
+    kicks.map(async (c) => {
+      const due = await kv.set(`neo:video:kick:${r}:${c.slot}`, 1, { nx: true, ex: 5 });
+      if (!due) return;
+      let stopped = false;
+      try {
+        const res = await fetch(`${AMS_REST}/broadcasts/${encodeURIComponent(c.streamId)}`, {
+          method: "DELETE",
+          cache: "no-store",
+          signal: AbortSignal.timeout(6000),
+        });
+        stopped = res.ok;
+      } catch {
+        /* tried again on the next refresh */
+      }
+      console.info(
+        "[video-join] " +
+          JSON.stringify({ room: r, slot: c.slot, outcome: "stopped_after_sign_out", streamId: c.streamId, amsStopped: stopped }),
+      );
+    }),
+  );
+
   const from = (screen - 1) * PER_SCREEN + 1;
   const to = screen * PER_SCREEN;
 
@@ -128,8 +162,9 @@ export async function GET(req: Request) {
       name: c.name,
       code: c.code,
       streamId: c.streamId,
-      live: liveIds.has(c.streamId),
+      live: liveIds.has(c.streamId) && !signedOut.has(c.code),
       claimed: claimed.has(c.code),
+      signedOut: signedOut.has(c.code),
       // Roster meta (country, condition, contact, …) travels through so
       // Spotlight can show it. Undefined for rooms that never had a
       // roster uploaded.

@@ -15,12 +15,22 @@ process.env.AMS_REST_BASE = "https://ams.test/rest/v2";
 // AMS: which participant streams are broadcasting; "down" makes AMS fail.
 const live = new Set<string>();
 let amsDown = false;
+const amsStops: string[] = [];
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input instanceof Request ? input.url : input);
   if (!url.startsWith("https://ams.test/")) return realFetch(input, init);
   if (amsDown) return new Response("busy", { status: 503 });
+  // The boards ask for the room group's live subtracks.
+  if (url.includes("/subtracks")) {
+    return Response.json([...live].map((streamId) => ({ streamId, status: "broadcasting" })));
+  }
   const id = decodeURIComponent(url.split("/broadcasts/")[1] ?? "");
+  if (init?.method === "DELETE") {
+    amsStops.push(id);
+    live.delete(id);
+    return Response.json({ success: true });
+  }
   return live.has(id)
     ? Response.json({ streamId: id, status: "broadcasting" })
     : Response.json({ streamId: id, status: "finished" });
@@ -227,6 +237,58 @@ async function main() {
   await t("an unknown or malformed session keeps its slot (no stop on a missing record)", async () => {
     assert.equal((await check("f".repeat(64))).body.keep, true);
     assert.equal((await check("not-a-token")).body.keep, true);
+  });
+
+  console.log("video join: a page from before sessions keeps reconnecting");
+  async function board() {
+    (globalThis as { __who?: string }).__who = "user_mod";
+    const res = await roomRoute.GET(new Request(`https://www.neoconference.app/api/video/room?room=${ROOM}&screen=all`));
+    const j = await res.json();
+    return j as {
+      participants: Array<{ slot: number; live: boolean; claimed: boolean; signedOut?: boolean }>;
+      featured: { streamId: string } | null;
+    };
+  }
+  const row = async (slot: number) => (await board()).participants.find((x) => x.slot === slot)!;
+
+  await t("signed out, an old page republishes: the board shows them signed out, not live, and stops the stream", async () => {
+    await signOut(grace);
+    amsStops.length = 0;
+    live.add(grace.streamId); // the old page's camera is back on AMS
+    const p1 = await row(grace.slot);
+    assert.deepEqual([p1.live, p1.claimed, p1.signedOut], [false, false, true]);
+    assert.deepEqual(amsStops, [grace.streamId]);
+    assert.equal(lastLog().outcome, "stopped_after_sign_out");
+  });
+
+  await t("stopping again is limited to once every 5 s per slot", async () => {
+    live.add(grace.streamId);
+    await row(grace.slot);
+    assert.deepEqual(amsStops, [grace.streamId]);
+  });
+
+  await t("a signed-out person on air is taken off air", async () => {
+    await kv.set(`neo:video:featured:${ROOM}`, { streamId: grace.streamId, label: "Grace" });
+    live.add(grace.streamId);
+    assert.equal((await board()).featured, null);
+    assert.equal(await kv.get(`neo:video:featured:${ROOM}`), null);
+  });
+
+  await t("someone else is unaffected: live and on the board", async () => {
+    live.add(tunde.streamId);
+    const p = await row(tunde.slot);
+    assert.deepEqual([p.live, p.signedOut], [true, false]);
+  });
+
+  await t("they join again with their code: live again, nothing stopped", async () => {
+    amsStops.length = 0;
+    const r = await join({ code: grace.code, deviceId: "phone" });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    sessions.push(r.body.session);
+    live.add(grace.streamId);
+    const p = await row(grace.slot);
+    assert.deepEqual([p.live, p.claimed, p.signedOut], [true, true, false]);
+    assert.deepEqual(amsStops, []);
   });
 
   await t("no log line ever carries a code or a raw device id", async () => {
