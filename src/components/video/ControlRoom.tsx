@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAmsMultitrack } from "./useAmsMultitrack";
+import { useStallRestart } from "./useStallRestart";
 import PreviewPane, { type PreviewState } from "./PreviewPane";
 import Spotlight from "./Spotlight";
 import { SIMULCAST_MAIN, type FeaturedState } from "@/lib/simulcast";
@@ -66,7 +67,8 @@ function Tile({
   const [over, setOver] = useState(false);
 
   const enabled = p.live && Boolean(p.streamId);
-  const { videoStream } = useAmsMultitrack(p.streamId, enabled);
+  const { videoStream, restart } = useAmsMultitrack(p.streamId, enabled);
+  useStallRestart(ref, enabled, restart);
 
   useEffect(() => {
     const el = ref.current;

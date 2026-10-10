@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAmsMultitrack } from "./useAmsMultitrack";
+import { useStallRestart } from "./useStallRestart";
 import Spotlight from "./Spotlight";
 import { roomLink } from "@/lib/simulcast";
 import { fillGrid } from "@/lib/fitGrid";
@@ -661,7 +662,8 @@ function QueueTile({
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const enabled = Boolean(participant?.live) && Boolean(streamId);
-  const { videoStream } = useAmsMultitrack(streamId, enabled);
+  const { videoStream, restart } = useAmsMultitrack(streamId, enabled);
+  useStallRestart(ref, enabled, restart);
 
   useEffect(() => {
     const el = ref.current;
