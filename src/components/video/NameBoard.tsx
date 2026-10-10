@@ -311,48 +311,113 @@ function Row({
     ? "rounded-sm border px-2 py-1 font-mono text-[11px] uppercase tracking-[0.14em] "
     : "rounded-sm border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] ";
   const rowClass = display
-    ? "flex w-full items-center gap-3 rounded-md border border-white/10 bg-white/[0.02] px-3 py-3 text-left transition hover:border-white/25 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
-    : "flex w-full items-center gap-3 rounded-md border border-white/10 bg-white/[0.02] px-3 py-2 text-left transition hover:border-white/25 hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400";
+    ? "flex w-full items-center gap-3 rounded-md border border-white/10 bg-white/[0.02] px-3 py-3 transition hover:border-white/25 hover:bg-white/[0.06]"
+    : "flex w-full items-center gap-3 rounded-md border border-white/10 bg-white/[0.02] px-3 py-2 transition hover:border-white/25 hover:bg-white/[0.06]";
 
-  const body = (
-    <>
-      <span className={slotClass}>{String(p.slot).padStart(2, "0")}</span>
-      <span className={nameClass}>{p.name}</span>
-      {/* Passcode is omitted in display mode by default — the name
-          board is often projected on a physical screen for the whole
-          room to see, and showing every participant's code there
-          would leak private join credentials. Producer mode always
-          shows the code (it's the operator's own screen). A
-          moderator running display mode on their OWN laptop can pass
-          `?codes=1` to opt in; the code text scales up so they can
-          read it from a normal seating distance. */}
-      {!display && (
-        <span className="flex items-baseline gap-1.5" title="The code this person enters on the join page">
-          <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">Code</span>
-          <span className="font-mono text-sm font-semibold tracking-[0.12em] text-amber-200">{p.code}</span>
-        </span>
-      )}
-      {display && showCodes && (
-        <span className="flex items-baseline gap-2" title="The code this person enters on the join page">
-          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">Code</span>
-          <span className="font-mono text-base font-semibold tracking-[0.12em] text-amber-200">{p.code}</span>
-        </span>
-      )}
+  // The row opens the participant fullscreen (as on the camera board); the
+  // code is its own button beside it, so copying a code never opens them.
+  // Passcode is omitted in display mode by default — the name board is
+  // often projected on a physical screen for the whole room to see, and
+  // showing every participant's code there would leak private join
+  // credentials. Producer mode always shows the code (it's the operator's
+  // own screen), and moderators get display mode with `?codes=1`.
+  return (
+    <div className={rowClass}>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-sm text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
+        aria-label={`Open ${p.name} fullscreen`}
+      >
+        <span className={slotClass}>{String(p.slot).padStart(2, "0")}</span>
+        <span className={nameClass}>{p.name}</span>
+      </button>
+      {(!display || showCodes) && <CopyCode code={p.code} name={p.name} large={display} />}
       <span className={statusClass + state.tone}>{state.label}</span>
-    </>
+    </div>
   );
+}
 
-  // Rows are now buttons in every mode so a moderator can tap any
-  // name in display mode to open that participant's camera fullscreen
-  // (matches the camera-board affordance).
+/** A participant's join code; click it to copy. */
+function CopyCode({ code, name, large }: { code: string; name: string; large: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  const copy = async () => {
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(code);
+      ok = true;
+    } catch {
+      // Older or locked-down browsers: copy through a hidden field.
+      const field = document.createElement("textarea");
+      field.value = code;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      try {
+        ok = document.execCommand("copy");
+      } catch {
+        ok = false;
+      }
+      field.remove();
+    }
+    if (!ok) return;
+    setCopied(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(false), 1500);
+  };
+
   return (
     <button
       type="button"
-      onClick={onOpen}
-      className={rowClass}
-      aria-label={`Open ${p.name} fullscreen`}
+      onClick={copy}
+      title="Copy the code this person enters on the join page"
+      aria-label={copied ? `Copied ${name}'s code` : `Copy ${name}'s code ${code}`}
+      className={
+        "flex shrink-0 items-center rounded-md border px-2 py-1 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300 " +
+        (large ? "gap-2 " : "gap-1.5 ") +
+        (copied
+          ? "border-emerald-400/50 bg-emerald-500/15"
+          : "border-white/10 bg-white/[0.03] hover:border-amber-300/50 hover:bg-amber-400/10")
+      }
     >
-      {body}
+      <span className={"font-mono uppercase tracking-[0.14em] text-white/40 " + (large ? "text-[10px]" : "text-[9px]")}>
+        Code
+      </span>
+      <span
+        className={
+          "font-mono font-semibold tracking-[0.12em] text-amber-200 " + (large ? "text-base" : "text-sm")
+        }
+      >
+        {code}
+      </span>
+      {copied ? (
+        <span className={"font-mono uppercase tracking-[0.14em] text-emerald-300 " + (large ? "text-[10px]" : "text-[9px]")}>
+          Copied
+        </span>
+      ) : (
+        <svg
+          width={large ? 14 : 12}
+          height={large ? 14 : 12}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-white/45"
+          aria-hidden="true"
+        >
+          <rect x="9" y="9" width="13" height="13" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      )}
     </button>
   );
 }
