@@ -51,6 +51,7 @@ const t = async (name: string, fn: () => Promise<void>) => {
 
 async function main() {
   const route = await import("../../app/api/video/join/route");
+  const roomRoute = await import("../../app/api/video/room/route");
   const codes = await import("../participantCodes");
   const { kv } = await import("../kv");
 
@@ -144,10 +145,94 @@ async function main() {
     assert.equal(await holder(grace.code), null);
   });
 
+  // ---- Signing someone out ----
+  const sessions: string[] = [];
+  async function check(session: string, n = 1) {
+    let last: { status: number; body: { keep?: boolean; reason?: string } } | null = null;
+    for (let i = 0; i < n; i++) {
+      const res = await route.POST(
+        new Request(`https://www.neoconference.app/api/video/join?room=${ROOM}`, {
+          method: "POST",
+          // One address for every check: a venue's cameras share one.
+          headers: { "content-type": "application/json", "x-forwarded-for": "10.9.9.9" },
+          body: JSON.stringify({ check: session }),
+        }),
+      );
+      last = { status: res.status, body: await res.json() };
+    }
+    return last!;
+  }
+  async function signOut(c: { streamId: string; code: string }, who: string | null = "user_mod") {
+    (globalThis as { __who?: string }).__who = who ?? undefined;
+    const res = await roomRoute.DELETE(
+      new Request(
+        `https://www.neoconference.app/api/video/room?room=${ROOM}&streamId=${c.streamId}&code=${encodeURIComponent(c.code)}`,
+        { method: "DELETE" },
+      ),
+    );
+    return { status: res.status, body: await res.json() };
+  }
+
+  console.log("video join: signing a participant out");
+  await t("a join hands the page a session; checking it says keep", async () => {
+    live.delete(grace.streamId);
+    const r = await join({ code: grace.code, deviceId: "phone" });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.match(r.body.session, /^[a-f0-9]{64}$/);
+    sessions.push(r.body.session);
+    assert.deepEqual((await check(r.body.session)).body, { ok: true, keep: true });
+  });
+
+  await t("checks are not rate limited: 40 from one address all answer", async () => {
+    const r = await check(sessions[0], 40);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.keep, true);
+  });
+
+  await t("signing out needs a signed-in moderator", async () => {
+    const r = await signOut(grace, null);
+    assert.equal(r.status, 401);
+    assert.equal((await check(sessions[0])).body.keep, true);
+  });
+
+  await t("a moderator signs them out: the code is freed and their page is told to stop", async () => {
+    const r = await signOut(grace);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(await holder(grace.code), null);
+    assert.deepEqual(lastLog(), { room: ROOM, slot: grace.slot, outcome: "signed_out_by_moderator", streamId: grace.streamId, amsStopped: true });
+    const c = await check(sessions[0]);
+    assert.deepEqual(c.body, { ok: true, keep: false, reason: "signed_out" });
+    assert.deepEqual(lastLog(), { room: ROOM, slot: grace.slot, outcome: "stopped_signed_out" });
+  });
+
+  await t("they can join again with the same code; the new page keeps it, the old one stays stopped", async () => {
+    await new Promise((res) => setTimeout(res, 5));
+    const r = await join({ code: grace.code, deviceId: "phone" });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.rejoined, false);
+    sessions.push(r.body.session);
+    assert.equal((await check(r.body.session)).body.keep, true);
+    assert.equal((await check(sessions[0])).body.keep, false);
+  });
+
+  await t("the code taken over on another device: the first page is told it is in use elsewhere", async () => {
+    const r = await join({ code: grace.code, deviceId: "laptop" });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual((await check(sessions[1])).body, { ok: true, keep: false, reason: "elsewhere" });
+    assert.equal(lastLog().outcome, "stopped_elsewhere");
+    assert.equal((await check(r.body.session)).body.keep, true);
+    sessions.push(r.body.session);
+  });
+
+  await t("an unknown or malformed session keeps its slot (no stop on a missing record)", async () => {
+    assert.equal((await check("f".repeat(64))).body.keep, true);
+    assert.equal((await check("not-a-token")).body.keep, true);
+  });
+
   await t("no log line ever carries a code or a raw device id", async () => {
     assert.ok(rawLogs.length >= 9, String(rawLogs.length));
     for (const line of rawLogs) {
-      for (const secret of [grace.code, tunde.code, "000000", "phone", "laptop", "tablet"]) {
+      for (const secret of [grace.code, tunde.code, "000000", "phone", "laptop", "tablet", ...sessions]) {
         assert.ok(!line.includes(secret), `"${secret}" in ${line}`);
       }
     }

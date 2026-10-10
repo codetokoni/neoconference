@@ -95,6 +95,25 @@ export default function NameBoard({
     return () => clearInterval(t);
   }, [load]);
 
+  // Sign a participant out: their camera stops at the server and their own
+  // page stops it too (it checks its session every few seconds), so it does
+  // not reconnect. They can join again with the same code.
+  const signOut = useCallback(
+    async (p: Participant) => {
+      if (!window.confirm(`Sign out ${p.name}? Their camera stops on their device. They can join again with their code.`)) return;
+      try {
+        await fetch(
+          `/api/video/room?room=${encodeURIComponent(room)}&streamId=${encodeURIComponent(p.streamId)}&code=${encodeURIComponent(p.code)}`,
+          { method: "DELETE" },
+        );
+      } catch {
+        /* the next refresh shows whether it took */
+      }
+      load();
+    },
+    [room, load],
+  );
+
   // `/` focuses the search box (Gmail / GitHub muscle memory); Esc
   // while focused clears the query. Skip when the user is already
   // typing somewhere else so we don't steal keystrokes.
@@ -244,6 +263,7 @@ export default function NameBoard({
               display={display}
               showCodes={showCodes}
               onOpen={() => setSpot(p)}
+              onSignOut={() => signOut(p)}
             />
           ))}
           {filtered.length === 0 && (
@@ -286,11 +306,13 @@ function Row({
   display,
   showCodes,
   onOpen,
+  onSignOut,
 }: {
   p: Participant;
   display: boolean;
   showCodes: boolean;
   onOpen: () => void;
+  onSignOut: () => void;
 }) {
   const state = p.live
     ? { label: "LIVE", tone: "bg-emerald-500/20 text-emerald-300 border-emerald-400/40" }
@@ -334,6 +356,22 @@ function Row({
       </button>
       {(!display || showCodes) && <CopyCode code={p.code} name={p.name} large={display} />}
       <span className={statusClass + state.tone}>{state.label}</span>
+      {/* Operator screens only (not the projector view), and only for
+          someone who has joined. */}
+      {(!display || showCodes) && (p.claimed || p.live) && (
+        <button
+          type="button"
+          onClick={onSignOut}
+          title="Sign this person out: their camera stops on their device"
+          aria-label={`Sign out ${p.name}`}
+          className={
+            "shrink-0 rounded-md border border-red-400/30 bg-red-500/10 font-mono uppercase tracking-[0.12em] text-red-200 transition hover:border-red-300/60 hover:bg-red-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-300 " +
+            (display ? "px-2 py-1 text-[10px]" : "px-1.5 py-0.5 text-[9px]")
+          }
+        >
+          Sign out
+        </button>
+      )}
     </div>
   );
 }

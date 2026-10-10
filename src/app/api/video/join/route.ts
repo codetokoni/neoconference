@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import { kv } from "@/lib/kv";
 import { createHash } from "node:crypto";
 import { AMS_WS, SIMULCAST_MAIN, liveState } from "@/lib/simulcast";
-import { claimCode, lookupCode, releaseCode, roomMainTrack } from "@/lib/participantCodes";
+import {
+  checkJoinSession,
+  claimCode,
+  createJoinSession,
+  lookupCode,
+  releaseCode,
+  roomMainTrack,
+} from "@/lib/participantCodes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +46,27 @@ export async function POST(req: Request) {
   const r = room(req);
   const ip = clientIp(req);
 
+  let body: { code?: string; deviceId?: string; leave?: boolean; check?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: "Bad request." }, { status: 400 });
+  }
+
+  // A joined page asking whether it may keep its slot. Not rate limited:
+  // every camera in a venue checks every few seconds, often from one
+  // address, and the session token cannot be guessed.
+  if (typeof body.check === "string") {
+    const c = await checkJoinSession(body.check.slice(0, 64));
+    if (!c.keep) {
+      console.info(
+        "[video-join] " +
+          JSON.stringify({ room: c.room, slot: c.slot, outcome: c.reason === "signed_out" ? "stopped_signed_out" : "stopped_elsewhere" }),
+      );
+    }
+    return NextResponse.json(c.keep ? { ok: true, keep: true } : { ok: true, keep: false, reason: c.reason });
+  }
+
   const rlKey = `neo:video:joinrl:${ip}`;
   const hits = await kv.incr(rlKey);
   if (hits === 1) await kv.expire(rlKey, RATE_WINDOW);
@@ -47,13 +75,6 @@ export async function POST(req: Request) {
       { ok: false, error: "Too many attempts. Wait a moment and try again." },
       { status: 429 },
     );
-  }
-
-  let body: { code?: string; deviceId?: string; leave?: boolean };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ ok: false, error: "Bad request." }, { status: 400 });
   }
 
   const code = String(body.code ?? "").slice(0, 16);
@@ -118,6 +139,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     ok: true,
+    session: await createJoinSession(r, code, deviceId),
     rejoined: claim.rejoined,
     slot: claim.entry.slot,
     name: claim.entry.name,

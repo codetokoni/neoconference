@@ -11,8 +11,9 @@ import {
 import {
   claimedCodes,
   listCodes,
-  releaseCode,
+  lookupCode,
   roomMainTrack,
+  signOutCode,
 } from "@/lib/participantCodes";
 
 export const runtime = "nodejs";
@@ -214,7 +215,13 @@ export async function DELETE(req: Request) {
     /* fall through — the claim still gets released */
   }
 
-  if (code) await releaseCode(r, code);
+  // Signed out, not just freed: the participant's page would otherwise
+  // reconnect its camera on its own a few seconds later.
+  if (code) await signOutCode(r, code);
+  console.info(
+    "[video-join] " +
+      JSON.stringify({ room: r, slot: (await lookupCode(r, code))?.slot ?? null, outcome: "signed_out_by_moderator", streamId, amsStopped: stopped }),
+  );
 
   return NextResponse.json({ ok: true, stopped, streamId });
 }

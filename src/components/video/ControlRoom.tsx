@@ -470,7 +470,7 @@ export default function ControlRoom({
   // the console that does; offered on each tile (not in display mode).
   const remove = useCallback(
     async (p: Participant) => {
-      if (!window.confirm(`Remove ${p.name}? Their camera stops and the code frees up.`)) return;
+      if (!window.confirm(`Sign out ${p.name}? Their camera stops on their device and the code frees up.`)) return;
       setBusy(true);
       try {
         await fetch(
