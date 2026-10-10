@@ -333,7 +333,10 @@ function Row({
         </span>
       )}
       {display && showCodes && (
-        <span className="font-mono text-base text-amber-200/85">{p.code}</span>
+        <span className="flex items-baseline gap-2" title="The code this person enters on the join page">
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">Code</span>
+          <span className="font-mono text-base font-semibold tracking-[0.12em] text-amber-200">{p.code}</span>
+        </span>
       )}
       <span className={statusClass + state.tone}>{state.label}</span>
     </>

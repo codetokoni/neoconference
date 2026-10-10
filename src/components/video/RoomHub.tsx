@@ -259,11 +259,14 @@ export default function RoomHub({
             costHint="One viewer slot per live camera in the room."
           />
           <BoardCard
-            href={`/video/room/names${roomLink(s.room, { display: role === "moderator" ? 1 : undefined })}`}
+            href={`/video/room/names${roomLink(s.room, {
+              display: role === "moderator" ? 1 : undefined,
+              codes: role === "moderator" ? 1 : undefined,
+            })}`}
             title="Name board"
             subtitle={
               role === "moderator"
-                ? "Who is here and who is not, without the video — projection-friendly."
+                ? "Who is here and who is not, with their join codes, without the video."
                 : "Who is here and who is not, without the video."
             }
             costHint="Zero viewer slots used. Poll only."
@@ -434,9 +437,13 @@ function ScreenCard({
     screen: block.screen,
     display: role === "moderator" ? 1 : undefined,
   })}`;
+  // The moderator's name board carries the join codes: moderators read a
+  // participant their code from it. (The projector view without codes is
+  // still "Present on screen" on the admin board.)
   const nameHref = `/video/room/names${roomLink(room, {
     screen: block.screen,
     display: role === "moderator" ? 1 : undefined,
+    codes: role === "moderator" ? 1 : undefined,
   })}`;
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-white/12 bg-[#101820] p-4">
