@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { kv } from "@/lib/kv";
 import { createHash } from "node:crypto";
+import { getJoinLock } from "@/lib/joinLock";
 import { AMS_WS, SIMULCAST_MAIN, liveState } from "@/lib/simulcast";
 import {
   checkJoinSession,
   claimCode,
+  codeHolder,
   createJoinSession,
   lookupCode,
   releaseCode,
@@ -42,6 +44,12 @@ function clientIp(req: Request) {
  * credential, so this route is rate limited hard enough that guessing one is
  * not worth the effort, and a claim is bound to the device that made it.
  */
+/** Whether the join page is locked — public, the join page shows it. */
+export async function GET(req: Request) {
+  const lock = await getJoinLock(room(req));
+  return NextResponse.json({ ok: true, locked: lock.locked }, { headers: { "Cache-Control": "no-store" } });
+}
+
 export async function POST(req: Request) {
   const r = room(req);
   const ip = clientIp(req);
@@ -94,6 +102,20 @@ export async function POST(req: Request) {
         JSON.stringify({ room: r, slot: left?.slot ?? null, outcome: "left", device: fingerprint(deviceId) }),
     );
     return NextResponse.json({ ok: true, left: true });
+  }
+
+  // A locked join page lets nobody new in. The device already holding the
+  // code may rejoin, so a reload or a dropped connection never throws out
+  // someone who is already in.
+  if ((await getJoinLock(r)).locked && (await codeHolder(r, code)) !== deviceId) {
+    console.info(
+      "[video-join] " +
+        JSON.stringify({ room: r, slot: (await lookupCode(r, code))?.slot ?? null, outcome: "locked", device: fingerprint(deviceId) }),
+    );
+    return NextResponse.json(
+      { ok: false, locked: true, error: "Joining is not open yet. Your code will work as soon as the moderators open it." },
+      { status: 423 },
+    );
   }
 
   // Whether AMS said the slot was live when another device held the code;

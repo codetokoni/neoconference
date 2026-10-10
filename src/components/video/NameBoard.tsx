@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Spotlight from "./Spotlight";
+import JoinLockToggle from "./JoinLockToggle";
 
 interface Participant {
   slot: number;
@@ -190,7 +191,11 @@ export default function NameBoard({
               {liveCount} live · {joinedCount} joined without camera · {notJoinedCount} not joined
             </span>
 
-            <span className="ml-auto rounded-sm border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">
+            <span className="ml-auto">
+              <JoinLockToggle room={room} compact />
+            </span>
+
+            <span className="rounded-sm border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-300">
               zero viewer slots used
             </span>
           </div>
