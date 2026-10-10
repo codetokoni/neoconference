@@ -10,6 +10,8 @@ interface Participant {
   streamId: string;
   live: boolean;
   claimed: boolean;
+  /** Signed out by a moderator; nobody has joined with the code since. */
+  signedOut?: boolean;
   meta?: Record<string, string>;
 }
 
@@ -316,9 +318,11 @@ function Row({
 }) {
   const state = p.live
     ? { label: "LIVE", tone: "bg-emerald-500/20 text-emerald-300 border-emerald-400/40" }
-    : p.claimed
-      ? { label: "JOINED", tone: "bg-amber-500/20 text-amber-300 border-amber-400/40" }
-      : { label: "NOT JOINED", tone: "bg-white/[0.04] text-white/45 border-white/10" };
+    : p.signedOut
+      ? { label: "SIGNED OUT", tone: "bg-red-500/10 text-red-300/80 border-red-400/30" }
+      : p.claimed
+        ? { label: "JOINED", tone: "bg-amber-500/20 text-amber-300 border-amber-400/40" }
+        : { label: "NOT JOINED", tone: "bg-white/[0.04] text-white/45 border-white/10" };
 
   // Text scales up in display mode so numbers + names are legible
   // when the board is projected on a physical screen from a few

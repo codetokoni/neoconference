@@ -14,6 +14,8 @@ interface Participant {
   streamId: string;
   live: boolean;
   claimed: boolean;
+  /** Signed out by a moderator; nobody has joined with the code since. */
+  signedOut?: boolean;
   /** Roster meta — used to overlay a lower third on the featured
    *  video when this participant is taken to air. Optional; rooms
    *  without a roster upload have no meta. */
@@ -678,11 +680,13 @@ function QueueTile({
 
   const status = participant?.live
     ? "LIVE"
-    : participant?.claimed
-      ? "JOINED, NO CAMERA"
-      : participant
-        ? "NOT JOINED"
-        : "UNKNOWN";
+    : participant?.signedOut
+      ? "SIGNED OUT"
+      : participant?.claimed
+        ? "JOINED, NO CAMERA"
+        : participant
+          ? "NOT JOINED"
+          : "UNKNOWN";
 
   return (
     <div

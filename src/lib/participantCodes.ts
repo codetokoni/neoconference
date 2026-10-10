@@ -578,6 +578,23 @@ export async function checkJoinSession(token: string): Promise<SessionCheck> {
  * that joined with it before now is told to stop. Signing in again with
  * the code works straight away.
  */
+/**
+ * Codes signed out by a moderator that nobody has joined with since. A
+ * page from before join sessions never checks, and its camera reconnects
+ * on its own: the boards treat these slots as signed out, not live, and
+ * stop the stream again (see the room route).
+ */
+export async function signedOutCodes(room: string, entries: ParticipantCode[], claimed: Set<string>): Promise<Set<string>> {
+  const marks = await Promise.all(
+    entries.map((e) => (claimed.has(e.code) ? null : kv.get(signOutKey(room, keyForCode(e.code))))),
+  );
+  const out = new Set<string>();
+  entries.forEach((e, i) => {
+    if (marks[i]) out.add(e.code);
+  });
+  return out;
+}
+
 export async function signOutCode(room: string, raw: string): Promise<void> {
   const code = keyForCode(raw);
   await kv.set(signOutKey(room, code), Date.now(), { ex: CLAIM_TTL_SECONDS });
