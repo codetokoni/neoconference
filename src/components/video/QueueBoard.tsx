@@ -711,7 +711,7 @@ function QueueTile({
             : streamId
       }
     >
-      <video ref={ref} playsInline autoPlay muted className="h-full w-full object-cover" />
+      <video ref={ref} data-stream-id={streamId} playsInline autoPlay muted className="h-full w-full object-cover" />
 
       {!participant?.live && (
         <span className="absolute inset-0 flex items-center justify-center px-1 text-center font-mono text-[8.5px] uppercase tracking-[0.14em] text-white/40">
