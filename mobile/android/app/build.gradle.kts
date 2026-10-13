@@ -8,6 +8,7 @@ plugins {
     // Group calls ring a closed app through Firebase Cloud Messaging. The
     // project's client config is google-services.json beside this file.
     id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 // Release signing credentials.

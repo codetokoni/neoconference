@@ -116,10 +116,14 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, ignored: 'event_not_found', roomName });
       }
       let role = '';
+      let client = '';
       try {
         const md = participant.metadata ? JSON.parse(participant.metadata) : null;
         if (md && typeof (md as { role?: unknown }).role === 'string') {
           role = (md as { role: string }).role;
+        }
+        if (md && typeof (md as { client?: unknown }).client === 'string') {
+          client = (md as { client: string }).client.slice(0, 100);
         }
       } catch {
         // metadata is optional
@@ -138,6 +142,7 @@ export async function POST(req: Request) {
         // emptied in a minute reads the same whether everyone pressed
         // Leave or everyone's link dropped.
         ...(left ? { reason: disconnectReasonName(participant.disconnectReason) } : {}),
+        ...(client ? { client } : {}),
       });
       if (!left) {
         await activity.record('meeting.joined', {

@@ -10,6 +10,7 @@ import 'package:livekit_client/livekit_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
+import '../core/client_info.dart';
 import '../core/load_error.dart';
 import '../events/event.dart';
 import '../events/languages.dart' show languageFor;
@@ -860,10 +861,16 @@ class RoomController extends StateNotifier<RoomState> {
     // `event` stays the slug — that is what the gating and role lookups key
     // on — while `room` is the LiveKit room the browser also joins.
     final nonce = await _ensureNonce();
+    // Which app and phone, for the attendance journal. Never holds up the
+    // join: a phone slow to answer simply joins without it.
+    final client = await clientDescription()
+        .timeout(const Duration(seconds: 2), onTimeout: () => null);
+    CrashReports.inMeeting(slug);
     final body = await api.get('/api/livekit/token', {
       'room': _livekitRoom ?? slug,
       'event': slug,
       'nonce': ?nonce,
+      'client': ?client,
     });
     if (body is! Map || body['token'] is! String || body['wsUrl'] is! String) {
       throw const ApiException(

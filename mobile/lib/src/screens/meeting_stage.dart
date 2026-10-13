@@ -235,6 +235,25 @@ class _MeetingStageState extends State<MeetingStage> {
                   actions.openAudioOutput!();
                 },
               ),
+            // CC: easy to find, as on the web. A host switches captions on or
+            // off for everyone; anyone else sees whether they are on.
+            if (actions.setCaptions != null)
+              SwitchListTile(
+                secondary: const Icon(Icons.closed_caption_rounded),
+                title: const Text('Captions (CC)'),
+                subtitle: const Text('Live captions for everyone in the meeting'),
+                value: actions.captionsOn,
+                onChanged: (on) {
+                  Navigator.pop(sheetContext);
+                  actions.setCaptions!(on);
+                },
+              )
+            else
+              ListTile(
+                leading: Icon(actions.captionsOn ? Icons.closed_caption_rounded : Icons.closed_caption_off_rounded),
+                title: const Text('Captions (CC)'),
+                subtitle: Text(actions.captionsOn ? 'On — shown at the bottom of the meeting' : 'Off — ask the host to turn on captions'),
+              ),
             if (actions.openTranslation != null)
               ListTile(
                 leading: const Icon(Icons.translate_rounded),

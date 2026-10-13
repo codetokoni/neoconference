@@ -43,6 +43,12 @@ export interface AttendanceEntry {
    * not say whether they left, lost their link, or were cut off.
    */
   reason?: string;
+  /**
+   * Which app and phone, when the mobile app joined ("android 1.2.4+3217
+   * OPPO CPH2365 / Android 14"). Lets "the app keeps closing" be matched to
+   * a version or a phone model.
+   */
+  client?: string;
 }
 
 function attendanceKey(eventId: string): string {
@@ -121,7 +127,7 @@ async function afterJoin(eventId: string, userId: string, at: number): Promise<v
   }
 }
 
-async function listAttendance(eventId: string): Promise<AttendanceEntry[]> {
+export async function listAttendance(eventId: string): Promise<AttendanceEntry[]> {
   if (!isKvConfigured()) return memBucket(eventId).slice();
   try {
     const raw = (await kv.lrange(attendanceKey(eventId), 0, -1)) as unknown[];

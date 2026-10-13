@@ -39,6 +39,9 @@ export async function GET(req: NextRequest) {
     // attendees who are not host/cohost, not pre-approved, and not yet
     // admitted via the queue get a 403 with { error: 'waiting_room', status }.
     const eventSlug = req.nextUrl.searchParams.get("event");
+    // Which app and phone is asking (the mobile app sends it; the web does
+    // not). Plain text only, kept short: it rides in the token metadata.
+    const client = (req.nextUrl.searchParams.get("client") ?? "").replace(/[^A-Za-z0-9 ._()+/-]/g, "").trim().slice(0, 100);
     if (eventSlug) {
       // Shared identity lookup — checks the LEGACY ev.roles[] array AND
       // the modern meeting-roles hash where every promotion since #244
@@ -444,7 +447,12 @@ export async function GET(req: NextRequest) {
       hostPlan: metadataPlan,
       role: participantRole,
       ...(participantIsOwner ? { owner: true } : {}),
+      ...(client ? { client } : {}),
     });
+    // The app says which version and phone it is ("android 1.2.4+3217 OPPO
+    // CPH2365 / Android 14"), so a complaint that "the app keeps closing"
+    // can be matched to versions and phones in the attendance journal.
+    if (client) console.info("[token] app join", JSON.stringify({ room, event: eventSlug, identity: at.identity, client }));
 
     const token = await at.toJwt();
     return NextResponse.json({ token, wsUrl });

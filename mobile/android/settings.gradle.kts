@@ -23,6 +23,9 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
     // Firebase Cloud Messaging: reads app/google-services.json.
     id("com.google.gms.google-services") version "4.4.2" apply false
+    // Crash reports: the Crashlytics SDK refuses to start without the build
+    // id this plugin writes into the APK.
+    id("com.google.firebase.crashlytics") version "3.0.6" apply false
 }
 
 include(":app")
