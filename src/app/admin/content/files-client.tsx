@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import { CONTENT_TYPES, PROCESSING_STATUSES, VISIBILITIES, formatBytes } from "@/lib/content/model";
 import { fmtNumber, fmtTime, fromZonedInput, useAdmin, zoneLabel } from "../AdminApi";
 import { Confirm, Empty, FilterBar, Labeled, Loading, Notice, PageHeader, Pager, SortTh, StatTile, TableWrap, btn, field, useUrlFilters } from "../ui";
+import CopyRecordingLink from "@/components/CopyRecordingLink";
 import { Bytes, ContentTabs, OwnerLink, Related, StateBadge, StatusBadge, TypeLabel, VisibilityBadge, fileLabel, type FileRow } from "./content-ui";
 
 type Backfill = {
@@ -277,6 +278,9 @@ export default function FilesClient() {
                       <Related f={x} />
                       <StateBadge s={x.state} />
                     </span>
+                    {x.type === "recording" && x.storage === "r2" && x.state === "active" && can("content:moderate") && (
+                      <CopyRecordingLink recordingKey={x.key} className="mt-1" />
+                    )}
                   </td>
                   <td className="px-3 py-2 text-xs">
                     <OwnerLink id={x.ownerId} />

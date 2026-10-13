@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { fmtNumber, fmtTime, useAdmin } from "../../../AdminApi";
+import CopyRecordingLink from "@/components/CopyRecordingLink";
 import { Badge, Confirm, Loading, Notice, PageHeader, Panel, btn, field } from "../../../ui";
 import { Bytes, ContentTabs, OwnerLink, Related, StateBadge, StatusBadge, TypeLabel, VisibilityBadge, fileLabel, type FileRow } from "../../content-ui";
 
@@ -184,6 +185,12 @@ export default function FileClient({ id }: { id: string }) {
                   Download (link valid 5 minutes)
                 </a>
               </p>
+            )}
+            {f.type === "recording" && f.storage === "r2" && f.state === "active" && moderate && (
+              <div className="mt-3">
+                <CopyRecordingLink recordingKey={f.key} />
+                <p className="mt-1 text-xs text-zinc-500">Anyone with the link can watch and download it. Making one is recorded in the audit log.</p>
+              </div>
             )}
             {opened?.text != null && <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded bg-black/40 p-2 text-xs text-zinc-200">{opened.text}</pre>}
           </Panel>
