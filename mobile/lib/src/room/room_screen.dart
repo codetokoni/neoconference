@@ -480,6 +480,8 @@ class _InMeetingState extends State<_InMeeting> {
               fullHeight: true,
               builder: (_) => TranslationSheet(slug: widget.slug),
             ),
+            setCaptions: state.role == 'host' ? controller.setCaptions : null,
+            captionsOn: state.captionsOn,
             translationLabel: switch (state.translateTo) {
               final code? => languageFor(code)?.label ?? code,
               null => 'Off',

@@ -9,6 +9,7 @@ import 'package:logging/logging.dart';
 import 'src/auth/auth_controller.dart';
 import 'src/auth/sign_in_screen.dart';
 import 'src/core/api_client.dart';
+import 'src/core/client_info.dart';
 import 'src/events/event.dart';
 import 'src/design/brand.dart';
 import 'src/design/neo_theme.dart';
@@ -38,6 +39,8 @@ void main() {
   // and after the binding, which the platform channel needs.
   WidgetsFlutterBinding.ensureInitialized();
   IncomingMeetingLinks.instance.start();
+  // Crash reports, so "the app keeps closing" comes with the reason.
+  unawaited(CrashReports.start());
   // Group calls and meeting notices by push (Firebase), registered once
   // someone is signed in; a tapped notification opens its group.
   unawaited(CallPush.instance.start());

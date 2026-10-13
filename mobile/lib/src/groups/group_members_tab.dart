@@ -255,6 +255,34 @@ class _GroupMembersTabState extends ConsumerState<GroupMembersTab> {
             ),
           ),
         ],
+        // How to hand the group to someone to run: easy to miss behind the
+        // ⋮ on a row, so the owner (the one who can make hosts) is told.
+        if (caps.assignableRoles.contains(GroupRole.host))
+          Padding(
+            padding: const EdgeInsets.only(bottom: NeoSpace.md),
+            child: Container(
+              padding: const EdgeInsets.all(NeoSpace.md),
+              decoration: BoxDecoration(
+                color: p.surfaceHigh,
+                borderRadius: BorderRadius.circular(NeoRadius.md),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.admin_panel_settings_rounded, color: p.primary, size: 20),
+                  const SizedBox(width: NeoSpace.sm),
+                  Expanded(
+                    child: Text(
+                      'To let someone manage this group for you, tap ⋮ beside their name and choose '
+                      '"Make Host". A host can add and remove people, schedule and start meetings, call '
+                      'the group and see reports. Only you can change settings, delete the group or make hosts.',
+                      style: TextStyle(color: p.textMuted, fontSize: 13, height: 1.35),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         NeoSection(
           title: '${d.members.length} ${d.members.length == 1 ? 'member' : 'members'}',
           child: Column(
@@ -371,7 +399,11 @@ class MemberRow extends StatelessWidget {
               onSelected: (v) => v == 'remove' ? onRemove() : onRole(GroupRole.parse(v)),
               itemBuilder: (_) => [
                 for (final r in roles)
-                  PopupMenuItem(value: r.wire, child: Text(r == GroupRole.participant ? 'Make Member' : 'Make ${r.label}')),
+                  PopupMenuItem(value: r.wire, child: Text(r == GroupRole.participant
+                        ? 'Make Member'
+                        : r == GroupRole.host
+                            ? 'Make Host (can manage the group)'
+                            : 'Make ${r.label}')),
                 if (canRemove)
                   PopupMenuItem(value: 'remove', child: Text('Remove from group', style: TextStyle(color: p.danger))),
               ],

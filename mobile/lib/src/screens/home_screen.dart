@@ -11,6 +11,7 @@ import '../meetings/meeting_board.dart';
 import '../meetings/meeting_view.dart';
 import '../meetings/when.dart';
 import '../manage/manage_screen.dart';
+import '../groups/meeting_report_screen.dart';
 import 'join_sheet.dart';
 import 'prejoin_screen.dart';
 import 'schedule_screen.dart';
@@ -551,14 +552,26 @@ class _MeetingRow extends StatelessWidget {
             if (starts == null) meeting.code,
           ].join(' · ');
 
+    final eventId = meeting.eventId;
+    // Who came, and making a group of them (History's report screen).
+    void openReport() => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => MeetingReportScreen.forMeeting(eventId: eventId!),
+          ),
+        );
+
     return NeoCard(
+      // A meeting that can be joined opens pre-join; one that is over opens
+      // its report, where its people can be added to a group.
       onTap: meeting.canJoin
           ? () => Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (_) => PreJoinScreen(meeting: meeting),
                 ),
               )
-          : null,
+          : eventId != null
+              ? openReport
+              : null,
       child: Row(
         children: [
           Container(
@@ -632,6 +645,12 @@ class _MeetingRow extends StatelessWidget {
             NeoPill('Live', color: p.primary, dot: true)
           else if (meeting.canJoin)
             Icon(Icons.chevron_right_rounded, color: p.textFaint),
+          if (eventId != null)
+            IconButton(
+              tooltip: 'Add its people to a group',
+              icon: Icon(Icons.group_add_rounded, color: p.textMuted),
+              onPressed: openReport,
+            ),
           ManageMeetingButton(meeting: meeting),
         ],
       ),

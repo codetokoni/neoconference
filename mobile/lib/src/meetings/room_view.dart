@@ -202,6 +202,8 @@ class RoomActions {
     this.audioOutputLabel,
     this.openTranslation,
     this.translationLabel,
+    this.setCaptions,
+    this.captionsOn = false,
     this.openDetails,
     this.invite,
     this.dismissCallEnded,
@@ -241,6 +243,13 @@ class RoomActions {
   /// Open the live-translation picker, and what it currently reads.
   final VoidCallback? openTranslation;
   final String? translationLabel;
+
+  /// Switch the meeting's live captions (CC) on or off for everyone; null
+  /// for someone who is not a host, who is only told whether they are on.
+  final Future<void> Function(bool on)? setCaptions;
+
+  /// The meeting's live captions are on.
+  final bool captionsOn;
 
   /// Open the meeting's details.
   final VoidCallback? openDetails;
