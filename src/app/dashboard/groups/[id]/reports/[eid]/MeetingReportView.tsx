@@ -7,12 +7,9 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { MeetingReport, ReportParticipant } from "@/lib/groupReports";
 import { minutesText as minutes } from "@/lib/durationText";
+import { reportTime } from "@/lib/reportTime";
 
 type SortKey = "name" | "join" | "duration" | "status";
-
-function time(ms: number | null): string {
-  return ms === null ? "—" : new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(new Date(ms));
-}
 
 function span(ms: number): string {
   if (ms <= 0) return "—";
@@ -119,7 +116,7 @@ export default function MeetingReportView({
           <Card label="Invited" value={s.invited} />
           <Card label="Attended" value={s.attended} />
           <Card label="Absent" value={s.absent} />
-          <Card label="Duration" value={report.durationMin ? minutes(report.durationMin) : "—"} />
+          <Card label={report.permanent ? "Time in use" : "Duration"} value={report.durationMin ? minutes(report.durationMin) : "—"} />
           <Card label="Call attempts" value={s.totalCallAttempts} />
           <Card label="Missed calls" value={s.totalMissedCalls} />
         </div>
@@ -174,8 +171,8 @@ export default function MeetingReportView({
                       {p.email ? <div className="max-w-[16rem] text-xs text-slate-400 [overflow-wrap:anywhere]">{p.email}</div> : null}
                       {!p.invited ? <div className="text-xs text-slate-500">not invited</div> : null}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-slate-300">{time(p.joinedAt)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap text-slate-300">{time(p.leftAt)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-300">{reportTime(p.joinedAt, report.actualStart)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-300">{reportTime(p.leftAt, report.actualStart)}</td>
                     <td className="px-4 py-3 whitespace-nowrap text-slate-300">{span(p.attendedMs)}</td>
                     <td className="px-4 py-3 text-slate-300">{p.entries || "—"}</td>
                     <td className="px-4 py-3 whitespace-nowrap"><StatusCell p={p} /></td>

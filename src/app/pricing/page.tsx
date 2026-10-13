@@ -38,6 +38,26 @@ export default function PricingPage() {
         </div>
 
         <PricingTiers />
+
+        {/* Not plan-limited (groups, permanent rooms, reports and domains
+            have no plan check), so every plan gets them. */}
+        <div className="mt-14 rounded-2xl neo-glass border border-white/10 p-6 sm:p-8">
+          <h2 className="text-xl font-semibold text-white">Every plan also includes</h2>
+          <ul className="mt-5 grid gap-4 sm:grid-cols-2 text-sm">
+            <Included title="Groups">
+              Members, group chat, scheduled meetings and a Call button that rings everyone. Make others hosts to manage it with you.
+            </Included>
+            <Included title="A permanent room">
+              One link that never changes and never ends, open whenever your people need it.
+            </Included>
+            <Included title="Attendance reports">
+              Who came, join and leave times, minutes attended and who missed it, with a spreadsheet download.
+            </Included>
+            <Included title="Your own web address">
+              Run an event on your domain, such as live.yourchurch.org. We connect it for you.
+            </Included>
+          </ul>
+        </div>
       </section>
 
       {/* FAQ */}
@@ -85,6 +105,18 @@ export default function PricingPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function Included({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <li className="flex gap-3">
+      <span aria-hidden className="mt-0.5 h-5 w-5 shrink-0 rounded-full bg-cyan-400/15 text-cyan-300 flex items-center justify-center text-xs">✓</span>
+      <span>
+        <span className="font-semibold text-white">{title}.</span>{" "}
+        <span className="text-cyan-100/70">{children}</span>
+      </span>
+    </li>
   );
 }
 

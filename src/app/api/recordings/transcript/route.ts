@@ -42,7 +42,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'missing-or-invalid-key' }, { status: 400 });
   }
   if (!key.startsWith(userPrefix(userId))) {
-    return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 });
+    // An administrator with content:read reads any recording's transcript
+    // (the Recordings page's "All recordings" view).
+    if (!key.startsWith('recordings/')) {
+      return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 });
+    }
+    const { requireAdmin } = await import('@/lib/admin/context');
+    const g = await requireAdmin(req, 'content:read', { readOnly: true });
+    if (!g.ok) return NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 });
   }
 
   const job = await transcribeStore.getByRecordingKey(key);

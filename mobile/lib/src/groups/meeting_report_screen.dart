@@ -193,7 +193,7 @@ class _MeetingReportScreenState extends ConsumerState<MeetingReportScreen> {
                   _Stat('Invited', '${r.invited}'),
                   _Stat('Attended', '${r.attended}', color: p.success),
                   _Stat('Absent', '${r.absent}', color: r.absent > 0 ? p.warning : null),
-                  _Stat('Duration', r.durationMin > 0 ? '${r.durationMin} min' : '—'),
+                  _Stat(r.permanent ? 'Time in use' : 'Duration', r.durationMin > 0 ? '${r.durationMin} min' : '—'),
                   if (widget.groupId != null) ...[
                     _Stat('Call attempts', '${r.callAttempts}'),
                     _Stat('Missed calls', '${r.missedCalls}'),
@@ -266,7 +266,7 @@ class _MeetingReportScreenState extends ConsumerState<MeetingReportScreen> {
                   icon: Icon(Icons.sort_rounded, color: p.textMuted),
                 ),
                 child: Column(
-                  children: [for (final person in _sorted(r.people)) _PersonRow(person: person)],
+                  children: [for (final person in _sorted(r.people)) _PersonRow(person: person, day: r.actualStart ?? r.scheduledStart)],
                 ),
               ),
             ],
@@ -301,8 +301,11 @@ class _Stat extends StatelessWidget {
 }
 
 class _PersonRow extends StatelessWidget {
-  const _PersonRow({required this.person});
+  const _PersonRow({required this.person, this.day});
   final ReportPerson person;
+
+  /// The day the meeting started: times on another day carry their date.
+  final DateTime? day;
 
   @override
   Widget build(BuildContext context) {
@@ -310,8 +313,8 @@ class _PersonRow extends StatelessWidget {
     final x = person;
     final status = x.present ? 'Present' : (x.declined ? 'Declined' : 'Absent');
     final details = [
-      if (x.joinedAt != null) 'joined ${neoClock(x.joinedAt!)}',
-      if (x.leftAt != null) 'left ${neoClock(x.leftAt!)}',
+      if (x.joinedAt != null) 'joined ${neoClockOn(x.joinedAt!, day)}',
+      if (x.leftAt != null) 'left ${neoClockOn(x.leftAt!, day)}',
       if (x.present) attendedText(x.attendedMs),
       if (x.entries > 1) '${x.entries} times',
       if (x.callAttempts > 0) '${x.callAttempts} rung · ${x.missedCalls} missed',

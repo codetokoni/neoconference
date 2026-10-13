@@ -129,6 +129,7 @@ class MeetingReport {
     this.aiSummary,
     this.chatMessages = 0,
     this.inGroup = true,
+    this.permanent = false,
   });
 
   final String eventId;
@@ -158,11 +159,16 @@ class MeetingReport {
   /// A meeting of a group; false for any other meeting (History).
   final bool inGroup;
 
+  /// An always-open room: [durationMin] is its time in use, not first
+  /// opening to now, and its report spans many days.
+  final bool permanent;
+
   factory MeetingReport.fromJson(Map<String, dynamic> j) {
     final s = j['summary'] is Map ? j['summary'] as Map : const {};
     final g = j['group'] is Map ? j['group'] as Map : const {};
     return MeetingReport(
       inGroup: j['group'] is Map,
+      permanent: j['permanent'] == true,
       chatMessages: _int(s['chatMessages']),
       eventId: j['eventId'] as String? ?? '',
       slug: j['slug'] as String? ?? '',

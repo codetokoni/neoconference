@@ -123,6 +123,18 @@ export function classifyKey(key: string): KeyFacts {
       ...(startedAt && Number.isFinite(startedAt) ? { startedAt } : {}),
     };
   }
+  // A room's recording with no recorder in the path: recordings/<room>/<file>.
+  // 17 such videos (recordings/lmm/…) were filed as "other", so the admin
+  // Files list never showed them as recordings.
+  if (parts[0] === "recordings" && parts.length === 3 && parts[1] && !parts[1].startsWith("user_")) {
+    const audio = /\.m4a(?:\.mp4)?$/i.test(key);
+    return {
+      type: audio ? "recording_audio" : /\.mp4$/i.test(key) ? "recording" : "other",
+      ownerId: null,
+      eventSlug: parts[1],
+      name: last,
+    };
+  }
   const tail = (s: string) => s.replace(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i, "").replace(/^[A-Za-z0-9_-]{4,12}-/, "");
   if (parts[0] === "chat" && parts.length === 3 && parts[1]) {
     return { type: "chat_upload", ownerId: parts[1].startsWith("user_") ? parts[1] : null, name: tail(last) };

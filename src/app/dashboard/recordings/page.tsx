@@ -26,15 +26,23 @@ type Recording = {
   downloadUrl: string;
   audio?: AudioSidecar | null;
   transcript?: PersistedTranscript | null;
+  /** In the admin "All recordings" view: the room, who recorded it, and whether it is yours. */
+  room?: string | null;
+  owner?: { userId: string; label: string } | null;
+  mine?: boolean;
 };
 
 type Resp = {
   ok: boolean;
   configured?: boolean;
   recordings?: Recording[];
+  truncated?: boolean;
   error?: string;
+  message?: string;
   hint?: string;
 };
+
+type Scope = 'mine' | 'all';
 
 type TranscribeJob = {
   id: string;
@@ -187,12 +195,34 @@ export default function RecordingsPage() {
   const [filter, setFilter] = useState('');
   const [tx, setTx] = useState<Record<string, TranscribeState>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // An administrator who can see files (content:read) also gets "All recordings".
+  const [canSeeAll, setCanSeeAll] = useState(false);
+  const [scope, setScope] = useState<Scope>('mine');
 
-  async function load() {
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/admin/me', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { admin?: { permissions?: string[] } } | null) => {
+        if (alive && j?.admin?.permissions?.includes('content:read')) setCanSeeAll(true);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function load(which: Scope = scope) {
     setLoading(true);
     try {
-      const res = await fetch('/api/recordings', { cache: 'no-store' });
+      const res = await fetch(which === 'all' ? '/api/recordings?scope=all' : '/api/recordings', { cache: 'no-store' });
       const j: Resp = await res.json();
+      if (!res.ok && !j.error) j.error = 'Could not load recordings.';
+      if (j.error === 'mfa_required' || j.error === 'mfa_enrollment_required') {
+        j.error = 'Open the admin area and enter your authenticator code first, then come back to see all recordings.';
+      } else if (j.error === 'forbidden' || j.error === 'not_admin') {
+        j.error = j.message || 'Your admin role cannot see other people’s recordings.';
+      }
       setData(j);
 
       // Hydrate the transcribe-state map from any transcripts the API already
@@ -229,7 +259,7 @@ export default function RecordingsPage() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(scope); }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function transcribe(key: string) {
     setTx((s) => ({ ...s, [key]: { status: 'submitting' } }));
@@ -277,9 +307,16 @@ export default function RecordingsPage() {
     }
   }
 
+  const needle = filter.toLowerCase();
   const recordings = (data?.recordings || []).filter((r) =>
-    (/\.mp4$/i.test(r.key)) && (!filter || r.key.toLowerCase().includes(filter.toLowerCase()))
+    (/\.mp4$/i.test(r.key)) &&
+    (!filter ||
+      r.key.toLowerCase().includes(needle) ||
+      (r.owner?.label || '').toLowerCase().includes(needle) ||
+      (r.room || '').toLowerCase().includes(needle))
   );
+  // In "All recordings", only your own can be transcribed or deleted from here.
+  const ownsRow = (r: Recording) => scope === 'mine' || r.mine === true;
 
   return (
     <main className="min-h-screen bg-[#05070d] text-white relative overflow-hidden">
@@ -297,21 +334,39 @@ export default function RecordingsPage() {
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 md:gap-6">
           <div>
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight">
-              Your <span className="bg-gradient-to-r from-cyan-300 to-indigo-300 bg-clip-text text-transparent">recordings</span>
+              {scope === 'all' ? 'All' : 'Your'}{' '}
+              <span className="bg-gradient-to-r from-cyan-300 to-indigo-300 bg-clip-text text-transparent">recordings</span>
             </h1>
             <p className="mt-2 text-white/60 text-xs sm:text-sm">
-              Stored on Cloudflare R2. Download links expire after 1 hour — refresh this page for new ones.
+              {scope === 'all'
+                ? 'Every recording on NeoConference, newest first. Only the person who recorded one can delete it.'
+                : 'Stored on Cloudflare R2. Download links expire after 1 hour — refresh this page for new ones.'}
             </p>
+            {canSeeAll && (
+              <div role="tablist" aria-label="Whose recordings" className="mt-4 inline-flex rounded-xl border border-white/10 bg-black/30 p-1 text-sm">
+                {(['mine', 'all'] as const).map((s) => (
+                  <button
+                    key={s}
+                    role="tab"
+                    aria-selected={scope === s}
+                    onClick={() => setScope(s)}
+                    className={`rounded-lg px-3 py-1.5 transition ${scope === s ? 'bg-cyan-400/20 text-cyan-100' : 'text-white/60 hover:text-white'}`}
+                  >
+                    {s === 'mine' ? 'Mine' : 'All recordings (admin)'}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 w-full md:w-auto">
             <input
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="Filter by room or filename"
+              placeholder={scope === 'all' ? 'Filter by room, person or filename' : 'Filter by room or filename'}
               className="flex-1 md:w-72 md:flex-initial rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 transition"
             />
             <button
-              onClick={load}
+              onClick={() => load()}
               className="shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm hover:bg-white/10 transition"
             >
               {loading ? 'Loading…' : 'Refresh'}
@@ -364,6 +419,13 @@ export default function RecordingsPage() {
                       <tr key={r.key} className="border-b border-white/5 hover:bg-white/[0.02] transition align-top">
                         <td className="px-4 sm:px-5 py-3.5">
                           <div className="font-mono text-white/90 truncate max-w-[200px] sm:max-w-[420px]" title={r.key}>{r.key}</div>
+                          {scope === 'all' && (
+                            <div className="mt-0.5 text-[11px] text-white/55 truncate max-w-[200px] sm:max-w-[420px]">
+                              {r.room ? <>Room <span className="text-cyan-200/80">{r.room}</span></> : 'Room unknown'}
+                              {' · '}
+                              {r.mine ? 'You' : r.owner ? r.owner.label : 'Recorded by the room (no account)'}
+                            </div>
+                          )}
                           <div className="md:hidden text-[10px] text-white/40 mt-0.5">{fmtDate(r.lastModified)}</div>
                           {state.status === 'submitting' && (
                             <div className="mt-1 inline-flex items-center gap-1.5 text-[10px] text-fuchsia-200/80">
@@ -424,6 +486,7 @@ export default function RecordingsPage() {
                         <td className="px-4 sm:px-5 py-3.5 text-white/55 hidden md:table-cell">{fmtDate(r.lastModified)}</td>
                         <td className="px-4 sm:px-5 py-3.5 text-right">
                           <div className="inline-flex items-center gap-2 justify-end">
+                            {ownsRow(r) && (
                             <button
                               onClick={() => transcribe(r.key)}
                               disabled={state.status === 'submitting' || state.status === 'queued' || state.status === 'running'}
@@ -432,6 +495,7 @@ export default function RecordingsPage() {
                             >
                               {state.status === 'submitting' ? '…' : state.status === 'queued' ? '✓ Queued' : state.status === 'running' ? '… Running' : state.status === 'done' ? '↻ Re-run' : 'Transcribe'}
                             </button>
+                            )}
                             <DownloadMenu
                               recordingKey={r.key}
                               videoUrl={r.downloadUrl}
@@ -440,6 +504,7 @@ export default function RecordingsPage() {
                                 !!(r.transcript && r.transcript.status === 'done' && r.transcript.text)
                               }
                             />
+                            {ownsRow(r) && (
                             <button
                               onClick={async () => {
                                 if (!confirm('Delete this recording permanently? This cannot be undone.')) return;
@@ -450,6 +515,7 @@ export default function RecordingsPage() {
                               }}
                               className="inline-flex items-center gap-1 rounded-lg border border-red-400/30 bg-red-400/10 text-red-200 px-2.5 py-1.5 text-[11px] hover:bg-red-400/20 transition"
                             >Delete</button>
+                            )}
                           </div>
                         </td>
                       </tr>
