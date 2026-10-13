@@ -1,12 +1,14 @@
 import { errorMessage } from "@/lib/errorMessage";
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { isR2Configured, listRecordings, signGetUrl, deleteObject, renameObject } from '@/lib/r2';
+import { isR2Configured, listAllObjects, listRecordings, signGetUrl, deleteObject, renameObject } from '@/lib/r2';
 import { transcribeStore } from '@/lib/transcribeStore';
 import { tryMoveToTrash } from '@/lib/dataGov/trash';
 import { asReported } from '@/lib/transcribeNotSetUp';
 import { eventStore } from '@/lib/eventStore';
 import { authorize } from '@/lib/authz';
+import { requireAdmin } from '@/lib/admin/context';
+import { classifyKey } from '@/lib/content/model';
 import {
   isAudioKey,
   listEventRecordingObjects,
@@ -25,6 +27,11 @@ export const dynamic = 'force-dynamic';
  *
  *   Default (no eventSlug) — returns ONLY the authenticated user's recordings
  *   from R2. The dashboard recordings page uses this.
+ *
+ *   scope=all — every recording on the platform, for an administrator with
+ *   content:read (the Recordings page's "All recordings" view). Each row
+ *   also says who recorded it and in which room. Delete and rename stay
+ *   with the owner; this is for finding, watching and downloading.
  *
  *   eventSlug=<slug> — FRS §2: recordings scoped by event role. Loads the
  *   event, authorizes recording:read (RANK.host), then unions recordings
@@ -53,6 +60,7 @@ export async function GET(req: Request) {
     const rawSub = url.searchParams.get('subPrefix') || url.searchParams.get('prefix') || '';
     const sub = rawSub.replace(/^\/+/, '');
     const eventSlug = url.searchParams.get('eventSlug') || '';
+    const scopeAll = url.searchParams.get('scope') === 'all';
     const max = Math.min(
           Math.max(parseInt(url.searchParams.get('max') || '100', 10) || 100, 1),
           500
@@ -60,8 +68,19 @@ export async function GET(req: Request) {
 
   try {
         let filtered: Array<{ key: string; size: number; lastModified?: string }>;
+        let truncated = false;
 
-        if (eventSlug) {
+        if (scopeAll) {
+              // An administrator: the whole recordings/ prefix, every page.
+              const g = await requireAdmin(req, 'content:read', { readOnly: true });
+              if (!g.ok) return g.response;
+              const all = await listAllObjects('recordings/', 10);
+              truncated = all.truncated;
+              // The listing comes in key order; the page reads newest first.
+              filtered = all.items
+                .filter((o) => o.size > 0)
+                .sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
+        } else if (eventSlug) {
               // Event-scoped mode (FRS §2). Authorize on the event, then union
               // across every plausible R2 prefix a host might have written to.
               const ev = await eventStore.bySlug(eventSlug);
@@ -90,9 +109,9 @@ export async function GET(req: Request) {
       // egress preset, so we strip both forms when building the lookup. Audio
       // sidecars are also excluded from the videos list so they don't surface
       // as standalone rows in the dashboard.
-      const videos = filtered.filter(
-              (o) => /\.mp4$/i.test(o.key) && !isAudioKey(o.key)
-            );
+      const videos = filtered
+        .filter((o) => /\.mp4$/i.test(o.key) && !isAudioKey(o.key))
+        .slice(0, scopeAll ? 500 : undefined);
         const audioByBase = new Map<string, { key: string; size: number }>();
         for (const o of filtered) {
                 if (!isAudioKey(o.key)) continue;
@@ -135,6 +154,25 @@ export async function GET(req: Request) {
                         };
               })
             );
+
+      if (scopeAll) {
+        // Who recorded each one, by name, and in which room, for the admin list.
+        const ownerIds = Array.from(
+          new Set(recordings.map((r) => classifyKey(r.key).ownerId).filter((id): id is string => !!id)),
+        );
+        const people = await ownerNames(ownerIds);
+        const rows = recordings.map((r) => {
+          const facts = classifyKey(r.key);
+          const ownerId = facts.ownerId;
+          return {
+            ...r,
+            room: facts.eventSlug ?? null,
+            owner: ownerId ? { userId: ownerId, label: people.get(ownerId) ?? ownerId } : null,
+            mine: ownerId === userId,
+          };
+        });
+        return NextResponse.json({ ok: true, configured: true, scope: 'all', truncated, recordings: rows });
+      }
 
       return NextResponse.json({ ok: true, configured: true, recordings });
   } catch (err: unknown) {
@@ -220,4 +258,26 @@ export async function PATCH(req: Request) {
     } catch (e) {
           return NextResponse.json({ ok: false, error: errorMessage(e) || 'rename-failed' }, { status: 500 });
     }
+}
+
+/** Display names for recording owners (Clerk), best effort: an id stays an id. */
+async function ownerNames(ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!ids.length) return out;
+  try {
+    const { clerkClient } = await import('@clerk/nextjs/server');
+    const client = await clerkClient();
+    for (let i = 0; i < ids.length; i += 100) {
+      const page = await client.users.getUserList({ userId: ids.slice(i, i + 100), limit: 100 });
+      const list = Array.isArray(page) ? page : page.data;
+      for (const u of list) {
+        const name = [u.firstName, u.lastName].filter(Boolean).join(' ').trim();
+        const email = u.emailAddresses?.[0]?.emailAddress;
+        out.set(u.id, name && email ? `${name} · ${email}` : name || email || u.username || u.id);
+      }
+    }
+  } catch (err) {
+    console.warn('[recordings] owner lookup failed', err);
+  }
+  return out;
 }

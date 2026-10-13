@@ -27,6 +27,7 @@ import { addUserMeeting, hasUserMeeting, listUserMeetings } from "@/lib/userMeet
 import { getCalls, type CallRecord } from "@/lib/ringEngine";
 import { getMeetingParticipants } from "@/lib/meeting-roles";
 import { chatStore } from "@/lib/chatStore";
+import { canEnd } from "@/lib/meetingLifecycle";
 import type { NeoEvent } from "@/types/event";
 
 export interface ReportParticipant {
@@ -67,7 +68,14 @@ export interface MeetingReport {
   actualStart: string | null;
   /** ISO: when it ended, or the last leave. */
   actualEnd: string | null;
+  /**
+   * Minutes. For a permanent (always-open) room, the time it was in use —
+   * someone in it — not first opening to now, which for a room open for
+   * weeks read 36,163 minutes.
+   */
   durationMin: number;
+  /** An always-open room: its report spans many days, so times carry dates. */
+  permanent?: boolean;
   participants: ReportParticipant[];
   summary: {
     invited: number;
@@ -203,6 +211,37 @@ function attendedMsOf(row: AttendanceReportRow, endMs: number): number {
     const end = iv.leftAt ?? (Number.isFinite(endMs) ? endMs : iv.joinedAt);
     return acc + Math.max(0, end - iv.joinedAt);
   }, 0);
+}
+
+/**
+ * How long a room had someone in it: the union of everyone's time inside.
+ * An interval still open counts up to `openUntil` (now, while the room is
+ * live) and only for a day — an open one older than that is a leave the
+ * journal never heard, not someone still there.
+ */
+export function inUseMs(rows: Pick<AttendanceReportRow, "intervals">[], openUntil: number): number {
+  const spans: Array<[number, number]> = [];
+  for (const row of rows) {
+    for (const iv of row.intervals) {
+      const end = iv.leftAt ?? (Number.isFinite(openUntil) && openUntil - iv.joinedAt < 24 * 60 * 60_000 ? openUntil : NaN);
+      if (Number.isFinite(end) && end > iv.joinedAt) spans.push([iv.joinedAt, end]);
+    }
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  let total = 0;
+  let curStart = NaN;
+  let curEnd = NaN;
+  for (const [a, b] of spans) {
+    if (Number.isFinite(curEnd) && a <= curEnd) {
+      curEnd = Math.max(curEnd, b);
+    } else {
+      if (Number.isFinite(curEnd)) total += curEnd - curStart;
+      curStart = a;
+      curEnd = b;
+    }
+  }
+  if (Number.isFinite(curEnd)) total += curEnd - curStart;
+  return total;
 }
 
 /** Build a meeting's report from its records. */
@@ -354,7 +393,10 @@ export async function buildMeetingReport(eid: string, now: number = Date.now()):
     scheduledStart: ev.scheduledAt ?? null,
     actualStart: Number.isFinite(startMs) ? new Date(startMs).toISOString() : null,
     actualEnd: Number.isFinite(finishMs) ? new Date(finishMs).toISOString() : null,
-    durationMin: Number.isFinite(startMs) && Number.isFinite(finishMs) ? Math.max(0, Math.round((finishMs - startMs) / 60_000)) : 0,
+    durationMin: !canEnd(ev)
+      ? Math.round(inUseMs(rows, ev.state === "live" ? now : NaN) / 60_000)
+      : Number.isFinite(startMs) && Number.isFinite(finishMs) ? Math.max(0, Math.round((finishMs - startMs) / 60_000)) : 0,
+    ...(!canEnd(ev) ? { permanent: true } : {}),
     participants,
     summary: {
       invited: participants.filter((p) => p.invited).length,

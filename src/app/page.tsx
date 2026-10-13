@@ -127,6 +127,45 @@ export default async function Home() {
         </div>
       </section>
 
+      {/* For organisations: what churches, schools and teams run on it.
+          Each card says what the product does today and on which plan.
+          Paid tickets are left out until card payments are switched on in
+          production (the checkout answers stripe_unconfigured). */}
+      <section id="organisations" className="relative mx-auto max-w-7xl px-6 py-12 scroll-mt-20">
+        <div className="max-w-2xl">
+          <h2 className="text-3xl sm:text-4xl font-semibold text-white tracking-tight">Run your whole organisation on it.</h2>
+          <p className="mt-3 text-cyan-100/65">
+            More than video calls: keep your people together, give them a room that is always open, and know who came.
+          </p>
+        </div>
+        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <ShowcaseCard
+            badge="Groups"
+            title="Groups that meet again and again"
+            desc="Members, group chat and scheduled meetings in one place. Tap Call and every member's phone rings. Make someone a host to run it with you."
+            href="/dashboard/groups"
+          />
+          <ShowcaseCard
+            badge="Always open"
+            title="A permanent room"
+            desc="One link that never changes and never ends. Your team walks in any time, like your own meeting place."
+            href="/dashboard/new"
+          />
+          <ShowcaseCard
+            badge="Reports"
+            title="Attendance reports"
+            desc="Who came, when they joined and left, how long they stayed, and who was invited but missed it. Download it as a spreadsheet."
+            href="/dashboard"
+          />
+          <ShowcaseCard
+            badge="Your domain"
+            title="Your own web address"
+            desc="Put an event on your own address, like live.yourchurch.org. Add it to your event and we connect it for you."
+            href="/support"
+          />
+        </div>
+      </section>
+
       {/* Live translation */}
       <section id="live-translation" className="relative mx-auto max-w-7xl px-6 py-16 scroll-mt-20">
         <div className="relative neo-card neo-border-glow p-8 sm:p-12 overflow-hidden">

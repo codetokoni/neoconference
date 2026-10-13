@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AddToGroupDialog, { type GroupCandidate } from "@/components/groups/AddToGroupDialog";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
+import { reportTime } from "@/lib/reportTime";
 
 interface ReportPerson {
   key: string;
@@ -37,6 +38,8 @@ interface Report {
   actualStart: string | null;
   actualEnd: string | null;
   durationMin: number;
+  /** An always-open room: durationMin is its time in use, and times carry dates. */
+  permanent?: boolean;
   participants: ReportPerson[];
   summary: {
     invited: number;
@@ -131,7 +134,7 @@ export default function MeetingReportPanel({ eventId, currentUserId }: { eventId
           <h2 className="text-sm uppercase tracking-widest text-slate-400">Meeting report</h2>
           <p className="text-sm text-slate-300 mt-1">
             {report.actualStart ? new Date(report.actualStart).toLocaleDateString() : ""} ·{" "}
-            {clock(report.actualStart)}–{clock(report.actualEnd)}
+            {clock(report.actualStart)}–{reportTime(report.actualEnd, report.actualStart)}
             {report.hosts.length ? ` · Hosted by ${report.hosts.join(", ")}` : ""}
           </p>
         </div>
@@ -161,7 +164,7 @@ export default function MeetingReportPanel({ eventId, currentUserId }: { eventId
 
       <dl className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         {[
-          ["Duration", report.durationMin ? `${report.durationMin} min` : "—"],
+          [report.permanent ? "Time in use" : "Duration", report.durationMin ? `${report.durationMin} min` : "—"],
           ["Attended", String(s.attended)],
           ["Invited", String(s.invited)],
           ["Absent", String(s.absent)],
@@ -212,8 +215,8 @@ export default function MeetingReportPanel({ eventId, currentUserId }: { eventId
                     <span className="text-amber-300">{p.declined ? "Declined" : "Absent"}</span>
                   )}
                 </td>
-                <td className="px-3 py-2 text-slate-300">{clock(p.joinedAt)}</td>
-                <td className="px-3 py-2 text-slate-300">{clock(p.leftAt)}</td>
+                <td className="px-3 py-2 text-slate-300">{reportTime(p.joinedAt, report.actualStart)}</td>
+                <td className="px-3 py-2 text-slate-300">{reportTime(p.leftAt, report.actualStart)}</td>
                 <td className="px-3 py-2 text-slate-300">{p.status === "present" ? minutes(p.attendedMs) : "—"}</td>
                 <td className="px-3 py-2 text-slate-300">{p.entries || "—"}</td>
               </tr>

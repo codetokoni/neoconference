@@ -14,7 +14,7 @@ import { kv } from "@/lib/kv";
 import { listObjectsPage, type R2Object } from "@/lib/r2";
 import { TRASH_PREFIX } from "@/lib/dataGov/trash";
 import { getGroup } from "@/lib/groupStore";
-import { checksumFromEtag, type FileRecord } from "@/lib/content/model";
+import { checksumFromEtag, classifyKey, type FileRecord } from "@/lib/content/model";
 import { allFiles, fileId, putFiles, recordFromKey } from "@/lib/content/files";
 
 const STATE = "neo:content:backfill";
@@ -170,12 +170,21 @@ async function toRecord(
       ...(checksum ? { checksum } : {}),
       r2SeenAt: seenAt,
     };
+    // A key filed as "other" that is now understood (a room's recording
+    // with no recorder in its path) takes its proper type and room.
+    if (prev.type === "other") {
+      const facts = classifyKey(prev.key);
+      if (facts.type !== "other") {
+        next.type = facts.type;
+        if (facts.eventSlug) next.eventSlug = facts.eventSlug;
+      }
+    }
     // A file the index thought was still on its way is there: say so.
     if ((prev.status === "pending" || prev.status === "processing") && o.size > 0 && prev.type !== "recording" && prev.type !== "recording_audio") {
       next.status = "ready";
       next.statusAt = Date.now();
     }
-    const changedFacts = prev.size !== next.size || prev.checksum !== next.checksum || prev.status !== next.status;
+    const changedFacts = prev.type !== next.type || prev.size !== next.size || prev.checksum !== next.checksum || prev.status !== next.status;
     return { kind: changedFacts ? "updated" : "same", record: changedFacts ? { ...next, updatedAt: Date.now() } : next };
   }
   const created = o.lastModified ? Date.parse(o.lastModified) : NaN;

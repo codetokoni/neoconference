@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
 import { attendedText as attended } from "@/lib/durationText";
+import { reportTime } from "@/lib/reportTime";
 
 interface Detail {
   title: string;
@@ -26,10 +27,6 @@ interface Detail {
     callAttempts: number;
     missedCalls: number;
   };
-}
-
-function when(ms: number | null): string {
-  return ms === null ? "—" : new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(new Date(ms));
 }
 
 export default function MyMeetingPage() {
@@ -92,8 +89,8 @@ export default function MyMeetingPage() {
                   <span className="text-amber-300"><span aria-hidden>✕ </span>{m.me.declined ? "Declined" : "Missed"}</span>
                 )
               )}
-              {row("Joined", when(m.me.joinedAt))}
-              {row("Left", when(m.me.leftAt))}
+              {row("Joined", reportTime(m.me.joinedAt, m.date))}
+              {row("Left", reportTime(m.me.leftAt, m.date))}
               {row("Time attended", attended(m.me.attendedMs))}
               {m.me.entries > 1 ? row("Times you joined", m.me.entries) : null}
               {m.me.callAttempts ? row("Calls", `${m.me.callAttempts} rung · ${m.me.missedCalls} missed`) : null}

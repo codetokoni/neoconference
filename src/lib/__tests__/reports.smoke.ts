@@ -268,6 +268,61 @@ const leave = (eid: string, userId: string, name: string, ts: number) =>
     });
   }
 
+  console.log("a permanent room");
+
+  {
+    // Open for 25 days: its report used to read 36,163 minutes, first
+    // opening to now. Two visits: Ada and Ben overlap on day 1 (13:59–14:40,
+    // 41 min in use), Ada alone on day 20 (11:00–11:51, 51 min).
+    const D0 = Date.UTC(2026, 8, 18, 13, 59);
+    const day = 24 * 60 * MIN;
+    const room = await eventStore.create({
+      id: "ev_permanent_report", slug: "always-open", name: "Our room", ownerUserId: "user_ada", ownerName: "Ada",
+      state: "live", isPermanent: true, startedAt: new Date(D0).toISOString(),
+      createdAt: new Date(D0 - MIN).toISOString(), roles: [],
+    } as unknown as NeoEvent);
+    await recordAttendance(room.id, { action: "join", userId: "user_ada", name: "Ada", source: "webhook", ts: D0 });
+    await recordAttendance(room.id, { action: "join", userId: "user_ben", name: "Ben", source: "webhook", ts: D0 + 11 * MIN });
+    await recordAttendance(room.id, { action: "leave", userId: "user_ada", name: "Ada", source: "webhook", ts: D0 + 31 * MIN });
+    await recordAttendance(room.id, { action: "leave", userId: "user_ben", name: "Ben", source: "webhook", ts: D0 + 41 * MIN });
+    const visit2 = D0 + 19 * day - 179 * MIN; // day 20, 11:00
+    await recordAttendance(room.id, { action: "join", userId: "user_ada", name: "Ada", source: "webhook", ts: visit2 });
+    await recordAttendance(room.id, { action: "leave", userId: "user_ada", name: "Ada", source: "webhook", ts: visit2 + 51 * MIN });
+
+    const r = (await buildMeetingReport(room.id, D0 + 25 * day))!;
+
+    await t("a permanent room's duration is its time in use, not first opening to now", () => {
+      assert.equal(r.permanent, true);
+      assert.equal(r.durationMin, 41 + 51);
+    });
+
+    await t("someone still in a live permanent room counts up to now, but not a leave lost days ago", async () => {
+      const { inUseMs } = await import("@/lib/groupReports");
+      const now = D0 + 60 * MIN;
+      assert.equal(inUseMs([{ intervals: [{ joinedAt: D0, leftAt: null }] }] as never, now), 60 * MIN);
+      assert.equal(inUseMs([{ intervals: [{ joinedAt: D0 - 3 * day, leftAt: null }] }] as never, now), 0);
+      assert.equal(inUseMs([{ intervals: [{ joinedAt: D0, leftAt: null }] }] as never, NaN), 0);
+    });
+
+    await t("a meeting that can end keeps first-to-last as its duration, and is not marked permanent", async () => {
+      const solo = (await buildMeetingReport("ev_solo_report"))!;
+      assert.equal(solo.permanent, undefined);
+      assert.equal(solo.durationMin, 30);
+    });
+
+    await t("a join or leave on another day than the start carries its date", async () => {
+      const { reportTime } = await import("@/lib/reportTime");
+      const ada = r.participants.find((p) => p.userId === "user_ada")!;
+      // Ada's first join is on the start day: clock only. Her last leave is
+      // 19 days later: with its date, so it cannot read as before the join.
+      // A dated time is "<date>, <clock>"; a clock alone has no comma.
+      assert.equal(reportTime(ada.joinedAt, r.actualStart).includes(","), false, reportTime(ada.joinedAt, r.actualStart));
+      const left = reportTime(ada.leftAt, r.actualStart);
+      assert.ok(left.includes(",") && /Oct|10/.test(left.split(",")[0]), left);
+      assert.equal(reportTime(null, r.actualStart), "—");
+    });
+  }
+
   console.log(`\n${n} checks passed`);
 })().catch((err) => {
   console.error(err);
