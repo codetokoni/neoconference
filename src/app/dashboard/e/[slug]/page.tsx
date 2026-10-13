@@ -14,6 +14,7 @@ import { getMeetingParticipants } from "@/lib/meeting-roles";
 import EndEventButton from "./EndEventButton";
 import StartEventButton from "@/components/StartEventButton";
 import DeleteEventButton from "./DeleteEventButton";
+import RemoveRoleButton from "./RemoveRoleButton";
 import InviteSpeakers from "./InviteSpeakers";
 import InviteByKingsChat from "./InviteByKingsChat";
 import EditMetadata from "./EditMetadata";
@@ -319,9 +320,12 @@ export default async function EventAdminPage({
                     <div className="text-sm text-slate-200 truncate">{r.label || r.identifier}</div>
                     <div className="text-xs text-slate-500 mt-0.5 font-mono truncate">{r.identifier}</div>
                   </div>
-                  <span className="text-xs px-2.5 py-1 rounded-full bg-slate-800/60 border border-slate-700 text-slate-300 uppercase tracking-wide shrink-0">
-                    {r.role}
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-slate-800/60 border border-slate-700 text-slate-300 uppercase tracking-wide">
+                      {r.role}
+                    </span>
+                    <RemoveRoleButton eventId={ev.id} identifier={r.identifier} role={r.role} />
+                  </div>
                 </li>
               ))}
             </ul>

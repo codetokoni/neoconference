@@ -110,3 +110,44 @@ export async function POST(
     invited,
   });
 }
+
+/**
+ * DELETE /api/events/<id>/invite  body: { identifier: string }
+ *
+ * Takes someone invited by email off the meeting: their entry in the
+ * event's roles list, and any role stored for that address in the roles
+ * hash (src/lib/meeting-roles.ts), so they join next time as everyone
+ * else does. Owner (or a platform admin), as for adding.
+ */
+export async function DELETE(
+  req: Request,
+  ctx: { params: Promise<{ id: string }> }
+) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const { id } = await ctx.params;
+  const ev = await eventStore.byId(id);
+  if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const check = await assertOwnerOrAdmin(ev, userId);
+  if (!check.ok) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+
+  let body: Record<string, unknown> = {};
+  try { body = await req.json(); } catch {}
+  const identifier = String(body.identifier ?? "").trim().toLowerCase();
+  if (!identifier) return NextResponse.json({ error: "missing_identifier" }, { status: 400 });
+
+  const had = (ev.roles || []).some((r) => r.identifier.trim().toLowerCase() === identifier);
+  if (had) {
+    await eventStore.update(ev.id, (prev) => ({
+      ...prev,
+      roles: (prev.roles || []).filter((r) => r.identifier.trim().toLowerCase() !== identifier),
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+  // The same address may also hold a role in the roles hash (a KingsChat
+  // fan-out, or a promotion in the room). Removing that too means the
+  // invite is really gone, not just hidden from this list.
+  const { removeMeetingRole } = await import("@/lib/meeting-roles");
+  await removeMeetingRole(ev.id, isEmail(identifier) ? { emails: [identifier] } : identifier);
+  return NextResponse.json({ ok: true, removed: had });
+}
