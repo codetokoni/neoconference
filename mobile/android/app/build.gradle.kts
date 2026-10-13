@@ -89,6 +89,18 @@ android {
             }
         }
     }
+
+    // One APK for every phone (the LW AppStore takes a single file per
+    // version): `flutter build apk -P armOnly=true` leaves out the x86_64
+    // libraries the WebRTC plugin ships for emulators — 16 MB no phone uses.
+    // Emulator builds don't pass it, so the checks emulator is unaffected.
+    if (project.hasProperty("armOnly")) {
+        packaging {
+            jniLibs {
+                excludes += "lib/x86_64/**"
+            }
+        }
+    }
 }
 
 flutter {
