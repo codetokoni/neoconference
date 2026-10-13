@@ -21,7 +21,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Null when `userId` may share `key`, else the refusal to send. */
-async function refuseShare(key: string, userId: string): Promise<NextResponse | null> {
+async function refuseShare(req: Request, key: string, userId: string): Promise<NextResponse | null> {
   // Only recordings have share links; chat, group and support files do not.
   if (!key.startsWith("recordings/")) {
     return NextResponse.json({ error: "not_shareable", message: "Only recordings can be shared with a link." }, { status: 400 });
@@ -33,6 +33,13 @@ async function refuseShare(key: string, userId: string): Promise<NextResponse | 
     const gate = await authorize(ev, "recording:read");
     if (gate.ok) return null;
   }
+  // An administrator who moderates content (super admin, moderator) may
+  // hand out a link to any recording, from the Recordings page's "All
+  // recordings". Signed in to the admin area with their code; not a fresh
+  // code for every link.
+  const { requireAdmin } = await import("@/lib/admin/context");
+  const admin = await requireAdmin(req, "content:moderate", { readOnly: true });
+  if (admin.ok) return null;
   return NextResponse.json({ error: "forbidden", message: "You can only share your own recordings, or those of a meeting you host." }, { status: 403 });
 }
 
@@ -54,7 +61,7 @@ export async function POST(req: NextRequest) {
   // recorder (their folder), or someone who may read the meeting's
   // recordings (recording:read, the people the meeting's Recordings panel
   // shows them to). Any other key was shareable by any signed-in account.
-  const refused = await refuseShare(key, userId);
+  const refused = await refuseShare(req, key, userId);
   if (refused) return refused;
   const label = typeof body.label === "string" ? body.label.slice(0, 200) : undefined;
   const ttlSeconds = typeof body.ttlSeconds === "number" ? body.ttlSeconds : undefined;
@@ -82,7 +89,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "r2_not_configured" }, { status: 503 });
   }
   try {
-    const downloadUrl = await signGetUrl(rec.key, 300);
+    // Long enough to watch a whole meeting on the share page (seeking asks
+    // again with the same address); the page signs a fresh one each visit.
+    const downloadUrl = await signGetUrl(rec.key, 4 * 3600);
     // Best-effort: count this share resolution.
     recordingAnalytics.bump("shares", rec.key).catch(() => {});
     return NextResponse.json({

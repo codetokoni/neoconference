@@ -195,6 +195,8 @@ export default function RecordingsPage() {
   const [filter, setFilter] = useState('');
   const [tx, setTx] = useState<Record<string, TranscribeState>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // "Copy link": per row, what happened ("copying" | the link copied | an error).
+  const [links, setLinks] = useState<Record<string, { state: 'copying' | 'copied' | 'error'; text: string }>>({});
   // An administrator who can see files (content:read) also gets "All recordings".
   const [canSeeAll, setCanSeeAll] = useState(false);
   const [scope, setScope] = useState<Scope>('mine');
@@ -296,6 +298,34 @@ export default function RecordingsPage() {
         ...s,
         [key]: { status: 'error', error: e instanceof Error ? e.message : 'transcribe failed' },
       }));
+    }
+  }
+
+  /**
+   * A link to the recording anyone can open (/share/<token>), copied. The
+   * row's own download link is signed for an hour, so it is no use to send
+   * to someone; this one works for 30 days.
+   */
+  async function copyLink(key: string) {
+    setLinks((s) => ({ ...s, [key]: { state: 'copying', text: 'Making a link…' } }));
+    try {
+      const res = await fetch('/api/recordings/share', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ key, label: key.split('/').pop() || key, ttlSeconds: 30 * 24 * 3600 }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { share?: { token: string }; message?: string; error?: string };
+      if (!res.ok || !j.share?.token) throw new Error(j.message || j.error || 'Could not make a link.');
+      const url = `${window.location.origin}/share/${j.share.token}`;
+      let copied = true;
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch {
+        copied = false;
+      }
+      setLinks((s) => ({ ...s, [key]: { state: 'copied', text: url + (copied ? '' : ' (copy it from here)') } }));
+    } catch (e: unknown) {
+      setLinks((s) => ({ ...s, [key]: { state: 'error', text: e instanceof Error ? e.message : 'Could not make a link.' } }));
     }
   }
 
@@ -457,6 +487,23 @@ export default function RecordingsPage() {
                           {state.status === 'error' && (
                             <div className="mt-1 text-[10px] text-red-300 max-w-[420px] break-words">{state.error}</div>
                           )}
+                          {links[r.key] && (
+                            <div
+                              role="status"
+                              className={`mt-1 text-[11px] max-w-[420px] break-all ${links[r.key].state === 'error' ? 'text-red-300' : 'text-emerald-200/90'}`}
+                            >
+                              {links[r.key].state === 'copied' ? (
+                                <>
+                                  Link copied · works for 30 days ·{' '}
+                                  <a href={links[r.key].text.split(' ')[0]} target="_blank" rel="noreferrer" className="underline hover:text-emerald-100">
+                                    {links[r.key].text}
+                                  </a>
+                                </>
+                              ) : (
+                                links[r.key].text
+                              )}
+                            </div>
+                          )}
                           {state.status === 'done' && isExpanded && (
                             <div className="mt-3 rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-3 sm:p-4 text-xs sm:text-sm text-white/85 space-y-3 max-w-[640px]">
                               {state.summary && (
@@ -496,6 +543,14 @@ export default function RecordingsPage() {
                               {state.status === 'submitting' ? '…' : state.status === 'queued' ? '✓ Queued' : state.status === 'running' ? '… Running' : state.status === 'done' ? '↻ Re-run' : 'Transcribe'}
                             </button>
                             )}
+                            <button
+                              onClick={() => copyLink(r.key)}
+                              disabled={links[r.key]?.state === 'copying'}
+                              title="Copy a link anyone can open to watch or download this recording (30 days)"
+                              className="inline-flex items-center gap-1 rounded-lg border border-emerald-400/30 bg-emerald-400/10 text-emerald-100 px-2.5 py-1.5 text-[11px] hover:bg-emerald-400/20 transition disabled:opacity-50"
+                            >
+                              {links[r.key]?.state === 'copied' ? '✓ Copied' : 'Copy link'}
+                            </button>
                             <DownloadMenu
                               recordingKey={r.key}
                               videoUrl={r.downloadUrl}

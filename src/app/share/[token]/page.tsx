@@ -1,6 +1,6 @@
 // src/app/share/[token]/page.tsx
 // Public landing page for a recording share link.
-// Resolves the token via /api/recordings/share and offers a download.
+// Resolves the token via /api/recordings/share: watch it here, or download it.
 
 import { errorMessage } from "@/lib/errorMessage";
 import { headers } from "next/headers";
@@ -34,7 +34,7 @@ export default async function SharePage(
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center px-4">
-      <div className="max-w-lg w-full rounded-2xl border border-cyan-400/20 bg-slate-900/60 backdrop-blur-xl p-8 shadow-2xl shadow-cyan-500/10">
+      <div className="max-w-3xl w-full rounded-2xl border border-cyan-400/20 bg-slate-900/60 backdrop-blur-xl p-8 shadow-2xl shadow-cyan-500/10">
         <div className="flex items-center gap-2 mb-6">
           <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
           <span className="text-xs uppercase tracking-[0.3em] text-cyan-300">NeoConference</span>
@@ -50,6 +50,15 @@ export default async function SharePage(
                 ? `Link expires ${new Date(result.expiresAt).toLocaleString()}`
                 : "Limited-time download"}
             </p>
+            {/* Watch it here: the signed address lasts 4 hours, long enough
+                for a long meeting to play to the end and be seeked. */}
+            <video
+              controls
+              playsInline
+              preload="metadata"
+              src={result.downloadUrl}
+              className="w-full rounded-xl bg-black mb-4 aspect-video"
+            />
             <a
               href={result.downloadUrl}
               download
@@ -58,7 +67,7 @@ export default async function SharePage(
               Download recording
             </a>
             <p className="text-[11px] text-slate-500 mt-4">
-              The download URL is signed and expires in a few minutes for your security.
+              Opening this page again gives a fresh video address; it lasts 4 hours.
             </p>
             <div className="mt-4 flex justify-end">
               <ReportContentButton targetType="share" target={token} />
