@@ -200,13 +200,19 @@ export default function RecordingsPage() {
   // An administrator who can see files (content:read) also gets "All recordings".
   const [canSeeAll, setCanSeeAll] = useState(false);
   const [scope, setScope] = useState<Scope>('mine');
+  // An admin who can see everything lands on "All recordings" unless they
+  // have already picked a tab (they read "Mine" as all there was).
+  const picked = useRef(false);
 
   useEffect(() => {
     let alive = true;
     fetch('/api/admin/me', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((j: { admin?: { permissions?: string[] } } | null) => {
-        if (alive && j?.admin?.permissions?.includes('content:read')) setCanSeeAll(true);
+        if (alive && j?.admin?.permissions?.includes('content:read')) {
+          setCanSeeAll(true);
+          if (!picked.current) setScope('all');
+        }
       })
       .catch(() => {});
     return () => {
@@ -379,7 +385,10 @@ export default function RecordingsPage() {
                     key={s}
                     role="tab"
                     aria-selected={scope === s}
-                    onClick={() => setScope(s)}
+                    onClick={() => {
+                      picked.current = true;
+                      setScope(s);
+                    }}
                     className={`rounded-lg px-3 py-1.5 transition ${scope === s ? 'bg-cyan-400/20 text-cyan-100' : 'text-white/60 hover:text-white'}`}
                   >
                     {s === 'mine' ? 'Mine' : 'All recordings (admin)'}

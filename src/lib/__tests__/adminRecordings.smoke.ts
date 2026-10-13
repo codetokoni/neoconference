@@ -217,11 +217,26 @@ async function main() {
     assert.ok(days > 29.9 && days <= 30, String(days));
   });
 
-  await t("the super admin can copy a link to anyone's recording, and to a room's", async () => {
+  await t("the super admin can copy a link to anyone's recording, and to a room's — each one audited", async () => {
+    const { listAdminAudit } = await import("../admin/audit");
+    const audited = async () => (await listAdminAudit({ action: "content.share_link" })).items;
+    const before = (await audited()).length;
     for (const key of ["recordings/user_bob/standup/2026-10-05-12-00-00.mp4", "recordings/lmm/2026-10-09-12-00-00.mp4"]) {
       const r = await shareLink("user_owner", key);
       assert.equal(r.status, 200, `${key}: ${JSON.stringify(r.body)}`);
     }
+    const items = await audited();
+    assert.equal(items.length, before + 2);
+    assert.deepEqual(
+      items.slice(0, 2).map((e) => `${e.actorEmail} ${e.targetId}`).sort(),
+      [
+        "owner@example.com recordings/lmm/2026-10-09-12-00-00.mp4",
+        "owner@example.com recordings/user_bob/standup/2026-10-05-12-00-00.mp4",
+      ],
+    );
+    // A link to their own recording is theirs to make: not an admin action.
+    await shareLink("user_owner", "recordings/user_owner/hsmanagers/2026-10-12-12-00-00.mp4");
+    assert.equal((await audited()).length, before + 2);
   });
 
   await t("someone else's recording: not for another user, nor an admin who doesn't moderate content", async () => {

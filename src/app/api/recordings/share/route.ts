@@ -20,8 +20,14 @@ import { slugFromRecordingKey, userPrefix } from "@/lib/eventRecordings";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Null when `userId` may share `key`, else the refusal to send. */
-async function refuseShare(req: Request, key: string, userId: string): Promise<NextResponse | null> {
+type AdminCtx = import("@/lib/admin/context").AdminContext;
+
+/**
+ * Null when `userId` may share `key` as its recorder or a host of its
+ * meeting; `{ admin }` when only their admin role allows it (the link is
+ * then audited); else the refusal to send.
+ */
+async function refuseShare(req: Request, key: string, userId: string): Promise<NextResponse | { admin: AdminCtx } | null> {
   // Only recordings have share links; chat, group and support files do not.
   if (!key.startsWith("recordings/")) {
     return NextResponse.json({ error: "not_shareable", message: "Only recordings can be shared with a link." }, { status: 400 });
@@ -39,7 +45,7 @@ async function refuseShare(req: Request, key: string, userId: string): Promise<N
   // code for every link.
   const { requireAdmin } = await import("@/lib/admin/context");
   const admin = await requireAdmin(req, "content:moderate", { readOnly: true });
-  if (admin.ok) return null;
+  if (admin.ok) return { admin: admin.ctx };
   return NextResponse.json({ error: "forbidden", message: "You can only share your own recordings, or those of a meeting you host." }, { status: 403 });
 }
 
@@ -62,12 +68,26 @@ export async function POST(req: NextRequest) {
   // recordings (recording:read, the people the meeting's Recordings panel
   // shows them to). Any other key was shareable by any signed-in account.
   const refused = await refuseShare(req, key, userId);
-  if (refused) return refused;
+  if (refused instanceof NextResponse) return refused;
   const label = typeof body.label === "string" ? body.label.slice(0, 200) : undefined;
   const ttlSeconds = typeof body.ttlSeconds === "number" ? body.ttlSeconds : undefined;
   const rec = await shareStore.create({ key, ownerUserId: userId, label, ttlSeconds });
   // The admin file index (Content): anyone with the link can download it now.
   await markShared(key);
+  // An administrator publishing someone else's recording without a
+  // support session on its owner: on the admin audit log, like opening it.
+  if (refused?.admin) {
+    const { actorOf } = await import("@/lib/admin/context");
+    const { recordAdminAction } = await import("@/lib/admin/audit");
+    await recordAdminAction(actorOf(refused.admin), req, {
+      action: "content.share_link",
+      targetType: "file",
+      targetId: key,
+      targetLabel: key.split("/").pop() || key,
+      after: { expiresAt: new Date(rec.expiresAt).toISOString() },
+      note: "Share link made from the admin role (anyone with the link can watch and download).",
+    });
+  }
   return NextResponse.json({ ok: true, share: rec });
 }
 
