@@ -1,7 +1,8 @@
 // src/app/api/translate/route.ts
 //
 // POST /api/translate
-// Body: { text: string, targetLang: string, sourceLang?: string }
+// Body: { text: string, targetLang: string, sourceLang?: string, room?: string }
+// Response when the meeting's plan has no translation: 402 { error: "translation_needs_pro" }
 // Response on success: 200 { translated: string, sourceLang?: string }
 // Response on missing key: 503 { error: "translation_not_configured" }
 // Response on bad input: 400 { error: string }
@@ -22,6 +23,11 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { deeplTarget } from "@/lib/translationLanguages";
 import { activity } from "@/lib/activity";
+import { translationAllowedFor } from "@/lib/translationGate";
+
+// Who has translated without saying which meeting, logged once each per
+// instance: an app sends one request per caption.
+const noRoomLogged = new Set<string>();
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,6 +43,8 @@ interface Body {
   text?: unknown;
   targetLang?: unknown;
   sourceLang?: unknown;
+  /** The meeting (its slug / LiveKit room): its owner's plan decides. */
+  room?: unknown;
 }
 
 const bad = (code: string, status = 400) =>
@@ -65,6 +73,28 @@ export async function POST(req: Request) {
   // Hard cap per call — a single caption should never be longer than
   // this. Prevents abuse of the endpoint as a general translator.
   if (text.length > 2000) return bad("text_too_long");
+
+  // Live translation is on the Pro plan and above, by the meeting owner's
+  // plan (src/lib/translationGate.ts). The web room and app 1.2.5 say
+  // which meeting; app 1.2.4 and older do not, and are let through (and
+  // counted in the log) until they are replaced — refusing them would stop
+  // translation in Pro meetings too.
+  const room = typeof body.room === "string" ? body.room.trim().slice(0, 64) : "";
+  if (room) {
+    const gate = await translationAllowedFor(room);
+    if (!gate.allowed) {
+      return NextResponse.json(
+        {
+          error: "translation_needs_pro",
+          message: "Live translation is on the Pro plan and above. The meeting's owner can upgrade at neoconference.app/pricing.",
+        },
+        { status: 402 },
+      );
+    }
+  } else if (!noRoomLogged.has(userId)) {
+    noRoomLogged.add(userId);
+    console.info("[translate] no room given (older app)", JSON.stringify({ userId }));
+  }
 
   // DeepL's free tier uses api-free.deepl.com; paid tier uses api.deepl.com.
   // Free keys end in ":fx". Detect and route accordingly.

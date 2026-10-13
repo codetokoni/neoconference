@@ -276,6 +276,7 @@ class RoomState {
     this.isOwner = false,
     this.recordingAllowed = true,
     this.streamingAllowed = true,
+    this.translationAllowed = true,
     this.liveStream,
     this.liveOn,
     this.mediaRequest,
@@ -425,6 +426,9 @@ class RoomState {
   /// the plan is known; the server refuses it anyway.
   final bool streamingAllowed;
 
+  /// Live translation is on the meeting owner's plan (Pro and above).
+  final bool translationAllowed;
+
   /// The livestream this host is running, as the server last reported it.
   final LiveStreamView? liveStream;
 
@@ -507,6 +511,7 @@ class RoomState {
     bool? isOwner,
     bool? recordingAllowed,
     bool? streamingAllowed,
+    bool? translationAllowed,
     LiveStreamView? liveStream,
     bool clearLiveStream = false,
     String? liveOn,
@@ -576,6 +581,7 @@ class RoomState {
         isOwner: isOwner ?? this.isOwner,
         recordingAllowed: recordingAllowed ?? this.recordingAllowed,
         streamingAllowed: streamingAllowed ?? this.streamingAllowed,
+        translationAllowed: translationAllowed ?? this.translationAllowed,
         liveStream: clearLiveStream ? null : (liveStream ?? this.liveStream),
         liveOn: clearLiveOn ? null : (liveOn ?? this.liveOn),
         mediaRequest: clearMediaRequest ? null : (mediaRequest ?? this.mediaRequest),
@@ -1062,7 +1068,11 @@ class RoomController extends StateNotifier<RoomState> {
     // 120), counted from joining as the web counts it.
     final limits = MeetingPlanLimits.fromMetadata(room.localParticipant?.metadata);
     if (limits != null) {
-      state = state.copyWith(recordingAllowed: limits.recording, streamingAllowed: limits.livestream);
+      state = state.copyWith(
+        recordingAllowed: limits.recording,
+        streamingAllowed: limits.livestream,
+        translationAllowed: limits.translation,
+      );
       // A host rejoining a meeting that is already going out sees it so.
       if (state.canManage) unawaited(refreshStream());
       _timeLimit.start(limits.meetingMinutes);
@@ -1474,6 +1484,8 @@ class RoomController extends StateNotifier<RoomState> {
       final body = await api.post('/api/translate', {
         'text': text,
         'targetLang': target,
+        // Whose meeting it is decides whether it may be translated.
+        'room': slug,
       });
       if (_disposed || state.translateTo != target) return;
       final translated = (body is Map ? body['translated'] : null) as String?;
@@ -1488,6 +1500,19 @@ class RoomController extends StateNotifier<RoomState> {
       // 503 means the server has no DeepL key; that is a deployment fact
       // rather than a transient failure, and repeating the attempt on
       // every caption would just burn requests.
+      if (e.code == 'translation_needs_pro') {
+        // The meeting's plan has no translation: stop asking, and say so.
+        state = state.copyWith(
+          translationAllowed: false,
+          translateTo: null,
+          clearTranslation: true,
+          clearTranslatedCaption: true,
+          translationError: proTranslationNote,
+        );
+        unawaited(_voice.stop());
+        unawaited(_applyOriginalVolume());
+        return;
+      }
       state = state.copyWith(
         translationError: e.code == 'translation_not_configured'
             ? 'Translation is not switched on for this deployment.'
@@ -1504,6 +1529,10 @@ class RoomController extends StateNotifier<RoomState> {
   /// A host choosing one turns captions on if they are off, as the web
   /// does: there is nothing to translate without them.
   void setTranslation(String? language) {
+    if (language != null && !state.translationAllowed) {
+      state = state.copyWith(translationError: proTranslationNote);
+      return;
+    }
     state = state.copyWith(
       translateTo: language,
       clearTranslation: language == null,

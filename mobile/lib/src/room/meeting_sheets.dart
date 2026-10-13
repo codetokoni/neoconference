@@ -9,6 +9,7 @@ import '../events/languages.dart';
 import '../meetings/meeting_links.dart';
 import '../meetings/room_view.dart' show wireRoleLabel;
 import '../meetings/meeting_share.dart';
+import 'plan_limit.dart';
 import 'room_controller.dart';
 import 'translation_voice.dart' show phoneVoices;
 
@@ -188,6 +189,10 @@ class TranslationSheet extends ConsumerWidget {
                     'captioned, translated, and read aloud to you.',
                     style: text.bodySmall?.copyWith(color: p.textMuted),
                   ),
+                  if (!state.translationAllowed) ...[
+                    const SizedBox(height: NeoSpace.sm),
+                    Text(proTranslationNote, style: text.bodyMedium?.copyWith(color: p.warning)),
+                  ],
                 ],
               ),
             ),

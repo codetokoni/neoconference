@@ -30,7 +30,7 @@ export default async function Home() {
                 <span className="absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75 animate-ping" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-300" />
               </span>
-              Live translation for every meeting
+              Live translation in 100+ languages
             </div>
 
             <h1 className="mt-6 text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05]">
@@ -189,7 +189,7 @@ export default async function Home() {
                 <Step n={3}>Listen. The translation is spoken aloud; in the NeoConference app it is shown on screen too.</Step>
               </ol>
               <p className="mt-6 text-xs text-cyan-100/45">
-                Works in the browser and in the NeoConference app for Android.
+                Works in the browser and in the NeoConference app for Android, in meetings on the Pro plan and above.
               </p>
             </div>
 
