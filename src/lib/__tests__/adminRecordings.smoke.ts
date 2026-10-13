@@ -15,6 +15,10 @@ import "./apiV1-stubs/install";
 process.env.CLERK_SECRET_KEY = "sk_test_admin_recordings";
 process.env.PLATFORM_OWNER_EMAILS = "owner@example.com";
 process.env.ADMIN_EMAILS = "";
+// KV "configured": every store (share links among them) runs its KV code
+// against the in-memory Redis.
+process.env.KV_REST_API_URL = "https://kv.invalid";
+process.env.KV_REST_API_TOKEN = "stub";
 process.env.S3_ENDPOINT = "https://r2.test";
 process.env.S3_BUCKET = "bucket";
 process.env.S3_ACCESS_KEY = "ak";
@@ -79,6 +83,7 @@ async function main() {
     confirm: await import("../../app/api/admin/mfa/confirm/route"),
     recordings: await import("../../app/api/recordings/route"),
     transcript: await import("../../app/api/recordings/transcript/route"),
+    share: await import("../../app/api/recordings/share/route"),
   };
   const { NextRequest } = await import("next/server");
 
@@ -197,6 +202,40 @@ async function main() {
     assert.equal(alice.status, 403);
     const billing = await call("user_billing", R.transcript.GET as never, { query: "?key=" + encodeURIComponent(key) });
     assert.equal(billing.status, 403);
+  });
+
+  console.log("copy link");
+  const shareLink = (who: string | null, key: string) =>
+    call(who, R.share.POST as never, { method: "POST", body: { key, ttlSeconds: 30 * 24 * 3600 } });
+
+  await t("Copy link on your own recording: a link that lasts 30 days", async () => {
+    const r = await shareLink("user_alice", "recordings/user_alice/sunday/2026-10-01-12-00-00.mp4");
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const share = r.body.share as { token: string; expiresAt: number };
+    assert.ok(share.token);
+    const days = (share.expiresAt - Date.now()) / (24 * 3600 * 1000);
+    assert.ok(days > 29.9 && days <= 30, String(days));
+  });
+
+  await t("the super admin can copy a link to anyone's recording, and to a room's", async () => {
+    for (const key of ["recordings/user_bob/standup/2026-10-05-12-00-00.mp4", "recordings/lmm/2026-10-09-12-00-00.mp4"]) {
+      const r = await shareLink("user_owner", key);
+      assert.equal(r.status, 200, `${key}: ${JSON.stringify(r.body)}`);
+    }
+  });
+
+  await t("someone else's recording: not for another user, nor an admin who doesn't moderate content", async () => {
+    const key = "recordings/user_bob/standup/2026-10-05-12-00-00.mp4";
+    assert.equal((await shareLink("user_alice", key)).status, 403);
+    assert.equal((await shareLink("user_billing", key)).status, 403);
+  });
+
+  await t("the link opens for anyone, signed in or not, with a video address good for watching (4 h)", async () => {
+    const made = await shareLink("user_owner", "recordings/lmm/2026-10-09-12-00-00.mp4");
+    const token = (made.body.share as { token: string }).token;
+    const open = await call(null, R.share.GET as never, { query: `?token=${token}` });
+    assert.equal(open.status, 200, JSON.stringify(open.body));
+    assert.equal(open.body.downloadUrl, "https://signed.test/recordings/lmm/2026-10-09-12-00-00.mp4?expires=14400");
   });
 
   await t("a room's recording with no recorder in its path is filed as a recording", async () => {
