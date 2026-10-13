@@ -120,7 +120,20 @@ export default function LiveTranslation() {
   // latest value without needing to be in the dep array (which
   // would tear down and rebuild the RoomEvent listener on every
   // toggle).
-  const { isMicrophoneEnabled } = useLocalParticipant();
+  const { isMicrophoneEnabled, localParticipant } = useLocalParticipant();
+  // Live translation is on the Pro plan and above, by the meeting owner's
+  // plan. The token says so (planLimits.translation); the server refuses
+  // anyway (/api/translate with the room). Shown as a note, not a broken
+  // menu.
+  const [translationAllowed, setTranslationAllowed] = useState(true);
+  useEffect(() => {
+    try {
+      const md = JSON.parse(localParticipant?.metadata || '{}') as { planLimits?: { translation?: boolean } };
+      if (typeof md.planLimits?.translation === 'boolean') setTranslationAllowed(md.planLimits.translation);
+    } catch {
+      // Malformed metadata: leave it to the server.
+    }
+  }, [localParticipant?.metadata]);
   const micOnRef = useRef(false);
   useEffect(() => {
     micOnRef.current = Boolean(isMicrophoneEnabled);
@@ -487,6 +500,8 @@ export default function LiveTranslation() {
               text,
               targetLang,
               sourceLang: sourceShort || undefined,
+              // Whose meeting it is decides whether it may be translated.
+              room: room.name || undefined,
             }),
           });
           if (!res.ok) {
@@ -495,6 +510,12 @@ export default function LiveTranslation() {
             const humanized = describeError(code, res.status);
             bumpDiag({ lastError: humanized });
             console.warn('[live-translation] translate failed', res.status, body);
+            if (res.status === 402) {
+              // The meeting's plan does not include translation: stop, and
+              // show it as such rather than as a failure.
+              setTranslationAllowed(false);
+              return;
+            }
             if (res.status === 503) {
               // No point retrying — key isn't configured. Stop until
               // the user changes target (which resets diagnostics).
@@ -573,7 +594,38 @@ export default function LiveTranslation() {
     window.speechSynthesis.speak(utt);
   }, [targetLang, voice]);
 
-  const popover = open && typeof document !== 'undefined' ? createPortal(
+  const popover = open && typeof document !== 'undefined' && !translationAllowed ? createPortal(
+    <div
+      ref={attachPopover}
+      role="dialog"
+      aria-label="Live translation"
+      style={{
+        position: 'fixed',
+        top: computePopoverTop(buttonRef.current),
+        left: computePopoverLeft(buttonRef.current),
+        width: 260,
+        padding: 14,
+        borderRadius: 12,
+        background: 'rgba(11,16,32,0.98)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+        zIndex: 200,
+        fontSize: 13,
+        lineHeight: 1.45,
+        color: 'rgba(255,255,255,0.85)',
+      }}
+    >
+      <div style={{ fontWeight: 600, color: '#fff', marginBottom: 6 }}>Live translation is a Pro feature</div>
+      <div>
+        This meeting&apos;s plan does not include live translation. Its owner can upgrade to Pro or above at{' '}
+        <a href="/pricing" target="_blank" rel="noreferrer" style={{ color: '#67e8f9', textDecoration: 'underline' }}>
+          neoconference.app/pricing
+        </a>
+        .
+      </div>
+    </div>,
+    document.body,
+  ) : open && typeof document !== 'undefined' ? createPortal(
     <div
       ref={attachPopover}
       role="menu"

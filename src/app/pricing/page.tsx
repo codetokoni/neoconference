@@ -30,7 +30,7 @@ export default function PricingPage() {
           </h1>
           <p className="mt-6 text-lg text-cyan-100/70">
             Free forever for quick chats. Upgrade for longer meetings, bigger rooms and recording.
-            Live translation is on every plan.
+            Live translation is on Pro and above.
           </p>
           <p className="mt-2 text-xs text-cyan-100/50">
             Billing is per host. Guests join free.

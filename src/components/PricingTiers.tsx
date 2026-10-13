@@ -73,10 +73,10 @@ function planLimitFeatures(l: PlanLimits): { label: string; included: boolean }[
     { label: lifetimeLabel, included: true },
     { label: recordingLabel, included: l.recording },
     { label: "Breakout rooms", included: l.breakouts },
-    // Live translation itself is on every plan (Free lists it); what the
-    // plan decides is whether a meeting can be created with its languages
-    // chosen in advance (the create route checks planLimits.translation).
-    { label: "Choose a meeting's translation languages", included: l.translation },
+    // Live translation is on Pro and above, by the meeting owner's plan:
+    // /api/translate refuses it for a meeting whose owner's plan lacks
+    // planLimits.translation, and creating a meeting with languages does too.
+    { label: "Live translation — hear speakers in your language", included: l.translation },
     { label: "Livestream to RTMP / YouTube / Facebook / Twitch", included: l.livestream },
   ];
 }
@@ -92,7 +92,6 @@ const TIERS: Tier[] = [
     extraFeatures: [
       { label: "HD video & crystal-clear audio", included: true },
       { label: "Live captions", included: true },
-      { label: "Live translation — hear speakers in your language", included: true },
       { label: "Polls, chat, reactions, raise hand", included: true },
       { label: "Waiting room", included: true },
       { label: "Community support", included: true },

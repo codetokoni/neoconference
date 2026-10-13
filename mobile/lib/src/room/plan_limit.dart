@@ -14,7 +14,7 @@ import 'meeting_drop.dart';
 /// owner's plan, never the joiner's.
 @immutable
 class MeetingPlanLimits {
-  const MeetingPlanLimits({required this.meetingMinutes, required this.recording, this.livestream = false});
+  const MeetingPlanLimits({required this.meetingMinutes, required this.recording, this.livestream = false, this.translation = true});
 
   /// 0 means no limit, as in planLimits.ts.
   final int meetingMinutes;
@@ -22,6 +22,10 @@ class MeetingPlanLimits {
 
   /// Go Live to YouTube, Facebook, Twitch or RTMP: Enterprise.
   final bool livestream;
+
+  /// Live translation: Pro and above. True when an older token does not
+  /// say; the server refuses anyway (/api/translate with the room).
+  final bool translation;
 
   /// Null when the metadata says nothing about the plan (an older token);
   /// the server still enforces recording either way.
@@ -36,6 +40,7 @@ class MeetingPlanLimits {
         meetingMinutes: minutes is num && minutes > 0 ? minutes.toInt() : 0,
         recording: limits['recording'] == true,
         livestream: limits['livestream'] == true,
+        translation: limits['translation'] != false,
       );
     } catch (_) {
       return null;
@@ -91,3 +96,8 @@ class MeetingTimeLimit {
     _timers.clear();
   }
 }
+
+/// What a listener is told when the meeting's plan has no live translation.
+const proTranslationNote =
+    "Live translation is on the Pro plan and above. This meeting's owner "
+    'can upgrade at neoconference.app/pricing.';
