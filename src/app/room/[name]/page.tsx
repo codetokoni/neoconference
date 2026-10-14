@@ -2,6 +2,8 @@
 
 import { errorMessage } from "@/lib/errorMessage";
 import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { createPortal } from "react-dom";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import {
@@ -533,6 +535,10 @@ function RenameUrlButton({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const inputId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // Escape is handled on the dialog itself, below. The trap also puts focus
+  // in the slug field, its first control.
+  useFocusTrap(dialogRef, open);
   if (roomRole !== "host" || !eventSlug) return null;
   const submit = async () => {
     const cleaned = (next || "").trim().toLowerCase();
@@ -578,6 +584,8 @@ function RenameUrlButton({
       </button>
       {open && (
         <div
+          ref={dialogRef}
+          tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-label="Rename meeting URL"
@@ -597,6 +605,7 @@ function RenameUrlButton({
             backdropFilter: "blur(6px)",
             WebkitBackdropFilter: "blur(6px)",
             padding: 16,
+            outline: "none",
           }}
         >
           <div
@@ -625,7 +634,6 @@ function RenameUrlButton({
               }}
               placeholder="my-meeting"
               className="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-sm text-white outline-none focus:border-cyan-300 focus:ring-2 focus:ring-cyan-300/70"
-              autoFocus
             />
             {err && (
               <div className="text-[12px] text-rose-300 mt-2">{err}</div>
@@ -672,6 +680,12 @@ function RoomContainer({
   onLeave: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // Where room-wide overlays that are rendered from inside the toolbar
+  // (the recording indicators) portal to. The toolbar's transform makes it
+  // the containing block of anything absolutely positioned inside it, and
+  // its opacity and phone-size clipping apply to those children too.
+  const [shellEl, setShellEl] = useState<HTMLDivElement | null>(null);
+  useEffect(() => setShellEl(containerRef.current), []);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showChat, setShowChat] = useState(false); const [showWhiteboard, setShowWhiteboard] = useState(false); const [showPolls, setShowPolls] = useState(false); const [showBackgroundPicker, setShowBackgroundPicker] = useState(false); const [showParticipants, setShowParticipants] = useState(false); const [showWaitingRoom, setShowWaitingRoom] = useState(false); const [showTimer, setShowTimer] = useState(false);
@@ -903,7 +917,8 @@ function RoomContainer({
       ref={containerRef}
       data-lk-theme="default"
       data-hide-self={hideSelf ? "true" : "false"}
-      style={{ height: "calc(100vh - 65px)", position: "relative" }}
+      className="room-shell"
+      style={{ position: "relative" }}
     >
       <LiveKitRoom
         serverUrl={wsUrl}
@@ -1105,7 +1120,7 @@ function RoomContainer({
               stay mounted for all roles and gate the toolbar buttons
               internally on roomRole === 'host'. */}
           <ParticipantCountBadge />
-          <RecordingControls roomName={roomName} roomRole={roomRole} />
+          <RecordingControls roomName={roomName} roomRole={roomRole} overlayHost={shellEl} />
           <GoLiveButton roomName={roomName} eventSlug={eventSlug} roomRole={roomRole} />
           <EndMeetingButton slug={eventSlug} roomRole={roomRole} endPinRequired={endPinRequired} />
         </div>
@@ -1269,7 +1284,17 @@ function InitialsOverlay() {
  * participants over the LiveKit data channel so everyone sees a red REC
  * banner while it's running.
  */
-function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole: string | null }) {
+function RecordingControls({
+  roomName,
+  roomRole,
+  overlayHost,
+}: {
+  roomName: string;
+  roomRole: string | null;
+  /** The room shell. The REC indicators and the toast portal there: this
+   *  component sits inside the toolbar, which would hide and clip them. */
+  overlayHost: HTMLElement | null;
+}) {
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
 
@@ -1341,8 +1366,8 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
 
   // Brief "Recording started" flash shown to non-hosts on the false→true
   // transition. Hosts keep the full persistent REC banner; non-hosts get a
-  // 3.5s flash + a discreet always-on red dot (privacy notice). Mid-recording
-  // joiners only see the dot — the data-channel message isn't replayed, so
+  // 3.5s flash + a small always-on REC pill (privacy notice). Mid-recording
+  // joiners only see the pill — the data-channel message isn't replayed, so
   // they won't get the flash. Acceptable trade-off; see PR for follow-up.
   const [showStartFlash, setShowStartFlash] = useState(false);
   const wasRecordingRef = useRef(false);
@@ -1515,15 +1540,18 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
     }
   };
 
-  return (
+  // Portalled to the room shell (see overlayHost). Vertical position comes
+  // from initials-overlay.css: below the toolbar where it shows, at the top
+  // where it folds into the More menu.
+  const overlays = (
     <>
       {/* Host/cohost: full persistent REC banner with live timer */}
       {isHost && isRecording && (
         <div
           data-room-chrome="true"
+          className="nc-rec-banner"
           style={{
             position: "absolute",
-            top: 8,
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 11,
@@ -1541,13 +1569,14 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
           }}
         >
           <span
+            className="nc-rec-pulse"
+            aria-hidden
             style={{
               width: 8,
               height: 8,
               borderRadius: "50%",
               background: "#fff",
               boxShadow: "0 0 6px #fff",
-              animation: "lk-rec-pulse 1.2s ease-in-out infinite",
             }}
           />
           REC          {recordingElapsed ? (
@@ -1568,11 +1597,11 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
       {!isHost && isRecording && (
         <div
           data-room-chrome="true"
+          className="nc-rec-flash"
           role="status"
           aria-live="polite"
           style={{
             position: "absolute",
-            top: 48,
             left: "50%",
             transform: "translateX(-50%)",
             zIndex: 11,
@@ -1598,70 +1627,58 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
           }}
         >
           <span
+            className="nc-rec-soft-pulse"
+            aria-hidden
             style={{
               width: 8,
               height: 8,
               borderRadius: "50%",
               background: "#ef4444",
               boxShadow: "0 0 6px rgba(239,68,68,0.7)",
-              animation: "lk-rec-soft-pulse 2s ease-in-out infinite",
             }}
           />
           Recording started
         </div>
       )}
 
-      {/* Non-host: persistent discreet red dot for continuous privacy notice */}
+      {/* Non-host: persistent small REC pill, the continuous privacy notice.
+          Where the hosts' banner sits, so "recording" has one place for
+          everyone. A word, not only a red dot, and one screen readers can
+          find; the flash above is what announces the start. */}
       {!isHost && isRecording && (
         <div
           data-room-chrome="true"
+          className="nc-rec-banner"
+          role="img"
           aria-label="Recording in progress"
           title="Recording in progress"
           style={{
             position: "absolute",
-            top: 14,
-            right: 14,
+            left: "50%",
+            transform: "translateX(-50%)",
             zIndex: 11,
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            background: "#ef4444",
-            boxShadow: "0 0 6px rgba(239,68,68,0.7)",
-            animation: "lk-rec-soft-pulse 2s ease-in-out infinite",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            padding: "2px 8px",
+            borderRadius: 999,
+            background: "rgba(220, 38, 38, 0.95)",
+            color: "#fff",
+            fontSize: 11,
+            fontWeight: 700,
+            lineHeight: "16px",
+            letterSpacing: 0.5,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
             pointerEvents: "none",
           }}
-        />
-      )}
-
-      {/* Record button — sits in the room toolbar cluster 4 alongside Go Live.
-          FRS §2: gated to owner+host only (roomRole === 'host' after the
-          wire-format collapse in toLegacyRole). Moderators (cohost) still
-          see the passive REC banner above but no start/stop control. */}
-      {roomRole === 'host' && (
-        <button
-          type="button"
-          data-room-chrome="true"
-          onClick={egressId ? stop : start}
-          disabled={busy || recordingElsewhere || finishing}
-          title={egressId ? "Stop recording" : finishing ? "Saving the recording…" : recordingElsewhere ? "Being recorded from another device" : "Start recording"}
-          className={
-            (egressId
-              ? "inline-flex items-center gap-1.5 rounded-lg border border-red-500 bg-red-600/90 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-500 active:scale-[0.98] transition"
-              : "inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-white/10 hover:border-white/25 active:scale-[0.98] transition") +
-            (busy ? " opacity-60 cursor-wait" : "")
-          }
         >
-          {/* One icon slot and one width for every state, so starting or
-              stopping doesn't shift the toolbar under the pointer. */}
           <span
-            className={"inline-block h-2 w-2 " + (egressId && !busy ? "bg-white" : "rounded-full bg-red-500")}
+            className="nc-rec-soft-pulse"
             aria-hidden
+            style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff" }}
           />
-          <StableLabel
-            label={busy ? "…" : egressId ? "Stop recording" : finishing ? "Saving…" : recordingElsewhere ? "Recording…" : "Record"}
-            longest="Stop recording"
-          />
-        </button>
+          <span aria-hidden>REC</span>
+        </div>
       )}
 
       {/* Toast (e.g. download URL) */}
@@ -1712,12 +1729,43 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
           </button>
         </div>
       )}
+    </>
+  );
 
-      {/* Pulse keyframes */}
-      <style>{`
-        @keyframes lk-rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-        @keyframes lk-rec-soft-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
-      `}</style>
+  return (
+    <>
+      {overlayHost && createPortal(overlays, overlayHost)}
+
+      {/* Record button — sits in the room toolbar cluster 4 alongside Go Live.
+          FRS §2: gated to owner+host only (roomRole === 'host' after the
+          wire-format collapse in toLegacyRole). Moderators (cohost) still
+          see the passive REC banner above but no start/stop control. */}
+      {roomRole === 'host' && (
+        <button
+          type="button"
+          data-room-chrome="true"
+          onClick={egressId ? stop : start}
+          disabled={busy || recordingElsewhere || finishing}
+          title={egressId ? "Stop recording" : finishing ? "Saving the recording…" : recordingElsewhere ? "Being recorded from another device" : "Start recording"}
+          className={
+            (egressId
+              ? "inline-flex items-center gap-1.5 rounded-lg border border-red-500 bg-red-600/90 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-500 active:scale-[0.98] transition"
+              : "inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-white/10 hover:border-white/25 active:scale-[0.98] transition") +
+            (busy ? " opacity-60 cursor-wait" : "")
+          }
+        >
+          {/* One icon slot and one width for every state, so starting or
+              stopping doesn't shift the toolbar under the pointer. */}
+          <span
+            className={"inline-block h-2 w-2 " + (egressId && !busy ? "bg-white" : "rounded-full bg-red-500")}
+            aria-hidden
+          />
+          <StableLabel
+            label={busy ? "…" : egressId ? "Stop recording" : finishing ? "Saving…" : recordingElsewhere ? "Recording…" : "Record"}
+            longest="Stop recording"
+          />
+        </button>
+      )}
     </>
   );
 }
@@ -1744,6 +1792,7 @@ function BackgroundPickerPanel({
   const [customDataUrl, setCustomDataUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(cardRef, open, onClose);
 
   // Restore saved background on mount (once local participant is available).
   useEffect(() => {
@@ -1838,10 +1887,11 @@ function BackgroundPickerPanel({
       <div
         ref={cardRef}
         onClick={(e) => e.stopPropagation()}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="bg-picker-title"
-        className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1020]/95 p-6 md:p-8 backdrop-blur-xl shadow-[0_0_80px_-20px_rgba(168,85,247,0.45)]"
+        className="outline-none w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1020]/95 p-6 md:p-8 backdrop-blur-xl shadow-[0_0_80px_-20px_rgba(168,85,247,0.45)]"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -1866,6 +1916,7 @@ function BackgroundPickerPanel({
           <button
             type="button"
             onClick={() => handleSelect({ type: "none" })}
+            aria-pressed={isActive({ type: "none" })}
             className={tileBase + " bg-gradient-to-br from-slate-800/40 to-slate-900/60 text-white/70 hover:bg-white/10" + ring(isActive({ type: "none" }))}
           >
             None
@@ -1874,6 +1925,7 @@ function BackgroundPickerPanel({
           <button
             type="button"
             onClick={() => handleSelect({ type: "blur" })}
+            aria-pressed={isActive({ type: "blur" })}
             className={tileBase + " bg-gradient-to-br from-slate-700/40 to-slate-900/40 text-white/70 hover:from-slate-700/60 hover:to-slate-900/60" + ring(isActive({ type: "blur" }))}
             style={{ backdropFilter: "blur(4px)" }}
           >
@@ -1883,6 +1935,7 @@ function BackgroundPickerPanel({
           <button
             type="button"
             onClick={() => handleSelect({ type: "preset", key: "office" })}
+            aria-pressed={isActive({ type: "preset", key: "office" })}
             className={tileBase + " bg-cover bg-center text-white hover:opacity-90" + ring(isActive({ type: "preset", key: "office" }))}
             style={{ backgroundImage: "url('/backgrounds/office.jpg')" }}
           >
@@ -1892,6 +1945,7 @@ function BackgroundPickerPanel({
           <button
             type="button"
             onClick={() => handleSelect({ type: "preset", key: "library" })}
+            aria-pressed={isActive({ type: "preset", key: "library" })}
             className={tileBase + " bg-cover bg-center text-white hover:opacity-90" + ring(isActive({ type: "preset", key: "library" }))}
             style={{ backgroundImage: "url('/backgrounds/library.jpg')" }}
           >
@@ -1901,6 +1955,7 @@ function BackgroundPickerPanel({
           <button
             type="button"
             onClick={() => handleSelect({ type: "preset", key: "gradient" })}
+            aria-pressed={isActive({ type: "preset", key: "gradient" })}
             className={tileBase + " bg-cover bg-center text-white hover:opacity-90" + ring(isActive({ type: "preset", key: "gradient" }))}
             style={{ backgroundImage: "url('/backgrounds/gradient.jpg')" }}
           >
@@ -1915,6 +1970,7 @@ function BackgroundPickerPanel({
               <button
                 type="button"
                 onClick={() => handleSelect({ type: "custom", dataUrl: customDataUrl })}
+                aria-pressed={isActive({ type: "custom", dataUrl: customDataUrl })}
                 className="absolute inset-0 flex items-end justify-center pb-2 hover:opacity-90 transition"
                 aria-label="Use custom background"
               >
@@ -1949,7 +2005,7 @@ function BackgroundPickerPanel({
           onChange={handleFileChange}
         />
 
-        <p className="mt-4 text-[11px] text-white/40">
+        <p className="mt-4 text-[11px] text-white/60">
           Tip: Background effects can slow down older devices. We&apos;ll auto-disable if performance drops.
         </p>
       </div>

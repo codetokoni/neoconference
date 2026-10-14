@@ -173,6 +173,40 @@
   }
 }
 
+/* The room below the 65px site header. 100vh on a phone browser is the
+   height with the address bar hidden, so while it shows the bottom
+   controls sat under it; dvh follows the bar. vh stays as the fallback
+   for browsers without dvh. */
+.room-shell {
+  height: calc(100vh - 65px);
+  height: calc(100dvh - 65px);
+}
+
+/* Recording indicators (RecordingControls, portalled to the room shell).
+   Below the toolbar (top 8px, 44px tall) so showing it never covers them;
+   moved to the top where the toolbar folds into the More menu, further
+   down. */
+.nc-rec-banner {
+  top: 60px;
+}
+.nc-rec-flash {
+  top: 92px;
+}
+.nc-rec-pulse {
+  animation: nc-rec-pulse 1.2s ease-in-out infinite;
+}
+.nc-rec-soft-pulse {
+  animation: nc-rec-soft-pulse 2s ease-in-out infinite;
+}
+@keyframes nc-rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+@keyframes nc-rec-soft-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+@media (prefers-reduced-motion: reduce) {
+  .nc-rec-pulse,
+  .nc-rec-soft-pulse {
+    animation: none;
+  }
+}
+
 /* StableLabel (page.tsx): the label's box is as wide as its longest state.
    The visible text and a hidden copy of the longest text share one grid
    column; the copy's row has no height. No overflow: hidden on the copy —
@@ -214,6 +248,12 @@
     top: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
+  }
+  .nc-rec-banner {
+    top: 8px;
+  }
+  .nc-rec-flash {
+    top: 40px;
   }
 
   /* Tighter grid: 2 columns, 2 rows max visible */
@@ -352,6 +392,12 @@
     top: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
+  }
+  .nc-rec-banner {
+    top: 8px;
+  }
+  .nc-rec-flash {
+    top: 40px;
   }
   .nc-mobile-more-btn {
     display: inline-flex !important;
