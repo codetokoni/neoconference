@@ -26,6 +26,7 @@ const isPublicRoute = createRouteMatcher([
   // a check nobody runs, and protecting this would make a stale alias look
   // like an auth failure instead of what it is.
   '/api/version',
+  '/api/app/latest',
   // The public developer API and its reference. /api/v1 checks its own
   // nc_live_ keys (requireApiKey); a key is not a website session, so
   // behind auth.protect() every call — and the reference itself — got
