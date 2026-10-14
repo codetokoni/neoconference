@@ -161,8 +161,10 @@
 
 /* A tablet wide enough for the desktop toolbar has no pointer to hover
    with, so hover-to-reveal left it invisible and unclickable. Keep it up
-   there. Phones (<= 640px) still fold it into the More menu below. */
-@media (hover: none) and (min-width: 641px) {
+   there. Phones (<= 640px) still fold it into the More menu below, and so
+   do phones held sideways (wide but short — see the landscape block after
+   the min-width: 641px one): the full toolbar ran off both edges there. */
+@media (hover: none) and (min-width: 641px) and (min-height: 501px) {
   .room-toolbar,
   :fullscreen .room-toolbar[data-room-chrome="true"],
   :-webkit-full-screen .room-toolbar[data-room-chrome="true"] {
@@ -332,6 +334,33 @@
      picks them up. */
   .room-toolbar > [data-in-more="true"] {
     display: none !important;
+  }
+}
+
+/* A phone held sideways: wider than 640px, so it gets the desktop layout,
+   but the full top toolbar doesn't fit across it. Fold the toolbar into
+   the bottom More menu, as in portrait. Must come after the min-width:
+   641px block, whose display: none on the More button and popover it
+   undoes. */
+@media (hover: none) and (min-width: 641px) and (max-height: 500px) {
+  .room-toolbar {
+    pointer-events: none !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+    top: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .nc-mobile-more-btn {
+    display: inline-flex !important;
+  }
+  .nc-mobile-more-popover {
+    display: flex !important;
+  }
+  .nc-mobile-more-backdrop {
+    display: block !important;
   }
 }
 
