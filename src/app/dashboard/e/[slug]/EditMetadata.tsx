@@ -27,6 +27,8 @@ export default function EditMetadata({
     waitingRoomEnabled: boolean;
     /** Recordings on the public replay page for anyone with the link. */
     replayEnabled: boolean;
+    /** Android phones stay in the browser for this meeting (no app screen). */
+    browserOnPhones: boolean;
     endPinIsSet?: boolean;
     inactivity?: InactivityInitial | null;
   };
@@ -40,6 +42,7 @@ export default function EditMetadata({
   const [visibility, setVisibility] = useState<Visibility>(initial.visibility);
   const [waitingRoomEnabled, setWaitingRoomEnabled] = useState(initial.waitingRoomEnabled);
   const [replayEnabled, setReplayEnabled] = useState(initial.replayEnabled);
+  const [browserOnPhones, setBrowserOnPhones] = useState(initial.browserOnPhones);
   const [endPin, setEndPin] = useState("");
   const [clearEndPin, setClearEndPin] = useState(false);
   // The same defaults the room applies when nothing was saved, so the form
@@ -75,6 +78,7 @@ export default function EditMetadata({
         visibility,
         waitingRoomEnabled,
         replayEnabled,
+        browserOnPhones,
       };
       if (scheduledAt) {
         const d = new Date(scheduledAt);
@@ -199,6 +203,15 @@ export default function EditMetadata({
             className="accent-cyan-400"
           />
           Public replay
+        </label>
+        <label className="flex items-center gap-2 text-sm text-slate-300 mt-2" title="When on, Android phones open this meeting in the browser instead of being asked to get the NeoConference app.">
+          <input
+            type="checkbox"
+            checked={browserOnPhones}
+            onChange={(e) => setBrowserOnPhones(e.target.checked)}
+            className="accent-cyan-400"
+          />
+          Phones open it in the browser (no &quot;get the app&quot; screen)
         </label>
       </div>
       <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 space-y-2">

@@ -181,6 +181,7 @@ export default async function EventAdminPage({
               visibility: ev.visibility,
               waitingRoomEnabled: ev.waitingRoomEnabled,
               replayEnabled: ev.replayEnabled !== false,
+              browserOnPhones: Boolean(ev.browserOnPhones),
               endPinIsSet: Boolean(ev.endPin),
               inactivity: ev.inactivity ?? null,
             }}
