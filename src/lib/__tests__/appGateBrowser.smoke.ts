@@ -90,6 +90,20 @@ async function main() {
     assert.deepEqual(await gate(""), { browser: false });
   });
 
+  await t("on the sign-in page, the meeting is the one it leads back to", async () => {
+    const { meetingForGate } = await import("../appGate");
+    // A signed-out visitor to /testify lands here; the setting must follow.
+    assert.equal(meetingForGate("/sign-in", "?redirect_url=%2Ftestify"), "testify");
+    assert.equal(meetingForGate("/sign-in", "?redirect_url=" + encodeURIComponent("https://www.neoconference.app/testify10")), "testify10");
+    assert.equal(meetingForGate("/sign-up", "?redirect_url=%2Froom%2Flive%3Fevent%3Dlive"), "live");
+    assert.equal(meetingForGate("/testify"), "testify");
+    // Not a meeting, or another site: nothing.
+    assert.equal(meetingForGate("/sign-in", "?redirect_url=%2Fdashboard"), null);
+    assert.equal(meetingForGate("/sign-in", "?redirect_url=" + encodeURIComponent("https://evil.example/testify")), null);
+    assert.equal(meetingForGate("/sign-in"), null);
+    assert.equal(meetingForGate("/pricing", "?redirect_url=%2Ftestify"), null);
+  });
+
   finished = true;
   console.log(`\n${n} checks passed`);
 }

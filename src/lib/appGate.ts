@@ -82,6 +82,29 @@ export function meetingSlugFromPath(pathname: string, search = ""): string | nul
 }
 
 /**
+ * The meeting a page leads to: the page itself (meetingSlugFromPath), or,
+ * on /sign-in and /sign-up, the meeting its redirect_url goes back to. A
+ * signed-out visitor to /testify lands on /sign-in?redirect_url=/testify,
+ * and that meeting's settings ("Phones open it in the browser") must
+ * still apply there.
+ */
+export function meetingForGate(pathname: string, search = ""): string | null {
+  const own = meetingSlugFromPath(pathname, search);
+  if (own) return own;
+  const p = pathname.replace(/\/+$/, "");
+  if (!/^\/sign-(in|up)(\/|$)/.test(p)) return null;
+  const target = new URLSearchParams(search).get("redirect_url");
+  if (!target) return null;
+  try {
+    const u = new URL(target, "https://www.neoconference.app");
+    if (!/^(www\.)?neoconference\.app$/.test(u.hostname)) return null;
+    return meetingSlugFromPath(u.pathname, u.search);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Remembered on the phone once someone tapped Download, so a later visit
  * goes straight to the app instead of asking again.
  */
