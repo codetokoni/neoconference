@@ -6,6 +6,7 @@ import { hasMeetingAdminPower, isAdmin } from "@/lib/roles";
 import { featureDecisions } from "@/lib/platform/features";
 import { rejoinDropsToAttendee, reopensOnJoin } from "@/lib/meetingLifecycle";
 import { gateStatus } from "@/lib/waitingRoom";
+import { needsAppUpdate, UPDATE_MESSAGE } from "@/lib/appRelease";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +43,13 @@ export async function GET(req: NextRequest) {
     // Which app and phone is asking (the mobile app sends it; the web does
     // not). Plain text only, kept short: it rides in the token metadata.
     const client = (req.nextUrl.searchParams.get("client") ?? "").replace(/[^A-Za-z0-9 ._()+/-]/g, "").trim().slice(0, 100);
+    // A meeting link opens whatever app is installed, and an old app has no
+    // way to hear of an update: joining is where it is told (src/lib/
+    // appRelease.ts). Every app version shows this message as the failure.
+    if (needsAppUpdate({ authorization: req.headers.get("authorization"), client })) {
+      console.info("[token] app update required", JSON.stringify({ room, client: client || "(none: 1.2.3 or older)" }));
+      return NextResponse.json({ error: "app_update_required", message: UPDATE_MESSAGE }, { status: 426 });
+    }
     if (eventSlug) {
       // Shared identity lookup — checks the LEGACY ev.roles[] array AND
       // the modern meeting-roles hash where every promotion since #244

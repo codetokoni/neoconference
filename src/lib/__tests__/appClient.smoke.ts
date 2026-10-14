@@ -138,6 +138,56 @@ async function main() {
     assert.ok(web && !("client" in web), JSON.stringify(web));
   });
 
+  console.log("old apps are asked to update");
+
+  /** A join as the app makes it (Bearer), or as the website does (cookie). */
+  async function join(opts: { app: boolean; client?: string }) {
+    g.__who = "user_app";
+    const q = new URLSearchParams({ room: slug, event: slug, nonce: "n2" });
+    if (opts.client !== undefined) q.set("client", opts.client);
+    const headers: Record<string, string> = opts.app ? { authorization: "Bearer app-session-jwt" } : {};
+    const res = await R.token.GET(new NextRequest(`https://www.neoconference.app/api/livekit/token?${q}`, { headers }));
+    return { status: res.status, body: (await res.json()) as { token?: string; error?: string; message?: string } };
+  }
+
+  await t("an app too old to say its version (1.2.3 and before) is told to update, with the store", async () => {
+    const r = await join({ app: true });
+    assert.equal(r.status, 426);
+    assert.equal(r.body.error, "app_update_required");
+    assert.match(String(r.body.message), /new version of NeoConference/);
+    assert.match(String(r.body.message), /web\.lwappstore\.com\/share\/lW-APP-Y26-XG9328/);
+    assert.equal(r.body.token, undefined);
+  });
+
+  await t("an app older than the minimum is told too; 1.2.4 and newer join", async () => {
+    assert.equal((await join({ app: true, client: "android 1.2.3+5216 OPPO CPH2599 / Android 16" })).status, 426);
+    assert.equal((await join({ app: true, client: "android 1.2.4+5218 OPPO CPH2599 / Android 16" })).status, 200);
+    assert.equal((await join({ app: true, client: "android 1.2.10+5300 Tecno X / Android 14" })).status, 200);
+  });
+
+  await t("the website (its cookie, no app header) is never asked to update", async () => {
+    assert.equal((await join({ app: false })).status, 200);
+  });
+
+  await t("APP_MIN_VERSION=0 in Vercel lets every app in again, without a code change", async () => {
+    process.env.APP_MIN_VERSION = "0";
+    try {
+      assert.equal((await join({ app: true })).status, 200);
+    } finally {
+      delete process.env.APP_MIN_VERSION;
+    }
+  });
+
+  await t("GET /api/app/latest says the newest version, the minimum and the store", async () => {
+    const latest = await import("../../app/api/app/latest/route");
+    const body = (await (await latest.GET()).json()) as Record<string, string>;
+    assert.deepEqual(body, {
+      latestVersion: "1.2.4",
+      minVersion: "1.2.4",
+      storeUrl: "https://web.lwappstore.com/share/lW-APP-Y26-XG9328",
+    });
+  });
+
   finished = true;
   console.log(`\n${n} checks passed`);
 }

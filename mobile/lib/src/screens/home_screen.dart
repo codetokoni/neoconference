@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/app_update.dart';
 import '../core/load_error.dart';
 import '../core/support.dart';
 import '../home/live_translation_bar.dart';
@@ -73,6 +74,9 @@ class HomeScreen extends ConsumerWidget {
               NeoSpace.huge + 72,
             ),
             children: [
+              // A newer version on the store: a link opens whatever app is
+              // installed, so this is where people hear of it.
+              const AppUpdateCard(),
               _Greeting(name: name, now: now),
               const SizedBox(height: NeoSpace.xl),
               ...board.when(
