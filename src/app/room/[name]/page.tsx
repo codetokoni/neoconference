@@ -1,7 +1,7 @@
 "use client";
 
 import { errorMessage } from "@/lib/errorMessage";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import {
@@ -84,6 +84,21 @@ import {
 // ParticipantCountBadge, GoLiveButton, and the RecordingControls button.
 const TOOLBAR_BTN_CLASS =
   "inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-xs text-neutral-200 hover:bg-white/10 hover:border-white/25 active:scale-[0.98] transition";
+
+/**
+ * A toolbar label that is always as wide as its longest state, so the
+ * centred toolbar doesn't re-centre (and slide the next button under the
+ * pointer) when "Whiteboard" becomes "Close whiteboard". The longest text
+ * reserves its width from a hidden ::after (initials-overlay.css), not a
+ * text node: the More menus read each button's textContent as its label.
+ */
+function StableLabel({ label, longest }: { label: string; longest: string }) {
+  return (
+    <span className="nc-stable-label" data-longest={longest}>
+      {label}
+    </span>
+  );
+}
 
 type TokenResponse = { token: string; wsUrl: string };
 
@@ -282,10 +297,10 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     return (
       <div className="p-8 max-w-md mx-auto text-center">
         <h1 className="text-xl font-semibold mb-2">Could not join room</h1>
-        <p className="text-sm text-gray-600 mb-4">
+        <p className="text-sm text-white/70 mb-4">
           We couldn&apos;t get a connection token for <strong>{roomName}</strong>.
         </p>
-        <p className="text-xs text-red-600 break-all">{error}</p>
+        <p className="text-xs text-rose-300 break-all">{error}</p>
         <a href="/" className="inline-block mt-6 underline text-sm">
           ← Back to home
         </a>
@@ -517,6 +532,7 @@ function RenameUrlButton({
   const [next, setNext] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const inputId = useId();
   if (roomRole !== "host" || !eventSlug) return null;
   const submit = async () => {
     const cleaned = (next || "").trim().toLowerCase();
@@ -566,6 +582,10 @@ function RenameUrlButton({
           aria-modal="true"
           aria-label="Rename meeting URL"
           onClick={close}
+          // Escape from anywhere in the dialog, not only the text field.
+          onKeyDown={(e) => {
+            if (e.key === "Escape") close();
+          }}
           style={{
             position: "fixed",
             inset: 0,
@@ -589,19 +609,22 @@ function RenameUrlButton({
             <div className="text-[12px] text-white/60 mb-3">
               Lowercase letters, numbers, and dashes. The old link keeps working.
             </div>
-            <div className="text-[11px] uppercase tracking-wider text-white/60 mb-1">
+            <label
+              htmlFor={inputId}
+              className="block text-[11px] uppercase tracking-wider text-white/60 mb-1"
+            >
               New slug
-            </div>
+            </label>
             <input
+              id={inputId}
               type="text"
               value={next}
               onChange={(e) => setNext(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Escape") close();
                 if (e.key === "Enter" && next.trim()) submit();
               }}
               placeholder="my-meeting"
-              className="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-sm text-white outline-none focus:border-cyan-300/60"
+              className="w-full px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-sm text-white outline-none focus:border-cyan-300 focus:ring-2 focus:ring-cyan-300/70"
               autoFocus
             />
             {err && (
@@ -971,7 +994,7 @@ function RoomContainer({
             title="Toggle whiteboard"
           >
             <Presentation size={16} aria-hidden />
-            {showWhiteboard ? "Close whiteboard" : "Whiteboard"}
+            <StableLabel label={showWhiteboard ? "Close whiteboard" : "Whiteboard"} longest="Close whiteboard" />
           </button>
           <button
             type="button"
@@ -981,7 +1004,7 @@ function RoomContainer({
             title="Toggle polls"
           >
             <ChartBar size={16} aria-hidden />
-            {showPolls ? "Close polls" : "Polls"}
+            <StableLabel label={showPolls ? "Close polls" : "Polls"} longest="Close polls" />
           </button>
           <button
             type="button"
@@ -1004,7 +1027,7 @@ function RoomContainer({
               title="Toggle breakouts"
             >
               <LayoutGrid size={16} aria-hidden />
-              {showBreakouts ? "Close breakouts" : "Breakouts"}
+              <StableLabel label={showBreakouts ? "Close breakouts" : "Breakouts"} longest="Close breakouts" />
             </button>
           )}
 
@@ -1020,7 +1043,10 @@ function RoomContainer({
               title="Toggle waiting room"
             >
               <DoorOpen size={16} aria-hidden />
-              {showWaitingRoom ? "Close waiting" : (pendingKnockCount > 0 ? `Waiting (${pendingKnockCount})` : "Waiting")}
+              <StableLabel
+                label={showWaitingRoom ? "Close waiting" : (pendingKnockCount > 0 ? `Waiting (${pendingKnockCount})` : "Waiting")}
+                longest={pendingKnockCount > 99 ? `Waiting (${pendingKnockCount})` : "Close waiting"}
+              />
             </button>
           )}
           {(roomRole === "host" || roomRole === "cohost") && (
@@ -1625,26 +1651,16 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
             (busy ? " opacity-60 cursor-wait" : "")
           }
         >
-          {busy ? (
-            "…"
-          ) : egressId ? (
-            <>
-              <span className="inline-block h-2 w-2 bg-white" aria-hidden />
-              Stop recording
-            </>
-          ) : finishing ? (
-            <>Saving…</>
-          ) : recordingElsewhere ? (
-            <>
-              <span className="inline-block h-2 w-2 rounded-full bg-red-500" aria-hidden />
-              Recording…
-            </>
-          ) : (
-            <>
-              <span className="inline-block h-2 w-2 rounded-full bg-red-500" aria-hidden />
-              Record
-            </>
-          )}
+          {/* One icon slot and one width for every state, so starting or
+              stopping doesn't shift the toolbar under the pointer. */}
+          <span
+            className={"inline-block h-2 w-2 " + (egressId && !busy ? "bg-white" : "rounded-full bg-red-500")}
+            aria-hidden
+          />
+          <StableLabel
+            label={busy ? "…" : egressId ? "Stop recording" : finishing ? "Saving…" : recordingElsewhere ? "Recording…" : "Record"}
+            longest="Stop recording"
+          />
         </button>
       )}
 
@@ -1686,17 +1702,13 @@ function RecordingControls({ roomName, roomRole }: { roomName: string; roomRole:
             </a>
           )}
           <button
+            type="button"
             onClick={() => setToast(null)}
-            style={{
-              marginLeft: 6,
-              background: "transparent",
-              border: "none",
-              color: "#fff",
-              cursor: "pointer",
-              opacity: 0.7,
-            }}
+            aria-label="Dismiss"
+            title="Dismiss"
+            className="ml-1.5 rounded-full p-1 text-white/70 hover:text-white hover:bg-white/10 transition"
           >
-            ●
+            <X size={14} aria-hidden />
           </button>
         </div>
       )}

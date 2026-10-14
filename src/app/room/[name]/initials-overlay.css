@@ -159,6 +159,34 @@
   pointer-events: auto !important;
 }
 
+/* A tablet wide enough for the desktop toolbar has no pointer to hover
+   with, so hover-to-reveal left it invisible and unclickable. Keep it up
+   there. Phones (<= 640px) still fold it into the More menu below. */
+@media (hover: none) and (min-width: 641px) {
+  .room-toolbar,
+  :fullscreen .room-toolbar[data-room-chrome="true"],
+  :-webkit-full-screen .room-toolbar[data-room-chrome="true"] {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+}
+
+/* StableLabel (page.tsx): the label's box is as wide as its longest state.
+   The visible text and a hidden copy of the longest text share one grid
+   column; the copy's row has no height. No overflow: hidden on the copy —
+   that drops its width out of the column's sizing and nothing is reserved. */
+.nc-stable-label {
+  display: inline-grid;
+  justify-items: center;
+  white-space: nowrap;
+}
+.nc-stable-label::after {
+  content: attr(data-longest);
+  visibility: hidden;
+  height: 0;
+  white-space: nowrap;
+}
+
 /* ===========================================================
    Mobile (<= 640px) layout for the in-room view.
 
