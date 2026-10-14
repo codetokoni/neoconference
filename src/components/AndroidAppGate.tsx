@@ -17,7 +17,7 @@ import {
   gateExempt,
   gateOffers,
   isAndroid,
-  meetingSlugFromPath,
+  meetingForGate,
   shouldAutoOpen,
 } from "@/lib/appGate";
 
@@ -60,7 +60,8 @@ export default function AndroidAppGate() {
     }
     if (read(() => sessionStorage, FROM_APP_KEY)) return setShow(false);
     if (gateExempt(pathname, search)) return setShow(false);
-    const meeting = meetingSlugFromPath(pathname, search);
+    // On /sign-in the meeting is the one it leads back to.
+    const meeting = meetingForGate(pathname, search);
     setSlug(meeting);
 
     const gate = () => {
