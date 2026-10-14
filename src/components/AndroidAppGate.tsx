@@ -62,16 +62,40 @@ export default function AndroidAppGate() {
     if (gateExempt(pathname, search)) return setShow(false);
     const meeting = meetingSlugFromPath(pathname, search);
     setSlug(meeting);
-    setShow(true);
 
-    const downloaded = read(() => localStorage, DOWNLOADED_KEY);
-    setReturning(downloaded);
-    if (shouldAutoOpen(downloaded, read(() => sessionStorage, TRIED_KEY))) {
-      write(() => sessionStorage, TRIED_KEY);
-      // Into the app, at the meeting when this is one. Without the app,
-      // Chrome follows the fallback to the store.
-      window.location.href = appOpenUrl(meeting);
-    }
+    const gate = () => {
+      setShow(true);
+      const downloaded = read(() => localStorage, DOWNLOADED_KEY);
+      setReturning(downloaded);
+      if (shouldAutoOpen(downloaded, read(() => sessionStorage, TRIED_KEY))) {
+        write(() => sessionStorage, TRIED_KEY);
+        // Into the app, at the meeting when this is one. Without the app,
+        // Chrome follows the fallback to the store.
+        window.location.href = appOpenUrl(meeting);
+      }
+    };
+    if (!meeting) return gate();
+
+    // The meeting's owner can let phones stay in the browser for it
+    // ("Phones open it in the browser"): ask first. Unanswered within 2 s,
+    // the usual app screen.
+    let cancelled = false;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 2000);
+    fetch("/api/app/gate?slug=" + encodeURIComponent(meeting), { signal: ctl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then((j: { browser?: boolean } | null) => {
+        clearTimeout(timer);
+        if (cancelled) return;
+        if (j?.browser) return setShow(false);
+        gate();
+      });
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      ctl.abort();
+    };
   }, [pathname]);
 
   useEffect(() => {

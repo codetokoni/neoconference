@@ -249,6 +249,13 @@ export interface NeoEvent {
   /** When true, non-host attendees are blocked from joining the LiveKit room until a host or co-host is present. Default true. */
   waitForHost?: boolean;
 
+  /**
+   * When true, an Android phone opening this meeting's link stays in the
+   * browser: no "Get the NeoConference app" screen (components/
+   * AndroidAppGate.tsx). For rooms people watch from a link on any phone.
+   */
+  browserOnPhones?: boolean;
+
   /** Custom domain (e.g. live.acme.com) routed to /e/<slug> by middleware. */
   customDomain?: string;
 

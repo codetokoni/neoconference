@@ -48,6 +48,7 @@ export async function GET(
       replayEnabled: ev.replayEnabled !== false,
       isLocked: Boolean(ev.isLocked),
       isPermanent: Boolean(ev.isPermanent),
+      browserOnPhones: Boolean(ev.browserOnPhones),
       endPinSet: Boolean(ev.endPin),
       hasPassword: Boolean(ev.password),
     },
@@ -104,6 +105,8 @@ export async function PATCH(
   if (typeof body.waitingRoomEnabled === "boolean") patch.waitingRoomEnabled = body.waitingRoomEnabled;
   // Public replay: on by default; false keeps recordings to the hosts.
   if (typeof body.replayEnabled === "boolean") patch.replayEnabled = body.replayEnabled;
+  // Phones open the link in the browser, without the app screen.
+  if (typeof body.browserOnPhones === "boolean") patch.browserOnPhones = body.browserOnPhones;
 
   // FRS §11 inactivity config: whole object PATCH-able. Individual fields
   // are validated so the client can't stash arbitrary data; unset means the
