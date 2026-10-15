@@ -91,6 +91,21 @@ export async function listEventRecordingObjects(
     }
   }
 
+  // Since 2026-10-15 anyone added to the meeting by name may record — a
+  // speaker or viewer, possibly invited by email, so not in the list above.
+  // The file index notes every recording's meeting and recorder the moment
+  // it starts (indexEgressStarted): their folders are searched too.
+  try {
+    const { allFiles } = await import("@/lib/content/files");
+    for (const f of await allFiles()) {
+      if (f.storage !== "r2" || (f.type !== "recording" && f.type !== "recording_audio")) continue;
+      if (sanitizeSegment(f.eventSlug || "") !== eventSeg) continue;
+      if (f.ownerId?.startsWith("user_")) candidateIds.add(f.ownerId);
+    }
+  } catch (err) {
+    console.warn("[eventRecordings] file index unavailable; hosts' folders only", err);
+  }
+
   const perPrefixMax = Math.max(20, Math.floor(max / Math.max(1, candidateIds.size)));
   // Independent listings, so side by side; merged in candidate order, as
   // the one-after-another loop did.

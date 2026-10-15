@@ -54,6 +54,7 @@ async function main() {
   const R = {
     start: await import("../../app/api/livekit/egress/start/route"),
     token: await import("../../app/api/livekit/token/route"),
+    recordings: await import("../../app/api/recordings/route"),
   };
   const now = new Date().toISOString();
   await eventStore.create({
@@ -115,6 +116,18 @@ async function main() {
     assert.equal((await record("user_speaker")).status, 403);
     await eventStore.update("ev_rec", (prev) => ({ ...prev, permissionOverrides: undefined }) as typeof prev);
     assert.equal((await record("user_speaker")).status, 200);
+  });
+
+  await t("the owner sees the recording an added speaker made, in the meeting's Recordings", async () => {
+    const made = await record("user_speaker");
+    const key = String(made.body.filepath);
+    // The file lands in storage when the recording finishes.
+    g.__objects = [...(g.__objects ?? []), { key, size: 5000, lastModified: new Date().toISOString() }];
+    g.__who = "user_owner";
+    const res = await R.recordings.GET(new Request("https://www.neoconference.app/api/recordings?eventSlug=rec-room"));
+    const body = (await res.json()) as { recordings?: Array<{ key: string }> };
+    assert.equal(res.status, 200, JSON.stringify(body));
+    assert.ok(body.recordings?.some((r) => r.key === key), JSON.stringify(body.recordings));
   });
 
   finished = true;
