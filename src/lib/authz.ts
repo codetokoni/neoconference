@@ -167,6 +167,8 @@ export type AuthorizeResult =
  *   if (!gate.ok) return gate.response;
  *   // gate.actor is resolved and safe to log
  */
+const INVITEE_MAY = new Set<Permission>(["recording:start", "recording:stop"]);
+
 export async function authorize(
   event: (Eventish & { id?: string }) | null | undefined,
   permission: Permission
@@ -174,7 +176,12 @@ export async function authorize(
   const actor = await getActor(event);
   const overrides = (event as { permissionOverrides?: PermissionOverrides } | null | undefined)
     ?.permissionOverrides;
-  const allowed = can(actor, permission, overrides);
+  // Someone the owner added to the meeting by name may record, whatever
+  // role they were given (speaker, viewer): owner's decision, 2026-10-15.
+  // Only while the owner has not set their own rule for recording.
+  const allowed =
+    can(actor, permission, overrides) ||
+    (INVITEE_MAY.has(permission) && actor.reason === "assignment" && overrides?.[permission] === undefined);
 
   recordDecision({
     permission,

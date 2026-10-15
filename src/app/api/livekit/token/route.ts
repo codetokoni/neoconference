@@ -324,6 +324,10 @@ export async function GET(req: NextRequest) {
     // The owner is "host" on the wire like any host; this says which host
     // owns the meeting, so other people's screens can label them Owner.
     let participantIsOwner = false;
+    // Someone the owner added to this meeting by name (email or KingsChat,
+    // any role, speaker and viewer included): they may record (owner's
+    // decision 2026-10-15). The room shows them the Record button from this.
+    let participantAddedByName = false;
     try {
       if (eventSlug) {
         const { eventStore: __esRole, adoptOrphanRoom: __adoptRoom } = await import("@/lib/eventStore");
@@ -389,6 +393,7 @@ export async function GET(req: NextRequest) {
                 ...(__kcHandle ? [__getMRByKc(__evRole!.id, __kcHandle)] : []),
               ]);
               const __hashRoles = __lookups.filter((r): r is NonNullable<typeof r> => !!r);
+              if (__hashRoles.length > 0) participantAddedByName = true;
               if (__hashRoles.length > 0) {
                 const __best = __hashRoles.reduce((a, b) => (__RANK[b] > __RANK[a] ? b : a));
                 participantRole = __toLegacy(__best);
@@ -397,6 +402,7 @@ export async function GET(req: NextRequest) {
                   const id = r.identifier.toLowerCase();
                   return id === userId.toLowerCase() || emailsRole.includes(id);
                 });
+                if (matched) participantAddedByName = true;
                 if (matched?.role) participantRole = matched.role;
                 else participantRole = "attendee";
               }
@@ -455,6 +461,7 @@ export async function GET(req: NextRequest) {
       hostPlan: metadataPlan,
       role: participantRole,
       ...(participantIsOwner ? { owner: true } : {}),
+      ...(participantAddedByName ? { canRecord: true } : {}),
       ...(client ? { client } : {}),
     });
     // The app says which version and phone it is ("android 1.2.4+3217 OPPO

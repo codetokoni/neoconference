@@ -101,3 +101,15 @@ class MeetingTimeLimit {
 const proTranslationNote =
     "Live translation is on the Pro plan and above. This meeting's owner "
     'can upgrade at neoconference.app/pricing.';
+
+/// Whether this person was added to the meeting by name and so may record
+/// though not a host (the token's `canRecord`; owner's decision 2026-10-15).
+bool addedCanRecord(String? metadata) {
+  if (metadata == null || metadata.isEmpty) return false;
+  try {
+    final decoded = jsonDecode(metadata);
+    return decoded is Map && decoded['canRecord'] == true;
+  } catch (_) {
+    return false;
+  }
+}

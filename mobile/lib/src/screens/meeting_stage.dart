@@ -237,6 +237,16 @@ class _MeetingStageState extends State<MeetingStage> {
               ),
             // CC: easy to find, as on the web. A host switches captions on or
             // off for everyone; anyone else sees whether they are on.
+            if (actions.toggleRecording != null)
+              ListTile(
+                leading: Icon(actions.isRecording ? Icons.stop_circle_rounded : Icons.fiber_manual_record_rounded, color: Colors.redAccent),
+                title: Text(actions.isRecording ? 'Stop recording' : 'Record'),
+                subtitle: const Text('You were added to this meeting, so you can record it'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  actions.toggleRecording!();
+                },
+              ),
             if (actions.setCaptions != null)
               SwitchListTile(
                 secondary: const Icon(Icons.closed_caption_rounded),
