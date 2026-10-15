@@ -481,6 +481,14 @@ class _InMeetingState extends State<_InMeeting> {
               builder: (_) => TranslationSheet(slug: widget.slug),
             ),
             setCaptions: state.role == 'host' ? controller.setCaptions : null,
+            // Not while someone else is recording: this would start a second one.
+            toggleRecording: !state.canManage &&
+                    state.addedMayRecord &&
+                    state.recordingAllowed &&
+                    !(state.isRecording && state.recordingEgressId == null)
+                ? controller.toggleRecording
+                : null,
+            isRecording: state.recordingEgressId != null,
             captionsOn: state.captionsOn,
             translationLabel: switch (state.translateTo) {
               final code? => languageFor(code)?.label ?? code,

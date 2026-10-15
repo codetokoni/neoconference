@@ -277,6 +277,7 @@ class RoomState {
     this.recordingAllowed = true,
     this.streamingAllowed = true,
     this.translationAllowed = true,
+    this.addedMayRecord = false,
     this.liveStream,
     this.liveOn,
     this.mediaRequest,
@@ -429,6 +430,9 @@ class RoomState {
   /// Live translation is on the meeting owner's plan (Pro and above).
   final bool translationAllowed;
 
+  /// Added to the meeting by name: may record though not a host.
+  final bool addedMayRecord;
+
   /// The livestream this host is running, as the server last reported it.
   final LiveStreamView? liveStream;
 
@@ -512,6 +516,7 @@ class RoomState {
     bool? recordingAllowed,
     bool? streamingAllowed,
     bool? translationAllowed,
+    bool? addedMayRecord,
     LiveStreamView? liveStream,
     bool clearLiveStream = false,
     String? liveOn,
@@ -582,6 +587,7 @@ class RoomState {
         recordingAllowed: recordingAllowed ?? this.recordingAllowed,
         streamingAllowed: streamingAllowed ?? this.streamingAllowed,
         translationAllowed: translationAllowed ?? this.translationAllowed,
+        addedMayRecord: addedMayRecord ?? this.addedMayRecord,
         liveStream: clearLiveStream ? null : (liveStream ?? this.liveStream),
         liveOn: clearLiveOn ? null : (liveOn ?? this.liveOn),
         mediaRequest: clearMediaRequest ? null : (mediaRequest ?? this.mediaRequest),
@@ -1067,6 +1073,7 @@ class RoomController extends StateNotifier<RoomState> {
     // offered, and how long the meeting may run (Free 60 minutes, Starter
     // 120), counted from joining as the web counts it.
     final limits = MeetingPlanLimits.fromMetadata(room.localParticipant?.metadata);
+    state = state.copyWith(addedMayRecord: addedCanRecord(room.localParticipant?.metadata));
     if (limits != null) {
       state = state.copyWith(
         recordingAllowed: limits.recording,

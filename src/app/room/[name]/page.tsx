@@ -1363,6 +1363,15 @@ function RecordingControls({
    *  start a second one. */
   const recordingElsewhere = isRecording && !egressId;
   const isHost = roomRole === "host" || roomRole === "cohost";
+  // Added by name (the token's canRecord) records too.
+  const mayRecord = useMemo(() => {
+    if (isHost) return true;
+    try {
+      return (JSON.parse(localParticipant?.metadata || "{}") as { canRecord?: boolean }).canRecord === true;
+    } catch {
+      return false;
+    }
+  }, [isHost, localParticipant?.metadata]);
 
   // Brief "Recording started" flash shown to non-hosts on the false→true
   // transition. Hosts keep the full persistent REC banner; non-hosts get a
@@ -1499,10 +1508,9 @@ function RecordingControls({
     }
   };
 
-  // Recording is the host's alone (FRS §2): the Record button is only
-  // drawn for roomRole === 'host'. A guest "ask to record" flow used to live
-  // here, but nothing ever showed it a button; the owner chose to keep
-  // recording host-only (2026-09-28), so it was removed rather than wired up.
+  // Who records: hosts, cohosts, and anyone the owner added to the meeting
+  // by name (the token marks them canRecord) — the owner's decision of
+  // 2026-10-15, replacing host-only (2026-09-28). The server checks again.
   const start = doStart;
 
   const stop = async () => {
@@ -1737,10 +1745,8 @@ function RecordingControls({
       {overlayHost && createPortal(overlays, overlayHost)}
 
       {/* Record button — sits in the room toolbar cluster 4 alongside Go Live.
-          FRS §2: gated to owner+host only (roomRole === 'host' after the
-          wire-format collapse in toLegacyRole). Moderators (cohost) still
-          see the passive REC banner above but no start/stop control. */}
-      {roomRole === 'host' && (
+          Hosts, cohosts, and people added to the meeting by name. */}
+      {mayRecord && (
         <button
           type="button"
           data-room-chrome="true"

@@ -203,6 +203,8 @@ class RoomActions {
     this.openTranslation,
     this.translationLabel,
     this.setCaptions,
+    this.toggleRecording,
+    this.isRecording = false,
     this.captionsOn = false,
     this.openDetails,
     this.invite,
@@ -247,6 +249,11 @@ class RoomActions {
   /// Switch the meeting's live captions (CC) on or off for everyone; null
   /// for someone who is not a host, who is only told whether they are on.
   final Future<void> Function(bool on)? setCaptions;
+
+  /// Record or stop, for someone added to the meeting by name who is not a
+  /// host (hosts record from Host controls); null otherwise.
+  final Future<void> Function()? toggleRecording;
+  final bool isRecording;
 
   /// The meeting's live captions are on.
   final bool captionsOn;
