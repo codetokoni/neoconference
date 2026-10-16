@@ -30,7 +30,7 @@ import {
   type Permission,
   type PermissionOverrides,
 } from "@/lib/permissions";
-import { getMeetingRole, getMeetingRoleByEmail } from "@/lib/meeting-roles";
+import { getMeetingRole, getMeetingRoleByEmail, getMeetingRoleByKcHandle } from "@/lib/meeting-roles";
 
 export type { Actor, Permission } from "@/lib/permissions";
 
@@ -42,6 +42,8 @@ interface Identity {
   userId: string | null;
   emails: string[];
   isPlatformAdmin: boolean;
+  /** KingsChat username, when they signed in with KingsChat. */
+  kcHandle?: string;
 }
 
 /**
@@ -57,14 +59,18 @@ export async function getIdentity(): Promise<Identity> {
   // the owner, or an active admin whose role grants events:write. Suspended,
   // removed and read-only (events:read) administrators get none.
   const isPlatformAdmin = await hasMeetingAdminPower(userId, u?.emailAddresses);
-  return { userId, emails, isPlatformAdmin };
+  // Someone added to a meeting by KingsChat handle is stored as kc:<handle>
+  // (invite-kc). The token route looked that up and made them host in the
+  // room; this did not, so End, Mute, Record… answered 403 for them.
+  const kc = (u?.publicMetadata as { kingschat?: { username?: string } } | undefined)?.kingschat?.username;
+  return { userId, emails, isPlatformAdmin, ...(typeof kc === "string" && kc.trim() ? { kcHandle: kc.trim() } : {}) };
 }
 
 /** Resolve the caller's standing on one event. Cheap to call; do it once per request. */
 export async function getActor(event: Eventish | null | undefined): Promise<Actor> {
   const identity = await getIdentity();
   if (!identity.userId) return { ...ANONYMOUS_ACTOR };
-  return resolveRole(await withHashRoles(event, identity.userId, identity.emails), identity);
+  return resolveRole(await withHashRoles(event, identity.userId, identity.emails, identity.kcHandle), identity);
 }
 
 /**
@@ -77,7 +83,8 @@ export async function getActor(event: Eventish | null | undefined): Promise<Acto
 async function withHashRoles(
   event: Eventish | null | undefined,
   userId: string,
-  emails: string[]
+  emails: string[],
+  kcHandle?: string
 ): Promise<Eventish | null | undefined> {
   const id = (event as { id?: string } | null | undefined)?.id;
   if (!event || !id) return event;
@@ -85,6 +92,7 @@ async function withHashRoles(
     const found = await Promise.all([
       getMeetingRole(id, userId),
       ...emails.map((e) => getMeetingRoleByEmail(id, e)),
+      ...(kcHandle ? [getMeetingRoleByKcHandle(id, kcHandle)] : []),
     ]);
     return withAssignedRoles(event, userId, found.filter((r): r is MeetingRole => r !== null));
   } catch (err) {
