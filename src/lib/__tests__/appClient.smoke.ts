@@ -184,7 +184,7 @@ async function main() {
     const latest = await import("../../app/api/app/latest/route");
     const body = (await (await latest.GET()).json()) as Record<string, string>;
     assert.deepEqual(body, {
-      latestVersion: "1.2.4",
+      latestVersion: "1.2.5",
       minVersion: "1.2.4",
       storeUrl: "https://web.lwappstore.com/share/lW-APP-Y26-XG9328",
       updateUrl: "https://www.neoconference.app/download",
