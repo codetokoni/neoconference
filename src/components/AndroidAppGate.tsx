@@ -166,7 +166,7 @@ export default function AndroidAppGate() {
       </div>
       {returning ? null : (
         <p className="mt-6 max-w-sm text-xs leading-relaxed text-white/45">
-          Free to download. After installing, come back and tap your meeting link again.
+          Free to download. On the store, sign in with KingsChat and tap Download. After installing, come back and tap your meeting link again.
         </p>
       )}
     </div>

@@ -19,6 +19,14 @@ class AppUpdate {
   final String storeUrl;
 }
 
+/// Where to update: neoconference.app/download, which opens NeoConference
+/// on the LoveWorld AppStore, so every download is counted there.
+const kAppUpdateUrl = 'https://www.neoconference.app/download';
+
+/// Opens the store page to update (sign in with KingsChat, tap Download).
+Future<void> openAppUpdate([String url = kAppUpdateUrl]) =>
+    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+
 /// -1, 0 or 1, comparing dotted versions ("1.2.10" > "1.2.9").
 int compareAppVersions(String a, String b) {
   final pa = a.split('.').map((n) => int.tryParse(n) ?? 0).toList();
@@ -30,6 +38,9 @@ int compareAppVersions(String a, String b) {
   return 0;
 }
 
+/// The update pop-up shows once per run of the app.
+bool _promptShown = false;
+
 /// Null when this app is up to date, or the check could not be made.
 final appUpdateProvider = FutureProvider<AppUpdate?>((ref) async {
   try {
@@ -37,10 +48,10 @@ final appUpdateProvider = FutureProvider<AppUpdate?>((ref) async {
     final body = await ref.read(apiProvider).get('/api/app/latest');
     if (body is! Map) return null;
     final latest = body['latestVersion'];
-    final store = body['storeUrl'];
-    if (latest is! String || store is! String) return null;
+    final url = body['updateUrl'] ?? body['storeUrl'];
+    if (latest is! String || url is! String) return null;
     if (compareAppVersions(info.version, latest) >= 0) return null;
-    return AppUpdate(current: info.version, latest: latest, storeUrl: store);
+    return AppUpdate(current: info.version, latest: latest, storeUrl: url);
   } catch (_) {
     return null;
   }
@@ -52,7 +63,38 @@ class AppUpdateCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final update = ref.watch(appUpdateProvider).valueOrNull;
+    // Said once each time the app starts, as a pop-up: the card alone was
+    // easy to scroll past, and an old app is what makes joining hard later.
+    final pending = ref.watch(appUpdateProvider).valueOrNull;
+    if (pending != null && !_promptShown) {
+      _promptShown = true;
+      final u = pending;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.system_update_rounded),
+          title: const Text('Update available'),
+          content: Text(
+            'NeoConference ${u.latest} is ready (you have ${u.current}). '
+            'On the LoveWorld AppStore, sign in with KingsChat and tap Download.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Later')),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                openAppUpdate(u.storeUrl);
+              },
+              child: const Text('Update'),
+            ),
+          ],
+        ),
+      );
+      });
+    }
+    final update = pending;
     if (update == null) return const SizedBox.shrink();
     final p = NeoTheme.of(context);
     final text = Theme.of(context).textTheme;
@@ -81,7 +123,7 @@ class AppUpdateCard extends ConsumerWidget {
               ),
               const SizedBox(width: NeoSpace.sm),
               FilledButton(
-                onPressed: () => launchUrl(Uri.parse(update.storeUrl), mode: LaunchMode.externalApplication),
+                onPressed: () => openAppUpdate(update.storeUrl),
                 child: const Text('Update'),
               ),
             ],

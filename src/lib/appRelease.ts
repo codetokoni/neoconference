@@ -15,7 +15,6 @@
 // stop joining. APP_MIN_VERSION in Vercel overrides the minimum without a
 // code change (e.g. "0" to let every app in again during an event).
 
-import { APP_STORE_URL } from "@/lib/appGate";
 
 export const LATEST_APP_VERSION = "1.2.4";
 export const MIN_APP_VERSION = "1.2.4";
@@ -42,9 +41,17 @@ export function appVersionOf(client: string): string | null {
   return m ? m[1] : null;
 }
 
+/** Short enough to type: redirects to the store page (src/app/download). */
+export const UPDATE_URL = "https://www.neoconference.app/download";
+
+/**
+ * Old apps show this as plain text, so it spells out the steps. Downloads go
+ * through the LoveWorld AppStore (APP_STORE_URL, behind /download) so they
+ * are counted there; its KingsChat sign-in is the quickest.
+ */
 export const UPDATE_MESSAGE =
-  "A new version of NeoConference is available. Please update the app from the LoveWorld AppStore " +
-  `(${APP_STORE_URL.replace(/^https:\/\//, "")}), then open the meeting link again. ` +
+  "A new version of NeoConference is available. To update: on this phone, open neoconference.app/download, " +
+  "sign in to the LoveWorld AppStore with KingsChat and tap Download. Then open the meeting link again. " +
   "You can also join from a web browser.";
 
 /**

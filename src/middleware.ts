@@ -28,6 +28,7 @@ const isPublicRoute = createRouteMatcher([
   '/api/version',
   '/api/app/latest',
   '/api/app/gate',
+  '/download',
   // The public developer API and its reference. /api/v1 checks its own
   // nc_live_ keys (requireApiKey); a key is not a website session, so
   // behind auth.protect() every call — and the reference itself — got

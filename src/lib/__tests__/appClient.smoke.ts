@@ -155,7 +155,9 @@ async function main() {
     assert.equal(r.status, 426);
     assert.equal(r.body.error, "app_update_required");
     assert.match(String(r.body.message), /new version of NeoConference/);
-    assert.match(String(r.body.message), /web\.lwappstore\.com\/share\/lW-APP-Y26-XG9328/);
+    // A short address to type, and the KingsChat sign-in on the store.
+    assert.match(String(r.body.message), /neoconference\.app\/download/);
+    assert.match(String(r.body.message), /KingsChat/);
     assert.equal(r.body.token, undefined);
   });
 
@@ -185,7 +187,17 @@ async function main() {
       latestVersion: "1.2.4",
       minVersion: "1.2.4",
       storeUrl: "https://web.lwappstore.com/share/lW-APP-Y26-XG9328",
+      updateUrl: "https://www.neoconference.app/download",
     });
+  });
+
+  await t("neoconference.app/download opens the NeoConference page on the LoveWorld AppStore (downloads count there)", async () => {
+    const dl = await import("../../app/download/route");
+    const res = dl.GET();
+    assert.equal(res.status, 302);
+    assert.equal(res.headers.get("location"), "https://web.lwappstore.com/share/lW-APP-Y26-XG9328");
+    const { RESERVED_SHORT_URL_SLUGS } = await import("../reservedSlugs");
+    assert.ok(RESERVED_SHORT_URL_SLUGS.has("download"), "/download must not be taken for a meeting");
   });
 
   finished = true;

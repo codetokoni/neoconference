@@ -233,6 +233,7 @@ class RoomState {
   const RoomState({
     this.phase = JoinPhase.connecting,
     this.message,
+    this.updateRequired = false,
     this.role = 'guest',
     this.micOn = false,
     this.cameraOn = false,
@@ -289,6 +290,10 @@ class RoomState {
   /// on, waiting for an answer. Null when nobody is asking.
   final MediaRequest? mediaRequest;
   final String? message;
+
+  /// The server refused this join until the app is updated (426
+  /// app_update_required): the failure screen offers Update.
+  final bool updateRequired;
 
   /// host | cohost | speaker | viewer | attendee | guest
   final String role;
@@ -470,6 +475,7 @@ class RoomState {
   RoomState copyWith({
     JoinPhase? phase,
     String? message,
+    bool? updateRequired,
     String? role,
     bool? micOn,
     bool? cameraOn,
@@ -534,6 +540,7 @@ class RoomState {
       RoomState(
         phase: phase ?? this.phase,
         message: clearMessage ? null : (message ?? this.message),
+        updateRequired: updateRequired ?? this.updateRequired,
         role: role ?? this.role,
         micOn: micOn ?? this.micOn,
         cameraOn: cameraOn ?? this.cameraOn,
@@ -767,6 +774,7 @@ class RoomController extends StateNotifier<RoomState> {
       phase: JoinPhase.connecting,
       clearMessage: true,
       clearDrop: true,
+      updateRequired: false,
     );
     try {
       await _resolveRole();
@@ -914,6 +922,13 @@ class RoomController extends StateNotifier<RoomState> {
         state = state.copyWith(
           phase: JoinPhase.full,
           message: e.message.isNotEmpty ? e.message : 'This meeting is full.',
+        );
+      case 'app_update_required':
+        state = state.copyWith(
+          phase: JoinPhase.failed,
+          updateRequired: true,
+          message: 'A new version of NeoConference is needed to join. Tap Update, sign in to '
+              'the LoveWorld AppStore with KingsChat and tap Download.',
         );
       default:
         state = state.copyWith(phase: JoinPhase.failed, message: e.message);

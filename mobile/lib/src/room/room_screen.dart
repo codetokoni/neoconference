@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
 
+import '../core/app_update.dart';
 import '../design/brand.dart';
 import '../design/neo_theme.dart';
 import '../design/components.dart';
@@ -335,7 +336,15 @@ class _Gate extends StatelessWidget {
                 ],
                 if (!waiting) ...[
                   const SizedBox(height: 28),
-                  if (drop == null)
+                  if (drop == null && state.updateRequired) ...[
+                    FilledButton.icon(
+                      onPressed: openAppUpdate,
+                      icon: const Icon(Icons.system_update_rounded),
+                      label: const Text('Update'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(onPressed: onRetry, child: const Text('Try again')),
+                  ] else if (drop == null)
                     FilledButton(
                       onPressed: onRetry,
                       child: const Text('Try again'),
