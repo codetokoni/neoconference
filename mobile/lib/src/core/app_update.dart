@@ -23,9 +23,12 @@ class AppUpdate {
 /// on the LoveWorld AppStore, so every download is counted there.
 const kAppUpdateUrl = 'https://www.neoconference.app/download';
 
+/// How the store page is opened; a test replaces it.
+Future<void> Function(String url) launchAppUpdate =
+    (url) => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+
 /// Opens the store page to update (sign in with KingsChat, tap Download).
-Future<void> openAppUpdate([String url = kAppUpdateUrl]) =>
-    launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+Future<void> openAppUpdate([String url = kAppUpdateUrl]) => launchAppUpdate(url);
 
 /// -1, 0 or 1, comparing dotted versions ("1.2.10" > "1.2.9").
 int compareAppVersions(String a, String b) {
@@ -40,6 +43,9 @@ int compareAppVersions(String a, String b) {
 
 /// The update pop-up shows once per run of the app.
 bool _promptShown = false;
+
+@visibleForTesting
+void resetAppUpdatePrompt() => _promptShown = false;
 
 /// Null when this app is up to date, or the check could not be made.
 final appUpdateProvider = FutureProvider<AppUpdate?>((ref) async {
