@@ -15,8 +15,7 @@
 // stop joining. APP_MIN_VERSION in Vercel overrides the minimum without a
 // code change (e.g. "0" to let every app in again during an event).
 
-
-export const LATEST_APP_VERSION = "1.2.4";
+export const LATEST_APP_VERSION = "1.2.5";
 export const MIN_APP_VERSION = "1.2.4";
 
 export function minAppVersion(): string {
