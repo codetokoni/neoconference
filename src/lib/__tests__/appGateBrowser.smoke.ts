@@ -104,6 +104,24 @@ async function main() {
     assert.equal(meetingForGate("/pricing", "?redirect_url=%2Ftestify"), null);
   });
 
+  await t("an Android visit tries the app first; a failed try comes back to the page, never the store", async () => {
+    const g8 = await import("../appGate");
+    const chrome = "Mozilla/5.0 (Linux; Android 14; CPH2599) AppleWebKit/537.36 Chrome/130 Mobile Safari/537.36";
+    assert.equal(g8.shouldAutoOpen({ triedThisTab: false, search: "", userAgent: chrome }), true);
+    // Back from a failed attempt, or already tried in this tab: show the choices.
+    assert.equal(g8.shouldAutoOpen({ triedThisTab: false, search: "?noapp=1", userAgent: chrome }), false);
+    assert.equal(g8.shouldAutoOpen({ triedThisTab: true, search: "", userAgent: chrome }), false);
+    // An app's built-in browser cannot open intent links.
+    assert.equal(g8.shouldAutoOpen({ triedThisTab: false, search: "", userAgent: chrome.replace("CPH2599)", "CPH2599; wv)") }), false);
+
+    const back = g8.backToPage("https://www.neoconference.app/hsmanagers?event=hsmanagers");
+    assert.equal(back, "https://www.neoconference.app/hsmanagers?event=hsmanagers&noapp=1");
+    const intent = g8.appOpenUrl("hsmanagers", back);
+    assert.match(intent, /^intent:\/\/www\.neoconference\.app\/e\/hsmanagers#Intent;scheme=https;package=app\.neoconference;/);
+    assert.ok(intent.includes("S.browser_fallback_url=" + encodeURIComponent(back)), intent);
+    assert.ok(!intent.includes("lwappstore"), "a failed open must not send people to the store");
+  });
+
   finished = true;
   console.log(`\n${n} checks passed`);
 }

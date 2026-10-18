@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { APP_STORE_URL, appOpenUrl, gateExempt, gateOffers, isAndroid, meetingSlugFromPath, shouldAutoOpen } from "../../src/lib/appGate";
+import { appOpenUrl, backToPage, gateExempt, isAndroid, meetingSlugFromPath, shouldAutoOpen } from "../../src/lib/appGate";
 
 /**
  * Android phones are asked to use the app (LoveWorld AppStore); iPhones and
@@ -56,27 +56,25 @@ test("a meeting page opens that meeting in the app", () => {
   }
 });
 
-test("open-in-app falls back to the store when the app is missing", () => {
-  const meeting = appOpenUrl("hscrusade");
+test("open-in-app comes back to the page, not the store, when the app does not open", () => {
+  // People who had the app were sent to the store every time a link did not
+  // open it; a failed open now returns to the page, marked noapp.
+  const back = backToPage("https://www.neoconference.app/hscrusade");
+  expect(back).toBe("https://www.neoconference.app/hscrusade?noapp=1");
+  const meeting = appOpenUrl("hscrusade", back);
   expect(meeting).toContain("intent://www.neoconference.app/e/hscrusade#Intent;scheme=https;package=app.neoconference;");
-  expect(meeting).toContain("S.browser_fallback_url=" + encodeURIComponent(APP_STORE_URL));
-  const app = appOpenUrl(null);
+  expect(meeting).toContain("S.browser_fallback_url=" + encodeURIComponent(back));
+  const app = appOpenUrl(null, back);
   expect(app).toContain("action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=app.neoconference;");
-  expect(app).toContain(encodeURIComponent(APP_STORE_URL));
+  expect(app).not.toContain("lwappstore");
 });
 
-test("a phone that downloaded the app opens it, once per tab", () => {
-  expect(shouldAutoOpen(true, false)).toBe(true);
-  // Already tried in this tab: back here means it did not open; ask instead.
-  expect(shouldAutoOpen(true, true)).toBe(false);
-  // Never downloaded: the download screen.
-  expect(shouldAutoOpen(false, false)).toBe(false);
-});
-
-test("download is offered only the first time; after that only opening the app", () => {
-  expect(gateOffers(false)).toEqual({ download: true, open: true });
-  // Downloaded before (or opened from the app): no download button again.
-  expect(gateOffers(true)).toEqual({ download: false, open: true });
-  // …and opening still reaches the store on a phone where the app is missing.
-  expect(appOpenUrl(null)).toContain("S.browser_fallback_url=" + encodeURIComponent(APP_STORE_URL));
+test("every Android visit tries the app once per tab, but not back from a failed try or in an app's browser", () => {
+  const chrome = "Mozilla/5.0 (Linux; Android 16; SM-S921B) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36";
+  expect(shouldAutoOpen({ triedThisTab: false, search: "", userAgent: chrome })).toBe(true);
+  // Already tried in this tab, or back from a failed try: show the choices.
+  expect(shouldAutoOpen({ triedThisTab: true, search: "", userAgent: chrome })).toBe(false);
+  expect(shouldAutoOpen({ triedThisTab: false, search: "?noapp=1", userAgent: chrome })).toBe(false);
+  // An app's built-in browser (WebView) cannot open intent links.
+  expect(shouldAutoOpen({ triedThisTab: false, search: "", userAgent: chrome.replace("SM-S921B)", "SM-S921B; wv)") })).toBe(false);
 });

@@ -111,32 +111,47 @@ export function meetingForGate(pathname: string, search = ""): string | null {
 export const DOWNLOADED_KEY = "neo:app-downloaded";
 
 /**
- * What the screen offers. Someone who downloaded the app before (or whose
- * page was opened from inside the app) is never asked to download it
- * again — the screen only offers to open the app. Nobody is stranded: on a
- * phone where the app is missing after all, "open the app" falls through
- * to the store (appOpenUrl's fallback).
+ * Added to the page's address when an attempt to open the app came back:
+ * the app did not open (not installed, or Chrome would not hand it over),
+ * so the page shows its choices instead of trying again.
  */
-export function gateOffers(downloadedBefore: boolean): { download: boolean; open: true } {
-  return { download: !downloadedBefore, open: true };
+export const NO_APP_PARAM = "noapp";
+
+/** An app's built-in browser (Android WebView), where intent:// links fail. */
+export function isWebView(userAgent: string | null | undefined): boolean {
+  return /; wv\)/.test(userAgent || "");
 }
 
 /**
- * Whether this visit should try the app straight away: they downloaded it
- * before, and this is not the visit straight back from a failed attempt
- * (the store fallback lands on the store, so coming back here at all means
- * the app did not open — then the screen is shown, not another attempt).
+ * Whether this visit tries the app straight away. Every Android visit does —
+ * a website cannot tell whether the app is installed, and people who had it
+ * kept tapping "Download" — except: a visit that is the page coming back
+ * from a failed attempt (NO_APP_PARAM), a tab that already tried, and an
+ * app's own browser.
  */
-export function shouldAutoOpen(downloadedBefore: boolean, triedThisTab: boolean): boolean {
-  return downloadedBefore && !triedThisTab;
+export function shouldAutoOpen(input: { triedThisTab: boolean; search: string; userAgent: string }): boolean {
+  if (input.triedThisTab || isWebView(input.userAgent)) return false;
+  return !new URLSearchParams(input.search).has(NO_APP_PARAM);
+}
+
+/**
+ * Where a failed attempt comes back to: this same page, marked, so it shows
+ * "Open in the app" and "Download". Never the store: people who had the app
+ * were taken to the store every time a link did not open it.
+ */
+export function backToPage(href: string): string {
+  const u = new URL(href);
+  u.searchParams.set(NO_APP_PARAM, "1");
+  return u.toString();
 }
 
 /**
  * An address Chrome on Android turns into "open the app": at the meeting
  * when there is one (the app claims /e/<slug> links), otherwise at its
- * start screen. Without the app installed, Chrome goes to the store.
+ * start screen. When the app does not open, Chrome goes to `fallback` —
+ * backToPage(), not the store (see there).
  */
-export function appOpenUrl(slug: string | null, fallback = APP_STORE_URL): string {
+export function appOpenUrl(slug: string | null, fallback: string): string {
   const back = "S.browser_fallback_url=" + encodeURIComponent(fallback);
   if (slug) {
     return (
