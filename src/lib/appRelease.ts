@@ -14,13 +14,27 @@
 // LATEST_APP_VERSION here; raise MIN_APP_VERSION only when older apps must
 // stop joining. APP_MIN_VERSION in Vercel overrides the minimum without a
 // code change (e.g. "0" to let every app in again during an event).
+// Between the minimum and the newest, an app is nudged: told once a day,
+// with Try again letting it in (shouldNudgeUpdate). SCHEDULED_MIN raises
+// the minimum on a date, after a week of nudges.
 
 export const LATEST_APP_VERSION = "1.2.5";
 export const MIN_APP_VERSION = "1.2.4";
 
-export function minAppVersion(): string {
+/**
+ * Moving everyone to 1.2.5 (owner, 2026-10-18): 53 people joined from 1.2.4
+ * in the week before, and 1.2.4 has no update pop-up. So for a week an app
+ * older than LATEST is nudged — told once a day, and let in on Try again —
+ * and from this date the minimum rises and older apps must update.
+ */
+export const SCHEDULED_MIN = { version: "1.2.5", from: Date.parse("2026-10-25T00:00:00Z") };
+
+export function minAppVersion(now: number = Date.now()): string {
   const env = (process.env.APP_MIN_VERSION || "").trim();
-  return /^\d+(\.\d+){0,3}$/.test(env) ? env : MIN_APP_VERSION;
+  if (/^\d+(\.\d+){0,3}$/.test(env)) return env;
+  return now >= SCHEDULED_MIN.from && compareVersions(SCHEDULED_MIN.version, MIN_APP_VERSION) > 0
+    ? SCHEDULED_MIN.version
+    : MIN_APP_VERSION;
 }
 
 /** -1, 0 or 1, comparing dotted version numbers ("1.2.10" > "1.2.9"). */
@@ -63,4 +77,35 @@ export function needsAppUpdate(input: { authorization: string | null; client: st
   const version = appVersionOf(input.client);
   if (!version) return compareVersions("1.2.3", minAppVersion()) < 0;
   return compareVersions(version, minAppVersion()) < 0;
+}
+
+/**
+ * An app still allowed to join but older than LATEST_APP_VERSION. 1.2.4
+ * has no update pop-up of its own, so joining tells it — once a day
+ * (claimNudge), and Try again on its failure screen goes straight in.
+ */
+export function shouldNudgeUpdate(input: { authorization: string | null; client: string }): boolean {
+  if (!/^Bearer\s+\S/i.test(input.authorization || "")) return false;
+  const version = appVersionOf(input.client);
+  if (!version || compareVersions(version, minAppVersion()) < 0) return false;
+  return compareVersions(version, LATEST_APP_VERSION) < 0;
+}
+
+/**
+ * Shown by every app as the join failure, above its Try again button. The
+ * cut-off is only mentioned while it is still ahead.
+ */
+export function nudgeMessage(now: number = Date.now()): string {
+  const cutOff = now < SCHEDULED_MIN.from ? ", and from 25 October older apps cannot join" : "";
+  return (
+    `NeoConference ${LATEST_APP_VERSION} is ready${cutOff}. To update: on this phone, open neoconference.app/download, ` +
+    "sign in to the LoveWorld AppStore with KingsChat and tap Download. To join this meeting now, tap Try again."
+  );
+}
+
+/** One nudge per person per 20 hours: the first join is told, the rest go in. */
+export const NUDGE_TTL_SECONDS = 20 * 60 * 60;
+
+export function nudgeKey(userId: string): string {
+  return `neo:app:nudged:${userId}`;
 }

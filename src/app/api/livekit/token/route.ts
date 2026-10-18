@@ -6,7 +6,8 @@ import { hasMeetingAdminPower, isAdmin } from "@/lib/roles";
 import { featureDecisions } from "@/lib/platform/features";
 import { rejoinDropsToAttendee, reopensOnJoin } from "@/lib/meetingLifecycle";
 import { gateStatus } from "@/lib/waitingRoom";
-import { needsAppUpdate, UPDATE_MESSAGE } from "@/lib/appRelease";
+import { needsAppUpdate, nudgeKey, nudgeMessage, NUDGE_TTL_SECONDS, shouldNudgeUpdate, UPDATE_MESSAGE } from "@/lib/appRelease";
+import { kv } from "@/lib/kv";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,6 +50,15 @@ export async function GET(req: NextRequest) {
     if (needsAppUpdate({ authorization: req.headers.get("authorization"), client })) {
       console.info("[token] app update required", JSON.stringify({ room, client: client || "(none: 1.2.3 or older)" }));
       return NextResponse.json({ error: "app_update_required", message: UPDATE_MESSAGE }, { status: 426 });
+    }
+    // Allowed but not the newest: told once a day, and Try again goes in.
+    // Without KV nobody is held up.
+    if (shouldNudgeUpdate({ authorization: req.headers.get("authorization"), client })) {
+      const first = await kv.set(nudgeKey(userId), 1, { nx: true, ex: NUDGE_TTL_SECONDS }).catch(() => null);
+      if (first) {
+        console.info("[token] app update nudge", JSON.stringify({ room, client }));
+        return NextResponse.json({ error: "app_update_available", message: nudgeMessage() }, { status: 426 });
+      }
     }
     if (eventSlug) {
       // Shared identity lookup — checks the LEGACY ev.roles[] array AND
