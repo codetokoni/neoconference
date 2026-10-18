@@ -65,7 +65,14 @@ test("open-in-app comes back to the page, not the store, when the app does not o
   expect(meeting).toContain("intent://www.neoconference.app/e/hscrusade#Intent;scheme=https;package=app.neoconference;");
   expect(meeting).toContain("S.browser_fallback_url=" + encodeURIComponent(back));
   const app = appOpenUrl(null, back);
-  expect(app).toContain("action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=app.neoconference;");
+  // Not a page's meeting: the app's home, through a link Chrome may hand to
+  // it (BROWSABLE). The MAIN/LAUNCHER intent it used never opened the app.
+  expect(app).toBe(
+    "intent://www.neoconference.app/app/auth#Intent;scheme=https;package=app.neoconference;S.browser_fallback_url=" +
+      encodeURIComponent(back) +
+      ";end",
+  );
+  expect(app).not.toContain("LAUNCHER");
   expect(app).not.toContain("lwappstore");
 });
 
