@@ -141,8 +141,8 @@ async function main() {
   console.log("old apps are asked to update");
 
   /** A join as the app makes it (Bearer), or as the website does (cookie). */
-  async function join(opts: { app: boolean; client?: string }) {
-    g.__who = "user_app";
+  async function join(opts: { app: boolean; client?: string; who?: string }) {
+    g.__who = opts.who ?? "user_app";
     const q = new URLSearchParams({ room: slug, event: slug, nonce: "n2" });
     if (opts.client !== undefined) q.set("client", opts.client);
     const headers: Record<string, string> = opts.app ? { authorization: "Bearer app-session-jwt" } : {};
@@ -161,10 +161,91 @@ async function main() {
     assert.equal(r.body.token, undefined);
   });
 
+  // The minimum rises on a date (SCHEDULED_MIN), so these run on a clock
+  // set before it, and the cut-off is checked on one set after.
+  const { SCHEDULED_MIN, nudgeKey } = await import("../appRelease");
+  const { kv } = await import("../kv");
+  const realNow = Date.now;
+  const atTime = async (ms: number, fn: () => Promise<void>) => {
+    Date.now = () => ms;
+    try {
+      await fn();
+    } finally {
+      Date.now = realNow;
+    }
+  };
+  const beforeCutOff = SCHEDULED_MIN.from - 86_400_000;
+  const afterCutOff = SCHEDULED_MIN.from + 60_000;
+  const v124 = "android 1.2.4+5218 OPPO CPH2599 / Android 16";
+  const v125 = "android 1.2.5+5219 OPPO CPH2599 / Android 16";
+
   await t("an app older than the minimum is told too; 1.2.4 and newer join", async () => {
-    assert.equal((await join({ app: true, client: "android 1.2.3+5216 OPPO CPH2599 / Android 16" })).status, 426);
-    assert.equal((await join({ app: true, client: "android 1.2.4+5218 OPPO CPH2599 / Android 16" })).status, 200);
-    assert.equal((await join({ app: true, client: "android 1.2.10+5300 Tecno X / Android 14" })).status, 200);
+    await atTime(beforeCutOff, async () => {
+      await kv.set(nudgeKey("user_app"), 1); // already nudged today
+      assert.equal((await join({ app: true, client: "android 1.2.3+5216 OPPO CPH2599 / Android 16" })).status, 426);
+      assert.equal((await join({ app: true, client: v124 })).status, 200);
+      assert.equal((await join({ app: true, client: "android 1.2.10+5300 Tecno X / Android 14" })).status, 200);
+    });
+  });
+
+  await t("1.2.4 is told 1.2.5 is ready once a day, and Try again goes straight in", async () => {
+    await atTime(beforeCutOff, async () => {
+      await kv.del(nudgeKey("user_app"));
+      const first = await join({ app: true, client: v124 });
+      assert.equal(first.status, 426);
+      // Not app_update_required: 1.2.5 would show its Update screen, with
+      // no way in. Every app shows any other code as the message, with
+      // Try again under it.
+      assert.equal(first.body.error, "app_update_available");
+      assert.match(String(first.body.message), /1\.2\.5 is ready, and from 25 October older apps cannot join/);
+      assert.match(String(first.body.message), /neoconference\.app\/download/);
+      assert.match(String(first.body.message), /KingsChat/);
+      assert.match(String(first.body.message), /tap Try again\.$/);
+      assert.equal(first.body.token, undefined);
+      // Try again, and every join after it that day.
+      assert.equal((await join({ app: true, client: v124 })).status, 200);
+      assert.equal((await join({ app: true, client: v124 })).status, 200);
+      // Each person is told once: someone else on 1.2.4 still is.
+      g.__users.user_other = { emails: ["other@example.com"] };
+      assert.equal((await join({ app: true, client: v124, who: "user_other" })).body.error, "app_update_available");
+      assert.equal((await join({ app: true, client: v124, who: "user_other" })).status, 200);
+    });
+  });
+
+  await t("the newest app and the website are never nudged", async () => {
+    await atTime(beforeCutOff, async () => {
+      await kv.del(nudgeKey("user_app"));
+      assert.equal((await join({ app: true, client: v125 })).status, 200);
+      assert.equal((await join({ app: false })).status, 200);
+      assert.equal(await kv.get(nudgeKey("user_app")), null);
+    });
+  });
+
+  await t("from 25 October 1.2.5 is the minimum: 1.2.4 must update, 1.2.5 joins", async () => {
+    await atTime(afterCutOff, async () => {
+      await kv.set(nudgeKey("user_app"), 1);
+      const old = await join({ app: true, client: v124 });
+      assert.equal(old.status, 426);
+      assert.equal(old.body.error, "app_update_required");
+      assert.equal((await join({ app: true, client: v125 })).status, 200);
+      const latest = await import("../../app/api/app/latest/route");
+      assert.equal(((await (await latest.GET()).json()) as Record<string, string>).minVersion, "1.2.5");
+    });
+  });
+
+  await t("APP_MIN_VERSION still overrides the scheduled minimum, and the nudge drops the passed date", async () => {
+    process.env.APP_MIN_VERSION = "1.2.4";
+    try {
+      await atTime(afterCutOff, async () => {
+        await kv.del(nudgeKey("user_app"));
+        const r = await join({ app: true, client: v124 });
+        assert.equal(r.body.error, "app_update_available");
+        assert.doesNotMatch(String(r.body.message), /25 October/);
+        assert.equal((await join({ app: true, client: v124 })).status, 200);
+      });
+    } finally {
+      delete process.env.APP_MIN_VERSION;
+    }
   });
 
   await t("the website (its cookie, no app header) is never asked to update", async () => {
@@ -182,7 +263,10 @@ async function main() {
 
   await t("GET /api/app/latest says the newest version, the minimum and the store", async () => {
     const latest = await import("../../app/api/app/latest/route");
-    const body = (await (await latest.GET()).json()) as Record<string, string>;
+    let body: Record<string, string> = {};
+    await atTime(beforeCutOff, async () => {
+      body = (await (await latest.GET()).json()) as Record<string, string>;
+    });
     assert.deepEqual(body, {
       latestVersion: "1.2.5",
       minVersion: "1.2.4",
