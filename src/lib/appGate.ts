@@ -147,18 +147,18 @@ export function backToPage(href: string): string {
 
 /**
  * An address Chrome on Android turns into "open the app": at the meeting
- * when there is one (the app claims /e/<slug> links), otherwise at its
- * start screen. When the app does not open, Chrome goes to `fallback` —
+ * when there is one (the app claims /e/<slug> links), otherwise its home
+ * screen. When the app does not open, Chrome goes to `fallback` —
  * backToPage(), not the store (see there).
+ *
+ * Home is reached through /app/auth, the sign-in return link: with nothing
+ * attached the app simply opens. Chrome only hands a link to an app screen
+ * marked BROWSABLE, which the launcher screen is not — the MAIN/LAUNCHER
+ * intent this used never opened the app, so neoconference.app/ on a phone
+ * with the app always showed "Open or Download" (2026-10-18).
  */
 export function appOpenUrl(slug: string | null, fallback: string): string {
   const back = "S.browser_fallback_url=" + encodeURIComponent(fallback);
-  if (slug) {
-    return (
-      "intent://www.neoconference.app/e/" +
-      encodeURIComponent(slug) +
-      `#Intent;scheme=https;package=${APP_PACKAGE};${back};end`
-    );
-  }
-  return `intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${APP_PACKAGE};${back};end`;
+  const path = slug ? "/e/" + encodeURIComponent(slug) : "/app/auth";
+  return `intent://www.neoconference.app${path}#Intent;scheme=https;package=${APP_PACKAGE};${back};end`;
 }
