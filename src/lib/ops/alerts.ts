@@ -100,7 +100,10 @@ export const DEFAULT_RULES: AlertRule[] = [
   { id: "default_jobs", kind: "job_failures", target: "*", threshold: 2, cooldownMinutes: 360, enabled: true, email: true, inApp: true },
   { id: "default_payments", kind: "payment_failures", target: "*", threshold: 3, cooldownMinutes: 360, enabled: true, email: true, inApp: true },
   { id: "default_kv_bytes", kind: "kv_bytes", target: "*", threshold: 200_000_000, cooldownMinutes: 1440, enabled: true, email: true, inApp: true },
-  { id: "default_r2_bytes", kind: "r2_bytes", target: "*", threshold: 8_000_000_000, cooldownMinutes: 1440, enabled: true, email: true, inApp: true },
+  // 50 GB (owner, 2026-10-18): the 8 GB warning fired at 8.57 GB. Past R2's
+  // free 10 GB storage costs ~$0.015/GB-month, so keep recordings and warn
+  // only when it is worth a look. Admin → Ops alerts can still override it.
+  { id: "default_r2_bytes", kind: "r2_bytes", target: "*", threshold: 50_000_000_000, cooldownMinutes: 1440, enabled: true, email: true, inApp: true },
   { id: "default_recording", kind: "recording_hours", target: "*", threshold: 500, cooldownMinutes: 1440, enabled: false, email: true, inApp: true },
 ];
 
