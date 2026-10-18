@@ -15,7 +15,7 @@ import {
   DOWNLOADED_KEY,
   appOpenUrl,
   gateExempt,
-  gateOffers,
+  backToPage,
   isAndroid,
   meetingForGate,
   shouldAutoOpen,
@@ -47,8 +47,10 @@ export default function AndroidAppGate() {
   const pathname = usePathname() || "/";
   const [show, setShow] = useState(false);
   const [slug, setSlug] = useState<string | null>(null);
-  // Downloaded before on this phone: open the app instead of asking.
-  const [returning, setReturning] = useState(false);
+  // Trying to open the app right now (the page leaves if it opens).
+  const [trying, setTrying] = useState(false);
+  // Where a failed attempt comes back to: this page, marked noapp.
+  const [back, setBack] = useState("");
 
   useEffect(() => {
     if (!isAndroid(navigator.userAgent)) return setShow(false);
@@ -66,13 +68,20 @@ export default function AndroidAppGate() {
 
     const gate = () => {
       setShow(true);
-      const downloaded = read(() => localStorage, DOWNLOADED_KEY);
-      setReturning(downloaded);
-      if (shouldAutoOpen(downloaded, read(() => sessionStorage, TRIED_KEY))) {
+      const fallback = backToPage(window.location.href);
+      setBack(fallback);
+      const auto = shouldAutoOpen({
+        triedThisTab: read(() => sessionStorage, TRIED_KEY),
+        search,
+        userAgent: navigator.userAgent,
+      });
+      setTrying(auto);
+      if (auto) {
         write(() => sessionStorage, TRIED_KEY);
-        // Into the app, at the meeting when this is one. Without the app,
-        // Chrome follows the fallback to the store.
-        window.location.href = appOpenUrl(meeting);
+        // Into the app, at the meeting when this is one. If it does not
+        // open, Chrome comes back to this page (never the store), which
+        // then offers Open in the app and Download.
+        window.location.href = appOpenUrl(meeting, fallback);
       }
     };
     if (!meeting) return gate();
@@ -124,51 +133,33 @@ export default function AndroidAppGate() {
         <NeoMark className="h-9 w-auto" />
       </div>
       <h1 id="app-gate-title" className="mt-6 text-3xl font-bold tracking-tight text-white">
-        {returning ? "Opening NeoConference…" : "Get the NeoConference app"}
+        {trying ? "Opening NeoConference…" : slug ? "Open this meeting in the app" : "Open NeoConference"}
       </h1>
       <p className="mt-3 max-w-sm text-base leading-relaxed text-white/70">
-        {returning
-          ? "If the app did not open, tap below."
-          : slug
-            ? "This meeting opens in the NeoConference app on Android. Live translation, captions and every meeting tool are there."
-            : "On Android, NeoConference is an app. Live translation, captions and every meeting tool are there."}
+        {trying
+          ? "If the app does not open, tap Open in the app below."
+          : "Have the NeoConference app? Tap Open in the app. Not yet? Download it free from the LoveWorld AppStore."}
       </p>
       <div className="mt-8 flex w-full max-w-sm flex-col gap-3">
-        {/* Asked only the first time: once downloaded, only "open". */}
-        {gateOffers(returning).download && (
+        {/* Open first: most people seeing this already have the app, and a
+            big Download button sent them to the store every time. */}
         <a
-          href={APP_STORE_URL}
-          // Remembered, so the next visit opens the app instead of asking.
+          href={appOpenUrl(slug, back || APP_STORE_URL)}
           onClick={() => write(() => localStorage, DOWNLOADED_KEY)}
           className="rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-500 px-6 py-4 text-base font-semibold text-slate-900 shadow-[0_0_30px_-8px_rgba(34,211,238,0.6)]"
         >
+          {slug ? "Open in the app" : "Open the app"}
+        </a>
+        <a
+          href={APP_STORE_URL}
+          className="rounded-2xl border border-cyan-400/40 bg-cyan-400/10 px-6 py-4 text-base font-semibold text-cyan-100"
+        >
           Download from LoveWorld AppStore
         </a>
-        )}
-        <a
-          href={appOpenUrl(slug)}
-          // Opening it from here also says they have it.
-          onClick={() => write(() => localStorage, DOWNLOADED_KEY)}
-          className={
-            returning
-              ? "rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-500 px-6 py-4 text-base font-semibold text-slate-900 shadow-[0_0_30px_-8px_rgba(34,211,238,0.6)]"
-              : "rounded-2xl border border-cyan-400/40 bg-cyan-400/10 px-6 py-4 text-base font-semibold text-cyan-100"
-          }
-        >
-          {returning
-            ? slug
-              ? "Open this meeting in the app"
-              : "Open the app"
-            : slug
-              ? "I have the app — open this meeting"
-              : "I have the app — open it"}
-        </a>
       </div>
-      {returning ? null : (
-        <p className="mt-6 max-w-sm text-xs leading-relaxed text-white/45">
-          Free to download. On the store, sign in with KingsChat and tap Download. After installing, come back and tap your meeting link again.
-        </p>
-      )}
+      <p className="mt-6 max-w-sm text-xs leading-relaxed text-white/45">
+        Free to download. On the store, sign in with KingsChat and tap Download. After installing, come back and tap your meeting link again.
+      </p>
     </div>
   );
 }
