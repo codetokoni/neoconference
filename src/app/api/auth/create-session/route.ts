@@ -40,14 +40,13 @@ export async function POST(request: NextRequest) {
     }
 
     const userAgent = request.headers.get('user-agent') || '';
-    const acceptLanguage = request.headers.get('accept-language') || '';
-    const fingerprint = await generateDeviceFingerprint(userAgent, acceptLanguage);
+    const fingerprint = await generateDeviceFingerprint(userAgent);
     const ip = getClientIp(request.headers);
 
     // Idempotent: a refresh should not churn sessions or rotate the cookie.
     const existing = request.cookies.get(SESSION_COOKIE)?.value;
     if (existing) {
-      const result = await validateSession(existing, ip, fingerprint);
+      const result = await validateSession(existing, ip, fingerprint, userAgent);
       if (result.status === 'valid' && result.userId === userId) {
         return NextResponse.json({ success: true, created: false }, { status: 200 });
       }

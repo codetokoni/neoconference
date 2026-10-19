@@ -23,10 +23,12 @@ const DEVICE_PREFIX = 'neo:session-device:';
 
 export const SESSION_COOKIE = 'neoconf-session';
 
-/** Sliding window, refreshed on activity. */
-export const SESSION_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
-/** Hard ceiling regardless of activity. */
-const ABSOLUTE_MAX_MS = 365 * 24 * 60 * 60 * 1000; // 1 year
+/**
+ * Sliding window, refreshed on activity. Signed in until you sign out
+ * (owner, 2026-10-19): 400 days from the last visit, the longest a browser
+ * keeps a cookie, and no hard ceiling.
+ */
+export const SESSION_TTL_SECONDS = 400 * 24 * 60 * 60;
 /** Don't rewrite the record on every single request. */
 const TOUCH_THROTTLE_MS = 5 * 60 * 1000;
 
@@ -113,11 +115,20 @@ async function sha256Hex(input: string): Promise<string> {
  * cookie from a different client. The httpOnly + Secure + SameSite cookie and
  * the ability to revoke are the real controls.
  */
-export async function generateDeviceFingerprint(
-  userAgent: string,
-  acceptLanguage: string,
-): Promise<string> {
-  return sha256Hex(`${(userAgent || '').trim()}|${(acceptLanguage || '').trim()}`);
+export async function generateDeviceFingerprint(userAgent: string): Promise<string> {
+  return sha256Hex(deviceKind(userAgent));
+}
+
+/**
+ * The kind of browser and device, without version numbers. Chrome updates
+ * itself every few weeks and its version is in the user agent; binding to
+ * the full string (and the language list) signed everyone out after each
+ * update with "Your session ended" (owner: signed in until you sign out,
+ * 2026-10-19). A cookie replayed from another kind of browser or phone is
+ * still refused.
+ */
+export function deviceKind(userAgent: string | null | undefined): string {
+  return (userAgent || '').trim().replace(/\d+(?:[._]\d+)*/g, '#').replace(/\s+/g, ' ');
 }
 
 async function hashToken(token: string): Promise<string> {
@@ -220,6 +231,7 @@ export async function validateSession(
   token: string,
   ip: string | null,
   fingerprint: string,
+  userAgent?: string | null,
 ): Promise<ValidationResult> {
   if (!token || !fingerprint) return { status: 'invalid' };
 
@@ -249,34 +261,49 @@ export async function validateSession(
 
   if (!record) return { status: 'invalid' };
 
-  // Hard ceiling, independent of the sliding TTL.
-  if (Date.now() - record.createdAt > ABSOLUTE_MAX_MS) {
-    await destroy(tokenHash, record.userId, record.fingerprint);
-    return { status: 'invalid' };
-  }
-
+  // A session made before deviceKind() holds the full user agent and
+  // language hash. It carries over when the browser it was made in is the
+  // same kind as this one, and is re-keyed to the new fingerprint.
+  let carriedOver = false;
   if (!safeEqual(record.fingerprint, fingerprint)) {
-    console.warn('[neo:sessionStore] device fingerprint mismatch; revoking', {
-      userId: record.userId,
-    });
-    await destroy(tokenHash, record.userId, record.fingerprint);
-    return { status: 'invalid' };
+    const madeIn = record.userAgent ? await generateDeviceFingerprint(record.userAgent) : '';
+    if (!madeIn || !safeEqual(madeIn, fingerprint)) {
+      console.warn('[neo:sessionStore] device fingerprint mismatch; revoking', {
+        userId: record.userId,
+      });
+      await destroy(tokenHash, record.userId, record.fingerprint);
+      return { status: 'invalid' };
+    }
+    carriedOver = true;
   }
 
   // Sliding refresh, throttled so we don't write on every request.
   const now = Date.now();
-  if (now - record.lastActivityAt > TOUCH_THROTTLE_MS) {
-    const updated: SessionRecord = { ...record, lastActivityAt: now, ipLastSeen: ip };
+  if (carriedOver || now - record.lastActivityAt > TOUCH_THROTTLE_MS) {
+    const updated: SessionRecord = {
+      ...record,
+      fingerprint,
+      ...(userAgent ? { userAgent } : {}),
+      lastActivityAt: now,
+      ipLastSeen: ip,
+    };
+    const deviceKey = `${DEVICE_PREFIX}${record.userId}:${fingerprint}`;
     if (!isKvConfigured()) {
       memSessions.set(tokenHash, updated);
+      if (carriedOver) {
+        memDevice.delete(`${DEVICE_PREFIX}${record.userId}:${record.fingerprint}`);
+        memDevice.set(deviceKey, tokenHash);
+      }
     } else {
       try {
         await kv.set(key, updated, { ex: SESSION_TTL_SECONDS });
         await kv.expire(`${INDEX_PREFIX}${record.userId}`, SESSION_TTL_SECONDS);
-        await kv.expire(
-          `${DEVICE_PREFIX}${record.userId}:${record.fingerprint}`,
-          SESSION_TTL_SECONDS,
-        );
+        if (carriedOver) {
+          await kv.del(`${DEVICE_PREFIX}${record.userId}:${record.fingerprint}`);
+          await kv.set(deviceKey, tokenHash, { ex: SESSION_TTL_SECONDS });
+        } else {
+          await kv.expire(deviceKey, SESSION_TTL_SECONDS);
+        }
       } catch (error) {
         // Non-fatal: the session is still valid, we just didn't extend it.
         console.error('[neo:sessionStore] touch failed', error);
