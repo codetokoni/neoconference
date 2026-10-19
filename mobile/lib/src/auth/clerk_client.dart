@@ -107,7 +107,7 @@ class ClerkClient {
       throw ClerkException(
         code: 'incomplete',
         message: 'This account needs another step to sign in. '
-            'Please finish signing in on neolinguameet.com.',
+            'Please finish signing in on ${Config.domain}.',
       );
     }
     final sessionId = response?['created_session_id'] as String?;

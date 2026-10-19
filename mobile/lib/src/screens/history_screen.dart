@@ -12,6 +12,7 @@ import '../meetings/when.dart';
 import '../manage/manage_screen.dart';
 import 'home_screen.dart' show nowProvider;
 import 'prejoin_screen.dart';
+import '../core/config.dart';
 
 /// Whether this build can list recordings.
 ///
@@ -60,11 +61,11 @@ class HistoryScreen extends ConsumerWidget {
                     'and moderators.',
               )
             else if (!listed)
-              const NeoEmptyState(
+              NeoEmptyState(
                 icon: Icons.videocam_off_rounded,
                 title: 'Recordings are not in the app yet',
                 message: 'Meetings you record are stored on your account. '
-                    'Open neolinguameet.com on the web to watch or download '
+                    'Open ${Config.domain} on the web to watch or download '
                     'them.',
               )
             else

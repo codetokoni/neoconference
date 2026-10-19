@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/support.dart';
 import '../design/brand.dart';
 import 'auth_controller.dart';
+import '../core/config.dart';
 
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key});
@@ -125,7 +126,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     ),
                     const SizedBox(height: 28),
                     Text(
-                      'New here? Create your account on neolinguameet.com, '
+                      'New here? Create your account on ${Config.domain}, '
                       'then sign in.',
                       textAlign: TextAlign.center,
                       style: TextStyle(

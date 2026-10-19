@@ -4,6 +4,7 @@ import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
 import '../mock/sample_data.dart';
+import '../core/config.dart';
 
 /// What each role is allowed to do.
 ///
@@ -700,7 +701,7 @@ class MeetingDetailsSheet extends StatelessWidget {
                         Text('Meeting link', style: text.labelSmall),
                         const SizedBox(height: 2),
                         Text(
-                          'neolinguameet.com/${meeting.code}',
+                          '${Config.domain}/${meeting.code}',
                           style: text.bodyMedium,
                         ),
                       ],

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import 'meeting_drop.dart';
+import '../core/config.dart';
 
 /// What the meeting owner's plan allows in this meeting, as the token
 /// route writes it into every participant's metadata:
@@ -55,7 +56,7 @@ class MeetingPlanLimits {
 MeetingDrop timeLimitDrop(int minutes) => MeetingDrop(
       headline: 'Time limit reached',
       message: "This meeting reached the $minutes-minute limit of its owner's "
-          'plan. The owner can upgrade at neolinguameet.com/pricing for '
+          'plan. The owner can upgrade at ${Config.domain}/pricing for '
           'longer meetings.',
       canRejoin: true,
     );
@@ -98,9 +99,9 @@ class MeetingTimeLimit {
 }
 
 /// What a listener is told when the meeting's plan has no live translation.
-const proTranslationNote =
+String get proTranslationNote =>
     "Live translation is on the Pro plan and above. This meeting's owner "
-    'can upgrade at neolinguameet.com/pricing.';
+    'can upgrade at ${Config.domain}/pricing.';
 
 /// Whether this person was added to the meeting by name and so may record
 /// though not a host (the token's `canRecord`; owner's decision 2026-10-15).
