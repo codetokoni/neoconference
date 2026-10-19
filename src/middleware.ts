@@ -318,12 +318,10 @@ async function enforcePersistentSession(req: NextRequest): Promise<NextResponse 
   // No cookie yet — <SessionBootstrap /> will mint one on the next paint.
   if (!token) return null;
 
-  const fingerprint = await generateDeviceFingerprint(
-    req.headers.get('user-agent') || '',
-    req.headers.get('accept-language') || '',
-  );
+  const userAgent = req.headers.get('user-agent') || '';
+  const fingerprint = await generateDeviceFingerprint(userAgent);
 
-  const result = await validateSession(token, getClientIp(req.headers), fingerprint);
+  const result = await validateSession(token, getClientIp(req.headers), fingerprint, userAgent);
   if (result.status !== 'invalid') return null;
 
   if (req.nextUrl.pathname.startsWith('/api/')) {
