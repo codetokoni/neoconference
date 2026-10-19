@@ -188,7 +188,7 @@ async function main() {
     });
   });
 
-  await t("1.2.4 is told 1.2.5 is ready once a day, and Try again goes straight in", async () => {
+  await t("1.2.4 is told the newest app is ready once a day, and Try again goes straight in", async () => {
     await atTime(beforeCutOff, async () => {
       await kv.del(nudgeKey("user_app"));
       const first = await join({ app: true, client: v124 });
@@ -197,7 +197,7 @@ async function main() {
       // no way in. Every app shows any other code as the message, with
       // Try again under it.
       assert.equal(first.body.error, "app_update_available");
-      assert.match(String(first.body.message), /1\.2\.5 is ready, and from 25 October older apps cannot join/);
+      assert.match(String(first.body.message), /1\.2\.6 is ready, and from 25 October older apps cannot join/);
       assert.match(String(first.body.message), /neoconference\.app\/download/);
       assert.match(String(first.body.message), /KingsChat/);
       assert.match(String(first.body.message), /tap Try again\.$/);
@@ -212,10 +212,12 @@ async function main() {
     });
   });
 
-  await t("the newest app and the website are never nudged", async () => {
+  await t("1.2.5, which has its own update pop-up, the newest app and the website are never nudged", async () => {
     await atTime(beforeCutOff, async () => {
       await kv.del(nudgeKey("user_app"));
+      // 1.2.5 is older than 1.2.6, but says so itself: joining never holds it up.
       assert.equal((await join({ app: true, client: v125 })).status, 200);
+      assert.equal((await join({ app: true, client: "android 1.2.6+5220 OPPO CPH2599 / Android 16" })).status, 200);
       assert.equal((await join({ app: false })).status, 200);
       assert.equal(await kv.get(nudgeKey("user_app")), null);
     });
@@ -268,7 +270,7 @@ async function main() {
       body = (await (await latest.GET()).json()) as Record<string, string>;
     });
     assert.deepEqual(body, {
-      latestVersion: "1.2.5",
+      latestVersion: "1.2.6",
       minVersion: "1.2.4",
       storeUrl: "https://web.lwappstore.com/share/lW-APP-Y26-XG9328",
       updateUrl: "https://www.neoconference.app/download",
