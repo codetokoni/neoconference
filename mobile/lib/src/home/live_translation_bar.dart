@@ -282,8 +282,8 @@ class LiveTranslationHowTo extends StatelessWidget {
             const SizedBox(height: NeoSpace.sm),
             Text(
               'NeoLinguaMeet speaks each speaker\'s words to you in the language you choose, '
-              'with the original voice quietly underneath. Everyone picks their own. It is on '
-              'every plan.',
+              'with the original voice quietly underneath. Everyone picks their own. It works '
+              'in meetings on the Pro plan and above.',
               style: text.bodyMedium?.copyWith(color: p.textMuted, height: 1.4),
             ),
             const SizedBox(height: NeoSpace.lg),
