@@ -49,6 +49,11 @@ class Config {
   /// The website and its API.
   static String get site => _site;
 
+  /// The website's address as people type it ("neolinguameet.com"), for
+  /// text that names it. Follows [site], so it never names a domain that
+  /// is not serving yet.
+  static String get domain => Uri.parse(_site).host.replaceFirst(RegExp(r'^www\.'), '');
+
   /// Clerk's Frontend API for this instance (what the website's publishable
   /// key names).
   static String get clerkFrontendApi => _clerk;

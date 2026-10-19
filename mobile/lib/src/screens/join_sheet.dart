@@ -9,6 +9,7 @@ import '../meetings/meeting_view.dart';
 import '../meetings/when.dart';
 import 'home_screen.dart' show nowProvider;
 import 'prejoin_screen.dart';
+import '../core/config.dart';
 
 /// Meetings worth offering as a shortcut under the field.
 ///
@@ -118,7 +119,7 @@ class _JoinSheetState extends ConsumerState<JoinSheet> {
             textInputAction: TextInputAction.go,
             onSubmitted: (_) => _join(),
             decoration: InputDecoration(
-              hintText: 'neolinguameet.com/product-sync',
+              hintText: '${Config.domain}/product-sync',
               errorText: _error,
               prefixIcon: const Icon(Icons.link_rounded),
               suffixIcon: IconButton(

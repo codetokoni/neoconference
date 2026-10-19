@@ -128,7 +128,7 @@ class _MarkPainter extends CustomPainter {
   bool shouldRepaint(covariant _MarkPainter oldDelegate) => false;
 }
 
-/// "Neo" in solid brand text, "Conference" in the site's gradient.
+/// "Neo" in solid brand text, "LinguaMeet" in the site's gradient.
 class NeoWordmark extends StatelessWidget {
   const NeoWordmark({super.key, this.fontSize = 20});
 
@@ -151,12 +151,12 @@ class NeoWordmark extends StatelessWidget {
         // ShaderMask reproduces background-clip:text, which is how the
         // website paints the second half of the wordmark.
         if (palette.spectrumAt(7) case final solid?)
-          Text('Conference', style: style.copyWith(color: solid))
+          Text('LinguaMeet', style: style.copyWith(color: solid))
         else
           ShaderMask(
             shaderCallback: (bounds) => NeoPalette.wordmarkGradient.createShader(bounds),
             blendMode: BlendMode.srcIn,
-            child: Text(style: style.copyWith(color: Colors.white), 'Conference'),
+            child: Text(style: style.copyWith(color: Colors.white), 'LinguaMeet'),
           ),
       ],
     );

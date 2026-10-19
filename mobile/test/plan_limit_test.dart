@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:neoconference/src/room/plan_limit.dart';
+import 'package:neoconference/src/core/config.dart';
 
 /// The pricing page says Free meetings run 60 minutes and Starter 120. The
 /// website ended them at that time; the app did not, so on a phone a Free
@@ -95,7 +96,8 @@ void main() {
     final drop = timeLimitDrop(60);
     expect(drop.headline, 'Time limit reached');
     expect(drop.message, contains('60-minute limit'));
-    expect(drop.message, contains('neolinguameet.com/pricing'));
+    // The website as the server names it (Config): the old domain until the switch.
+    expect(drop.message, contains('${Config.domain}/pricing'));
     expect(drop.retryAutomatically, isFalse);
   });
 }

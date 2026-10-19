@@ -152,7 +152,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const _Label('About'),
           _Tile(
             title: 'NeoLinguaMeet',
-            subtitle: _build.isEmpty ? 'neolinguameet.com' : _build,
+            subtitle: _build.isEmpty ? Config.domain : _build,
           ),
           _Tile(
             title: 'Help & support',
