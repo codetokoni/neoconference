@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import JoinFlow from "@/components/video/JoinFlow";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
+import { BRAND } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Join — NeoConference",
+  title: `Join — ${BRAND.name}`,
   description: "Enter your participant code to join the event with your camera.",
   robots: { index: false, follow: false },
 };

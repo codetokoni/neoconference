@@ -5,11 +5,12 @@ import { requireRole } from "@/lib/roles";
 import { getRoom } from "@/lib/rooms";
 import { roomLink, SIMULCAST_MAIN } from "@/lib/simulcast";
 import { isVideoRoomAdmin } from "@/lib/videoAdmin";
+import { BRAND } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Control room — NeoConference",
+  title: `Control room — ${BRAND.name}`,
   robots: { index: false, follow: false },
 };
 

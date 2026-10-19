@@ -12,6 +12,7 @@
 // events created from now on inherit the list.
 
 import { useEffect, useState } from 'react';
+import { BRAND } from "@/lib/brand";
 
 // Only 'host' and 'moderator' are real grantable MeetingRole values
 // (see permissions.ts). 'cohost' is a display alias that normalizes to
@@ -47,7 +48,7 @@ function inviteText(item: RoleItem, siteUrl: string): string {
   const role = ROLE_LABEL[item.role as RoleValue] || item.role;
   return (
     'Hi ' + who + ' — you\'ve been added as a permanent ' + role +
-    ' on NeoConference. Sign in at ' + siteUrl +
+    ` on ${BRAND.name}. Sign in at ` + siteUrl +
     ' (KingsChat, Neomail, or email) and you\'ll automatically be a ' +
     role + ' in every meeting I run.'
   );
@@ -206,7 +207,7 @@ function RoleRow({
   const [sendStatus, setSendStatus] = useState<null | 'sent' | 'not_linked' | 'sender_not_linked' | 'error'>(null);
 
   const siteUrl =
-    typeof window !== 'undefined' ? window.location.origin : 'https://www.neoconference.app';
+    typeof window !== 'undefined' ? window.location.origin : `${BRAND.origin}`;
 
   async function copyInvite() {
     const message = inviteText(item, siteUrl);

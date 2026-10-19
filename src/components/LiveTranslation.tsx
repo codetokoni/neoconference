@@ -39,6 +39,7 @@ import {
   type TrackPublication,
 } from 'livekit-client';
 import { TRANSLATION_LANGUAGES, matchesLanguage } from '@/lib/translationLanguages';
+import { BRAND } from "@/lib/brand";
 
 // The chosen language belongs to one meeting, in one tab. It used to live
 // under a single localStorage key, so a language picked in one conference
@@ -619,7 +620,7 @@ export default function LiveTranslation() {
       <div>
         This meeting&apos;s plan does not include live translation. Its owner can upgrade to Pro or above at{' '}
         <a href="/pricing" target="_blank" rel="noreferrer" style={{ color: '#67e8f9', textDecoration: 'underline' }}>
-          neoconference.app/pricing
+          {BRAND.domain}/pricing
         </a>
         .
       </div>
@@ -681,7 +682,7 @@ export default function LiveTranslation() {
         // would read the words in another language's voice, or not at all.
         <div style={{ fontSize: 11, color: 'rgba(251,191,36,0.9)', padding: '2px 10px 6px' }}>
           This browser has no {currentLabel} voice, so it may not be spoken
-          well. The NeoConference app shows the translation as text too.
+          well. The {BRAND.name} app shows the translation as text too.
         </div>
       ) : null}
       {search ? null : (

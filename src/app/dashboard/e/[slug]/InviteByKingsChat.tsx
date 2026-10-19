@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { BRAND } from "@/lib/brand";
 
 // Wire values match MeetingRole ('host' | 'moderator'). Display labels
 // come from LEGACY_ROLE_MAP in permissions.ts, where 'moderator' is
@@ -270,7 +271,7 @@ export default function InviteByKingsChat({
       {/* Constant reference so the operator can copy the event URL if the
           KC push failed and they need to paste it into KingsChat manually. */}
       <div className="pt-2 border-t border-slate-800 text-[10px] text-slate-500 font-mono truncate">
-        Event URL: {typeof window !== 'undefined' ? window.location.origin : 'https://www.neoconference.app'}
+        Event URL: {typeof window !== 'undefined' ? window.location.origin : `${BRAND.origin}`}
         /{eventSlug}
       </div>
     </div>

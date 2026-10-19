@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { alertsState, isIos, turnAlertsOff, turnAlertsOn, type AlertsState } from "@/lib/pushClient";
+import { BRAND } from "@/lib/brand";
 
 function unblockSteps(): string {
   if (typeof navigator === "undefined") return "";
@@ -53,11 +54,11 @@ export default function CallAlertsButton({ compact = false }: { compact?: boolea
   if (state === "ios-install") {
     return (
       <div className={box}>
-        <p className="font-medium text-slate-100">Add NeoConference to your Home Screen to get call alerts</p>
+        <p className="font-medium text-slate-100">Add {BRAND.name} to your Home Screen to get call alerts</p>
         <ol className="mt-2 list-decimal space-y-1 pl-5 text-slate-300">
           <li>Tap the Share button {isIos() ? "(the square with an arrow)" : ""} in Safari.</li>
           <li>Choose <span className="text-slate-100">Add to Home Screen</span>, then <span className="text-slate-100">Add</span>.</li>
-          <li>Open NeoConference from your Home Screen and turn call alerts on there.</li>
+          <li>Open {BRAND.name} from your Home Screen and turn call alerts on there.</li>
         </ol>
       </div>
     );
@@ -68,7 +69,7 @@ export default function CallAlertsButton({ compact = false }: { compact?: boolea
       <div className={box}>
         <p className="text-slate-300">
           {state === "unsupported"
-            ? "This browser can't receive call alerts. Try Chrome, Edge or Firefox, or the NeoConference app."
+            ? `This browser can't receive call alerts. Try Chrome, Edge or Firefox, or the ${BRAND.name} app.`
             : "Call alerts aren't available yet."}
         </p>
       </div>

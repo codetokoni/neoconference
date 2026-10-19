@@ -29,9 +29,10 @@ import {
 } from "@/lib/plan";
 import { listUserPayments, type PaymentRecord } from "@/lib/paymentsStore";
 import { recordedSeconds, usageMonth } from "@/lib/recordingUsage";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "Billing — NeoConference",
+  title: `Billing — ${BRAND.name}`,
 };
 
 export const dynamic = "force-dynamic";
@@ -217,7 +218,7 @@ function PlanCard({
           </div>
         </div>
         <Link
-          href={isEnterprise ? "mailto:info@neoconference.app" : "/pricing"}
+          href={isEnterprise ? `mailto:${BRAND.supportEmail}` : "/pricing"}
           className="inline-flex items-center justify-center rounded-lg border border-cyan-300/40 bg-cyan-500/15 hover:bg-cyan-500/25 px-4 py-2 text-sm font-medium text-cyan-100 transition"
         >
           {isEnterprise ? "Contact us" : ctaLabel}
@@ -396,10 +397,10 @@ function EmptyHistory({ plan }: { plan: Plan }) {
       No payment history is on file for this plan yet. If you paid recently,
       the record should appear within a minute — otherwise reach out to{" "}
       <a
-        href="mailto:info@neoconference.app"
+        href={`mailto:${BRAND.supportEmail}`}
         className="text-cyan-300 hover:underline"
       >
-        info@neoconference.app
+        {BRAND.supportEmail}
       </a>
       .
     </div>

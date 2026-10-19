@@ -3,11 +3,12 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import QueueBoard from "@/components/video/QueueBoard";
 import { roomLink, SIMULCAST_MAIN } from "@/lib/simulcast";
+import { BRAND } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Queue — NeoConference",
+  title: `Queue — ${BRAND.name}`,
   robots: { index: false, follow: false },
 };
 

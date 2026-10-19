@@ -10,6 +10,7 @@ import { ownerEmails, verifiedEmails, type ClerkEmailish } from "@/lib/admin/own
 import { getRole, listMembers } from "@/lib/admin/store";
 import { isMailConfigured, sendMail } from "@/lib/mail";
 import { addNotification } from "@/lib/notificationStore";
+import { siteOrigin } from "@/lib/brand";
 
 export interface OpsRecipient {
   userId: string;
@@ -68,7 +69,7 @@ export async function notifyOps(
   } else if (!isMailConfigured()) {
     emailSkipped = "mail_not_configured";
   } else if (recipients.length) {
-    const site = process.env.NEXT_PUBLIC_SITE_URL || "https://www.neoconference.app";
+    const site = siteOrigin();
     const res = await sendMail({
       to: recipients[0].email,
       bcc: recipients.slice(1).map((r) => r.email),

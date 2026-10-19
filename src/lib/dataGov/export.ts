@@ -42,6 +42,7 @@ import { financeRecordsForUser } from "@/lib/finance/governance";
 import { listMessages, listTickets, ticketsForAccount } from "@/lib/support/tickets";
 import { listUserActivity } from "@/lib/activity";
 import { getPrefs } from "@/lib/comms/prefs";
+import { BRAND } from "@/lib/brand";
 
 export const EXPORT_TTL_S = 7 * 24 * 60 * 60;
 const PART_TTL_S = 24 * 60 * 60;
@@ -314,7 +315,7 @@ const SECTIONS: Section[] = [
         // The conversation, without support's internal notes or the agents' names.
         const messages = (await listMessages(t.id)).map((m) => ({
           at: iso(m.ts),
-          from: m.author === "user" ? "you" : m.author === "agent" ? "NeoConference support" : "system",
+          from: m.author === "user" ? "you" : m.author === "agent" ? `${BRAND.name} support` : "system",
           body: m.body,
           attachments: m.attachments.map((a) => a.name).join("; "),
         }));
@@ -449,7 +450,7 @@ export async function startExport(uid: string, by: string, now = Date.now()): Pr
 
 const README = (job: ExportJob, sections: string[]) =>
   [
-    "NeoConference — your data",
+    `${BRAND.name} — your data`,
     "",
     `Account: ${job.userId}`,
     `Prepared: ${new Date(job.readyAt ?? Date.now()).toISOString()}`,
@@ -464,7 +465,7 @@ const README = (job: ExportJob, sections: string[]) =>
     "  - recording and file contents: they are listed with where to download them in the app;",
     "  - administrators' internal notes about your account.",
     "",
-    "manifest.json lists every place NeoConference keeps data about people and what happens to it when an account is deleted.",
+    `manifest.json lists every place ${BRAND.name} keeps data about people and what happens to it when an account is deleted.`,
   ].join("\n");
 
 /** The job runner's name for export steps (src/lib/ops/jobs.ts): one step at a time, each recorded. */

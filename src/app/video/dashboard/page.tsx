@@ -2,16 +2,17 @@ import type { Metadata } from "next";
 import SimulcastPlayer from "@/components/video/SimulcastPlayer";
 import { getRoom } from "@/lib/rooms";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
+import { BRAND } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Live — NeoConference",
+  title: `Live — ${BRAND.name}`,
   description: "Watch the live programme feed and choose your listening language.",
   openGraph: {
-    title: "Live — NeoConference",
+    title: `Live — ${BRAND.name}`,
     description: "Watch the live programme feed and choose your listening language.",
-    url: "https://neoconference.app/video/dashboard",
+    url: `${BRAND.origin}/video/dashboard`,
   },
 };
 
@@ -22,7 +23,7 @@ export default async function VideoDashboardPage({
 }) {
   const room = (searchParams?.room ?? SIMULCAST_MAIN).replace(/[^a-zA-Z0-9._-]/g, "");
   const record = await getRoom(room);
-  const title = record?.name ?? "NeoConference";
+  const title = record?.name ?? `${BRAND.name}`;
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6">

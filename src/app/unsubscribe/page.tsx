@@ -7,8 +7,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getPrefs, PREF_CATEGORIES, readUnsubscribeToken } from "@/lib/comms/prefs";
+import { BRAND } from "@/lib/brand";
 
-export const metadata: Metadata = { title: "Email preferences — NeoConference", robots: { index: false } };
+export const metadata: Metadata = { title: `Email preferences — ${BRAND.name}`, robots: { index: false } };
 export const dynamic = "force-dynamic";
 
 export default async function UnsubscribePage({ searchParams }: { searchParams: { t?: string; done?: string } }) {

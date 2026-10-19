@@ -39,6 +39,7 @@ import { addDays, dayInZone, period } from "@/lib/activityReports";
 import { jobDef, JOBS, runRegisteredJob } from "@/lib/ops/jobRegistry";
 import { opsRecipients } from "@/lib/ops/notify";
 import { PURGE_TARGETS } from "@/lib/automation/purgeTargets";
+import { BRAND, siteOrigin } from "@/lib/brand";
 
 export { PURGE_TARGETS };
 
@@ -96,7 +97,7 @@ export interface ActionImpl {
 }
 
 function site(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://www.neoconference.app").replace(/\/+$/, "");
+  return siteOrigin();
 }
 
 /** The period a once-per-period action belongs to: this run's slot, or the latest scheduled time. */
@@ -366,7 +367,7 @@ const report: ActionImpl = {
         to: to[0],
         bcc: to.slice(1),
         attachments: rep.tables.map((name) => ({
-          filename: `neoconference-${name}-${first}-to-${last}.csv`,
+          filename: `${BRAND.id}-${name}-${first}-to-${last}.csv`,
           content: csvOf(tables[name as ReportName]),
           contentType: "text/csv",
         })),

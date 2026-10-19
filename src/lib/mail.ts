@@ -7,6 +7,7 @@
 // We deliberately avoid pulling in the resend npm SDK to keep cold-start
 // time low - the REST endpoint is trivial.
 
+import { BRAND } from "@/lib/brand";
 export type SendMailInput = {
   to: string | string[];
   /** Blind copies: one message to many people who should not see each other. */
@@ -31,7 +32,7 @@ export function isMailConfigured(): boolean {
 }
 
 function defaultFrom(): string {
-  return process.env.MAIL_FROM || "NeoConference <onboarding@resend.dev>";
+  return process.env.MAIL_FROM || `${BRAND.name} <onboarding@resend.dev>`;
 }
 
 /**

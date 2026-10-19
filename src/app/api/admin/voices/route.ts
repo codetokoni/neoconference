@@ -24,6 +24,7 @@ import {
   saveVoiceProfile,
   type VoiceProfile,
 } from "@/lib/voiceProfiles";
+import { BRAND } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
     const client = await clerkClient();
     await client.users.getUser(userId);
   } catch {
-    return NextResponse.json({ ok: false, error: "no_user", message: "No NeoConference account with that id." }, { status: 404 });
+    return NextResponse.json({ ok: false, error: "no_user", message: `No ${BRAND.name} account with that id.` }, { status: 404 });
   }
 
   const filename = (clip as File).name || "recording.wav";

@@ -18,6 +18,7 @@
 // with Try again letting it in (shouldNudgeUpdate). SCHEDULED_MIN raises
 // the minimum on a date, after a week of nudges.
 
+import { BRAND } from "@/lib/brand";
 export const LATEST_APP_VERSION = "1.2.5";
 export const MIN_APP_VERSION = "1.2.4";
 
@@ -55,7 +56,7 @@ export function appVersionOf(client: string): string | null {
 }
 
 /** Short enough to type: redirects to the store page (src/app/download). */
-export const UPDATE_URL = "https://www.neoconference.app/download";
+export const UPDATE_URL = `${BRAND.origin}/download`;
 
 /**
  * Old apps show this as plain text, so it spells out the steps. Downloads go
@@ -63,7 +64,7 @@ export const UPDATE_URL = "https://www.neoconference.app/download";
  * are counted there; its KingsChat sign-in is the quickest.
  */
 export const UPDATE_MESSAGE =
-  "A new version of NeoConference is available. To update: on this phone, open neoconference.app/download, " +
+  `A new version of ${BRAND.name} is available. To update: on this phone, open ${BRAND.domain}/download, ` +
   "sign in to the LoveWorld AppStore with KingsChat and tap Download. Then open the meeting link again. " +
   "You can also join from a web browser.";
 
@@ -98,7 +99,7 @@ export function shouldNudgeUpdate(input: { authorization: string | null; client:
 export function nudgeMessage(now: number = Date.now()): string {
   const cutOff = now < SCHEDULED_MIN.from ? ", and from 25 October older apps cannot join" : "";
   return (
-    `NeoConference ${LATEST_APP_VERSION} is ready${cutOff}. To update: on this phone, open neoconference.app/download, ` +
+    `${BRAND.name} ${LATEST_APP_VERSION} is ready${cutOff}. To update: on this phone, open ${BRAND.domain}/download, ` +
     "sign in to the LoveWorld AppStore with KingsChat and tap Download. To join this meeting now, tap Try again."
   );
 }

@@ -12,8 +12,9 @@
 import type { NeoEvent } from "@/types/event";
 import { isAudioKey, sanitizeSegment } from "@/lib/eventRecordings";
 import { recordedAtFromKey, replayOpen } from "@/lib/replayRecordings";
+import { BRAND } from "@/lib/brand";
 
-const SITE = "https://www.neoconference.app";
+const SITE = `${BRAND.origin}`;
 
 /** How long a recording's download link works, in seconds. */
 export const DOWNLOAD_URL_SECONDS = 3600;

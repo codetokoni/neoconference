@@ -15,6 +15,7 @@ import { entriesBetween, queryLedger } from "@/lib/finance/ledger";
 import { ledgerQuery, timeParam } from "@/lib/finance/query";
 import { DAY, autoBucket, series, type Bucket } from "@/lib/finance/revenue";
 import { paymentsTable, refundsTable, revenueTable, toCsv, toXlsx, type Table } from "@/lib/finance/export";
+import { BRAND } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,7 +54,7 @@ export async function GET(req: Request) {
     after: { rows: table.rows.length, filters: Object.fromEntries([...p.entries()].filter(([k]) => k !== "format" && k !== "type")) },
   });
 
-  const name = `neoconference-${type}-${new Date().toISOString().slice(0, 10)}.${format}`;
+  const name = `${BRAND.id}-${type}-${new Date().toISOString().slice(0, 10)}.${format}`;
   if (format === "xlsx") {
     return new NextResponse(await toXlsx(table), {
       headers: {

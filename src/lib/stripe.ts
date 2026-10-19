@@ -12,12 +12,14 @@
 //   STRIPE_WEBHOOK_SECRET  whsec_... (from your endpoint)
 //   NEXT_PUBLIC_APP_URL    https://neoconference.vercel.app  (for return_url)
 
+import { linkOrigin } from '@/lib/brand';
+
 export function isStripeConfigured(): boolean {
   return Boolean(process.env.STRIPE_SECRET_KEY);
 }
 
 function appUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || 'https://neoconference.vercel.app';
+  return linkOrigin();
 }
 
 function encodeForm(data: Record<string, string | number | boolean | undefined | null>): string {

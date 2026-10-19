@@ -14,6 +14,7 @@
 
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import { BRAND } from "@/lib/brand";
 
 export const dynamic = 'force-dynamic';
 
@@ -39,12 +40,12 @@ export default async function AppAuthPage({
     <main className="min-h-screen flex items-center justify-center px-6">
       <div className="neo-card max-w-md w-full p-8 text-center">
         <h1 className="text-xl font-semibold mb-3">
-          {failed ? 'Sign-in did not complete' : 'Open the NeoConference app'}
+          {failed ? 'Sign-in did not complete' : `Open the ${BRAND.name} app`}
         </h1>
         <p className="text-sm opacity-80 mb-6">
           {failed
             ? 'Something went wrong on the way back from your sign-in provider. Please try again from the app.'
-            : 'This link is meant to open in the NeoConference app on your phone. If you are on a computer, sign in here instead.'}
+            : `This link is meant to open in the ${BRAND.name} app on your phone. If you are on a computer, sign in here instead.`}
         </p>
         <Link href="/sign-in" className="neo-btn inline-block">
           Sign in on the web

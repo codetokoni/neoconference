@@ -13,6 +13,7 @@
 import { kv } from "@/lib/kv";
 import { stripeMode } from "@/lib/stripe";
 import { isMailConfigured, mailFromAddress } from "@/lib/mail";
+import { BRAND, currentName } from "@/lib/brand";
 
 const KEY = "billing:settings";
 
@@ -51,7 +52,7 @@ export interface BillingSettings {
 export const DEFAULT_SETTINGS: BillingSettings = {
   gateways: { espees: { enabled: true }, stripe: { enabled: true } },
   tax: { rules: [] },
-  invoice: { companyName: "NeoConference", address: "", taxId: "", email: "", footer: "" },
+  invoice: { companyName: `${BRAND.name}`, address: "", taxId: "", email: "", footer: "" },
 };
 
 export async function getBillingSettings(): Promise<BillingSettings> {
@@ -114,7 +115,8 @@ export function cleanTaxRules(input: unknown): TaxRule[] | string {
 export function cleanInvoiceDetails(input: unknown): InvoiceDetails {
   const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   return {
-    companyName: s(o.companyName, 120) || DEFAULT_SETTINGS.invoice.companyName,
+    // A saved old product name is the default, not a company's own name.
+    companyName: currentName(s(o.companyName, 120) || DEFAULT_SETTINGS.invoice.companyName),
     address: s(o.address, 500),
     taxId: s(o.taxId, 60),
     email: s(o.email, 120),
@@ -167,8 +169,8 @@ export function gatewayStatus(): GatewayStatus[] {
       configured: espeesVars.every((v) => v.set),
       vars: espeesVars,
       notes: [
-        "eSPees publishes no API for checking a payment, no webhook and no refund call that NeoConference can use. A plan is granted when the buyer's browser returns from eSPees, and is marked unverified.",
-        "Refunds of eSPees payments are made outside NeoConference and recorded here.",
+        `eSPees publishes no API for checking a payment, no webhook and no refund call that ${BRAND.name} can use. A plan is granted when the buyer's browser returns from eSPees, and is marked unverified.`,
+        `Refunds of eSPees payments are made outside ${BRAND.name} and recorded here.`,
       ],
       capabilities: { verify: false, webhook: false, refund: false },
     },
@@ -179,7 +181,7 @@ export function gatewayStatus(): GatewayStatus[] {
       vars: stripeVars,
       notes: [
         mode ? `Key mode: ${mode}.` : "No key set: ticket checkout is off.",
-        "Card details are entered on Stripe's own page and never reach NeoConference.",
+        `Card details are entered on Stripe's own page and never reach ${BRAND.name}.`,
       ],
       capabilities: { verify: true, webhook: true, refund: true },
     },

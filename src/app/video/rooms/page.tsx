@@ -3,11 +3,12 @@ import { redirect } from "next/navigation";
 import RoomsList from "@/components/video/RoomsList";
 import { requireRole } from "@/lib/roles";
 import { isVideoRoomAdmin } from "@/lib/videoAdmin";
+import { BRAND } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Rooms — NeoConference",
+  title: `Rooms — ${BRAND.name}`,
   robots: { index: false, follow: false },
 };
 

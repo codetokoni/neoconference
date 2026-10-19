@@ -9,6 +9,7 @@ import ExcelJS from "exceljs";
 import { currenciesOf } from "@/lib/finance/money";
 import type { LedgerEntry } from "@/lib/finance/ledger";
 import type { SeriesPoint } from "@/lib/finance/revenue";
+import { BRAND } from "@/lib/brand";
 
 export type ReportType = "payments" | "refunds" | "revenue";
 
@@ -56,7 +57,7 @@ export function refundsTable(items: LedgerEntry[], from = 0, to = Number.MAX_SAF
   for (const e of items) {
     for (const r of e.refunds) {
       if (r.at < from || r.at > to) continue;
-      rows.push([iso(r.at), e.ref, e.invoiceNumber ?? "", e.provider, e.description, e.userId ?? "", e.email ?? "", r.amount, r.currency, r.method === "stripe" ? "Stripe API" : "outside NeoConference", r.providerRef ?? "", r.providerStatus ?? "", r.reason ?? "", r.byEmail, r.downgraded ? "yes" : "no"]);
+      rows.push([iso(r.at), e.ref, e.invoiceNumber ?? "", e.provider, e.description, e.userId ?? "", e.email ?? "", r.amount, r.currency, r.method === "stripe" ? "Stripe API" : `outside ${BRAND.name}`, r.providerRef ?? "", r.providerStatus ?? "", r.reason ?? "", r.byEmail, r.downgraded ? "yes" : "no"]);
     }
   }
   rows.sort((a, b) => String(b[0]).localeCompare(String(a[0])));
@@ -95,7 +96,7 @@ export function toCsv(t: Table): string {
 
 export async function toXlsx(t: Table): Promise<ArrayBuffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "NeoConference";
+  wb.creator = `${BRAND.name}`;
   wb.created = new Date();
   const ws = wb.addWorksheet(t.name);
   ws.addRow(t.head).font = { bold: true };

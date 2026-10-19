@@ -26,6 +26,7 @@
 // the code. This is the map an administrator (and the test) checks it by,
 // and what /admin/data shows.
 
+import { BRAND } from "@/lib/brand";
 export type DataStore = "clerk" | "kv" | "r2";
 export type OnDelete = "delete" | "anonymise" | "keep" | "expire";
 
@@ -532,7 +533,7 @@ export const DATA_MAP: DataLocation[] = [
     personal: "Participants' names, contact details, free-form columns",
     exported: false,
     onDelete: "keep",
-    why: "Not linked to a NeoConference account: these are people on a roster, identified by name only. The room's operator removes them (wipe room).",
+    why: `Not linked to a ${BRAND.name} account: these are people on a roster, identified by name only. The room's operator removes them (wipe room).`,
     unsure: "Rosters may hold phone numbers or health data with no retention period. Worth a retention rule of their own.",
   },
 

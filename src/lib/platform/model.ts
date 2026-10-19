@@ -8,9 +8,13 @@
 // Storage is src/lib/platform/settings.ts.
 
 import { PLANS, type Plan } from "@/lib/planLimits";
+import { BRAND, currentName } from "@/lib/brand";
 
-export const DEFAULT_PLATFORM_NAME = "NeoConference";
-export const DEFAULT_SUPPORT_EMAIL = "info@neoconference.app";
+// The product's own name and address (src/lib/brand.ts). Saved settings
+// holding an older default are read as the current one (withDefaults).
+export const DEFAULT_PLATFORM_NAME = BRAND.name;
+export const DEFAULT_SUPPORT_EMAIL = BRAND.supportEmail;
+const PAST_SUPPORT_EMAILS = ["info@neoconference.app"];
 
 /* -------------------------------- branding -------------------------------- */
 
@@ -161,9 +165,15 @@ export function withDefaults(raw: unknown): PlatformSettings {
   const d = defaultPlatformSettings();
   if (!raw || typeof raw !== "object") return d;
   const r = raw as Partial<PlatformSettings>;
+  const branding = { ...d.branding, ...(r.branding ?? {}) };
+  const contacts = { ...d.contacts, ...(r.contacts ?? {}) };
+  // Saved when the product had another name: the name and address it had
+  // then are the defaults now, not a choice someone made.
+  branding.platformName = currentName(branding.platformName);
+  if (PAST_SUPPORT_EMAILS.includes((contacts.supportEmail || "").toLowerCase())) contacts.supportEmail = DEFAULT_SUPPORT_EMAIL;
   return {
-    branding: { ...d.branding, ...(r.branding ?? {}) },
-    contacts: { ...d.contacts, ...(r.contacts ?? {}) },
+    branding,
+    contacts,
     notice: { ...d.notice, ...(r.notice ?? {}) },
     regional: { ...d.regional, ...(r.regional ?? {}) },
     registration: {

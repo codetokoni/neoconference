@@ -14,6 +14,7 @@
 // cap is reached finishes; the next is refused. The FAQ says so.
 
 import { kv } from "@/lib/kv";
+import { BRAND } from "@/lib/brand";
 
 const USAGE_KEY = (owner: string) => `neo:rec-usage:${owner}`;
 const EGRESS_KEY = (egressId: string) => `neo:rec-egress:${egressId}`;
@@ -94,7 +95,7 @@ export function recordingAllowance(
       message:
         `This month's ${capHours} recording hours on the ${planName} plan are used up ` +
         `(${hours(usedSeconds)} hours recorded). They reset on ${resets}. ` +
-        "The meeting's owner can see the plans at neoconference.app/pricing.",
+        `The meeting's owner can see the plans at ${BRAND.domain}/pricing.`,
     };
   }
   if (usedSeconds >= cap * 0.8) {

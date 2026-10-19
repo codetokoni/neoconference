@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { BRAND } from "@/lib/brand";
 
 type PersistedTranscript = {
   jobId: string;
@@ -363,7 +364,7 @@ export default function RecordingsPage() {
 
       <div className="relative mx-auto max-w-6xl px-4 sm:px-6 py-10 md:py-16">
         <div className="mb-6 sm:mb-8 flex items-center justify-between gap-4">
-          <Link href="/" className="text-sm text-white/60 hover:text-white transition">← Back to NeoConference</Link>
+          <Link href="/" className="text-sm text-white/60 hover:text-white transition">← Back to {BRAND.name}</Link>
           <span className="text-[10px] sm:text-xs uppercase tracking-[0.3em] text-cyan-300/70">Recordings</span>
         </div>
 
@@ -375,7 +376,7 @@ export default function RecordingsPage() {
             </h1>
             <p className="mt-2 text-white/60 text-xs sm:text-sm">
               {scope === 'all'
-                ? 'Every recording on NeoConference, newest first. Only the person who recorded one can delete it.'
+                ? `Every recording on ${BRAND.name}, newest first. Only the person who recorded one can delete it.`
                 : 'Stored on Cloudflare R2. Download links expire after 1 hour — refresh this page for new ones.'}
             </p>
             {canSeeAll && (

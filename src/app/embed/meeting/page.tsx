@@ -8,6 +8,7 @@ import {
   RoomAudioRenderer,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
+import { BRAND } from "@/lib/brand";
 
 /**
  * Auth-free interactive meeting embed.
@@ -59,7 +60,7 @@ export default function MeetingEmbedPage() {
           <h1 className="text-lg font-semibold text-white">Missing join token</h1>
           <p className="text-sm text-slate-400">
             This embed needs a valid <code className="text-cyan-300">token</code>{" "}
-            query parameter. Mint one server-side with the NeoConference API and
+            query parameter. Mint one server-side with the {BRAND.name} API and
             pass it in the iframe URL.
           </p>
         </div>

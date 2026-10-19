@@ -5,6 +5,7 @@ import { useSignIn } from '@clerk/nextjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { BRAND } from "@/lib/brand";
 
 export default function EmailPasswordSignIn() {
   const { signIn, isLoaded, setActive } = useSignIn();
@@ -97,7 +98,7 @@ export default function EmailPasswordSignIn() {
       className='w-full max-w-sm bg-white text-black rounded-xl shadow-lg p-6 flex flex-col gap-4'
     >
       <div className='text-center'>
-        <h1 className='text-xl font-semibold'>Sign in to NeoConference</h1>
+        <h1 className='text-xl font-semibold'>Sign in to {BRAND.name}</h1>
         <p className='text-sm text-gray-500'>Welcome back! Please sign in to continue.</p>
       </div>
 

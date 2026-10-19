@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { errorText, fmtTime, useAdmin } from "../AdminApi";
 import { lockAdmin } from "../AdminShell";
 import { Badge, Confirm, Loading, Notice, PageHeader, Panel, btn } from "../ui";
+import { BRAND } from "@/lib/brand";
 
 type Me = {
   mfa: { enrolled: boolean; enabledAt?: number; recoveryLeft?: number };
@@ -111,8 +112,8 @@ export default function SecurityClient() {
                 </button>
                 <a
                   className={btn.ghost}
-                  download="neoconference-admin-recovery-codes.txt"
-                  href={`data:text/plain;charset=utf-8,${encodeURIComponent(`NeoConference admin recovery codes for ${me.email}\n\n${codes.join("\n")}\n`)}`}
+                  download={`${BRAND.id}-admin-recovery-codes.txt`}
+                  href={`data:text/plain;charset=utf-8,${encodeURIComponent(`${BRAND.name} admin recovery codes for ${me.email}\n\n${codes.join("\n")}\n`)}`}
                 >
                   Download
                 </a>
@@ -133,7 +134,7 @@ export default function SecurityClient() {
           <p className="mt-1 text-sm text-zinc-300">
             Signed in as {me.email} · <span className="text-zinc-400">{me.roleName}</span>
           </p>
-          <p className="mt-1 text-sm text-zinc-300">Ends {fmtTime(me.sessionExpiresAt)}, or when you sign out of NeoConference.</p>
+          <p className="mt-1 text-sm text-zinc-300">Ends {fmtTime(me.sessionExpiresAt)}, or when you sign out of {BRAND.name}.</p>
           <p className="mt-1 text-xs text-zinc-400">
             Sensitive actions (marked on the Roles page) ask for a fresh code if your last one was more than 10 minutes ago. Five wrong codes lock
             verification for 15 minutes, and every attempt is in the audit log.

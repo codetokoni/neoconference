@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import TicketThread from "./TicketThread";
+import { BRAND } from "@/lib/brand";
 
-export const metadata: Metadata = { title: "Support ticket — NeoConference", robots: { index: false } };
+export const metadata: Metadata = { title: `Support ticket — ${BRAND.name}`, robots: { index: false } };
 
 // Signed in only (middleware); the API answers 404 for anyone else's ticket.
 export default function TicketPage({ params }: { params: { id: string } }) {

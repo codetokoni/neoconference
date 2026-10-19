@@ -15,6 +15,7 @@ import {
 import { clerkIdsForKcHandles } from "@/lib/kcHandle";
 import type { CreateMeetingDeps } from "@/lib/groupMeetings";
 import { checkLifetimeCap, getPlanLimitsForUserId, incrementMeetingsCreated } from "@/lib/plan";
+import { linkOrigin } from "@/lib/brand";
 
 type ClerkUserLike = {
   id: string;
@@ -151,11 +152,7 @@ export const meetingGates: CreateMeetingDeps = {
 
 /** The site's own origin, as /api/events/instant works it out. */
 export function siteOrigin(req: Request): string {
-  const env = process.env.NEXT_PUBLIC_SITE_URL;
-  if (env) return env.replace(/\/+$/, "");
-  const proto = req.headers.get("x-forwarded-proto") ?? "https";
-  const host = req.headers.get("host") ?? "localhost:3000";
-  return proto + "://" + host;
+  return linkOrigin(req);
 }
 
 /**

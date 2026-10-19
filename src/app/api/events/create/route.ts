@@ -17,6 +17,7 @@ import { hashMeetingPassword } from '@/lib/eventPassword';
 import { featureDecision, featureRefusal } from '@/lib/platform/features';
 import type { NeoEvent, RoleAssignment } from '@/types/event';
 import { activity } from '@/lib/activity';
+import { linkOrigin } from '@/lib/brand';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,11 +45,7 @@ interface CreateBody {
 }
 
 function originFrom(req: NextRequest): string {
-    const env = process.env.NEXT_PUBLIC_SITE_URL;
-    if (env) return env.replace(/\/+$/, '');
-    const proto = req.headers.get('x-forwarded-proto') ?? 'https';
-    const host = req.headers.get('host') ?? 'localhost:3000';
-    return proto + '://' + host;
+    return linkOrigin(req);
 }
 
 export async function POST(req: NextRequest) {

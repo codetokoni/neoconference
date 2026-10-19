@@ -21,6 +21,7 @@ import { sanitizeSegment } from "@/lib/eventRecordings";
 import { indexEgressStarted } from "@/lib/content/files";
 import { featureDecision } from "@/lib/platform/features";
 import { featureRefusalMessage } from "@/lib/platform/model";
+import { BRAND } from "@/lib/brand";
 
 function requiredEnv(name: string): string {
   const v = process.env[name];
@@ -66,7 +67,7 @@ export async function recordingGate(ownerUserId: string): Promise<RecordingGate>
       code: "plan_upgrade_required",
       plan,
       message:
-        "Recording is on the Pro plan and above. The meeting's owner can upgrade at neoconference.app/pricing.",
+        `Recording is on the Pro plan and above. The meeting's owner can upgrade at ${BRAND.domain}/pricing.`,
     };
   }
   const exempt = ownerUserId ? await isAdminUserId(ownerUserId) : false;

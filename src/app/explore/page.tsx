@@ -8,6 +8,7 @@ import { eventStore } from "@/lib/eventStore";
 import type { NeoEvent } from "@/types/event";
 import ReportContentButton from "@/components/ReportContentButton";
 import { hiddenEventSlugs } from "@/lib/content/files";
+import { BRAND } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 30;
@@ -53,7 +54,7 @@ export default async function ExplorePage() {
         <header className="flex items-end justify-between flex-wrap gap-4">
           <div className="space-y-2">
             <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">Explore</p>
-            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight">Public events on NeoConference</h1>
+            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight">Public events on {BRAND.name}</h1>
             <p className="text-slate-400 text-sm max-w-2xl">
               Live broadcasts, scheduled keynotes, and on-demand replays from creators around the world.
             </p>

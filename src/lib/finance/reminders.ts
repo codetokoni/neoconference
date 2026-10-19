@@ -32,6 +32,7 @@ import { entriesBetween, lookupUser, type LedgerEntry } from "@/lib/finance/ledg
 import { CHECKOUT_WINDOW_MS, checkoutState, listCheckouts, type CheckoutLog } from "@/lib/finance/checkouts";
 import { fmtMoney } from "@/lib/finance/money";
 import { DAY } from "@/lib/finance/revenue";
+import { siteOrigin } from "@/lib/brand";
 
 const RULES = "billing:reminders:rules";
 const LOG = "billing:reminders:log";
@@ -200,7 +201,7 @@ export function planReminders(
 const PLAN = (p: string) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : "your");
 
 function appUrl(): string {
-  return (process.env.NEXT_PUBLIC_APP_URL || "https://www.neoconference.app").replace(/\/+$/, "");
+  return siteOrigin();
 }
 
 /** The editable template (Admin → Email templates) each kind goes out as. */

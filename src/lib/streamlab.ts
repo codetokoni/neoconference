@@ -5,6 +5,7 @@
 // Auth: X-API-Key: <STREAMLAB_API_KEY>  (Bearer is stripped by cPanel's Apache)
 // Limit: 300 req/min
 
+import { BRAND } from "@/lib/brand";
 const BASE = (process.env.STREAMLAB_BASE_URL || 'https://streamlab.cloud/api/v1').replace(/\/+$/, '');
 const KEY = process.env.STREAMLAB_API_KEY || '';
 
@@ -44,7 +45,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      'X-API-Key': KEY, 'Authorization': 'Bearer ' + KEY, 'User-Agent': 'NeoConference/1.0 (+https://neoconference.app)',
+      'X-API-Key': KEY, 'Authorization': 'Bearer ' + KEY, 'User-Agent': `${BRAND.name}/1.0 (+${BRAND.origin})`,
       ...(init.headers || {}),
     },
     cache: 'no-store',

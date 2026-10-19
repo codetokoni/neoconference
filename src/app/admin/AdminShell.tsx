@@ -13,6 +13,7 @@ import type { AdminPermission } from "@/lib/admin/catalog";
 import type { PublicAdminContext } from "@/lib/admin/context";
 import { AdminProvider, errorText, fmtTime, useAdmin, type AdminClock } from "./AdminApi";
 import GlobalSearch from "./GlobalSearch";
+import { BRAND } from "@/lib/brand";
 
 type Section = { label: string; href: string; permission: AdminPermission | null; group: string };
 
@@ -92,7 +93,7 @@ export default function AdminShell({ me, clock, children }: { me: PublicAdminCon
                   </span>
                 </p>
               </div>
-              <button type="button" onClick={lockAdmin} title="End the admin session now. You stay signed in to NeoConference." className="rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-white/5 lg:mt-3 lg:w-full">
+              <button type="button" onClick={lockAdmin} title={`End the admin session now. You stay signed in to ${BRAND.name}.`} className="rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-white/5 lg:mt-3 lg:w-full">
                 Lock admin
               </button>
             </div>

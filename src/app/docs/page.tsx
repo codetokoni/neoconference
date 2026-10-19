@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { BRAND } from "@/lib/brand";
 
 /**
  * Interactive API reference. Renders the OpenAPI spec at /openapi.json using
@@ -64,7 +65,7 @@ export default function DocsPage() {
         theme: 'none',
         darkMode: true,
         hideDarkModeToggle: true,
-        metaData: { title: 'NeoConference API Reference' },
+        metaData: { title: `${BRAND.name} API Reference` },
       });
     };
     document.body.appendChild(script);

@@ -3,10 +3,11 @@ import Link from "next/link";
 import SupportChatOpener from "./SupportChatOpener";
 import { getPlatformSettings } from "@/lib/platform/settings";
 import ContactForm from "./ContactForm";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "Help & support — NeoConference",
-  description: "Chat with the NeoConference team, send a support request, or browse the help centre.",
+  title: `Help & support — ${BRAND.name}`,
+  description: `Chat with the ${BRAND.name} team, send a support request, or browse the help centre.`,
 };
 
 export const dynamic = "force-dynamic";

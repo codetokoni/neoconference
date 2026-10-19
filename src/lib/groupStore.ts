@@ -43,6 +43,7 @@ import {
   type MeetingRole,
   type Permission,
 } from "@/lib/permissions";
+import { BRAND } from "@/lib/brand";
 
 /* -------------------------------------------------------------------------- */
 /*  Shapes                                                                     */
@@ -1252,7 +1253,7 @@ export async function adminTransferOwnership(
   await appendActivity(gid, {
     actorId: adminId,
     type: "ownership_transferred",
-    detail: `A NeoConference administrator made ${target.name} the owner${current ? ` (${current.name} is now a Host)` : ""}`,
+    detail: `A ${BRAND.name} administrator made ${target.name} the owner${current ? ` (${current.name} is now a Host)` : ""}`,
   });
   return { owner, previous };
 }
@@ -1267,7 +1268,7 @@ export async function adminRemoveMember(gid: string, targetUserId: string, admin
   await appendActivity(gid, {
     actorId: adminId,
     type: "member_removed",
-    detail: `A NeoConference administrator removed ${target.name}`,
+    detail: `A ${BRAND.name} administrator removed ${target.name}`,
   });
   return target;
 }

@@ -1,5 +1,29 @@
+// NeoLinguaMeet (src/lib/brand.ts): once NEXT_PUBLIC_PRIMARY_DOMAIN is
+// neolinguameet.com, the icons browsers and phones fetch by fixed paths
+// come from public/brand/neolinguameet/ (drawn by mobile/tool/web_icons.mjs).
+// Redirects run before public files, so the NeoConference ones stay in place.
+const LINGUA = (process.env.NEXT_PUBLIC_PRIMARY_DOMAIN || "").trim().toLowerCase().replace(/^www\./, "") === "neolinguameet.com";
+const BRAND_ICONS = {
+  "/favicon.ico": "favicon.ico",
+  "/icon.png": "icon.png",
+  "/apple-icon.png": "apple-touch-icon.png",
+  "/apple-touch-icon.png": "apple-touch-icon.png",
+  "/apple-touch-icon-precomposed.png": "apple-touch-icon.png",
+  "/icons/icon-192.png": "icon-192.png",
+  "/icons/icon-512.png": "icon-512.png",
+  "/icons/badge-96.png": "badge-96.png",
+};
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    async redirects() {
+          if (!LINGUA) return [];
+          return Object.entries(BRAND_ICONS).map(([source, file]) => ({
+                source,
+                destination: `/brand/neolinguameet/${file}`,
+                permanent: false,
+          }));
+    },
     eslint: {
           // Lint errors fail the build (warnings do not). Ignored until the
           // 148-error backlog was cleared; see the `any` sweep that found the

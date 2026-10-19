@@ -21,6 +21,7 @@ import { assignInvoiceNumber } from "@/lib/paymentsStore";
 import { fmtMoney, round } from "@/lib/finance/money";
 import { readTicket, saveTicket, type LedgerEntry, type RefundEntry } from "@/lib/finance/ledger";
 import { getBillingSettings, taxRuleFor, type InvoiceDetails } from "@/lib/finance/settings";
+import { BRAND } from "@/lib/brand";
 
 const KEY = (id: string) => `billing:invoice:${id}`;
 const SEQ = "billing:invoice:seq";
@@ -123,7 +124,7 @@ function safe(s: string): string {
 export async function invoicePdf(inv: Invoice, refunds: RefundEntry[]): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle(`Invoice ${inv.number}`);
-  doc.setProducer("NeoConference");
+  doc.setProducer(`${BRAND.name}`);
   const page = doc.addPage([595.28, 841.89]);
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -134,7 +135,7 @@ export async function invoicePdf(inv: Invoice, refunds: RefundEntry[]): Promise<
   const right = (p: PDFPage, s: string, xr: number, size = 10, f: PDFFont = font) => p.drawText(safe(s), { x: xr - f.widthOfTextAtSize(safe(s), size), y, size, font: f, color: ink });
   const lines = (s: string) => s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
-  text(page, inv.seller.companyName || "NeoConference", 50, 18, bold);
+  text(page, inv.seller.companyName || `${BRAND.name}`, 50, 18, bold);
   right(page, inv.balanceDue > 0 ? "INVOICE" : "INVOICE / RECEIPT", 545, 14, bold);
   y -= 18;
   for (const l of lines(inv.seller.address)) {

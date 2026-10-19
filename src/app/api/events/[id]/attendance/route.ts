@@ -16,6 +16,7 @@ import ExcelJS from "exceljs";
 import { authorize } from "@/lib/authz";
 import { eventStore } from "@/lib/eventStore";
 import { ATTENDANCE_COLUMNS, attendanceRowCells, fetchAttendanceReport } from "@/lib/attendance";
+import { BRAND } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   const rows = await fetchAttendanceReport(event);
 
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "NeoConference";
+  workbook.creator = `${BRAND.name}`;
   workbook.created = new Date();
 
   const sheet = workbook.addWorksheet("Attendance");

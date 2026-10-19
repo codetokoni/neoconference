@@ -15,9 +15,10 @@
 
 import { createHmac, hkdfSync, timingSafeEqual } from "node:crypto";
 import { kv } from "@/lib/kv";
+import { BRAND } from "@/lib/brand";
 
 export const PREF_CATEGORIES = [
-  { key: "announcements", label: "Announcements", description: "News about NeoConference: events, changes to the service, planned maintenance." },
+  { key: "announcements", label: "Announcements", description: `News about ${BRAND.name}: events, changes to the service, planned maintenance.` },
   { key: "product", label: "Product updates", description: "New features and tips for getting more out of your meetings." },
   { key: "reminders", label: "Usage reminders", description: "When you are close to your plan's meeting or recording allowance." },
 ] as const;

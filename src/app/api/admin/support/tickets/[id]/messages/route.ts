@@ -15,6 +15,7 @@ import { ticketRow } from "@/lib/support/admin";
 import { isTicketStatus } from "@/lib/support/model";
 import { notifyTicketReply, siteOrigin } from "@/lib/support/notify";
 import { addNote, appendMessage, applyStatus, getSla, getTicket, saveTicket } from "@/lib/support/tickets";
+import { BRAND } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +47,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const next = b.status === undefined ? "pending_user" : b.status;
   if (!isTicketStatus(next)) return fail("invalid_status", "Unknown status.");
   const before = { status: t.status, firstResponseAt: t.firstResponseAt, assigneeId: t.assigneeId };
-  const message = await appendMessage(t, { author: "agent", authorName: g.ctx.name || "NeoConference support", body, attachments: [] }, now);
+  const message = await appendMessage(t, { author: "agent", authorName: g.ctx.name || `${BRAND.name} support`, body, attachments: [] }, now);
   applyStatus(t, next, now);
   // Whoever answers an unassigned ticket takes it.
   if (!t.assigneeId) {
@@ -54,7 +55,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     t.assigneeEmail = g.ctx.email;
   }
   await saveTicket(t);
-  const sent = await notifyTicketReply(t, body, g.ctx.name || "NeoConference support", siteOrigin(req));
+  const sent = await notifyTicketReply(t, body, g.ctx.name || `${BRAND.name} support`, siteOrigin(req));
   await recordAdminAction(actorOf(g.ctx), req, {
     action: "support.ticket.reply",
     targetType: "ticket",

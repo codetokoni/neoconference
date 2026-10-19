@@ -4,6 +4,7 @@ import HomeHeroCTAs from "./HomeHeroCTAs";
 import HomeFinalCTAs from "./HomeFinalCTAs";
 import { getPlatformSettings } from "@/lib/platform/settings";
 import { POPULAR_TRANSLATION_CODES, TRANSLATION_LANGUAGES as ALL_TRANSLATION_LANGUAGES } from "@/lib/translationLanguages";
+import { BRAND } from "@/lib/brand";
 
 export default async function Home() {
   const { userId } = await auth();
@@ -40,7 +41,7 @@ export default async function Home() {
             </h1>
 
             <p className="mt-6 max-w-xl text-lg text-cyan-100/70 leading-relaxed">
-              NeoConference translates your meetings live. Everyone picks their own language and
+              {BRAND.name} translates your meetings live. Everyone picks their own language and
               hears each speaker in it, spoken aloud as they talk, with the original voice quietly
               underneath. On the web and in the Android app.
             </p>
@@ -121,7 +122,7 @@ export default async function Home() {
           <ShowcaseCard
             badge="Share"
             title="One link, a QR code and the app"
-            desc="Every meeting gets a short link and a QR code to print or share. On Android, the link opens straight in the NeoConference app."
+            desc={`Every meeting gets a short link and a QR code to print or share. On Android, the link opens straight in the ${BRAND.name} app.`}
             href="/dashboard/new"
           />
         </div>
@@ -179,17 +180,17 @@ export default async function Home() {
                 Hear every speaker <span className="neo-gradient-text">in your own language.</span>
               </h2>
               <p className="mt-4 text-cyan-100/70 leading-relaxed max-w-xl">
-                Pick your language and NeoConference speaks each speaker&apos;s words to you in it while
+                Pick your language and {BRAND.name} speaks each speaker&apos;s words to you in it while
                 they talk. The original voice keeps playing quietly underneath, so you still hear the
                 speaker and the room. Everyone chooses their own language — one meeting, many languages.
               </p>
               <ol className="mt-7 space-y-3 text-sm text-cyan-100/75">
                 <Step n={1}>The host turns on <strong className="text-white">Captions</strong> in the meeting.</Step>
                 <Step n={2}>Pick your language under <strong className="text-white">Translate</strong> — in the app, <strong className="text-white">Live translation</strong> in the More menu.</Step>
-                <Step n={3}>Listen. The translation is spoken aloud; in the NeoConference app it is shown on screen too.</Step>
+                <Step n={3}>Listen. The translation is spoken aloud; in the {BRAND.name} app it is shown on screen too.</Step>
               </ol>
               <p className="mt-6 text-xs text-cyan-100/45">
-                Works in the browser and in the NeoConference app for Android, in meetings on the Pro plan and above.
+                Works in the browser and in the {BRAND.name} app for Android, in meetings on the Pro plan and above.
               </p>
             </div>
 
@@ -241,7 +242,7 @@ export default async function Home() {
           <Feature title="Clear audio" desc="Echo cancellation and noise suppression keep voices clear, and video adjusts to each person's connection." icon={<IconWave />} />
           <Feature title="HD recording" desc="One tap to record. Files are kept in secure cloud storage to download any time. On Pro and above." icon={<IconRec />} />
           <Feature title="Live participants" desc="Real-time roster with active speaker highlighting and presence dots." icon={<IconUsers />} />
-          <Feature title="On your phone" desc="Works in any phone browser, and the NeoConference app for Android opens meeting links straight in the app." icon={<IconPhone />} />
+          <Feature title="On your phone" desc={`Works in any phone browser, and the ${BRAND.name} app for Android opens meeting links straight in the app.`} icon={<IconPhone />} />
           <Feature title="Sign in with KingsChat" desc="Use your KingsChat account to sign in, and add hosts and moderators by their KingsChat handle." icon={<IconSpark />} />
         </div>
       </section>

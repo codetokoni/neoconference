@@ -3,11 +3,12 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import ControlRoom from "@/components/video/ControlRoom";
 import { roomLink, SIMULCAST_MAIN } from "@/lib/simulcast";
+import { BRAND } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Camera board — NeoConference",
+  title: `Camera board — ${BRAND.name}`,
   robots: { index: false, follow: false },
 };
 

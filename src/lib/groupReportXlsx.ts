@@ -7,6 +7,7 @@
 import ExcelJS from "exceljs";
 import { ATTENDANCE_COLUMNS, attendanceRowCells } from "@/lib/attendance";
 import type { MeetingReport, ReportParticipant } from "@/lib/groupReports";
+import { BRAND } from "@/lib/brand";
 
 const EXTRA_COLUMNS = [
   { header: "Invited", key: "invited", width: 10 },
@@ -57,7 +58,7 @@ function bold(sheet: ExcelJS.Worksheet) {
 /** One meeting: Summary, then Attendance. */
 export async function meetingWorkbook(report: MeetingReport): Promise<ArrayBuffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "NeoConference";
+  wb.creator = `${BRAND.name}`;
   wb.created = new Date();
 
   const summary = wb.addWorksheet("Summary");
@@ -100,7 +101,7 @@ export async function meetingWorkbook(report: MeetingReport): Promise<ArrayBuffe
 /** Many meetings: one row per person per meeting. */
 export async function rangeWorkbook(reports: MeetingReport[]): Promise<ArrayBuffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "NeoConference";
+  wb.creator = `${BRAND.name}`;
   wb.created = new Date();
   const sheet = wb.addWorksheet("Attendance");
   sheet.columns = [

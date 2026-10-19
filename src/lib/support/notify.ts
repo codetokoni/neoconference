@@ -15,6 +15,7 @@ import { renderEmail } from "@/lib/comms/templates";
 import { logEmail } from "@/lib/comms/log";
 import type { TemplateVars } from "@/lib/comms/format";
 import type { Ticket } from "@/lib/support/model";
+import { BRAND } from "@/lib/brand";
 
 type Mailer = (input: SendMailInput) => Promise<SendMailResult>;
 let mailer: Mailer | null = null;
@@ -27,7 +28,7 @@ export function __setSupportMailer(fn: Mailer | null): void {
 const send = (input: SendMailInput) => (mailer ?? sendMail)(input);
 
 export function siteOrigin(req: Request): string {
-  return publicOrigin(req) ?? "https://www.neoconference.app";
+  return publicOrigin(req) ?? `${BRAND.origin}`;
 }
 
 /** Fill a support template, send it (through the test seam) and log it for Communication → Email delivery. */

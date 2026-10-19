@@ -14,6 +14,7 @@
 // Only on Android, where the app exists; nothing is drawn elsewhere.
 
 import { useEffect, useState } from "react";
+import { BRAND } from "@/lib/brand";
 
 export function appIntentUrl(slug: string, fallback: string): string {
   return (
@@ -40,7 +41,7 @@ export default function OpenInAppButton({ slug }: { slug: string }) {
       href={href}
       className="mb-5 flex items-center justify-center gap-2 rounded-2xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-3 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/20"
     >
-      Open in the NeoConference app
+      Open in the {BRAND.name} app
     </a>
   );
 }

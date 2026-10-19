@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Time, errorText, fmtNumber, fmtTime, useAdmin } from "../AdminApi";
 import { Empty, FilterBar, Labeled, Loading, Notice, PageHeader, Pager, TableWrap, btn, field, useUrlFilters } from "../ui";
+import { BRAND } from "@/lib/brand";
 
 type GroupRow = {
   id: string;
@@ -74,7 +75,7 @@ export default function GroupsClient() {
         sub={
           items
             ? `${fmtNumber(total)} group${total === 1 ? "" : "s"}${query ? ` match “${query}”` : ""}, newest first.${backfilledAt ? ` List last rebuilt from members' group lists ${fmtTime(backfilledAt)}.` : ""}`
-            : "Every group on NeoConference, newest first."
+            : `Every group on ${BRAND.name}, newest first.`
         }
         actions={
           can("users:write") ? (

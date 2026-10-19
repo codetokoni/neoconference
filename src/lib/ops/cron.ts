@@ -21,6 +21,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { jobReplacement, runJob, type JobTrigger } from "@/lib/ops/jobs";
+import { siteOrigin } from "@/lib/brand";
 
 /** The check every cron route already makes: Bearer CRON_SECRET, or Vercel's cron header when no secret is set. */
 export function isCronRequest(req: Request): boolean {
@@ -49,7 +50,7 @@ export function cronRequestFor(
     // In-process only: this request never leaves the function.
     if (process.env.DISPATCH_SECRET) headers.authorization = "Bearer " + process.env.DISPATCH_SECRET;
   }
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || "https://www.neoconference.app";
+  const origin = siteOrigin();
   return new NextRequest(new URL(path, origin).toString(), { method: "GET", headers });
 }
 

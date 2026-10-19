@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { AdminPermission } from "@/lib/admin/catalog";
 import { errorText, useAdmin, Time } from "../AdminApi";
 import { Badge, Confirm, Empty, FilterBar, Labeled, Loading, Notice, PageHeader, Pager, Panel, SortTh, TableWrap, btn, field, useClientTable, useUrlFilters } from "../ui";
+import { BRAND } from "@/lib/brand";
 
 type Member = {
   userId: string;
@@ -164,7 +165,7 @@ export default function TeamClient() {
           >
             <label className="flex-1 text-sm text-zinc-300">
               Appoint an administrator
-              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Their NeoConference account email" className={`${field} mt-1`} />
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder={`Their ${BRAND.name} account email`} className={`${field} mt-1`} />
             </label>
             <label className="text-sm text-zinc-300 sm:w-56">
               Role
@@ -333,7 +334,7 @@ export default function TeamClient() {
       {pending?.kind === "appoint" && (
         <Confirm
           title={`Appoint ${pending.email}?`}
-          body={`They become an administrator with the role ${roleName(pending.roleId)} and set up two-factor on their first visit to the admin area. The account must already exist on NeoConference.`}
+          body={`They become an administrator with the role ${roleName(pending.roleId)} and set up two-factor on their first visit to the admin area. The account must already exist on ${BRAND.name}.`}
           confirmLabel="Appoint"
           onCancel={() => setPending(null)}
           onConfirm={() => appoint(pending)}

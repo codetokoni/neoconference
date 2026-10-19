@@ -24,6 +24,7 @@ import { getPlanLimitsForUserId } from "@/lib/plan";
 import { nextMonthStart, recordedSeconds, usageMonth } from "@/lib/recordingUsage";
 import { allows, getPrefs, oneClickUrl } from "@/lib/comms/prefs";
 import { renderEmail, sendTemplateEmail } from "@/lib/comms/templates";
+import { siteOrigin } from "@/lib/brand";
 
 const CONFIG = "neo:comms:reminders";
 
@@ -98,7 +99,7 @@ export async function saveReminderConfig(patch: unknown, actorEmail: string): Pr
 }
 
 function origin(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://www.neoconference.app").replace(/\/+$/, "");
+  return siteOrigin();
 }
 
 /** The highest threshold `pct` has reached, or null. */

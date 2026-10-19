@@ -11,6 +11,7 @@ import { fmtDay, fmtMoney, fmtNumber, fmtTime, useAdmin } from "../../AdminApi";
 import { LoadState, btn } from "../../ui";
 import { PeriodBar, usePeriod } from "../period";
 import { changeText } from "../analytics-client";
+import { BRAND } from "@/lib/brand";
 
 const PRINT_CSS = `
 @media print {
@@ -69,7 +70,7 @@ export default function SummaryClient() {
         {(d) => (
           <article className="print-sheet min-w-0 space-y-5 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-zinc-200 sm:p-5">
             <div>
-              <h1 className="text-xl font-semibold text-white">NeoConference platform summary</h1>
+              <h1 className="text-xl font-semibold text-white">{BRAND.name} platform summary</h1>
               <p className="text-zinc-400">
                 {fmtDay(d.period.from)} to {fmtDay(d.period.to)} ({d.period.tz}), compared with {fmtDay(d.previous.from)} to {fmtDay(d.previous.to)}. Printed {fmtTime(Date.now())}.
               </p>

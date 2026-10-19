@@ -12,6 +12,7 @@ import { LOG_SOURCES, searchLogs, type LogSource } from "@/lib/admin/logs";
 import { periodFromQuery } from "@/lib/activityReports";
 import { csvResponse, xlsxResponse, zonedStamp, type Table } from "@/lib/admin/exportReport";
 import type { Severity } from "@/lib/activity";
+import { BRAND } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,6 +69,6 @@ export async function GET(req: Request) {
     ],
     rows: result.items.map((r) => ({ ...r, local: zonedStamp(r.ts, p.tz), utc: new Date(r.ts).toISOString() })),
   };
-  const base = `neoconference-logs-${p.from}-to-${p.to}`;
+  const base = `${BRAND.id}-logs-${p.from}-to-${p.to}`;
   return format === "xlsx" ? xlsxResponse([table], base) : csvResponse(table, base);
 }

@@ -8,16 +8,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import QRCode from 'qrcode';
 import { eventStore } from '@/lib/eventStore';
+import { linkOrigin } from '@/lib/brand';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function originFrom(req: NextRequest): string {
-  const env = process.env.NEXT_PUBLIC_SITE_URL;
-  if (env) return env.replace(/\/+$/, '');
-  const proto = req.headers.get('x-forwarded-proto') ?? 'https';
-  const host = req.headers.get('host') ?? 'localhost:3000';
-  return proto + '://' + host;
+  return linkOrigin(req);
 }
 
 export async function GET(
