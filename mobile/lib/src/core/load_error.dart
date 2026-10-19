@@ -8,7 +8,7 @@ import '../auth/clerk_client.dart' show ClerkException;
 import 'api_client.dart';
 
 const _unreachable =
-    "Couldn't reach NeoConference. Check your connection and try again.";
+    "Couldn't reach NeoLinguaMeet. Check your connection and try again.";
 
 /// The request never got an answer: no network, no DNS, a dropped
 /// connection. Its text is the worst to show — a failed session-token
@@ -56,7 +56,7 @@ String describeLoadError(Object error) {
       return 'Your session has ended. Please sign in again.';
     }
     if (error.status >= 500) {
-      return 'NeoConference is having trouble right now. Try again in a '
+      return 'NeoLinguaMeet is having trouble right now. Try again in a '
           'moment.';
     }
   }

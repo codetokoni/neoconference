@@ -6,8 +6,13 @@ import 'package:flutter/material.dart';
 import '../groups/join_group_screen.dart';
 import '../screens/prejoin_screen.dart';
 import 'meeting_view.dart';
+import '../core/config.dart';
 
-/// The meeting a neoconference.app link is for, or null when it is not a
+/// The website's hosts, before and after the rename to NeoLinguaMeet; the
+/// manifest claims all of them.
+const _ownHosts = {'www.neoconference.app', 'neoconference.app', 'neolinguameet.com', 'www.neolinguameet.com'};
+
+/// The meeting a website link is for, or null when it is not a
 /// meeting link this app opens.
 ///
 /// Android hands the app the links the manifest claims (App Links, verified
@@ -17,7 +22,7 @@ import 'meeting_view.dart';
 /// page, not a meeting to join.
 String? meetingSlugFromLink(Uri uri) {
   if (uri.scheme != 'https') return null;
-  if (uri.host != 'www.neoconference.app' && uri.host != 'neoconference.app') return null;
+  if (!_ownHosts.contains(uri.host)) return null;
   final parts = uri.pathSegments.where((s) => s.isNotEmpty).toList();
   if (parts.length != 2) return null;
   final slug = switch (parts.first) {
@@ -33,7 +38,8 @@ String? meetingSlugFromLink(Uri uri) {
 
 /// The link to share for a meeting: its page, which opens straight in this
 /// app on a phone that has it and works in any browser that does not.
-String meetingShareLink(String slug) => 'https://www.neoconference.app/e/$slug';
+/// On the website's current address (the server says which; see Config).
+String meetingShareLink(String slug) => '${Config.site}/e/$slug';
 
 /// Meeting links that arrived — at launch or while running — and have not
 /// been opened yet. Listened to from app start, so a link that launched

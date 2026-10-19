@@ -125,7 +125,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     ),
                     const SizedBox(height: 28),
                     Text(
-                      'New here? Create your account on neoconference.app, '
+                      'New here? Create your account on neolinguameet.com, '
                       'then sign in.',
                       textAlign: TextAlign.center,
                       style: TextStyle(

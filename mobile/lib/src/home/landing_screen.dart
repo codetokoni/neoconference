@@ -102,7 +102,7 @@ class LandingScreen extends ConsumerWidget {
               ),
               const _Note(
                 'Enterprise, including livestreaming, is arranged directly — '
-                'email info@neoconference.app.',
+                'email info@neolinguameet.com.',
               ),
               const SizedBox(height: 20),
               Text(

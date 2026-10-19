@@ -53,7 +53,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Text('Adaeze Okonkwo', style: text.titleMedium),
                     Text(
-                      'adaeze@neoconference.app',
+                      'adaeze@neolinguameet.com',
                       style: text.bodySmall?.copyWith(color: p.textMuted),
                     ),
                   ],

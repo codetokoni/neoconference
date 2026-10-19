@@ -95,7 +95,7 @@ void main() {
     final drop = timeLimitDrop(60);
     expect(drop.headline, 'Time limit reached');
     expect(drop.message, contains('60-minute limit'));
-    expect(drop.message, contains('neoconference.app/pricing'));
+    expect(drop.message, contains('neolinguameet.com/pricing'));
     expect(drop.retryAutomatically, isFalse);
   });
 }

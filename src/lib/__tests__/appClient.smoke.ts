@@ -272,7 +272,31 @@ async function main() {
       minVersion: "1.2.4",
       storeUrl: "https://web.lwappstore.com/share/lW-APP-Y26-XG9328",
       updateUrl: "https://www.neoconference.app/download",
+      site: "https://www.neoconference.app",
     });
+  });
+
+  await t("the app learns where Clerk is from the website's publishable key, so a Clerk domain change moves it too", async () => {
+    const { clerkFrontendApi } = await import("../appRelease");
+    // The live key the website ships today (public by design).
+    assert.equal(clerkFrontendApi("pk_live_Y2xlcmsubmVvY29uZmVyZW5jZS5hcHAk"), "https://clerk.neoconference.app");
+    // After Clerk's domain moves: a key for clerk.neolinguameet.com.
+    const next = "pk_live_" + Buffer.from("clerk.neolinguameet.com$").toString("base64");
+    assert.equal(clerkFrontendApi(next), "https://clerk.neolinguameet.com");
+    for (const bad of ["", "sk_live_abc", "pk_live_!!!", "pk_live_" + Buffer.from("not a host$").toString("base64")]) {
+      assert.equal(clerkFrontendApi(bad), null, bad);
+    }
+    // And /api/app/latest says it when the key is set.
+    const latest = await import("../../app/api/app/latest/route");
+    const saved = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = next;
+    try {
+      const body = (await (await latest.GET()).json()) as Record<string, string>;
+      assert.equal(body.clerkFrontendApi, "https://clerk.neolinguameet.com");
+    } finally {
+      if (saved === undefined) delete process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+      else process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = saved;
+    }
   });
 
   await t("neoconference.app/download opens the NeoConference page on the LoveWorld AppStore (downloads count there)", async () => {

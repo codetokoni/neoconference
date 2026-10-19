@@ -48,7 +48,7 @@ class HomeScreen extends ConsumerWidget {
       floatingActionButton: FloatingActionButton.extended(
         heroTag: 'support',
         onPressed: openSupport,
-        tooltip: 'Chat with the NeoConference team',
+        tooltip: 'Chat with the NeoLinguaMeet team',
         icon: const Icon(Icons.support_agent_rounded),
         label: const Text('Help'),
       ),

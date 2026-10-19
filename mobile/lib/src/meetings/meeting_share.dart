@@ -10,7 +10,7 @@ import 'when.dart';
 String meetingInviteText(String title, String slug, {DateTime? when}) {
   final name = title.trim().isEmpty ? 'a meeting' : '"${title.trim()}"';
   final at = when == null ? '' : ' on ${_day(when)} at ${neoClock(when)}';
-  return 'Join $name on NeoConference$at:\n${meetingShareLink(slug)}';
+  return 'Join $name on NeoLinguaMeet$at:\n${meetingShareLink(slug)}';
 }
 
 String _day(DateTime d) {
@@ -28,7 +28,7 @@ Future<void> Function(ShareParams params) shareSheet =
 Future<void> shareMeeting(String title, String slug, {DateTime? when}) => shareSheet(
       ShareParams(
         text: meetingInviteText(title, slug, when: when),
-        subject: title.trim().isEmpty ? 'NeoConference meeting' : title.trim(),
+        subject: title.trim().isEmpty ? 'NeoLinguaMeet meeting' : title.trim(),
       ),
     );
 

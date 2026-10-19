@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../design/brand.dart';
 import '../design/tokens.dart';
 import '../events/event.dart' show apiProvider;
+import 'config.dart';
 
 /// A newer NeoConference on the LoveWorld AppStore than this one, from
 /// GET /api/app/latest (src/lib/appRelease.ts). A meeting link opens
@@ -19,16 +20,16 @@ class AppUpdate {
   final String storeUrl;
 }
 
-/// Where to update: neoconference.app/download, which opens NeoConference
-/// on the LoveWorld AppStore, so every download is counted there.
-const kAppUpdateUrl = 'https://www.neoconference.app/download';
+/// Where to update: `<site>/download`, which opens the app's page on the
+/// LoveWorld AppStore, so every download is counted there.
+String get kAppUpdateUrl => '${Config.site}/download';
 
 /// How the store page is opened; a test replaces it.
 Future<void> Function(String url) launchAppUpdate =
     (url) => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
 
 /// Opens the store page to update (sign in with KingsChat, tap Download).
-Future<void> openAppUpdate([String url = kAppUpdateUrl]) => launchAppUpdate(url);
+Future<void> openAppUpdate([String? url]) => launchAppUpdate(url ?? kAppUpdateUrl);
 
 /// -1, 0 or 1, comparing dotted versions ("1.2.10" > "1.2.9").
 int compareAppVersions(String a, String b) {
@@ -52,6 +53,8 @@ final appUpdateProvider = FutureProvider<AppUpdate?>((ref) async {
   try {
     final info = await PackageInfo.fromPlatform();
     final body = await ref.read(apiProvider).get('/api/app/latest');
+    // Also where the website and sign-in are now (see Config).
+    await Config.adopt(body);
     if (body is! Map) return null;
     final latest = body['latestVersion'];
     final url = body['updateUrl'] ?? body['storeUrl'];
@@ -83,7 +86,7 @@ class AppUpdateCard extends ConsumerWidget {
           icon: const Icon(Icons.system_update_rounded),
           title: const Text('Update available'),
           content: Text(
-            'NeoConference ${u.latest} is ready (you have ${u.current}). '
+            'NeoLinguaMeet ${u.latest} is ready (you have ${u.current}). '
             'On the LoveWorld AppStore, sign in with KingsChat and tap Download.',
           ),
           actions: [
@@ -121,7 +124,7 @@ class AppUpdateCard extends ConsumerWidget {
                   children: [
                     Text('Update available', style: text.titleSmall),
                     Text(
-                      'NeoConference ${update.latest} is on the LoveWorld AppStore. You have ${update.current}.',
+                      'NeoLinguaMeet ${update.latest} is on the LoveWorld AppStore. You have ${update.current}.',
                       style: text.bodySmall?.copyWith(color: p.textMuted),
                     ),
                   ],

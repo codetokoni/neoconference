@@ -13,6 +13,7 @@ import '../design/brand.dart';
 import '../design/theme_picker.dart';
 import '../home/landing_screen.dart';
 import 'meeting_defaults.dart';
+import '../core/config.dart';
 
 /// Settings for the production app.
 ///
@@ -150,19 +151,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
           const _Label('About'),
           _Tile(
-            title: 'NeoConference',
-            subtitle: _build.isEmpty ? 'neoconference.app' : _build,
+            title: 'NeoLinguaMeet',
+            subtitle: _build.isEmpty ? 'neolinguameet.com' : _build,
           ),
           _Tile(
             title: 'Help & support',
-            subtitle: 'Chat with the NeoConference team',
+            subtitle: 'Chat with the NeoLinguaMeet team',
             trailing: Icon(Icons.support_agent_rounded, size: 20, color: p.textMuted),
             onTap: openSupport,
           ),
           // The introduction shown before first sign-in, again.
           _Tile(
             title: 'Take the tour',
-            subtitle: 'What NeoConference does, including live translation',
+            subtitle: 'What NeoLinguaMeet does, including live translation',
             trailing: Icon(Icons.chevron_right_rounded, size: 20, color: p.textMuted),
             onTap: () => Navigator.of(context).push(MaterialPageRoute(
               builder: (tourContext) => OnboardingScreen(
@@ -172,7 +173,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             )),
           ),
           _Tile(
-            title: 'Open neoconference.app',
+            title: 'Open the website',
             subtitle: 'Pricing, help and your account on the web',
             trailing: Icon(
               Icons.open_in_new_rounded,
@@ -182,7 +183,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             // ?from=app: on Android the website asks for the app instead
             // (AndroidAppGate), which is pointless when this is the app.
             onTap: () => launchUrl(
-              Uri.parse('https://www.neoconference.app/?from=app'),
+              Uri.parse('${Config.site}/?from=app'),
               mode: LaunchMode.externalApplication,
             ),
           ),

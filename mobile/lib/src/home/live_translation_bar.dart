@@ -281,7 +281,7 @@ class LiveTranslationHowTo extends StatelessWidget {
             Text('Hear every speaker in your language', style: text.titleLarge),
             const SizedBox(height: NeoSpace.sm),
             Text(
-              'NeoConference speaks each speaker\'s words to you in the language you choose, '
+              'NeoLinguaMeet speaks each speaker\'s words to you in the language you choose, '
               'with the original voice quietly underneath. Everyone picks their own. It is on '
               'every plan.',
               style: text.bodyMedium?.copyWith(color: p.textMuted, height: 1.4),

@@ -159,7 +159,7 @@ const _groupMessages = <String, String>{
   'no_members': 'Enter an email address to add.',
   'too_many_at_once': 'Add at most 50 people at a time.',
   'too_many_members': 'A group can have at most 500 members.',
-  'user_not_found': 'No NeoConference account uses that email. Send them the invite link instead.',
+  'user_not_found': 'No NeoLinguaMeet account uses that email. Send them the invite link instead.',
   'not_member': 'That person is no longer in the group.',
   'cannot_target_owner': "The owner can't be changed or removed.",
   'cannot_manage_self': "You can't change your own role.",

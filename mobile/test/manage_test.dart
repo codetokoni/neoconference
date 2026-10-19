@@ -184,7 +184,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(shared, hasLength(1));
-    expect(shared.single.text, contains('Join "Testneo" on NeoConference'));
+    expect(shared.single.text, contains('Join "Testneo" on NeoLinguaMeet'));
     expect(shared.single.text, contains('https://www.neoconference.app/e/testneo'));
     expect(shared.single.subject, 'Testneo');
   });

@@ -12,7 +12,8 @@ import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GRADIENT, GLYPH, CX, CY, MARK_WIDTH } from './neo_mark.mjs';
+// NeoLinguaMeet's mark since 2026-10-19 (the N with two speech bubbles).
+import { GRADIENT, LINGUA_GLYPH as GLYPH, LINGUA_CX as CX, LINGUA_CY as CY, LINGUA_WIDTH as MARK_WIDTH } from './neo_mark.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(join(here, '..', '..', 'package.json'));
@@ -60,7 +61,7 @@ const feature = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="50
   <rect width="1024" height="500" fill="url(#glow2)"/>
   <rect x="84" y="150" width="200" height="200" rx="52" fill="url(#g)"/>
   ${mark(184, 250, 104)}
-  <text x="330" y="222" font-family="${FONT}" font-size="64" font-weight="700" fill="#FFFFFF">NeoConference</text>
+  <text x="330" y="222" font-family="${FONT}" font-size="64" font-weight="700" fill="#FFFFFF">NeoLinguaMeet</text>
   <text x="332" y="282" font-family="${FONT}" font-size="34" font-weight="600" fill="#67E8F9">One meeting. Every language.</text>
   <text x="332" y="330" font-family="${FONT}" font-size="24" fill="#B6C2D9">Video meetings with live translation</text>
 </svg>`;

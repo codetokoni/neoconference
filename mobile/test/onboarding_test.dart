@@ -16,7 +16,7 @@ void main() {
     await tester.pumpWidget(entry());
     await tester.pumpAndSettle();
 
-    expect(find.text('Welcome to NeoConference'), findsOneWidget);
+    expect(find.text('Welcome to NeoLinguaMeet'), findsOneWidget);
     expect(find.text('SIGN IN'), findsNothing);
 
     // Through every page to the last.
@@ -57,6 +57,6 @@ void main() {
     await tester.pumpWidget(entry());
     await tester.pumpAndSettle();
     expect(find.text('SIGN IN'), findsOneWidget);
-    expect(find.text('Welcome to NeoConference'), findsNothing);
+    expect(find.text('Welcome to NeoLinguaMeet'), findsNothing);
   });
 }

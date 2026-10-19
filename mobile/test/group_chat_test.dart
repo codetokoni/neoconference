@@ -87,7 +87,7 @@ void main() {
     stored.addAll([
       msg('m1', 'user_k', 'Kemi', 'Who is leading tonight?'),
       msg('m2', 'user_me', 'Ada', 'I am'),
-      msg('s1', '', 'NeoConference', '“Cell night” has started', extra: {
+      msg('s1', '', 'NeoLinguaMeet', '“Cell night” has started', extra: {
         'userId': null,
         'system': true,
         'link': {'href': '/room/cell-night?event=cell-night&join=1', 'label': 'Join'},

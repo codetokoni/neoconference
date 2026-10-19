@@ -700,7 +700,7 @@ class MeetingDetailsSheet extends StatelessWidget {
                         Text('Meeting link', style: text.labelSmall),
                         const SizedBox(height: 2),
                         Text(
-                          'neoconference.app/${meeting.code}',
+                          'neolinguameet.com/${meeting.code}',
                           style: text.bodyMedium,
                         ),
                       ],

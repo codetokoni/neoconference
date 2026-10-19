@@ -19,7 +19,7 @@ void main() {
 
   test('a network failure is words, with no session ID', () {
     final said = describeActionError(dnsFailure);
-    expect(said, "Couldn't reach NeoConference. Check your connection and try again.");
+    expect(said, "Couldn't reach NeoLinguaMeet. Check your connection and try again.");
     expect(said, isNot(contains('sess_')));
   });
 
@@ -46,7 +46,7 @@ void main() {
     await tester.tap(find.text('Schedule meeting'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining("Couldn't reach NeoConference"), findsOneWidget);
+    expect(find.textContaining("Couldn't reach NeoLinguaMeet"), findsOneWidget);
     expect(find.textContaining('sess_'), findsNothing);
     expect(find.textContaining('ClientException'), findsNothing);
   });

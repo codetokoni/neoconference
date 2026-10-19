@@ -64,7 +64,7 @@ class HistoryScreen extends ConsumerWidget {
                 icon: Icons.videocam_off_rounded,
                 title: 'Recordings are not in the app yet',
                 message: 'Meetings you record are stored on your account. '
-                    'Open neoconference.app on the web to watch or download '
+                    'Open neolinguameet.com on the web to watch or download '
                     'them.',
               )
             else

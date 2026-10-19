@@ -110,7 +110,7 @@ class _PreJoinScreenState extends ConsumerState<PreJoinScreen> {
                         tone: NeoBannerTone.warning,
                         message:
                             'Camera and microphone are blocked for '
-                            'NeoConference.',
+                            'NeoLinguaMeet.',
                         actionLabel: 'Settings',
                         action: () {},
                       ),

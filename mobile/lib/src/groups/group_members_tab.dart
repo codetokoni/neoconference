@@ -92,7 +92,7 @@ class _GroupMembersTabState extends ConsumerState<GroupMembersTab> {
     try {
       final invite = await _api.createInvite(d.group.id);
       await shareSheet(ShareParams(
-        text: 'Join "${d.group.name}" on NeoConference:\n${invite.url}',
+        text: 'Join "${d.group.name}" on NeoLinguaMeet:\n${invite.url}',
         subject: d.group.name,
       ));
     } catch (e) {

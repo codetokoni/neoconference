@@ -289,7 +289,7 @@ class AuthController extends StateNotifier<AuthState> {
     } catch (_) {
       state = state.copyWith(
         busy: false,
-        error: 'Could not reach NeoConference to finish signing in. Check your connection.',
+        error: 'Could not reach NeoLinguaMeet to finish signing in. Check your connection.',
       );
     }
   }

@@ -1,4 +1,5 @@
 import 'package:url_launcher/url_launcher.dart';
+import 'config.dart';
 
 /// The website's help page, where the NeoSupport chat opens on arrival.
 ///
@@ -7,7 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 /// tab: the same chat, the same team, no second integration to keep up.
 /// ?from=app keeps the website's Android "get the app" screen away for the
 /// rest of that tab (/support itself is always open; links from it are not).
-final supportPage = Uri.parse('https://www.neoconference.app/support?from=app');
+Uri get supportPage => Uri.parse('${Config.site}/support?from=app');
 
 /// Opens Help & support. Returns false when nothing could open it.
 Future<bool> openSupport() => launchUrl(supportPage, mode: LaunchMode.inAppBrowserView);

@@ -87,7 +87,7 @@ class IntroPage {
 const introPages = <IntroPage>[
   IntroPage(
     icon: Icons.videocam_rounded,
-    title: 'Welcome to NeoConference',
+    title: 'Welcome to NeoLinguaMeet',
     body: 'Video meetings for everyone. Start a meeting in one tap, schedule one '
         'for later, or join from a link someone sends you.',
     spectrumIndex: 2,
