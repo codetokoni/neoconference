@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { appOpenUrl, backToPage, gateExempt, isAndroid, meetingSlugFromPath, shouldAutoOpen } from "../../src/lib/appGate";
+import { appOpenUrl, backToPage, gateExempt, isAndroid, meetingSlugFromPath, noAppFallback, shouldAutoOpen } from "../../src/lib/appGate";
 
 /**
  * Android phones are asked to use the app (LoveWorld AppStore); iPhones and
@@ -74,6 +74,28 @@ test("open-in-app comes back to the page, not the store, when the app does not o
   );
   expect(app).not.toContain("LAUNCHER");
   expect(app).not.toContain("lwappstore");
+});
+
+test("no Download screen: a phone without the app goes straight to sign-in, back to its page", () => {
+  // Signed out, a meeting link: sign in, then on to the meeting.
+  expect(noAppFallback("https://www.neoconference.app/hscrusade", false)).toBe(
+    "https://www.neoconference.app/sign-in?redirect_url=%2Fhscrusade&noapp=1",
+  );
+  expect(noAppFallback("https://www.neoconference.app/e/falf?x=1", false)).toBe(
+    "https://www.neoconference.app/sign-in?redirect_url=%2Fe%2Ffalf%3Fx%3D1&noapp=1",
+  );
+  // The home page: plain sign-in.
+  expect(noAppFallback("https://www.neoconference.app/", false)).toBe("https://www.neoconference.app/sign-in?noapp=1");
+  // Signed in, or already on sign-in: stay on the page.
+  expect(noAppFallback("https://www.neoconference.app/hscrusade", true)).toBe(
+    "https://www.neoconference.app/hscrusade?noapp=1",
+  );
+  expect(noAppFallback("https://www.neoconference.app/sign-in?redirect_url=%2Fhscrusade", false)).toBe(
+    "https://www.neoconference.app/sign-in?redirect_url=%2Fhscrusade&noapp=1",
+  );
+  for (const signedIn of [false, true]) {
+    expect(noAppFallback("https://www.neoconference.app/hscrusade", signedIn)).not.toContain("lwappstore");
+  }
 });
 
 test("every Android visit tries the app once per tab, but not back from a failed try or in an app's browser", () => {
