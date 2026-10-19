@@ -16,7 +16,7 @@
 // (step-up). Keys derive from ADMIN_MFA_KEY, else CLERK_SECRET_KEY.
 
 import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
-import { kv } from "@/lib/kv";
+import { kv, kvRaw } from "@/lib/kv";
 
 export const ADMIN_SESSION_COOKIE = "neo_admin_mfa";
 export const ADMIN_SESSION_MS = 12 * 60 * 60 * 1000;
@@ -123,6 +123,17 @@ function hashRecovery(code: string): string {
   return createHmac("sha256", derive("mfa-recovery")).update(code.trim().toLowerCase()).digest("base64url");
 }
 
+/** Where `h` is among the recovery hashes, or -1. Every hash is compared, each in constant time. */
+function findRecovery(hashes: string[], h: string): number {
+  const want = Buffer.from(h);
+  let found = -1;
+  hashes.forEach((x, i) => {
+    const got = Buffer.from(x);
+    if (got.length === want.length && timingSafeEqual(got, want) && found < 0) found = i;
+  });
+  return found;
+}
+
 function newRecoveryCodes(): string[] {
   return Array.from({ length: 10 }, () => {
     const s = base32Encode(randomBytes(5)).toLowerCase().slice(0, 8);
@@ -151,6 +162,39 @@ function parse<T>(raw: unknown): T | null {
 
 async function readRecord(uid: string): Promise<MfaRecord | null> {
   return parse<MfaRecord>(await kv.get(recKey(uid)));
+}
+
+// Changes to a record are compare-and-set: the new value is written only if
+// the record still holds exactly what was read, in one step on the server.
+// Two requests that read the same record (the same code sent twice at once)
+// cannot both act on it; the loser reads again and decides afresh, when the
+// code it carries is a replay. The first line is what the test KV knows it by.
+const COMPARE_AND_SET = `-- compare-and-set: KEYS[1] becomes ARGV[2] only if it still holds ARGV[1]
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  redis.call('SET', KEYS[1], ARGV[2])
+  return 1
+end
+return 0`;
+const UPDATE_TRIES = 10;
+
+/**
+ * Read the record, let `change` decide, and write what it returns only if
+ * the record is unchanged since the read; otherwise read again. `missing`
+ * when there is no record. Each lost race means another write won, so a
+ * caller retries only while others are making progress.
+ */
+async function updateRecord<T>(uid: string, missing: T, change: (rec: MfaRecord) => { next?: MfaRecord; result: T }): Promise<T> {
+  for (let i = 0; i < UPDATE_TRIES; i++) {
+    // Raw: the exact stored text, to compare against.
+    const raw = await kvRaw.get<string>(recKey(uid));
+    const rec = typeof raw === "string" ? parse<MfaRecord>(raw) : null;
+    if (!rec) return missing;
+    const { next, result } = change(rec);
+    if (!next) return result;
+    const won = await kvRaw.eval(COMPARE_AND_SET, [recKey(uid)], [raw, JSON.stringify(next)]);
+    if (Number(won) === 1) return result;
+  }
+  throw new Error("admin two-factor: the record kept changing; try again");
 }
 
 export async function mfaStatus(uid: string): Promise<{ enrolled: boolean; enabledAt?: number; recoveryLeft?: number }> {
@@ -182,40 +226,39 @@ export async function confirmEnrollment(uid: string, code: string, now = Date.no
 
 export type VerifyResult = "ok" | "recovery" | "invalid" | "locked" | "not_enrolled";
 
-/** Check a 6-digit code or a recovery code. Wrong codes count; five in 15 minutes lock it. */
+/**
+ * Check a 6-digit code or a recovery code. Wrong codes count; five in 15
+ * minutes lock it. A code is accepted once, however many requests carry it.
+ */
 export async function verifyAdminCode(uid: string, code: string, now = Date.now()): Promise<VerifyResult> {
-  const rec = await readRecord(uid);
-  if (!rec) return "not_enrolled";
   const fails = Number((await kv.get(failKey(uid))) ?? 0);
-  if (fails >= MAX_FAILURES) return "locked";
-
   const trimmed = (code ?? "").trim();
-  if (/^\d{3}\s?\d{3}$/.test(trimmed)) {
-    const step = matchTotp(base32Decode(decrypt(rec.secret)), trimmed, now, rec.lastStep);
-    if (step != null) {
-      await kv.set(recKey(uid), JSON.stringify({ ...rec, lastStep: step }));
-      await kv.del(failKey(uid));
-      return "ok";
+  const result = await updateRecord<VerifyResult>(uid, "not_enrolled", (rec) => {
+    if (fails >= MAX_FAILURES) return { result: "locked" };
+    if (/^\d{3}\s?\d{3}$/.test(trimmed)) {
+      const step = matchTotp(base32Decode(decrypt(rec.secret)), trimmed, now, rec.lastStep);
+      if (step != null) return { next: { ...rec, lastStep: step }, result: "ok" };
+    } else if (trimmed) {
+      const i = findRecovery(rec.recovery, hashRecovery(trimmed));
+      if (i >= 0) return { next: { ...rec, recovery: rec.recovery.filter((_, j) => j !== i) }, result: "recovery" };
     }
-  } else if (trimmed) {
-    const h = hashRecovery(trimmed);
-    if (rec.recovery.includes(h)) {
-      await kv.set(recKey(uid), JSON.stringify({ ...rec, recovery: rec.recovery.filter((x) => x !== h) }));
-      await kv.del(failKey(uid));
-      return "recovery";
-    }
+    return { result: "invalid" };
+  });
+  if (result === "ok" || result === "recovery") {
+    await kv.del(failKey(uid));
+    return result;
   }
+  if (result !== "invalid") return result;
+
   const n = Number(await kv.incr(failKey(uid)));
   if (n === 1) await kv.expire(failKey(uid), FAILURE_WINDOW_S);
   return n >= MAX_FAILURES ? "locked" : "invalid";
 }
 
 export async function regenerateRecoveryCodes(uid: string): Promise<string[] | null> {
-  const rec = await readRecord(uid);
-  if (!rec) return null;
   const codes = newRecoveryCodes();
-  await kv.set(recKey(uid), JSON.stringify({ ...rec, recovery: codes.map(hashRecovery) }));
-  return codes;
+  const recovery = codes.map(hashRecovery);
+  return updateRecord<string[] | null>(uid, null, (rec) => ({ next: { ...rec, recovery }, result: codes }));
 }
 
 export async function resetMfa(uid: string): Promise<void> {
