@@ -19,7 +19,8 @@
 // the minimum on a date, after a week of nudges.
 
 import { BRAND } from "@/lib/brand";
-export const LATEST_APP_VERSION = "1.2.5";
+// 1.2.6 (NeoLinguaMeet) live on the LoveWorld AppStore, 2026-10-19.
+export const LATEST_APP_VERSION = "1.2.6";
 export const MIN_APP_VERSION = "1.2.4";
 
 /**
@@ -81,14 +82,23 @@ export function needsAppUpdate(input: { authorization: string | null; client: st
 }
 
 /**
- * An app still allowed to join but older than LATEST_APP_VERSION. 1.2.4
- * has no update pop-up of its own, so joining tells it — once a day
- * (claimNudge), and Try again on its failure screen goes straight in.
+ * The first version with its own update pop-up (GET /api/app/latest). An
+ * app this new or newer hears of an update from that, so joining never
+ * holds it up; and the nudge's "from 25 October older apps cannot join"
+ * is only true below it.
+ */
+export const FIRST_APP_WITH_UPDATE_PROMPT = "1.2.5";
+
+/**
+ * An app still allowed to join, older than LATEST_APP_VERSION, and too old
+ * to say so itself (1.2.4 has no update pop-up). Joining tells it — once a
+ * day (claimNudge), and Try again on its failure screen goes straight in.
  */
 export function shouldNudgeUpdate(input: { authorization: string | null; client: string }): boolean {
   if (!/^Bearer\s+\S/i.test(input.authorization || "")) return false;
   const version = appVersionOf(input.client);
   if (!version || compareVersions(version, minAppVersion()) < 0) return false;
+  if (compareVersions(version, FIRST_APP_WITH_UPDATE_PROMPT) >= 0) return false;
   return compareVersions(version, LATEST_APP_VERSION) < 0;
 }
 
