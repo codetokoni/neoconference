@@ -56,6 +56,16 @@ built in, so assume their sign-in stops working at that moment.
 3. Vercel issues the TLS certificates once DNS resolves. Wait for "Valid
    Configuration" on both.
 
+> **The direction matters.** Vercel suggests redirecting the bare domain to
+> `www`, which is the opposite of this plan. If `neolinguameet.com` redirects
+> to `www` when the switch goes on, the site sends `www` back, and every
+> visitor hits a redirect loop. Check in Settings → Domains:
+> - `neolinguameet.com`: no redirect, connected to Production.
+> - `www.neolinguameet.com`: redirect to `neolinguameet.com`.
+>
+> On 2026-10-20 it was the wrong way round (bare 308 → www). The owner was
+> asked to flip it.
+
 `neoconference.app` and `www.neoconference.app` stay in the project exactly
 as they are. **Do not** set them to redirect in Vercel: the code redirects
 pages and keeps `/api`, `/.well-known` and `/app` working.
@@ -115,6 +125,13 @@ Add `neolinguameet.com` and use **Change of address** from the old property.
 
 ## Switch-over (step 5)
 
+0. **Vercel → Settings → Domains:**
+   - Confirm `neolinguameet.com` is not a redirect and `www.neolinguameet.com`
+     redirects to it (see above).
+   - Edit `neoconference.app` to **no redirect**, connected to Production.
+     Until now it 307s to `www.neoconference.app`. Left that way, an old
+     bare-domain link takes two hops, and the code's own redirect (pages →
+     neolinguameet.com, `/api` kept) only runs on the second.
 1. **Clerk:** Dashboard → Domains → Danger → Change domain → `neolinguameet.com`.
    - Create the DNS records Clerk then lists at the registrar (`clerk.`,
      `accounts.`, `clkmail.` and the two DKIM CNAMEs).
