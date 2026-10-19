@@ -12,6 +12,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { assertOwnerOrAdmin } from "@/lib/roles";
 import type { EventRole, RoleAssignment } from "@/types/event";
+import { linkOrigin } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,7 +70,7 @@ export async function POST(
   // Failure is non-fatal: caller still gets a 200 with results array.
   const invited: Array<{ email: string; status: "sent" | "linked" | "skipped" | "error"; reason?: string }> = [];
   const clerkConfigured = Boolean(process.env.CLERK_SECRET_KEY);
-  const origin = req.headers.get("origin") || (process.env.NEXT_PUBLIC_APP_URL || "");
+  const origin = linkOrigin(req);
   const redirectUrl = origin ? origin + "/e/" + ev.slug : undefined;
 
   if (sendEmail && clerkConfigured) {

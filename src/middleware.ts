@@ -3,6 +3,7 @@ import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server
 import { kv } from '@/lib/kv';
 import { markActive } from '@/lib/activity';
 import { RESERVED_SHORT_URL_SLUGS } from '@/lib/reservedSlugs';
+import { isOwnHost, legacyRedirect } from '@/lib/brand';
 import { platformGate } from '@/lib/platform/gate';
 import {
   SESSION_COOKIE,
@@ -29,6 +30,9 @@ const isPublicRoute = createRouteMatcher([
   '/api/app/latest',
   '/api/app/gate',
   '/download',
+  // For search engines (src/app/robots.ts, sitemap.ts).
+  '/robots.txt',
+  '/sitemap.xml',
   // The public developer API and its reference. /api/v1 checks its own
   // nc_live_ keys (requireApiKey); a key is not a website session, so
   // behind auth.protect() every call — and the reference itself — got
@@ -278,7 +282,7 @@ async function maybeRewriteShortMeetingUrl(req: NextRequest): Promise<NextRespon
 
 async function maybeRewriteCustomDomain(req: NextRequest): Promise<NextResponse | null> {
   const host = (req.headers.get('host') || '').toLowerCase();
-  if (!host || CANONICAL_HOST_RE.test(host)) return null;
+  if (!host || CANONICAL_HOST_RE.test(host) || isOwnHost(host)) return null;
   const p = req.nextUrl.pathname;
   if (p.startsWith('/_next') || p.startsWith('/api') || p.startsWith('/sign-in') || p.startsWith('/sign-up') || p.startsWith('/dashboard') || p.startsWith('/pricing')) {
     return null;
@@ -355,6 +359,11 @@ async function noteActive(auth: () => Promise<{ userId: string | null }>, event:
 export default clerkMiddleware(
   async (auth, req, event) => {
     const nextReq = req as unknown as NextRequest;
+    // NeoLinguaMeet (src/lib/brand.ts): the old domain's pages, and
+    // www.neolinguameet.com, go to https://neolinguameet.com in one 308 hop
+    // with path and query. Off until the brand switch is set.
+    const moved = legacyRedirect(nextReq.nextUrl, req.headers.get('host'));
+    if (moved) return NextResponse.redirect(moved, 308);
     // Maintenance mode and the registration rules (admin settings) come
     // before everything else. Who is asking is looked up only when one of
     // them is on (src/lib/platform/gate.ts); the owner, administrators and
@@ -382,6 +391,8 @@ export default clerkMiddleware(
       'https://neoconference.vercel.app',
       'https://www.neoconference.app',
       'https://neoconference.app',
+      'https://neolinguameet.com',
+      'https://www.neolinguameet.com',
       'https://special-space-potato-5v6vj4v99r4h474p-3000.app.github.dev',
       'http://localhost:3000',
     ],

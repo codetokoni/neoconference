@@ -5,11 +5,12 @@
 // added to the Home Screen.
 
 import type { MetadataRoute } from "next";
+import { BRAND } from "@/lib/brand";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "NeoConference",
-    short_name: "NeoConference",
+    name: `${BRAND.name}`,
+    short_name: `${BRAND.name}`,
     description: "Video meetings with live translation.",
     start_url: "/dashboard",
     scope: "/",

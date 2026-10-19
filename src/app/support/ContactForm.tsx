@@ -10,6 +10,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { TICKET_CATEGORIES } from "@/lib/support/model";
+import { BRAND } from "@/lib/brand";
 
 type Session = {
   signedIn: boolean;
@@ -129,7 +130,7 @@ export default function ContactForm() {
         <button type="button" onClick={loadSession} className="underline">
           Try again
         </button>
-        , or email <a href="mailto:info@neoconference.app" className="underline">info@neoconference.app</a>.
+        , or email <a href={`mailto:${BRAND.supportEmail}`} className="underline">{BRAND.supportEmail}</a>.
       </p>
     );
   }

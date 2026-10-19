@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { eventStore } from "@/lib/eventStore";
 import { notFound } from "next/navigation";
+import { BRAND } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 30;
@@ -84,7 +85,7 @@ export default async function EmbedPage({ params }: { params: Promise<{ slug: st
             target="_top"
             className="absolute bottom-3 right-3 text-[10px] uppercase tracking-wider text-slate-300/80 hover:text-cyan-200 transition bg-black/40 px-2 py-1 rounded backdrop-blur-sm"
           >
-            NeoConference
+            {BRAND.name}
           </Link>
         </div>
       </body>

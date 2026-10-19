@@ -16,16 +16,27 @@ import { getPlatformSettings } from "@/lib/platform/settings";
 import { DEFAULT_PLATFORM_NAME, noticeActive } from "@/lib/platform/model";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import FullscreenBrand from "@/components/FullscreenBrand";
+import { BRAND } from "@/lib/brand";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "NeoConference — Video meetings with live translation",
+  // Relative links in metadata (Open Graph, canonical) resolve here: the
+  // current brand's address, whichever domain the page was served on.
+  metadataBase: new URL(BRAND.origin),
+  openGraph: {
+    siteName: BRAND.name,
+    type: "website",
+    url: "/",
+    title: `${BRAND.name} — Video meetings with live translation`,
+    description: "Everyone hears each speaker in their own language, translated live.",
+  },
+  title: `${BRAND.name} — Video meetings with live translation`,
   description:
     "Video meetings where everyone hears each speaker in their own language, translated live. On the web and in the Android app.",
   // Added to an iPhone's Home Screen it opens as an app — which is the only
   // way iOS delivers call alerts (Web Push) to a website.
-  appleWebApp: { capable: true, title: "NeoConference", statusBarStyle: "black-translucent" },
+  appleWebApp: { capable: true, title: `${BRAND.name}`, statusBarStyle: "black-translucent" },
 };
 
 export const dynamic = "force-dynamic";
@@ -59,7 +70,7 @@ export default async function RootLayout({
                   </span>
                 )}
                 <span className="font-semibold tracking-tight text-cyan-100 text-[17px]">
-                  {customName ? branding.platformName : <>Neo<span className="neo-gradient-text">Conference</span></>}
+                  {customName ? branding.platformName : <>{BRAND.nameHead}<span className="neo-gradient-text">{BRAND.nameTail}</span></>}
                 </span>
               </Link>
 

@@ -3,9 +3,10 @@ import SessionManager from "@/components/SessionManager";
 import CallAlertsButton from "@/components/notifications/CallAlertsButton";
 import YourData from "@/components/account/YourData";
 import NotificationPrefs from "@/components/notifications/NotificationPrefs";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "Account & security — NeoConference",
+  title: `Account & security — ${BRAND.name}`,
 };
 
 export const dynamic = "force-dynamic";
@@ -49,7 +50,7 @@ export default function SettingsPage() {
         <div>
           <h2 className="text-lg font-medium text-cyan-100">Notifications</h2>
           <p className="mt-1 text-sm text-zinc-400">
-            Choose which optional messages you get from NeoConference, and where.
+            Choose which optional messages you get from {BRAND.name}, and where.
           </p>
         </div>
         <NotificationPrefs />
@@ -59,7 +60,7 @@ export default function SettingsPage() {
         <div>
           <h2 className="text-lg font-medium text-cyan-100">Your data</h2>
           <p className="mt-1 text-sm text-zinc-400">
-            Get a copy of what NeoConference keeps about you, or delete your account.
+            Get a copy of what {BRAND.name} keeps about you, or delete your account.
           </p>
         </div>
         <YourData />

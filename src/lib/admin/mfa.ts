@@ -17,13 +17,14 @@
 
 import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
 import { kv, kvRaw } from "@/lib/kv";
+import { BRAND } from "@/lib/brand";
 
 export const ADMIN_SESSION_COOKIE = "neo_admin_mfa";
 export const ADMIN_SESSION_MS = 12 * 60 * 60 * 1000;
 export const STEP_UP_MS = 10 * 60 * 1000;
 const MAX_FAILURES = 5;
 const FAILURE_WINDOW_S = 15 * 60;
-const ISSUER = "NeoConference Admin";
+const ISSUER = `${BRAND.name} Admin`;
 
 const recKey = (uid: string) => `neo:admin:mfa:${uid}`;
 const pendingKey = (uid: string) => `neo:admin:mfa:pending:${uid}`;

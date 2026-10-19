@@ -30,6 +30,7 @@ import {
 } from "../ui";
 import { formatMessage } from "@/lib/comms/format";
 import { DeliveryTab, PrefsTab, RemindersTab } from "./comms-extra";
+import { BRAND } from "@/lib/brand";
 
 type Channel = "email" | "inApp" | "push";
 type PerChannel = Record<Channel, number>;
@@ -612,7 +613,7 @@ function ChannelPreviews({ channels }: { channels: ChannelPreview }) {
         <Panel className="min-w-0">
           <h3 className="text-sm font-semibold text-white">Push (browsers and the Android app)</h3>
           <div className="mt-2 rounded-xl bg-zinc-100 p-3 text-zinc-900 shadow">
-            <p className="text-xs text-zinc-600">NeoConference</p>
+            <p className="text-xs text-zinc-600">{BRAND.name}</p>
             <p className="text-sm font-semibold">{channels.push.title}</p>
             <p className="line-clamp-3 text-sm">{channels.push.body}</p>
           </div>

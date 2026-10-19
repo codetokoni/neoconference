@@ -21,6 +21,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { can, resolveRole } from '@/lib/permissions';
 import { hasMeetingAdminPower } from '@/lib/roles';
 import { eventReplayVideos, replayOpen, sizeLabel, type ReplayVideo } from '@/lib/replayRecordings';
+import { BRAND } from "@/lib/brand";
 
 export const dynamic = 'force-dynamic';
 
@@ -31,16 +32,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const ev = await eventStore.bySlug(slug);
   if (!ev) {
     return {
-      title: 'Replay not found / NeoConference',
+      title: `Replay not found / ${BRAND.name}`,
     };
   }
   if (await getHiddenEvent(ev.slug)) {
-    return { title: 'Replay removed / NeoConference', robots: { index: false, follow: false } };
+    return { title: `Replay removed / ${BRAND.name}`, robots: { index: false, follow: false } };
   }
-  const title = (ev.name || ev.slug) + ' / NeoConference replay';
+  const title = (ev.name || ev.slug) + ` / ${BRAND.name} replay`;
   const description = ev.description
     ? ev.description.slice(0, 200)
-    : 'Watch the recording, AI summary, chapters and transcript on NeoConference.';
+    : `Watch the recording, AI summary, chapters and transcript on ${BRAND.name}.`;
   return {
     title,
     description,
@@ -48,7 +49,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title,
       description,
       type: 'video.other',
-      siteName: 'NeoConference',
+      siteName: `${BRAND.name}`,
     },
     twitter: {
       card: 'summary_large_image',
@@ -163,7 +164,7 @@ function ReplayView({
 
       <div className="relative mx-auto max-w-5xl px-4 sm:px-6 py-10 md:py-16">
         <div className="mb-6 sm:mb-8 flex items-center justify-between gap-4">
-          <Link href="/" className="text-sm text-white/60 hover:text-white transition">← NeoConference</Link>
+          <Link href="/" className="text-sm text-white/60 hover:text-white transition">← {BRAND.name}</Link>
           <span className="text-[10px] sm:text-xs uppercase tracking-[0.3em] text-cyan-300/70">Replay</span>
         </div>
 
@@ -358,7 +359,7 @@ function ReplayView({
         )}
 
         <div className="mt-10 text-center text-[11px] text-white/30 uppercase tracking-[0.22em]">
-          Replay · NeoConference
+          Replay · {BRAND.name}
         </div>
       </div>
     </main>

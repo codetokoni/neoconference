@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fmtNumber, fmtTime, useAdmin } from "../AdminApi";
 import { Badge, Confirm, LoadState, Notice, PageHeader, Panel, btn, field } from "../ui";
+import { BRAND } from "@/lib/brand";
 
 type Voice = {
   userId: string;
@@ -29,7 +30,7 @@ type Found = { id: string; name: string; email: string };
 type Msg = { kind: "ok" | "err"; text: string } | null;
 
 const CONSENT_TEXT =
-  "I agree that NeoConference may create a copy of my voice from my recording and use it only to speak translations of what I say in NeoConference meetings. I can ask for it to be switched off or deleted at any time.";
+  `I agree that ${BRAND.name} may create a copy of my voice from my recording and use it only to speak translations of what I say in ${BRAND.name} meetings. I can ask for it to be switched off or deleted at any time.`;
 
 export default function VoicesClient() {
   const { adminFetch } = useAdmin();
@@ -173,7 +174,7 @@ export default function VoicesClient() {
               </p>
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-xs text-zinc-400">The speaker&apos;s NeoConference account</span>
+                  <span className="text-xs text-zinc-400">The speaker&apos;s {BRAND.name} account</span>
                   {who ? (
                     <div className="flex items-center gap-2 text-sm text-zinc-100">
                       {who.name} <span className="text-zinc-500">{who.email}</span>

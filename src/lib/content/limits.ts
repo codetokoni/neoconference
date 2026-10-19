@@ -25,6 +25,7 @@ import {
   type UploadKind,
   type UploadRule,
 } from "@/lib/content/model";
+import { BRAND } from "@/lib/brand";
 
 const KEY = "neo:content:limits";
 
@@ -118,7 +119,7 @@ export async function refuseOverQuota(ownerId: string, addBytes: number): Promis
       {
         ok: false,
         error: "storage_full",
-        message: `Your plan's storage (${gb} GB) is full: ${formatBytes(used)} is in use. Delete files you no longer need, or see the plans at neoconference.app/pricing.`,
+        message: `Your plan's storage (${gb} GB) is full: ${formatBytes(used)} is in use. Delete files you no longer need, or see the plans at ${BRAND.domain}/pricing.`,
         quota,
         used,
       },

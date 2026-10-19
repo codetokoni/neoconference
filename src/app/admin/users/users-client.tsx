@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PLANS } from "@/lib/planLimits";
 import { Time, adminZone, errorText, fmtNumber, useAdmin, zoneLabel } from "../AdminApi";
 import { Badge, Confirm, Empty, Labeled, Loading, Notice, PageHeader, Pager, SelectBox, TableWrap, btn, field, useSelection } from "../ui";
+import { BRAND } from "@/lib/brand";
 
 export type UserRow = {
   id: string;
@@ -198,7 +199,7 @@ export default function UsersClient() {
             ? `${fmtNumber(meta.total)} account${meta.total === 1 ? "" : "s"}${active || filters.q ? " match" : ""}.${
                 meta.scanned != null ? ` Filtered from ${fmtNumber(meta.scanned)} read in order${meta.capped ? " — there are more; narrow the search to reach them" : ""}.` : ""
               }`
-            : "Every account on NeoConference."
+            : `Every account on ${BRAND.name}.`
         }
       />
       {msg && (

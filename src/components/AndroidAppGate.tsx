@@ -21,6 +21,7 @@ import {
   NO_APP_PARAM,
   shouldAutoOpen,
 } from "@/lib/appGate";
+import { BRAND } from "@/lib/brand";
 
 // A tab the app opened (?from=app) stays open as the reader moves around.
 const FROM_APP_KEY = "neo:from-app";
@@ -146,7 +147,7 @@ export default function AndroidAppGate() {
         <NeoMark className="h-9 w-auto" />
       </div>
       <h1 id="app-gate-title" className="mt-6 text-3xl font-bold tracking-tight text-white">
-        Opening NeoConference…
+        Opening {BRAND.name}…
       </h1>
     </div>
   );

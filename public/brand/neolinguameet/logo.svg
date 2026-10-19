@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+    <defs>
+  <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#A5FBF9"/>
+    <stop offset="0.5" stop-color="#56D2FB"/>
+    <stop offset="1" stop-color="#1F66FB"/>
+  </linearGradient></defs>
+    <rect width="512" height="512" rx="112.64" fill="url(#g)"/>
+    <g transform="translate(256 256) scale(4.03830985915493) translate(-91.5 -92.5)">
+  <clipPath id="n"><path d="M61,68 H74.5 L85.5,78.45 V68 H98 A5,5 0 0 1 103,73 V108 A5,5 0 0 1 98,113
+  H88 L74.5,100 V108 A5,5 0 0 1 69.5,113 H61 A5,5 0 0 1 56,108 V73 A5,5 0 0 1 61,68 Z"/></clipPath>
+  <path d="M61,68 H74.5 L85.5,78.45 V68 H98 A5,5 0 0 1 103,73 V108 A5,5 0 0 1 98,113
+  H88 L74.5,100 V108 A5,5 0 0 1 69.5,113 H61 A5,5 0 0 1 56,108 V73 A5,5 0 0 1 61,68 Z" fill="#01183A"/>
+  <polygon points="85.5,60 110,60 110,101.7 85.5,78.45" fill="#0C7AAA" clip-path="url(#n)"/>
+  <path d="M112,68 H123 A4,4 0 0 1 127,72 V82 A4,4 0 0 1 123,86 H117 L112,90.5 V86
+  A4,4 0 0 1 108,82 V72 A4,4 0 0 1 112,68 Z" fill="#0C7AAA"/>
+  <path d="M112,95 H123 A4,4 0 0 1 127,99 V109 A4,4 0 0 1 123,113 H112
+  A4,4 0 0 1 108,109 V99 A4,4 0 0 1 112,95 Z M127,109 L127,117 L121.5,113 Z" fill="#01183A"/></g>
+  </svg>

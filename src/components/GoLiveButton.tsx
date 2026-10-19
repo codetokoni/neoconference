@@ -23,6 +23,7 @@ import {
   type StreamDestinationInput,
   type StreamPlatform,
 } from '@/lib/livestream';
+import { BRAND } from "@/lib/brand";
 
 type DestinationView = StreamDestination & { status: 'connecting' | 'live' | 'ended' | 'failed'; error?: string };
 type StreamStatus =
@@ -265,7 +266,7 @@ export default function GoLiveButton({
                 <p className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
                   Livestreaming is on the Enterprise plan. The meeting&apos;s owner can arrange it at{' '}
                   <a href="/pricing" className="underline">
-                    neoconference.app/pricing
+                    {BRAND.domain}/pricing
                   </a>
                   .
                 </p>
@@ -311,7 +312,7 @@ export default function GoLiveButton({
                 <div className="mt-5 space-y-4">
                   <p className="text-sm text-white/70">
                     Send this meeting live to YouTube, Facebook, Twitch or any RTMP address. Paste the stream key from the
-                    platform; NeoConference does the rest, no other software needed.
+                    platform; {BRAND.name} does the rest, no other software needed.
                   </p>
                   {pending.map((d, i) => {
                     const platform = STREAM_PLATFORMS.find((p) => p.id === d.platform) ?? STREAM_PLATFORMS[0];

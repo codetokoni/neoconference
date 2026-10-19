@@ -11,6 +11,7 @@ import { can, requireAdmin } from "@/lib/admin/context";
 import { accountHref, clerkSignUps, meetingRecords } from "@/lib/admin/analytics";
 import { periodFromQuery } from "@/lib/activityReports";
 import { csvResponse, xlsxResponse, zonedStamp, type Table } from "@/lib/admin/exportReport";
+import { BRAND } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ export async function GET(req: Request) {
       ],
       rows: items.map((u) => ({ ...u, created: zonedStamp(u.createdAt, p.tz) })),
     };
-    const base = `neoconference-sign-ups-${p.from}-to-${p.to}`;
+    const base = `${BRAND.id}-sign-ups-${p.from}-to-${p.to}`;
     return format === "xlsx" ? xlsxResponse([table], base) : csvResponse(table, base);
   }
   const metric = url.searchParams.get("metric") === "meetingMinutes" ? "meetingMinutes" : "meetings";
@@ -67,6 +68,6 @@ export async function GET(req: Request) {
       ended: zonedStamp(i.endedAt, p.tz),
     })),
   };
-  const base = `neoconference-${metric}-${p.from}-to-${p.to}`;
+  const base = `${BRAND.id}-${metric}-${p.from}-to-${p.to}`;
   return format === "xlsx" ? xlsxResponse([table], base) : csvResponse(table, base);
 }

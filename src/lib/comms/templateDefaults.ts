@@ -13,6 +13,7 @@
 // filled as {{name}}; {{#name}}…{{/name}} shows when set, {{^name}}…{{/name}}
 // when not. `sample` values drive the editor's preview and the test send.
 
+import { BRAND } from "@/lib/brand";
 export interface TemplateVariable {
   name: string;
   description: string;
@@ -52,7 +53,7 @@ const GROUP_VARS: TemplateVariable[] = [
   { name: "many", description: 'Either " — <when>" or " (N meetings from <when>)" for a series', sample: " — Mon 12 Oct 2026, 10:00 (Africa/Lagos)" },
   { name: "count", description: "How many meetings the notice covers", sample: 1 },
   { name: "series", description: "Set when the notice covers more than one meeting", sample: false },
-  { name: "link", description: "The meeting's page", sample: "https://www.neoconference.app/weekly-prayer" },
+  { name: "link", description: "The meeting's page", sample: `${BRAND.origin}/weekly-prayer` },
   { name: "description", description: "The meeting's description, if it has one", sample: "Bring your notes from last week." },
 ];
 
@@ -75,11 +76,11 @@ function groupTemplate(kind: string, name: string, subject: string, line: string
 const S_P = '<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a;white-space:pre-line">';
 const S_BUTTON =
   '<p style="font-family:system-ui,sans-serif"><a href="{{ticketUrl}}" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#06b6d4;color:#020617;text-decoration:none;font-weight:600">{{#signedIn}}Open your ticket{{/signedIn}}{{^signedIn}}Sign in to follow it{{/signedIn}}</a></p>';
-const S_FOOT = '<p style="font-family:system-ui,sans-serif;font-size:12px;color:#64748b">NeoConference support · Replies to this email are not read; answer on the website.</p>';
+const S_FOOT = `<p style="font-family:system-ui,sans-serif;font-size:12px;color:#64748b">${BRAND.name} support · Replies to this email are not read; answer on the website.</p>`;
 const SUPPORT_VARS: TemplateVariable[] = [
   { name: "number", description: "The ticket number", sample: 1042 },
   { name: "subject", description: "The ticket's subject", sample: "Recording did not start" },
-  { name: "ticketUrl", description: "The ticket's page", sample: "https://www.neoconference.app/support/tickets/t_abc123" },
+  { name: "ticketUrl", description: "The ticket's page", sample: `${BRAND.origin}/support/tickets/t_abc123` },
   { name: "signedIn", description: "Set when the ticket belongs to an account (not sent signed out)", sample: true },
   { name: "email", description: "The address the ticket came from", sample: "ada@example.com" },
 ];
@@ -89,11 +90,11 @@ const BILLING_VARS: TemplateVariable[] = [
   { name: "currency", description: "The currency code", sample: "USD" },
   { name: "cycle", description: '"monthly" or "annual"', sample: "monthly" },
   { name: "endDate", description: "When the plan runs out (renewal reminders only)", sample: "Fri, 16 Oct 2026" },
-  { name: "pricingUrl", description: "The pricing page", sample: "https://www.neoconference.app/pricing" },
-  { name: "billingUrl", description: "Their billing history", sample: "https://www.neoconference.app/dashboard/billing" },
+  { name: "pricingUrl", description: "The pricing page", sample: `${BRAND.origin}/pricing` },
+  { name: "billingUrl", description: "Their billing history", sample: `${BRAND.origin}/dashboard/billing` },
 ];
 const B_PRICE = "{{#amount}} ({{amount}}, {{cycle}}){{/amount}}";
-const B_SIGN = "— NeoConference";
+const B_SIGN = `— ${BRAND.name}`;
 
 /** Each paragraph is plain text; the HTML version links its {{…Url}}s. */
 function billingTemplate(kind: string, name: string, description: string, subject: string, paras: string[]): TemplateDef {
@@ -114,7 +115,7 @@ function billingTemplate(kind: string, name: string, description: string, subjec
 }
 
 const S_INTRO_TEXT =
-  "Thanks for getting in touch. Your request is with the NeoConference team{{#signedIn}} and you can follow it on the website.{{/signedIn}}{{^signedIn}}. We'll answer at this address. To read the conversation on the website, sign in or sign up with {{email}}.{{/signedIn}}";
+  `Thanks for getting in touch. Your request is with the ${BRAND.name} team{{#signedIn}} and you can follow it on the website.{{/signedIn}}{{^signedIn}}. We'll answer at this address. To read the conversation on the website, sign in or sign up with {{email}}.{{/signedIn}}`;
 
 export const TEMPLATE_DEFS: TemplateDef[] = [
   groupTemplate("scheduled", "Meeting invitation", "Invitation: {{title}}{{many}}", "{{senderName}} invited you to “{{title}}”{{many}}.", true),
@@ -137,16 +138,16 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
     variables: [
       { name: "appointer", description: "Who appointed them", sample: "Victor Agbasa" },
       { name: "roleName", description: "Their administrator role", sample: "Support" },
-      { name: "origin", description: "The site's address", sample: "https://www.neoconference.app" },
+      { name: "origin", description: "The site's address", sample: `${BRAND.origin}` },
     ],
     defaults: {
-      subject: "You are now a NeoConference administrator",
+      subject: `You are now a ${BRAND.name} administrator`,
       text:
-        "{{appointer}} made you an administrator ({{roleName}}) on NeoConference.\n\n" +
+        `{{appointer}} made you an administrator ({{roleName}}) on ${BRAND.name}.\n\n` +
         "Open {{origin}}/admin and set up two-factor authentication with an authenticator app to start.\n\n" +
         "If you did not expect this, reply to this email.",
       html:
-        "<p>{{appointer}} made you an administrator (<b>{{roleName}}</b>) on NeoConference.</p>" +
+        `<p>{{appointer}} made you an administrator (<b>{{roleName}}</b>) on ${BRAND.name}.</p>` +
         '<p><a href="{{origin}}/admin">Open the admin area</a> and set up two-factor authentication with an authenticator app to start.</p>' +
         "<p>If you did not expect this, reply to this email.</p>",
     },
@@ -177,20 +178,20 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
       { name: "body", description: "The reply", sample: "Thanks — that is fixed now. Try again and tell us if it happens again." },
     ],
     defaults: {
-      subject: "[#{{number}}] Reply from NeoConference support: {{subject}}",
+      subject: `[#{{number}}] Reply from ${BRAND.name} support: {{subject}}`,
       text: "{{agentName}} replied to your ticket #{{number}}:\n\n{{body}}\n\n{{ticketUrl}}",
       html: `${S_P}<b>{{agentName}}</b> replied to your ticket #{{number}}:</p>${S_P}{{body}}</p>${S_BUTTON}${S_FOOT}`,
     },
   },
-  billingTemplate("failed_payment", "Payment failed", "When a plan payment failed and nothing was paid since.", "Your NeoConference {{plan}} payment did not go through", [
+  billingTemplate("failed_payment", "Payment failed", "When a plan payment failed and nothing was paid since.", `Your ${BRAND.name} {{plan}} payment did not go through`, [
     `Your payment for the {{plan}} plan${B_PRICE} did not go through, so the plan was not added.`,
     "You can try again here: {{pricingUrl}}",
   ]),
-  billingTemplate("abandoned_checkout", "Checkout not finished", "When someone started paying for a plan and never finished.", "Finish upgrading to NeoConference {{plan}}", [
+  billingTemplate("abandoned_checkout", "Checkout not finished", "When someone started paying for a plan and never finished.", `Finish upgrading to ${BRAND.name} {{plan}}`, [
     `You started upgrading to the {{plan}} plan${B_PRICE} but the payment was not completed.`,
     "Pick up where you left off: {{pricingUrl}}",
   ]),
-  billingTemplate("renewal_reminder", "Plan ending soon", "Before a paid plan runs out. Plans do not renew by themselves.", "Your NeoConference {{plan}} plan ends on {{endDate}}", [
+  billingTemplate("renewal_reminder", "Plan ending soon", "Before a paid plan runs out. Plans do not renew by themselves.", `Your ${BRAND.name} {{plan}} plan ends on {{endDate}}`, [
     `Your {{plan}} plan${B_PRICE} runs until {{endDate}}. It does not renew by itself: to keep it, buy another period before then.`,
     "Renew: {{pricingUrl}}",
     "Your billing history: {{billingUrl}}",
@@ -207,9 +208,9 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
       { name: "details", description: "Per meeting, who redeemed and when (plain text lines)", sample: "Sunday service\n  - Ada Obi (2026-10-09T09:12:00Z)\n  - Tunde (2026-10-09T09:40:00Z)" },
     ],
     defaults: {
-      subject: "NeoConference — {{count}} new redemption{{plural}} today",
+      subject: `${BRAND.name} — {{count}} new redemption{{plural}} today`,
       html: "",
-      text: "NeoConference daily digest\n\n{{count}} redemption{{plural}} in the last 24h:\n\n{{details}}",
+      text: `${BRAND.name} daily digest\n\n{{count}} redemption{{plural}} in the last 24h:\n\n{{details}}`,
     },
   },
   {
@@ -225,7 +226,7 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
       { name: "left", description: "Meetings left", sample: 1 },
       { name: "reached", description: "Set when none are left", sample: false },
       { name: "planName", description: "Their plan", sample: "Free" },
-      { name: "origin", description: "The site's address", sample: "https://www.neoconference.app" },
+      { name: "origin", description: "The site's address", sample: `${BRAND.origin}` },
     ],
     defaults: {
       subject: "{{#reached}}You've used all {{cap}} meetings on the {{planName}} plan{{/reached}}{{^reached}}You've used {{used}} of your {{cap}} meetings{{/reached}}",
@@ -234,7 +235,7 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
         "Hi{{#name}} {{name}}{{/name}},\n\n" +
         "{{#reached}}You have created all {{cap}} meetings the {{planName}} plan includes, so new meetings need a paid plan. Meetings you already created keep working.{{/reached}}" +
         "{{^reached}}You have created {{used}} of the {{cap}} meetings the {{planName}} plan includes. {{left}} left.{{/reached}}\n\n" +
-        "See the plans: {{origin}}/pricing\n\n— NeoConference",
+        `See the plans: {{origin}}/pricing\n\n— ${BRAND.name}`,
       html:
         '<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a">Hi{{#name}} {{name}}{{/name}},</p>' +
         '<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a">' +
@@ -257,7 +258,7 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
       { name: "reached", description: "Set when the allowance is used up", sample: false },
       { name: "resets", description: "When the hours reset", sample: "1 November" },
       { name: "planName", description: "Their plan", sample: "Pro" },
-      { name: "origin", description: "The site's address", sample: "https://www.neoconference.app" },
+      { name: "origin", description: "The site's address", sample: `${BRAND.origin}` },
     ],
     defaults: {
       subject: "{{#reached}}This month's recording hours are used up{{/reached}}{{^reached}}{{percent}}% of this month's recording hours used{{/reached}}",
@@ -266,7 +267,7 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
         "Hi{{#name}} {{name}}{{/name}},\n\n" +
         "{{#reached}}Your meetings have recorded all {{capHours}} hours the {{planName}} plan includes this month. New recordings will not start until the hours reset on {{resets}}.{{/reached}}" +
         "{{^reached}}Your meetings have recorded {{usedHours}} of the {{capHours}} hours the {{planName}} plan includes this month. They reset on {{resets}}.{{/reached}}\n\n" +
-        "See the plans: {{origin}}/pricing\n\n— NeoConference",
+        `See the plans: {{origin}}/pricing\n\n— ${BRAND.name}`,
       html:
         '<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a">Hi{{#name}} {{name}}{{/name}},</p>' +
         '<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a">' +
@@ -287,7 +288,7 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
       { name: "planName", description: "The plan they are trying", sample: "Business" },
       { name: "days", description: "Whole days left", sample: 3 },
       { name: "endsOn", description: "When the trial ends", sample: "Mon, 12 Oct 2026" },
-      { name: "origin", description: "The site's address", sample: "https://www.neoconference.app" },
+      { name: "origin", description: "The site's address", sample: `${BRAND.origin}` },
     ],
     defaults: {
       subject: "Your {{planName}} trial ends in {{days}} day(s)",
@@ -295,7 +296,7 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
       text:
         "Hi{{#name}} {{name}}{{/name}},\n\n" +
         "Your {{planName}} trial ends on {{endsOn}}. After that your account goes back to the Free plan. To keep the {{planName}} features, choose a plan before then.\n\n" +
-        "See the plans: {{origin}}/pricing\n\n— NeoConference",
+        `See the plans: {{origin}}/pricing\n\n— ${BRAND.name}`,
       html:
         '<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a">Hi{{#name}} {{name}}{{/name}},</p>' +
         '<p style="font-family:system-ui,sans-serif;font-size:15px;color:#0f172a">Your {{planName}} trial ends on {{endsOn}}. After that your account goes back to the Free plan. To keep the {{planName}} features, choose a plan before then.</p>' +
@@ -312,12 +313,12 @@ export const TEMPLATE_DEFS: TemplateDef[] = [
       { name: "reportName", description: "The rule's name", sample: "Weekly summary to the owner" },
       { name: "period", description: "The days covered", sample: "2026-10-02 to 2026-10-08 (UTC)" },
       { name: "summary", description: "The headline figures, one per line", sample: "Active users: 120\nMeetings: 48" },
-      { name: "origin", description: "The site's address", sample: "https://www.neoconference.app" },
+      { name: "origin", description: "The site's address", sample: `${BRAND.origin}` },
     ],
     defaults: {
-      subject: "NeoConference: {{reportName}} ({{period}})",
+      subject: `${BRAND.name}: {{reportName}} ({{period}})`,
       html: "",
-      text: "{{reportName}}\n{{period}}\n\n{{summary}}\n\nThe tables are attached as CSV. Analytics: {{origin}}/admin/analytics\n\n— NeoConference",
+      text: `{{reportName}}\n{{period}}\n\n{{summary}}\n\nThe tables are attached as CSV. Analytics: {{origin}}/admin/analytics\n\n— ${BRAND.name}`,
     },
   },
 ];

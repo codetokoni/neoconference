@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { useModal } from "@/components/ui/useModal";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
 import UpgradeHint from "@/components/groups/UpgradeHint";
+import { BRAND } from "@/lib/brand";
 
 /** Someone who could be put in a group. */
 export interface GroupCandidate {
@@ -235,7 +236,7 @@ export default function AddToGroupDialog({
             {startNew ? "Create a group" : "Add to a group"}
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Anyone without a NeoConference account yet joins when they sign up with that email or KingsChat handle.
+            Anyone without a {BRAND.name} account yet joins when they sign up with that email or KingsChat handle.
           </p>
         </div>
 

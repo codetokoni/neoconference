@@ -9,6 +9,7 @@
 // draws it.
 
 import { RESERVED_SHORT_URL_SLUGS } from "@/lib/reservedSlugs";
+import { APP_INTENT_HOST, BRAND, isOwnHost } from "@/lib/brand";
 
 /** NeoConference on the LoveWorld AppStore. */
 export const APP_STORE_URL = "https://web.lwappstore.com/share/lW-APP-Y26-XG9328";
@@ -57,8 +58,8 @@ export function gateExempt(pathname: string, search = ""): boolean {
 function headsForVideo(target: string | null): boolean {
   if (!target) return false;
   try {
-    const u = new URL(target, "https://www.neoconference.app");
-    if (!/^(www\.)?neoconference\.app$/.test(u.hostname)) return false;
+    const u = new URL(target, BRAND.origin);
+    if (!isOwnHost(u.hostname)) return false;
     return /^\/video(\/|$)/.test(u.pathname);
   } catch {
     return false;
@@ -96,8 +97,8 @@ export function meetingForGate(pathname: string, search = ""): string | null {
   const target = new URLSearchParams(search).get("redirect_url");
   if (!target) return null;
   try {
-    const u = new URL(target, "https://www.neoconference.app");
-    if (!/^(www\.)?neoconference\.app$/.test(u.hostname)) return null;
+    const u = new URL(target, BRAND.origin);
+    if (!isOwnHost(u.hostname)) return null;
     return meetingSlugFromPath(u.pathname, u.search);
   } catch {
     return null;
@@ -176,5 +177,6 @@ export function noAppFallback(href: string, signedIn: boolean): string {
 export function appOpenUrl(slug: string | null, fallback: string): string {
   const back = "S.browser_fallback_url=" + encodeURIComponent(fallback);
   const path = slug ? "/e/" + encodeURIComponent(slug) : "/app/auth";
-  return `intent://www.neoconference.app${path}#Intent;scheme=https;package=${APP_PACKAGE};${back};end`;
+  // The old host: apps up to 1.2.5 claim only it, later ones both.
+  return `intent://${APP_INTENT_HOST}${path}#Intent;scheme=https;package=${APP_PACKAGE};${back};end`;
 }

@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic';
 
 function errorRedirect(request: Request, code: string, redirectUrl: string, debug?: string) {
   if (isAppCallback(redirectUrl)) {
-    const appResponse = redirectToApp({ ne_error: code });
+    const appResponse = redirectToApp({ ne_error: code }, redirectUrl);
     appResponse.cookies.set(NEOEMAIL_STATE_COOKIE, '', { path: '/', maxAge: 0 });
     return appResponse;
   }
@@ -215,7 +215,7 @@ export async function GET(request: Request) {
 
   const response = destination
     ? NextResponse.redirect(destination, { status: 303 })
-    : redirectToApp({ __clerk_ticket: ticket });
+    : redirectToApp({ __clerk_ticket: ticket }, redirectUrl);
   // Spent. One state, one sign-in.
   response.cookies.set(NEOEMAIL_STATE_COOKIE, '', { path: '/', maxAge: 0 });
   return response;

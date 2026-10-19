@@ -23,6 +23,9 @@ self.addEventListener("activate", (event) => {
 });
 
 /** Only paths on this site: a payload can never send someone elsewhere. */
+/** The product's name, from the domain this worker runs on (src/lib/brand.ts). */
+const BRAND_NAME = /neolinguameet\.com$/.test(self.location.hostname) ? "NeoLinguaMeet" : "NeoConference";
+
 function sameOriginUrl(path) {
   const p = typeof path === "string" && path.startsWith("/") && !path.startsWith("//") ? path : "/dashboard";
   return new URL(p, self.location.origin).href;
@@ -33,7 +36,7 @@ function readPayload(event) {
   try {
     return event.data.json();
   } catch (e) {
-    return { type: "invite", title: "NeoConference", body: event.data.text(), url: "/dashboard" };
+    return { type: "invite", title: BRAND_NAME, body: event.data.text(), url: "/dashboard" };
   }
 }
 
@@ -74,7 +77,7 @@ async function handlePush(p) {
         ? [{ action: "open", title: "Join" }]
         : [],
   };
-  await self.registration.showNotification(p.title || "NeoConference", options);
+  await self.registration.showNotification(p.title || BRAND_NAME, options);
 }
 
 self.addEventListener("notificationclick", (event) => {

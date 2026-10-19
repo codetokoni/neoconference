@@ -5,6 +5,7 @@ import { useSignUp } from '@clerk/nextjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import Link from 'next/link';
+import { BRAND } from "@/lib/brand";
 
 export default function EmailPasswordSignUp() {
   const { signUp, isLoaded, setActive } = useSignUp();
@@ -135,7 +136,7 @@ export default function EmailPasswordSignUp() {
       className='w-full max-w-sm bg-white text-black rounded-xl shadow-lg p-6 flex flex-col gap-4'
     >
       <div className='text-center'>
-        <h1 className='text-xl font-semibold'>Create your NeoConference account</h1>
+        <h1 className='text-xl font-semibold'>Create your {BRAND.name} account</h1>
         <p className='text-sm text-gray-500'>Start hosting premium HD meetings.</p>
       </div>
 

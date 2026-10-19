@@ -15,6 +15,7 @@ import MeetingsTab from "./MeetingsTab";
 import ReportsTab from "./ReportsTab";
 import ChatTab from "./ChatTab";
 import CallAlertsButton from "@/components/notifications/CallAlertsButton";
+import { BRAND } from "@/lib/brand";
 
 type Tab = "chat" | "members" | "meetings" | "reports" | "settings";
 const TABS: Tab[] = ["chat", "members", "meetings", "reports", "settings"];
@@ -569,7 +570,7 @@ function MembersTab({
               </button>
             </div>
             <p className="text-xs text-slate-400">
-              Emails or KingsChat handles, several at once. Anyone without a NeoConference account yet joins when they
+              Emails or KingsChat handles, several at once. Anyone without a {BRAND.name} account yet joins when they
               sign up.
             </p>
             {addMsg ? (

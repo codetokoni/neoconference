@@ -6,6 +6,7 @@
 
 import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
+import { BRAND } from "@/lib/brand";
 
 export interface Column {
   header: string;
@@ -43,7 +44,7 @@ export function csvOf(t: Table): string {
 
 export async function xlsxOf(tables: Table[]): Promise<ArrayBuffer> {
   const wb = new ExcelJS.Workbook();
-  wb.creator = "NeoConference";
+  wb.creator = `${BRAND.name}`;
   wb.created = new Date();
   for (const t of tables) {
     const sheet = wb.addWorksheet(t.name.slice(0, 31).replace(/[\\/?*[\]:]/g, " "));

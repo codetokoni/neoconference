@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic';
 
 /** "Android app", "Chrome on Windows"… — enough to read a log, not a fingerprint. */
 function deviceLabel(ua: string): string {
-  if (/NeoConference|Dart\//i.test(ua)) return 'app';
+  if (/NeoConference|NeoLinguaMeet|Dart\//i.test(ua)) return 'app';
   const os = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iOS' : /Windows/i.test(ua) ? 'Windows' : /Mac OS/i.test(ua) ? 'macOS' : /Linux/i.test(ua) ? 'Linux' : 'other';
   const browser = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'browser';
   return `${browser} on ${os}`;

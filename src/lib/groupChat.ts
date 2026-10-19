@@ -18,6 +18,7 @@ import { kv } from "@/lib/kv";
 import { randomBytes } from "node:crypto";
 import { MAX_TEXT_LEN } from "@/lib/chatStore";
 import { GroupError, type GroupMember } from "@/lib/groupStore";
+import { BRAND } from "@/lib/brand";
 
 export const MAX_GROUP_MESSAGES = 500;
 export const PAGE_SIZE = 50;
@@ -295,7 +296,7 @@ export async function postSystemMessage(
   const m: GroupChatMessage = {
     id: newId(),
     userId: null,
-    name: "NeoConference",
+    name: `${BRAND.name}`,
     text: text.slice(0, MAX_TEXT_LEN),
     ts: new Date(now).toISOString(),
     system: true,

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { categoryLabel, type TicketStatus } from "@/lib/support/model";
 import { StatusPill } from "../MyTickets";
+import { BRAND } from "@/lib/brand";
 
 type Attachment = { name: string; size: number; type: string; url: string | null };
 type Message = { id: string; ts: number; author: "user" | "agent" | "system"; authorName: string; body: string; attachments: Attachment[] };
@@ -138,7 +139,7 @@ export default function TicketThread({ id }: { id: string }) {
               className={`rounded-xl border p-4 ${m.author === "agent" ? "border-cyan-400/25 bg-cyan-400/[0.06]" : "border-white/10 bg-white/[0.03]"}`}
             >
               <p className="text-xs text-cyan-100/50">
-                <b className="text-cyan-100/80">{m.author === "agent" ? `${m.authorName} · NeoConference support` : m.authorName || "You"}</b> ·{" "}
+                <b className="text-cyan-100/80">{m.author === "agent" ? `${m.authorName} · ${BRAND.name} support` : m.authorName || "You"}</b> ·{" "}
                 {new Date(m.ts).toLocaleString()}
               </p>
               <p className="mt-2 whitespace-pre-line text-sm text-cyan-50/90">{m.body}</p>

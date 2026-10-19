@@ -32,6 +32,7 @@ import { recordedHoursThisMonth } from "@/lib/ops/media";
 import { paymentFailures } from "@/lib/ops/queues";
 import { notifyOps, type NotifyResult } from "@/lib/ops/notify";
 import { newId, parseJson, readHash } from "@/lib/ops/util";
+import { BRAND } from "@/lib/brand";
 
 export const ALERT_KINDS = [
   { kind: "service_down", label: "Service down", unit: "minutes" },
@@ -337,7 +338,7 @@ export async function evaluateAlerts(results: ProbeResult[], now = Date.now()): 
 }
 
 async function notifyFor(rule: AlertRule, alert: OpsAlert): Promise<NotifyResult> {
-  return notifyOps({ title: `NeoConference ops: ${alert.title}`, body: alert.message, url: "/admin/ops/alerts" }, { email: rule.email, inApp: rule.inApp });
+  return notifyOps({ title: `${BRAND.name} ops: ${alert.title}`, body: alert.message, url: "/admin/ops/alerts" }, { email: rule.email, inApp: rule.inApp });
 }
 
 /* ------------------------- alerts raised by others ------------------------ */
@@ -377,7 +378,7 @@ export async function raiseAlert(a: { source: string; subject: string; title: st
     ...(cooling ? { suppressed: "cooldown" as const } : {}),
   };
   if (!cooling) {
-    alert.notifyResult = await notifyOps({ title: `NeoConference ops: ${a.title}`, body: a.message, url: a.url });
+    alert.notifyResult = await notifyOps({ title: `${BRAND.name} ops: ${a.title}`, body: a.message, url: a.url });
     alert.notified = true;
     await kv.set(notifiedKey(key), now, { ex: RAISED_COOLDOWN_MIN * 60 });
   }

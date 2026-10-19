@@ -35,6 +35,7 @@ import { escapeHtml, formatMessage, safeHref } from "@/lib/comms/format";
 import { previewAudience, resolvePage, describeAudience, type Audience, type AudiencePreview, type Recipient } from "@/lib/comms/audience";
 import { allows, getPrefs, oneClickUrl, unsubscribeUrl, PREF_CATEGORIES, type PrefCategory, type PrefChannel } from "@/lib/comms/prefs";
 import { isBounced, rememberMessage } from "@/lib/comms/log";
+import { BRAND } from "@/lib/brand";
 
 export const CHUNK = 100;
 /** Above this many recipients (or "everyone") confirming needs a fresh authenticator code. */
@@ -200,8 +201,8 @@ export function renderAnnouncementEmail(send: Pick<Send, "kind" | "message" | "o
   const link = message.url ? origin.replace(/\/+$/, "") + message.url : "";
   const catLabel = category ? PREF_CATEGORIES.find((c) => c.key === category)!.label.toLowerCase() : "";
   const footerHtml = category
-    ? `You get ${escapeHtml(catLabel)} because you have a NeoConference account. <a href="${escapeHtml(unsub!)}" style="color:#64748b">Unsubscribe from ${escapeHtml(catLabel)}</a> · <a href="${escapeHtml(settings)}" style="color:#64748b">Notification settings</a>`
-    : `This is a service notice about NeoConference. It goes to every account it concerns and cannot be turned off.`;
+    ? `You get ${escapeHtml(catLabel)} because you have a ${BRAND.name} account. <a href="${escapeHtml(unsub!)}" style="color:#64748b">Unsubscribe from ${escapeHtml(catLabel)}</a> · <a href="${escapeHtml(settings)}" style="color:#64748b">Notification settings</a>`
+    : `This is a service notice about ${BRAND.name}. It goes to every account it concerns and cannot be turned off.`;
   const html =
     `<div style="max-width:560px;margin:0 auto;padding:24px 16px;font-family:system-ui,sans-serif">` +
     `<div style="border-left:4px solid ${color};padding-left:12px;margin:0 0 16px">` +
@@ -209,16 +210,16 @@ export function renderAnnouncementEmail(send: Pick<Send, "kind" | "message" | "o
     `<h1 style="margin:4px 0 0;font-size:20px;line-height:1.3;color:#0f172a">${escapeHtml(message.title)}</h1></div>` +
     f.html +
     (link
-      ? `<p style="margin:16px 0"><a href="${escapeHtml(link)}" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#06b6d4;color:#020617;text-decoration:none;font-weight:600">Open NeoConference</a></p>`
+      ? `<p style="margin:16px 0"><a href="${escapeHtml(link)}" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#06b6d4;color:#020617;text-decoration:none;font-weight:600">Open ${BRAND.name}</a></p>`
       : "") +
     `<hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0 12px">` +
     `<p style="margin:0;font-size:12px;line-height:1.5;color:#64748b">${footerHtml}</p></div>`;
   const text =
     `${label.toUpperCase()}\n${message.title}\n\n${f.text}` +
-    (link ? `\n\nOpen NeoConference: ${link}` : "") +
+    (link ? `\n\nOpen ${BRAND.name}: ${link}` : "") +
     (category
-      ? `\n\n—\nYou get ${catLabel} because you have a NeoConference account.\nUnsubscribe: ${unsub}\nNotification settings: ${settings}`
-      : `\n\n—\nThis is a service notice about NeoConference. It goes to every account it concerns and cannot be turned off.`);
+      ? `\n\n—\nYou get ${catLabel} because you have a ${BRAND.name} account.\nUnsubscribe: ${unsub}\nNotification settings: ${settings}`
+      : `\n\n—\nThis is a service notice about ${BRAND.name}. It goes to every account it concerns and cannot be turned off.`);
   const headers: Record<string, string> = category
     ? { "List-Unsubscribe": `<${oneClickUrl(origin, to.uid, category)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" }
     : {};
@@ -238,7 +239,7 @@ export function previewChannels(send: Send, sampleUid: string): ChannelPreview {
   const p = announcementPayload(send);
   const email = send.channels.email ? renderAnnouncementEmail(send, { uid: sampleUid }) : null;
   return {
-    email: email ? { subject: email.subject, html: email.html, text: email.text, from: process.env.MAIL_FROM || "NeoConference <onboarding@resend.dev>", unsubscribe: email.unsubscribe } : null,
+    email: email ? { subject: email.subject, html: email.html, text: email.text, from: process.env.MAIL_FROM || `${BRAND.name} <onboarding@resend.dev>`, unsubscribe: email.unsubscribe } : null,
     inApp: send.channels.inApp ? { title: p.title, body: p.body, url: p.url } : null,
     push: send.channels.push ? { title: p.title, body: p.body, url: p.url } : null,
   };

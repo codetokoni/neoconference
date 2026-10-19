@@ -1,7 +1,8 @@
 import PricingTiers from "@/components/PricingTiers";
+import { BRAND } from "@/lib/brand";
 
 export const metadata = {
-  title: "Pricing — NeoConference",
+  title: `Pricing — ${BRAND.name}`,
   description: "Simple, host-based pricing. Free forever for casual calls. Plans from Starter to Enterprise — choose the meeting length, participant cap and recording that fit you.",
 };
 
@@ -99,7 +100,7 @@ export default function PricingPage() {
           <p className="mt-2 text-cyan-100/70 text-sm max-w-xl mx-auto">
             Schools, churches, and large organizations can get volume discounts and custom limits. Tell us what you need.
           </p>
-          <a href="mailto:info@neoconference.app" className="mt-5 inline-flex neo-btn text-sm">
+          <a href={`mailto:${BRAND.supportEmail}`} className="mt-5 inline-flex neo-btn text-sm">
             Contact us
           </a>
         </div>

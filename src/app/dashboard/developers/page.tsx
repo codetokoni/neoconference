@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { BRAND } from "@/lib/brand";
 
 interface KeyMeta {
   id: string;
@@ -76,7 +77,7 @@ export default function DevelopersPage() {
         <p className="mt-3 text-sm text-cyan-100/70">
           Use these keys to authenticate with the{' '}
           <Link href="/docs" className="text-cyan-300 hover:text-cyan-200 transition-colors">
-            NeoConference API
+            {BRAND.name} API
           </Link>
           . Treat them like passwords — anyone with a key can act on your account.
         </p>

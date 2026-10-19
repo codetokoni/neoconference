@@ -15,6 +15,7 @@ import { beyondActor, fail, readJson, str } from "@/lib/admin/http";
 import { getAdminEmails } from "@/lib/roles";
 import { isMailConfigured } from "@/lib/mail";
 import { sendTemplateEmail } from "@/lib/comms/templates";
+import { BRAND } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
   const body = await readJson<{ email?: unknown; roleId?: unknown }>(req);
   const email = str(body?.email, 200).toLowerCase();
   const roleId = str(body?.roleId, 80);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail("invalid_email", "Enter the email address of their NeoConference account.");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail("invalid_email", `Enter the email address of their ${BRAND.name} account.`);
   const role = await getRole(roleId);
   if (!role) return fail("invalid_role", "Choose a role.");
   const over = beyondActor(g.ctx, role.permissions);
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
   const found = await client.users.getUserList({ emailAddress: [email], limit: 1 });
   const user = found.data?.[0];
   if (!user) {
-    return fail("no_account", "No account uses that email. They need to sign up at neoconference.app first.", 404);
+    return fail("no_account", `No account uses that email. They need to sign up at ${BRAND.domain} first.`, 404);
   }
   if (!verifiedEmails(user.emailAddresses).includes(email)) {
     return fail("email_unverified", "That email is not verified on their account yet.", 400);

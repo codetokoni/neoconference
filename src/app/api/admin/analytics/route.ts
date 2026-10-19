@@ -11,6 +11,7 @@ import { requireAdmin } from "@/lib/admin/context";
 import { REPORTS, analyticsTables, buildAnalytics, type ReportName } from "@/lib/admin/analytics";
 import { periodFromQuery } from "@/lib/activityReports";
 import { csvResponse, xlsxResponse } from "@/lib/admin/exportReport";
+import { BRAND } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ export async function GET(req: Request) {
   if (!exporting) return NextResponse.json({ ok: true, ...report });
 
   const tables = analyticsTables(report);
-  const base = `neoconference-analytics-${p.from}-to-${p.to}`;
+  const base = `${BRAND.id}-analytics-${p.from}-to-${p.to}`;
   if (format === "xlsx") return xlsxResponse(REPORTS.map((k) => tables[k]), base);
   const which = (REPORTS as readonly string[]).includes(url.searchParams.get("report") ?? "")
     ? (url.searchParams.get("report") as ReportName)

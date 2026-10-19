@@ -8,6 +8,7 @@ import { notFound } from "next/navigation";
 import ArticleBody from "@/components/help/ArticleBody";
 import { publishedArticles } from "@/lib/support/help";
 import { HELP_KIND_LABEL, helpCategoryLabel } from "@/lib/support/model";
+import { BRAND } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,9 +21,9 @@ async function find(slug: string) {
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   const { article } = await find(params.slug);
-  if (!article) return { title: "Help centre — NeoConference" };
+  if (!article) return { title: `Help centre — ${BRAND.name}` };
   return {
-    title: `${article.title} — NeoConference help`,
+    title: `${article.title} — ${BRAND.name} help`,
     description: article.summary || undefined,
     alternates: { canonical: `/help/${article.slug}` },
     openGraph: { title: article.title, description: article.summary || undefined, type: "article" },

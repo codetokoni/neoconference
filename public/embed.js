@@ -30,13 +30,15 @@
   }
 
   var DEFAULT_BASE = scriptOrigin();
+  // NeoLinguaMeet, or NeoConference before the rename (src/lib/brand.ts).
+  var BRAND_NAME = /neolinguameet\.com/.test(DEFAULT_BASE) ? "NeoLinguaMeet" : "NeoConference";
 
   function mount(el) {
     if (el.getAttribute("data-neo-mounted") === "1") return;
 
     var token = el.getAttribute("data-token");
     if (!token) {
-      console.warn("[NeoConference] data-token is required on", el);
+      console.warn("[" + BRAND_NAME + "] data-token is required on", el);
       return;
     }
 
@@ -49,7 +51,7 @@
 
     var iframe = document.createElement("iframe");
     iframe.src = src;
-    iframe.title = "NeoConference meeting";
+    iframe.title = BRAND_NAME + " meeting";
     iframe.allow = "camera; microphone; fullscreen; display-capture; autoplay";
     iframe.setAttribute("allowfullscreen", "true");
     iframe.style.border = "0";
@@ -75,6 +77,8 @@
   }
 
   // Expose a manual hook for SPA / dynamic insertion.
+  // window.NeoConference stays: sites embedding meetings already call it.
   window.NeoConference = window.NeoConference || {};
   window.NeoConference.mountEmbeds = scan;
+  window.NeoLinguaMeet = window.NeoConference;
 })();

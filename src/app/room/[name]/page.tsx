@@ -80,6 +80,7 @@ import {
   PencilLine,
   Timer as TimerIcon,
 } from "lucide-react";
+import { BRAND } from "@/lib/brand";
 
 // Shared toolbar button style — flat, transparent, lucide-icon + text label.
 // Used by inline buttons in this file and mirrored in MeetingPiP,
@@ -2083,7 +2084,7 @@ function downloadTranscript(
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `neoconference-${roomName}-${new Date()
+  a.download = `${BRAND.id}-${roomName}-${new Date()
     .toISOString()
     .slice(0, 19)
     .replace(/[:T]/g, "-")}.txt`;

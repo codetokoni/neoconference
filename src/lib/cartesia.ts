@@ -5,6 +5,7 @@
 // CARTESIA_API_KEY (server only); the model defaults to sonic-3.6.
 // API: https://docs.cartesia.ai/api-reference (version header 2026-08-14).
 
+import { BRAND } from "@/lib/brand";
 const BASE = "https://api.cartesia.ai";
 const VERSION = "2026-08-14";
 
@@ -35,7 +36,7 @@ export async function cloneVoice(clip: Blob, filename: string, name: string, lan
   form.append("clip", clip, filename);
   form.append("name", name.slice(0, 100));
   form.append("language", language);
-  form.append("description", "NeoConference meeting translation voice");
+  form.append("description", `${BRAND.name} meeting translation voice`);
   try {
     const res = await fetch(`${BASE}/voices/clone`, {
       method: "POST",

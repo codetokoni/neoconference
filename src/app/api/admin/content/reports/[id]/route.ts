@@ -21,6 +21,7 @@ import { getFile, getHiddenEvent, setHiddenEvent } from "@/lib/content/files";
 import { changeFileState } from "@/lib/content/actions";
 import { addNotification } from "@/lib/notificationStore";
 import type { AdminPermission } from "@/lib/admin/catalog";
+import { BRAND } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,7 +93,7 @@ export async function POST(req: Request, { params }: Params) {
     // Built from the administrator's words and the target only: nothing about who reported it.
     await addNotification(c.ownerId, {
       type: "updated",
-      title: "A message from NeoConference about your content",
+      title: `A message from ${BRAND.name} about your content`,
       body: `${c.label ? `About "${c.label}": ` : ""}${message}`,
       url: c.eventSlug ? `/e/${encodeURIComponent(c.eventSlug)}/replay` : "/dashboard/recordings",
     });

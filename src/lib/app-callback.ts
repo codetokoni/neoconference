@@ -20,14 +20,19 @@ import { NextResponse } from 'next/server';
 // it. A custom scheme has no such check, and what travels on this link is a
 // Clerk sign-in ticket — a hijack would be an account takeover.
 
-const CANONICAL_ORIGIN = 'https://www.neoconference.app';
-
 export const APP_LINK_PATH = '/app/auth';
-export const APP_LINK = `${CANONICAL_ORIGIN}${APP_LINK_PATH}`;
+/** The link apps up to 1.2.5 ask for: they only claim www.neoconference.app. */
+export const APP_LINK = `https://www.neoconference.app${APP_LINK_PATH}`;
+/**
+ * Every link an app may ask for: the old one, and the new domain's, which
+ * apps from 1.2.6 claim too (NeoLinguaMeet, src/lib/brand.ts). Each is a
+ * literal compared whole, and each is an App Link Android verifies.
+ */
+export const APP_LINKS: readonly string[] = [APP_LINK, `https://neolinguameet.com${APP_LINK_PATH}`];
 
 /** True when the sign-in was started by the mobile app. */
 export function isAppCallback(raw: string | null | undefined): boolean {
-  return (raw || '').trim() === APP_LINK;
+  return APP_LINKS.includes((raw || '').trim());
 }
 
 /**
@@ -48,8 +53,9 @@ export function safeRelay(raw: string | null | undefined): string {
  *
  * A 303 keeps the method a GET, matching the redirects around it.
  */
-export function redirectToApp(params: Record<string, string>): NextResponse {
-  const url = new URL(APP_LINK);
+export function redirectToApp(params: Record<string, string>, link: string = APP_LINK): NextResponse {
+  // Back on the link the app asked for: an older app only opens its own.
+  const url = new URL(isAppCallback(link) ? link.trim() : APP_LINK);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }

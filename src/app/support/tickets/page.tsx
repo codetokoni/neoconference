@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import MyTickets from "./MyTickets";
+import { BRAND } from "@/lib/brand";
 
-export const metadata: Metadata = { title: "My tickets — NeoConference", robots: { index: false } };
+export const metadata: Metadata = { title: `My tickets — ${BRAND.name}`, robots: { index: false } };
 
 // Signed in only (middleware): the user's support requests.
 export default function MyTicketsPage() {

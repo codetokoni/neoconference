@@ -4,6 +4,7 @@
 // by the invitation emails group meetings send (src/lib/groupNotify.ts).
 
 import type { NeoEvent } from "@/types/event";
+import { BRAND } from "@/lib/brand";
 
 function pad(n: number): string {
   return n < 10 ? "0" + n : "" + n;
@@ -77,7 +78,7 @@ export function buildIcsCalendar(
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//NeoConference//EN",
+    `PRODID:-//${BRAND.name}//EN`,
     "CALSCALE:GREGORIAN",
     `METHOD:${method}`,
     ...items.flatMap(({ ev, opts }) => vevent(ev, { ...opts, method })),
@@ -91,7 +92,7 @@ function vevent(ev: IcsEvent, opts: IcsOptions): string[] {
   const startIso = ev.scheduledAt || ev.createdAt;
   const startMs = new Date(startIso).getTime();
   const endMs = startMs + (opts.durationMin ?? 60) * 60 * 1000;
-  const summary = escapeIcs(ev.name || ev.slug || "NeoConference event");
+  const summary = escapeIcs(ev.name || ev.slug || `${BRAND.name} event`);
   const description = escapeIcs(
     [ev.description || "", "", "Join: " + opts.eventUrl].filter(Boolean).join("\n")
   );

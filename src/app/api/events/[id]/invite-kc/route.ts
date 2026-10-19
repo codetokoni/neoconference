@@ -29,6 +29,7 @@ import { authorize } from '@/lib/authz';
 import { assignMeetingRole } from '@/lib/meeting-roles';
 import { isMeetingRole, type MeetingRole } from '@/lib/permissions';
 import { kcIdForClerkUser, sendKcMessage } from '@/lib/kingschat-send';
+import { BRAND, linkOrigin } from "@/lib/brand";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,7 +60,7 @@ function inviteMessage(
 ): string {
   return (
     'Hi @' + handle + ' — you\'ve been invited as ' + role +
-    ' to "' + eventName + '" on NeoConference. Join at ' + eventUrl +
+    ' to "' + eventName + `" on ${BRAND.name}. Join at ` + eventUrl +
     ' — sign in via KingsChat, Neomail, or email and your ' + role +
     ' role is applied automatically.'
   );
@@ -162,10 +163,7 @@ export async function POST(
   let sendReason: string | undefined;
 
   if (sendMessage) {
-    const origin =
-      req.headers.get('origin') ||
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      'https://www.neoconference.app';
+    const origin = linkOrigin(req);
     const eventUrl = origin.replace(/\/+$/, '') + '/' + ev.slug;
     const message = inviteMessage(handle, role as MeetingRole, ev.name, eventUrl);
 

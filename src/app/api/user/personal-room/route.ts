@@ -22,6 +22,7 @@ import {
 } from '@/lib/eventStore';
 import { hsmoh } from '@/lib/hsmoh';
 import type { NeoEvent } from '@/types/event';
+import { linkOrigin } from '@/lib/brand';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,11 +30,7 @@ export const dynamic = 'force-dynamic';
 const PERSONAL_ROOM_INDEX = 'neo:personal-room:'; // + userId -> event id
 
 function originFrom(req: NextRequest): string {
-  const env = process.env.NEXT_PUBLIC_SITE_URL;
-  if (env) return env.replace(/\/+$/, '');
-  const proto = req.headers.get('x-forwarded-proto') ?? 'https';
-  const host = req.headers.get('host') ?? 'localhost:3000';
-  return proto + '://' + host;
+  return linkOrigin(req);
 }
 
 export async function GET(req: NextRequest) {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { BRAND } from "@/lib/brand";
 
 type CreateResult = {
   ok: boolean;
@@ -145,7 +146,7 @@ export default function NewEventPage() {
       <div className="relative mx-auto max-w-5xl px-4 sm:px-6 py-10 md:py-20">
         <div className="mb-8 sm:mb-10 flex items-center justify-between gap-4">
           <Link href="/" className="text-xs sm:text-sm text-white/60 hover:text-white transition">
-            ← Back to NeoConference
+            ← Back to {BRAND.name}
           </Link>
           <span className="text-[10px] sm:text-xs uppercase tracking-[0.3em] text-cyan-300/70">
             New Event

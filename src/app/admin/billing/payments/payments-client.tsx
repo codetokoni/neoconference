@@ -10,6 +10,7 @@ import { Time, fmtMoney, fmtNumber, fmtTime, useAdmin, zoneLabel } from "../../A
 import { Badge, Confirm, Dialog, Empty, FilterBar, Labeled, Loading, Notice, PageHeader, Pager, Panel, StatTile, btn, field, useUrlFilters } from "../../ui";
 import type { ByCurrency } from "@/lib/finance/money";
 import { BillingNav, Money, PROVIDER_LABEL, StatusBadge, Totals, apiTime, customerHref, day, dayInput, invoiceHref, isInstantRange, type Entry } from "../shared";
+import { BRAND } from "@/lib/brand";
 
 const TIER_IDS = ["free", "starter", "pro", "business", "enterprise"];
 
@@ -133,7 +134,7 @@ export default function PaymentsClient() {
         </Notice>
       )}
       <p className="mb-4 rounded-lg border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-100/90">
-        eSPees offers no way for NeoConference to confirm a payment, no webhook and no refund call. Plan payments are recorded when the buyer&apos;s browser returns from eSPees and are marked <b>unverified</b>; eSPees refunds are made from the merchant wallet and recorded here. Stripe ticket sales are confirmed by Stripe and refunded through Stripe.
+        eSPees offers no way for {BRAND.name} to confirm a payment, no webhook and no refund call. Plan payments are recorded when the buyer&apos;s browser returns from eSPees and are marked <b>unverified</b>; eSPees refunds are made from the merchant wallet and recorded here. Stripe ticket sales are confirmed by Stripe and refunded through Stripe.
       </p>
 
       <Panel className="mb-4">
@@ -484,7 +485,7 @@ function PaymentDetail({ id, onClose, onChanged }: { id: string; onClose: () => 
                       <Time ts={r.at} className="text-xs text-zinc-400" />
                     </div>
                     <p className="text-xs text-zinc-400">
-                      {r.method === "stripe" ? `Through Stripe (${r.providerStatus ?? "sent"})` : "Made outside NeoConference and recorded"}
+                      {r.method === "stripe" ? `Through Stripe (${r.providerStatus ?? "sent"})` : `Made outside ${BRAND.name} and recorded`}
                       {r.providerRef ? ` · ${r.providerRef}` : ""} · by {r.byEmail}
                       {r.downgraded ? " · plan ended" : ""}
                     </p>
@@ -581,12 +582,12 @@ function RefundForm({ entry, refund, onDone }: { entry: Entry; refund: Detail["r
 
   return (
     <div className="rounded-xl border border-red-500/20 bg-red-500/[0.04] p-3">
-      <h3 className="text-sm font-semibold text-white">{stripe ? "Refund through Stripe" : "Record a refund made outside NeoConference"}</h3>
+      <h3 className="text-sm font-semibold text-white">{stripe ? "Refund through Stripe" : `Record a refund made outside ${BRAND.name}`}</h3>
       <p className="mt-1 text-xs text-zinc-400">
         {stripe
-          ? "The money goes back to the card the buyer paid with, through Stripe. NeoConference never sees the card."
+          ? `The money goes back to the card the buyer paid with, through Stripe. ${BRAND.name} never sees the card.`
           : entry.provider === "espees"
-            ? "eSPees has no refund API NeoConference can call. Send the Espees back from the merchant wallet yourself first, then record it here with that transfer's reference. Nothing is sent from here."
+            ? `eSPees has no refund API ${BRAND.name} can call. Send the Espees back from the merchant wallet yourself first, then record it here with that transfer's reference. Nothing is sent from here.`
             : "This payment was arranged directly. Return the money the way it was paid, then record it here."}
       </p>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">

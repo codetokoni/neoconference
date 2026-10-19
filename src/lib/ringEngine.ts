@@ -38,6 +38,7 @@ import {
   type Job,
 } from "@/lib/scheduler";
 import type { NeoEvent } from "@/types/event";
+import { siteOrigin } from "@/lib/brand";
 
 export type CallStatus = "ringing" | "answered" | "joined" | "declined" | "missed" | "busy";
 
@@ -323,11 +324,6 @@ export async function ringAttempt(
 
   round.nextAt = await queueNextRound(ev, ctx.group.settings, now, (opts.round ?? 1) + 1);
   return round;
-}
-
-/** The site, for links in KingsChat messages (which leave the site). */
-function siteOrigin(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || "https://www.neoconference.app").replace(/\/+$/, "");
 }
 
 /**

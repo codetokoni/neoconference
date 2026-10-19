@@ -10,6 +10,7 @@
 
 import { useState } from "react";
 import { Notice } from "./ui";
+import { BRAND } from "@/lib/brand";
 
 const card = "w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-6";
 const input =
@@ -84,8 +85,8 @@ export function MfaEnroll({ email, isOwner }: { email: string; isOwner: boolean 
             </button>
             <a
               className="rounded-lg border border-white/15 px-3 py-2 text-sm text-zinc-200 hover:bg-white/5"
-              download="neoconference-admin-recovery-codes.txt"
-              href={`data:text/plain;charset=utf-8,${encodeURIComponent(`NeoConference admin recovery codes for ${email}\n\n${codes.join("\n")}\n`)}`}
+              download={`${BRAND.id}-admin-recovery-codes.txt`}
+              href={`data:text/plain;charset=utf-8,${encodeURIComponent(`${BRAND.name} admin recovery codes for ${email}\n\n${codes.join("\n")}\n`)}`}
             >
               Download
             </a>

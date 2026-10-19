@@ -34,3 +34,31 @@ export const GLYPH = `
 export const CX = 90.25;
 export const CY = 90.5;
 export const MARK_WIDTH = 68.5;
+
+// NeoLinguaMeet (2026-10-19): the same N, with two speech bubbles where the
+// lens was, teal over navy: two people talking, each in their own language.
+// The upper bubble's tail points back at the N, the lower one's away.
+// Also drawn by src/components/NeoMark.tsx.
+const BUBBLE_TOP = `M112,68 H123 A4,4 0 0 1 127,72 V82 A4,4 0 0 1 123,86 H117 L112,90.5 V86
+  A4,4 0 0 1 108,82 V72 A4,4 0 0 1 112,68 Z`;
+const BUBBLE_BOTTOM = `M112,95 H123 A4,4 0 0 1 127,99 V109 A4,4 0 0 1 123,113 H112
+  A4,4 0 0 1 108,109 V99 A4,4 0 0 1 112,95 Z M127,109 L127,117 L121.5,113 Z`;
+
+export const LINGUA_GLYPH = `
+  <clipPath id="n"><path d="${N}"/></clipPath>
+  <path d="${N}" fill="${NAVY}"/>
+  <polygon points="85.5,60 110,60 110,101.7 85.5,78.45" fill="${TEAL}" clip-path="url(#n)"/>
+  <path d="${BUBBLE_TOP}" fill="${TEAL}"/>
+  <path d="${BUBBLE_BOTTOM}" fill="${NAVY}"/>`;
+
+/** One colour, for a notification badge (Android draws it as a silhouette). */
+export function linguaSilhouette(color) {
+  return `
+  <path d="${N}" fill="${color}"/>
+  <path d="${BUBBLE_TOP}" fill="${color}"/>
+  <path d="${BUBBLE_BOTTOM}" fill="${color}"/>`;
+}
+
+export const LINGUA_CX = 91.5;
+export const LINGUA_CY = 92.5;
+export const LINGUA_WIDTH = 71;

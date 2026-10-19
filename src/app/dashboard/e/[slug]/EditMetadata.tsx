@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { resolveInactivityConfig } from "@/lib/inactivity";
+import { BRAND } from "@/lib/brand";
 
 type Visibility = "public" | "unlisted" | "private";
 
@@ -204,7 +205,7 @@ export default function EditMetadata({
           />
           Public replay
         </label>
-        <label className="flex items-center gap-2 text-sm text-slate-300 mt-2" title="When on, Android phones open this meeting in the browser instead of being asked to get the NeoConference app.">
+        <label className="flex items-center gap-2 text-sm text-slate-300 mt-2" title={`When on, Android phones open this meeting in the browser instead of being asked to get the ${BRAND.name} app.`}>
           <input
             type="checkbox"
             checked={browserOnPhones}

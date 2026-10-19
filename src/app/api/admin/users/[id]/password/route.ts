@@ -19,12 +19,13 @@ import { recordAdminAction } from "@/lib/admin/audit";
 import { fail, readJson } from "@/lib/admin/http";
 import { displayName, loadTargetUser, primaryEmail, signOutEverywhere, targetGuard } from "@/lib/admin/users";
 import { isMailConfigured, sendMail } from "@/lib/mail";
+import { BRAND, linkOrigin } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function siteOrigin(req: Request): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin).replace(/\/+$/, "");
+  return linkOrigin(req);
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -74,9 +75,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const name = displayName(t.user) || "there";
     const sent = await sendMail({
       to: email,
-      subject: "Signing in to NeoConference",
+      subject: `Signing in to ${BRAND.name}`,
       text:
-        `Hi ${name},\n\nNeoConference support asked us to send you this.\n\n` +
+        `Hi ${name},\n\n${BRAND.name} support asked us to send you this.\n\n` +
         `To sign in, open ${link} and enter this email address.\n` +
         (t.user.passwordEnabled
           ? `If you have forgotten your password, choose "Forgot password?" and we will email you a code to set a new one.\n`

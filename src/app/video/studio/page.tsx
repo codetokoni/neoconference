@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import StudioConsole from "@/components/video/StudioConsole";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
+import { BRAND } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Studio — NeoConference",
+  title: `Studio — ${BRAND.name}`,
   robots: { index: false, follow: false },
 };
 

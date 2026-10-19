@@ -6,13 +6,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { publishedArticles, searchArticles } from "@/lib/support/help";
 import { HELP_CATEGORIES, HELP_KIND_LABEL, helpCategoryLabel, isHelpCategory, type HelpArticle } from "@/lib/support/model";
+import { BRAND } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Help centre — NeoConference",
-  description: "Guides, answers and troubleshooting for NeoConference meetings, live translation, recordings, accounts and plans.",
+  title: `Help centre — ${BRAND.name}`,
+  description: `Guides, answers and troubleshooting for ${BRAND.name} meetings, live translation, recordings, accounts and plans.`,
   alternates: { canonical: "/help" },
 };
 

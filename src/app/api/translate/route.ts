@@ -24,6 +24,7 @@ import { auth } from "@clerk/nextjs/server";
 import { deeplTarget } from "@/lib/translationLanguages";
 import { activity } from "@/lib/activity";
 import { translationAllowedFor } from "@/lib/translationGate";
+import { BRAND } from "@/lib/brand";
 
 // Who has translated without saying which meeting, logged once each per
 // instance: an app sends one request per caption.
@@ -86,7 +87,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error: "translation_needs_pro",
-          message: "Live translation is on the Pro plan and above. The meeting's owner can upgrade at neoconference.app/pricing.",
+          message: `Live translation is on the Pro plan and above. The meeting's owner can upgrade at ${BRAND.domain}/pricing.`,
         },
         { status: 402 },
       );

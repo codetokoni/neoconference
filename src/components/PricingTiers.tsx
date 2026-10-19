@@ -5,6 +5,7 @@ import Link from "next/link";
 import TierCheckoutButton from "@/components/TierCheckoutButton";
 import type { BillingCycle } from "@/lib/espees";
 import { getPlanLimits, type Plan, type PlanLimits } from "@/lib/planLimits";
+import { BRAND } from "@/lib/brand";
 
 // A tier, or a plan made in the admin plan catalog.
 type TierId = Plan | string;
@@ -140,7 +141,7 @@ const TIERS: Tier[] = [
     tagline: "For schools, churches, and large organizations.",
     price: { monthly: null, annual: null },
     cta: "Contact sales",
-    ctaHref: "mailto:info@neoconference.app",
+    ctaHref: `mailto:${BRAND.supportEmail}`,
     extraFeatures: [
       { label: "Everything in Business", included: true },
       { label: "Volume discounts", included: true },
@@ -169,7 +170,7 @@ function cardsFrom(catalog: CatalogPlan[] | null): Tier[] {
       tagline: p.description || base?.tagline || "",
       price: p.id === "free" ? { monthly: 0, annual: 0 } : priced ? { monthly: esp?.monthly ?? null, annual: esp?.annual ?? null } : { monthly: null, annual: null },
       cta: sold ? (base && base.ctaHref === "" && base.name === p.name ? base.cta : "Choose " + p.name) : p.id === "free" ? (base?.cta ?? "Get started free") : "Contact sales",
-      ctaHref: sold ? "" : p.id === "free" ? "/dashboard" : "mailto:info@neoconference.app",
+      ctaHref: sold ? "" : p.id === "free" ? "/dashboard" : `mailto:${BRAND.supportEmail}`,
       highlight: p.highlight,
       extraFeatures: base?.extraFeatures ?? [],
       limits: p.limits,

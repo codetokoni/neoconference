@@ -4,11 +4,12 @@ import { redirect } from "next/navigation";
 import RoomHub from "@/components/video/RoomHub";
 import { getRoom } from "@/lib/rooms";
 import { SIMULCAST_MAIN } from "@/lib/simulcast";
+import { BRAND } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Moderator — NeoConference",
+  title: `Moderator — ${BRAND.name}`,
   robots: { index: false, follow: false },
 };
 

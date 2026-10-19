@@ -6,6 +6,7 @@ import { errorMessage } from "@/lib/errorMessage";
 import { headers } from "next/headers";
 import Link from "next/link";
 import ReportContentButton from "@/components/ReportContentButton";
+import { BRAND } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ export default async function SharePage(
       <div className="max-w-3xl w-full rounded-2xl border border-cyan-400/20 bg-slate-900/60 backdrop-blur-xl p-8 shadow-2xl shadow-cyan-500/10">
         <div className="flex items-center gap-2 mb-6">
           <span className="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-          <span className="text-xs uppercase tracking-[0.3em] text-cyan-300">NeoConference</span>
+          <span className="text-xs uppercase tracking-[0.3em] text-cyan-300">{BRAND.name}</span>
         </div>
         {result.ok ? (
           <>
@@ -87,7 +88,7 @@ export default async function SharePage(
               href="/"
               className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-slate-700 hover:border-cyan-400/50 text-sm transition"
             >
-              Back to NeoConference
+              Back to {BRAND.name}
             </Link>
           </>
         )}

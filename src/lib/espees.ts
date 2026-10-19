@@ -25,6 +25,7 @@
 // self-serve checkout. The pricing page routes Enterprise CTAs to
 // mailto:info@neoconference.app instead.
 
+import { BRAND } from "@/lib/brand";
 const ENDPOINT = "https://api.espees.org/v2/payment/product";
 
 export type EspeesPlan = "starter" | "pro" | "business";
@@ -51,17 +52,17 @@ export const ESPEES_PRODUCTS: Record<EspeesPlan, EspeesProduct> = {
   starter: {
     sku: "neo_starter_monthly",
     priceEsp: 10,
-    narration: "NeoConference Starter - Monthly subscription",
+    narration: `${BRAND.name} Starter - Monthly subscription`,
   },
   pro: {
     sku: "neo_pro_monthly",
     priceEsp: 20,
-    narration: "NeoConference Pro - Monthly subscription",
+    narration: `${BRAND.name} Pro - Monthly subscription`,
   },
   business: {
     sku: "neo_biz_monthly",
     priceEsp: 30,
-    narration: "NeoConference Business - Monthly subscription",
+    narration: `${BRAND.name} Business - Monthly subscription`,
   },
 };
 
@@ -101,7 +102,7 @@ export async function initiatePayment(input: InitiateInput): Promise<InitiateRes
 
   const body = {
     product_sku: sku,
-    narration: "NeoConference " + input.planName + " - " + (input.billingCycle === "annual" ? "Annual" : "Monthly") + " subscription",
+    narration: `${BRAND.name} ` + input.planName + " - " + (input.billingCycle === "annual" ? "Annual" : "Monthly") + " subscription",
     price: amount,
     merchant_wallet: wallet,
     success_url: input.successUrl,

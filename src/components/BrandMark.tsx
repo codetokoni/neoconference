@@ -6,11 +6,12 @@
 // Not interactive: it never takes a click meant for the video.
 
 import NeoMark from "./NeoMark";
+import { BRAND } from "@/lib/brand";
 
 export default function BrandMark({ className = "" }: { className?: string }) {
   return (
     <div
-      aria-label="NeoConference"
+      aria-label={`${BRAND.name}`}
       className={
         "pointer-events-none inline-flex select-none items-center gap-2.5 rounded-xl bg-black/35 px-2.5 py-1.5 backdrop-blur-sm " +
         className
@@ -21,7 +22,7 @@ export default function BrandMark({ className = "" }: { className?: string }) {
         <NeoMark className="w-4" />
       </span>
       <span className="text-[17px] font-semibold tracking-tight text-cyan-100">
-        Neo<span className="neo-gradient-text">Conference</span>
+        {BRAND.nameHead}<span className="neo-gradient-text">{BRAND.nameTail}</span>
       </span>
     </div>
   );

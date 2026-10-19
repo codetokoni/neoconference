@@ -31,6 +31,7 @@ import {
   type StreamDestinationInput,
   type StreamPlatform,
 } from "@/lib/livestream";
+import { BRAND } from "@/lib/brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -132,7 +133,7 @@ export async function POST(req: Request) {
         feature: "livestream",
         plan: ownerPlan,
         message:
-          "Livestreaming is on the Enterprise plan. The meeting's owner can arrange it at neoconference.app/pricing.",
+          `Livestreaming is on the Enterprise plan. The meeting's owner can arrange it at ${BRAND.domain}/pricing.`,
       },
       { status: 402 }
     );
