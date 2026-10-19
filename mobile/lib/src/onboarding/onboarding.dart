@@ -83,7 +83,8 @@ class IntroPage {
 }
 
 /// What the app does, in the words the website uses — each checked against
-/// the product: translation on every plan, recording on Pro and above.
+/// the product: translation and recording in meetings on Pro and above
+/// (by the meeting owner's plan, src/lib/translationGate.ts).
 const introPages = <IntroPage>[
   IntroPage(
     icon: Icons.videocam_rounded,
@@ -96,7 +97,8 @@ const introPages = <IntroPage>[
     icon: Icons.translate_rounded,
     title: 'Hear every speaker in your language',
     body: 'Live translation speaks each speaker\'s words to you in the language '
-        'you choose, with the original voice quietly underneath. On every plan.',
+        'you choose, with the original voice quietly underneath. In meetings on '
+        'the Pro plan and above.',
     spectrumIndex: 4,
   ),
   IntroPage(

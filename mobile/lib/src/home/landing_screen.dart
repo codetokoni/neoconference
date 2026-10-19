@@ -97,8 +97,8 @@ class LandingScreen extends ConsumerWidget {
                 onChoose: () => _openUpgrade(context, plan.asData?.value, 'business'),
               ),
               const _Note(
-                'Live translation — hearing speakers in your language — is on '
-                'every plan, Free included.',
+                'Live translation — hearing speakers in your language — works '
+                'in meetings on the Pro plan and above.',
               ),
               const _Note(
                 'Enterprise, including livestreaming, is arranged directly — '
