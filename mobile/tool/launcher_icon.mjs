@@ -1,4 +1,4 @@
-// Draws the NeoConference launcher icon for Android from vector shapes and
+// Draws the NeoLinguaMeet launcher icon for Android from vector shapes and
 // writes every density Android asks for.
 //
 // The only copy of the logo in the repo is the website's 180px
@@ -21,11 +21,12 @@ const require = createRequire(join(here, '..', '..', 'package.json'));
 const sharp = require('sharp');
 
 // The mark's shapes live in neo_mark.mjs, shared with store_assets.mjs.
-import { GRADIENT, GLYPH, CX, CY } from './neo_mark.mjs';
+// NeoLinguaMeet's mark since 2026-10-19 (the N with two speech bubbles).
+import { GRADIENT, LINGUA_GLYPH as GLYPH, LINGUA_CX as CX, LINGUA_CY as CY } from './neo_mark.mjs';
 
 /** The mark alone, centred on a [size] canvas, [scale] source px per output px. */
 function glyphLayer(size, markWidth) {
-  const k = markWidth / 68.5; // the mark is 68.5 source px wide
+  const k = markWidth / 71; // the mark is 71 source px wide
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
     <defs>${GRADIENT}</defs>
     <g transform="translate(${size / 2} ${size / 2}) scale(${k}) translate(${-CX} ${-CY})">${GLYPH}</g>
@@ -39,7 +40,7 @@ function tile(size, { round = false } = {}) {
   const shape = round
     ? `<circle cx="${size / 2}" cy="${size / 2}" r="${w / 2}" fill="url(#g)"/>`
     : `<rect x="${inset}" y="${inset}" width="${w}" height="${w}" rx="${w * 0.26}" fill="url(#g)"/>`;
-  const k = (w * 0.5) / 68.5; // the mark is half the tile's width, as on the website
+  const k = (w * 0.5) / 71; // the mark is half the tile's width, as on the website
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
     <defs>${GRADIENT}</defs>
     ${shape}

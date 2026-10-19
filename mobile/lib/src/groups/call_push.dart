@@ -12,6 +12,7 @@ import '../auth/auth_controller.dart';
 import '../auth/clerk_client.dart';
 import '../core/api_client.dart';
 import 'incoming_call.dart';
+import '../core/config.dart';
 
 /// Group calls and meeting notices reaching the phone when the app is
 /// closed or the screen is locked: Firebase Cloud Messaging.
@@ -311,6 +312,9 @@ Future<void> callPushNotificationAction(NotificationResponse response) async {
     final prefs = await SharedPreferences.getInstance();
     final session = prefs.getString(AuthController.sessionKey);
     if (session == null) return debugPrint('[ring] decline: signed out');
+    // This isolate starts on the built-in addresses: the ones the server
+    // gave last are where the site and Clerk are now.
+    await Config.load();
     // Signed in from what the app saved: the session and Clerk's client
     // cookie. This isolate has no AuthController of its own.
     final clerk = ClerkClient()..clientCookie = prefs.getString(AuthController.cookieKey);

@@ -7,12 +7,12 @@ import 'package:neoconference/src/design/brand.dart';
 import 'package:neoconference/src/design/neo_theme.dart';
 import 'package:neoconference/src/design/tokens.dart';
 
-/// The logo inside the app is the same mark as the app icon: the "N" with
-/// its teal upper-right stroke and the camera lens. It used to be a plain
-/// camera, so the icon on the home screen and the logo on the app's own
-/// screens did not match.
+/// The logo inside the app is the same mark as the app icon. Since the
+/// rename to NeoLinguaMeet (2026-10-19) that is the "N" with its teal
+/// upper-right stroke and two speech bubbles beside it, teal over navy,
+/// where the camera lens was.
 void main() {
-  testWidgets('the in-app mark is the N, the teal stroke and the lens', (tester) async {
+  testWidgets('the in-app mark is the N, the teal stroke and the two bubbles', (tester) async {
     const tile = 200.0;
     final key = GlobalKey();
     await tester.pumpWidget(MaterialApp(
@@ -37,12 +37,12 @@ void main() {
     final (width, data) = pixels!;
 
     // A point of the mark, in the favicon coordinates it is drawn in, to
-    // the colour of the pixel it lands on. The mark is half the tile wide,
-    // centred.
+    // the colour of the pixel it lands on. The mark (71 by 49) is half the
+    // tile wide, centred.
     Color at(double gx, double gy) {
-      const scale = tile * 0.5 / 68.5;
+      const scale = tile * 0.5 / 71;
       final x = (tile / 2 - tile * 0.25 + (gx - 56) * scale).round();
-      final y = (tile / 2 - 45 * scale / 2 + (gy - 68) * scale).round();
+      final y = (tile / 2 - 49 * scale / 2 + (gy - 68) * scale).round();
       final i = (y * width + x) * 4;
       return Color.fromARGB(data.getUint8(i + 3), data.getUint8(i), data.getUint8(i + 1), data.getUint8(i + 2));
     }
@@ -52,8 +52,11 @@ void main() {
     expect(at(65, 90), navy, reason: 'left stroke');
     expect(at(94, 72), teal, reason: 'right stroke, above the diagonal');
     expect(at(95, 108), navy, reason: 'right stroke, below the diagonal');
-    expect(at(116, 90), navy, reason: 'lens');
-    // The notch between the strokes above the diagonal is the tile.
+    expect(at(117, 77), teal, reason: 'upper bubble');
+    expect(at(117, 104), navy, reason: 'lower bubble');
+    expect(at(125.5, 114.5), navy, reason: "lower bubble's tail");
+    // Between the bubbles, and the notch between the strokes, are the tile.
+    expect(at(117, 92.5), isNot(anyOf(navy, teal)), reason: 'gap between the bubbles');
     expect(at(80, 70), isNot(anyOf(navy, teal)), reason: 'notch');
   });
 }

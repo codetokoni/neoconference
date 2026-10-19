@@ -110,3 +110,20 @@ export const NUDGE_TTL_SECONDS = 20 * 60 * 60;
 export function nudgeKey(userId: string): string {
   return `neo:app:nudged:${userId}`;
 }
+
+/**
+ * Clerk's Frontend API address, as the publishable key names it
+ * (pk_live_<base64 of "clerk.neolinguameet.com$">). The app asks for it so
+ * that changing Clerk's domain — a new key in Vercel — moves the app too.
+ * Null when there is no key, or it is not one.
+ */
+export function clerkFrontendApi(key: string = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || ""): string | null {
+  const m = /^pk_(?:live|test)_([A-Za-z0-9+/=]+)$/.exec(key.trim());
+  if (!m) return null;
+  try {
+    const host = atob(m[1]).replace(/\$$/, "");
+    return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(host) ? `https://${host}` : null;
+  } catch {
+    return null;
+  }
+}

@@ -133,7 +133,7 @@ class _GoLiveDialogState extends State<GoLiveDialog> {
           children: [
             Text(
               "Send this meeting's video and audio live. Paste the stream key from the platform; "
-              'NeoConference does the rest.',
+              'NeoLinguaMeet does the rest.',
               style: TextStyle(color: p.textMuted, fontSize: 13),
             ),
             const SizedBox(height: NeoSpace.md),

@@ -9,13 +9,17 @@ import 'group_screen.dart';
 import 'groups_api.dart';
 import 'groups_screen.dart' show GroupIcon;
 
+/// The website's hosts, before and after the rename to NeoLinguaMeet; the
+/// manifest claims all of them.
+const _ownHosts = {'www.neoconference.app', 'neoconference.app', 'neolinguameet.com', 'www.neolinguameet.com'};
+
 /// The invite token in a group invite link, or null when it is not one.
 ///
 /// The website's invite links are `https://www.neoconference.app/groups/join/<token>`
 /// (`POST /api/groups/<id>/invite`); the token is 22 URL-safe characters.
 String? groupInviteTokenFromLink(Uri uri) {
   if (uri.scheme != 'https') return null;
-  if (uri.host != 'www.neoconference.app' && uri.host != 'neoconference.app') return null;
+  if (!_ownHosts.contains(uri.host)) return null;
   final parts = uri.pathSegments.where((s) => s.isNotEmpty).toList();
   if (parts.length != 3 || parts[0] != 'groups' || parts[1] != 'join') return null;
   final token = parts[2];

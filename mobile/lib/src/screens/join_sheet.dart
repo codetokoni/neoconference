@@ -118,7 +118,7 @@ class _JoinSheetState extends ConsumerState<JoinSheet> {
             textInputAction: TextInputAction.go,
             onSubmitted: (_) => _join(),
             decoration: InputDecoration(
-              hintText: 'neoconference.app/product-sync',
+              hintText: 'neolinguameet.com/product-sync',
               errorText: _error,
               prefixIcon: const Icon(Icons.link_rounded),
               suffixIcon: IconButton(

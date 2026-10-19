@@ -62,8 +62,9 @@ class _MarkPainter extends CustomPainter {
   // The mark's bounds in those coordinates.
   static const left = 56.0;
   static const top = 68.0;
-  static const width = 68.5;
-  static const height = 45.0;
+  // NeoLinguaMeet: the bubbles reach 127 across and their tail 117 down.
+  static const width = 71.0;
+  static const height = 49.0;
 
   static const _r = Radius.circular(5);
 
@@ -96,12 +97,17 @@ class _MarkPainter extends CustomPainter {
     ..lineTo(85.5, 78.45)
     ..close();
 
-  static final Path _lens = Path()
-    ..moveTo(108.5, 81.5)
-    ..lineTo(122.5, 74.5)
-    ..lineTo(122.5, 106.5)
-    ..lineTo(108.5, 99.5)
-    ..close();
+  /// NeoLinguaMeet (2026-10-19): two speech bubbles where the camera lens
+  /// was, teal over navy: two people talking, each in their own language.
+  /// The upper one's tail points back at the N, the lower one's away. The
+  /// same shapes as mobile/tool/neo_mark.mjs and the website's NeoMark.
+  static final Path _bubbleTop = Path()
+    ..addRRect(RRect.fromLTRBR(108, 68, 127, 86, const Radius.circular(4)))
+    ..addPolygon(const [Offset(112, 85), Offset(117, 85), Offset(112, 90.5)], true);
+
+  static final Path _bubbleBottom = Path()
+    ..addRRect(RRect.fromLTRBR(108, 95, 127, 113, const Radius.circular(4)))
+    ..addPolygon(const [Offset(127, 109), Offset(127, 117), Offset(121.5, 113)], true);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -113,16 +119,8 @@ class _MarkPainter extends CustomPainter {
     canvas.clipPath(_n);
     canvas.drawPath(_upperRight, Paint()..color = _teal);
     canvas.restore();
-    // Filled and stroked with round joins: the lens's rounded corners.
-    canvas.drawPath(_lens, Paint()..color = _navy);
-    canvas.drawPath(
-      _lens,
-      Paint()
-        ..color = _navy
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 4
-        ..strokeJoin = StrokeJoin.round,
-    );
+    canvas.drawPath(_bubbleTop, Paint()..color = _teal);
+    canvas.drawPath(_bubbleBottom, Paint()..color = _navy);
     canvas.restore();
   }
 

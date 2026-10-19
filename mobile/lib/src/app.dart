@@ -63,7 +63,7 @@ class NeoConferenceApp extends ConsumerWidget {
     final dark = chosen ?? NeoPalette.dark;
 
     return MaterialApp(
-      title: 'NeoConference',
+      title: 'NeoLinguaMeet',
       debugShowCheckedModeBanner: false,
       theme: neoThemeData(light),
       darkTheme: neoThemeData(dark),

@@ -16,6 +16,7 @@ import '../meetings/meeting_share.dart';
 import '../meetings/meeting_view.dart';
 import '../screens/prejoin_screen.dart';
 import 'manage_api.dart';
+import '../core/config.dart';
 
 /// A meeting's own page, for its owner: what the web's `/dashboard/e/<slug>`
 /// offers, on the phone — rename and reschedule, the waiting room, the End
@@ -796,7 +797,7 @@ class _QrSheet extends StatelessWidget {
               padding: const EdgeInsets.all(NeoSpace.md),
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(NeoRadius.lg)),
               child: Image.network(
-                'https://www.neoconference.app/api/qr/${Uri.encodeComponent(slug)}?size=512',
+                '${Config.site}/api/qr/${Uri.encodeComponent(slug)}?size=512',
                 width: 240,
                 height: 240,
                 errorBuilder: (_, _, _) => SizedBox(
@@ -846,7 +847,7 @@ String inviteOutcome(String handle, String role, {required bool asked, required 
   if (!asked) return '$given.';
   if (sent) return '$given, and was told on KingsChat.';
   final why = switch (reason) {
-    'recipient_never_signed_in' => "they haven't signed in to NeoConference with KingsChat yet",
+    'recipient_never_signed_in' => "they haven't signed in to NeoLinguaMeet with KingsChat yet",
     'sender_not_linked' => 'your KingsChat is not linked — sign in with KingsChat once',
     _ => 'KingsChat did not accept it',
   };

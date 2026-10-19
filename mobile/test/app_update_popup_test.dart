@@ -19,13 +19,13 @@ void main() {
         child: const MaterialApp(home: Scaffold(body: AppUpdateCard())),
       );
 
-  const newer = AppUpdate(current: '1.2.5', latest: '1.2.6', storeUrl: kAppUpdateUrl);
+  final newer = AppUpdate(current: '1.2.5', latest: '1.2.6', storeUrl: kAppUpdateUrl);
 
   testWidgets('a newer version: the pop-up says so, and Update opens the store link', (tester) async {
     await tester.pumpWidget(home(newer));
     await tester.pumpAndSettle();
     expect(find.text('Update available'), findsWidgets); // pop-up and card
-    expect(find.textContaining('NeoConference 1.2.6 is ready (you have 1.2.5)'), findsOneWidget);
+    expect(find.textContaining('NeoLinguaMeet 1.2.6 is ready (you have 1.2.5)'), findsOneWidget);
     expect(find.textContaining('sign in with KingsChat'), findsOneWidget);
 
     await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.widgetWithText(FilledButton, 'Update')));

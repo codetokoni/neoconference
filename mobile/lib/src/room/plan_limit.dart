@@ -55,7 +55,7 @@ class MeetingPlanLimits {
 MeetingDrop timeLimitDrop(int minutes) => MeetingDrop(
       headline: 'Time limit reached',
       message: "This meeting reached the $minutes-minute limit of its owner's "
-          'plan. The owner can upgrade at neoconference.app/pricing for '
+          'plan. The owner can upgrade at neolinguameet.com/pricing for '
           'longer meetings.',
       canRejoin: true,
     );
@@ -100,7 +100,7 @@ class MeetingTimeLimit {
 /// What a listener is told when the meeting's plan has no live translation.
 const proTranslationNote =
     "Live translation is on the Pro plan and above. This meeting's owner "
-    'can upgrade at neoconference.app/pricing.';
+    'can upgrade at neolinguameet.com/pricing.';
 
 /// Whether this person was added to the meeting by name and so may record
 /// though not a host (the token's `canRecord`; owner's decision 2026-10-15).

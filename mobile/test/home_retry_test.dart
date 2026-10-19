@@ -72,7 +72,7 @@ void main() {
     expect(find.textContaining('SocketException'), findsNothing);
     expect(find.textContaining('sess_'), findsNothing);
     expect(
-      find.text("Couldn't reach NeoConference. Check your connection and "
+      find.text("Couldn't reach NeoLinguaMeet. Check your connection and "
           'try again.'),
       findsOneWidget,
     );
@@ -81,7 +81,7 @@ void main() {
   test('a SocketException on its own is recognised as a network failure', () {
     expect(
       describeLoadError(const SocketException('Failed host lookup')),
-      "Couldn't reach NeoConference. Check your connection and try again.",
+      "Couldn't reach NeoLinguaMeet. Check your connection and try again.",
     );
   });
 }

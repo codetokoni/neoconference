@@ -58,7 +58,7 @@ class _FullScreenCallsBannerState extends State<FullScreenCallsBanner> with Widg
         tone: NeoBannerTone.warning,
         message: _noSettings
             ? 'Calls from your groups show only as a notification. In your phone\'s settings, '
-                'allow NeoConference to use full-screen notifications.'
+                'allow NeoLinguaMeet to use full-screen notifications.'
             : 'Calls from your groups show only as a notification. '
                 'Allow full-screen calls so they ring like a phone call, even when the phone is locked.',
         action: _noSettings ? null : _allow,

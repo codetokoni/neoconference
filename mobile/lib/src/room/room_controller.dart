@@ -927,7 +927,7 @@ class RoomController extends StateNotifier<RoomState> {
         state = state.copyWith(
           phase: JoinPhase.failed,
           updateRequired: true,
-          message: 'A new version of NeoConference is needed to join. Tap Update, sign in to '
+          message: 'A new version of NeoLinguaMeet is needed to join. Tap Update, sign in to '
               'the LoveWorld AppStore with KingsChat and tap Download.',
         );
       default:

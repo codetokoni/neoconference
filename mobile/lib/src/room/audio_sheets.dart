@@ -346,7 +346,7 @@ class _DeviceChecksSheetState extends State<DeviceChecksSheet> {
                   const SizedBox(height: NeoSpace.sm),
                   Text(
                     'Bluetooth devices appear under their own name once '
-                    'NeoConference has the Nearby devices permission; '
+                    'NeoLinguaMeet has the Nearby devices permission; '
                     'without it Android reports them generically.',
                     style: Theme.of(context)
                         .textTheme

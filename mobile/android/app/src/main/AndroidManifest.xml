@@ -40,7 +40,7 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
 
     <application
-        android:label="NeoConference"
+        android:label="NeoLinguaMeet"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round">
@@ -109,6 +109,22 @@
                     android:scheme="https"
                     android:host="www.neoconference.app"
                     android:path="/app/auth"/>
+            </intent-filter>
+            <!-- NeoLinguaMeet (2026-10-19): the same meeting and group links on
+                 the new domain. Not autoVerify yet: on Android 11 and older one
+                 host failing verification (the new domain before its DNS is
+                 live) unverifies every host, the old sign-in link included.
+                 Until a release adds it, a new-domain link opens the website,
+                 whose app gate hands it over through www.neoconference.app.
+                 The sign-in callback stays on the old host (Config). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="neolinguameet.com"/>
+                <data android:pathAdvancedPattern="/e/[^/]+"/>
+                <data android:pathAdvancedPattern="/room/[^/]+"/>
+                <data android:pathAdvancedPattern="/groups/join/[^/]+"/>
             </intent-filter>
         </activity>
 

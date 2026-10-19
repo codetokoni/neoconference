@@ -32,12 +32,18 @@ import 'src/screens/home_screen.dart';
 import 'src/screens/prejoin_screen.dart';
 import 'src/settings/meeting_defaults.dart';
 import 'src/settings/settings_screen.dart';
+import 'src/core/config.dart';
 
-void main() {
+Future<void> main() async {
   _enableLiveKitLogsInDebug();
   // Before the first frame, so the link that launched the app is caught —
   // and after the binding, which the platform channel needs.
   WidgetsFlutterBinding.ensureInitialized();
+  // Where the website and sign-in are (they moved to neolinguameet.com):
+  // the server's last answer, then a fresh one in the background. Storage
+  // that will not answer must not hold the first screen.
+  await Config.load().timeout(const Duration(seconds: 1), onTimeout: () {});
+  unawaited(Config.refresh());
   IncomingMeetingLinks.instance.start();
   // Crash reports, so "the app keeps closing" comes with the reason.
   unawaited(CrashReports.start());
@@ -163,7 +169,7 @@ class NeoConferenceApp extends ConsumerWidget {
     final dark = chosen ?? NeoPalette.dark;
 
     return MaterialApp(
-      title: 'NeoConference',
+      title: 'NeoLinguaMeet',
       debugShowCheckedModeBanner: false,
       theme: neoThemeData(light),
       darkTheme: neoThemeData(dark),
