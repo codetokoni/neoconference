@@ -135,14 +135,30 @@ export function shouldAutoOpen(input: { triedThisTab: boolean; search: string; u
 }
 
 /**
- * Where a failed attempt comes back to: this same page, marked, so it shows
- * "Open in the app" and "Download". Never the store: people who had the app
- * were taken to the store every time a link did not open it.
+ * A page to come back to after a failed attempt: this same page, marked so
+ * it is not tried again. Never the store: people who had the app were
+ * taken to the store every time a link did not open it.
  */
 export function backToPage(href: string): string {
   const u = new URL(href);
   u.searchParams.set(NO_APP_PARAM, "1");
   return u.toString();
+}
+
+/**
+ * Where a phone goes when the app does not open (owner, 2026-10-19: no
+ * Download screen; straight to sign-in). Signed out: the sign-in page,
+ * leading back to this page. Signed in, or already signing in: this page.
+ * Either way marked NO_APP_PARAM, so it is not tried again.
+ */
+export function noAppFallback(href: string, signedIn: boolean): string {
+  const u = new URL(href);
+  if (signedIn || /^\/sign-(in|up)(\/|$)/.test(u.pathname)) return backToPage(href);
+  const signIn = new URL("/sign-in", u.origin);
+  const back = u.pathname + u.search;
+  if (back !== "/") signIn.searchParams.set("redirect_url", back);
+  signIn.searchParams.set(NO_APP_PARAM, "1");
+  return signIn.toString();
 }
 
 /**
