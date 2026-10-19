@@ -121,6 +121,21 @@ const base = {
     return "string";
   },
   async dbsize() { return [...store.keys()].filter((k) => alive(k)).length; },
+  // EVAL for the scripts the app sends, known by their first line (a Lua
+  // comment). Each runs with no await inside, so it is atomic as on Redis.
+  async eval(script, keys, args) {
+    const name = String(script).split("\n")[0];
+    if (name.startsWith("-- compare-and-set:")) {
+      // src/lib/admin/mfa.ts: SET KEYS[1] ARGV[2] only if GET KEYS[1] == ARGV[1].
+      const [k] = keys;
+      if (!alive(k) || store.get(k) !== args[0]) return 0;
+      store.set(k, args[1]);
+      hashes.delete(k);
+      expires.delete(k);
+      return 1;
+    }
+    throw new Error(`kv stub: no EVAL for ${name}`);
+  },
 };
 
 // globalThis.__kvFault = (method, args) => "fail" | "hang" | undefined lets a
