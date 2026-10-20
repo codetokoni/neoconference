@@ -4,8 +4,7 @@
 //   Authorization: Bearer nlm_pk_…        (the integration's secret; server-side only)
 //   { "zoneId": "FALF",
 //     "user": { "id": "u_123", "displayName": "Victor Agbasa" },   // or { "guest": true, "displayName": "…" }
-//     "origin": "https://herald.prayerclouds.org",                  // the page the widget runs on
-//     "zoneTitle": "FALF Prayer Meeting" }                          // optional, used when the zone is first made
+//     "origin": "https://herald.prayerclouds.org" }                 // the page the widget runs on
 //   → 201 { code, expiresAt, meeting: { zoneId, title }, embed: { page, sdk } }
 //
 // The integration comes from its key, never from the body. Everyone is a
