@@ -16,7 +16,7 @@ import { getPlatformSettings } from "@/lib/platform/settings";
 import { DEFAULT_PLATFORM_NAME, noticeActive } from "@/lib/platform/model";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import FullscreenBrand from "@/components/FullscreenBrand";
-import { BRAND } from "@/lib/brand";
+import { BRAND, siteTitle } from "@/lib/brand";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
@@ -28,10 +28,10 @@ export const metadata: Metadata = {
     siteName: BRAND.name,
     type: "website",
     url: "/",
-    title: `${BRAND.name} — Video meetings with live translation`,
+    title: siteTitle(),
     description: "Everyone hears each speaker in their own language, translated live.",
   },
-  title: `${BRAND.name} — Video meetings with live translation`,
+  title: siteTitle(),
   description:
     "Video meetings where everyone hears each speaker in their own language, translated live. On the web and in the Android app.",
   // Added to an iPhone's Home Screen it opens as an app — which is the only

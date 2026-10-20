@@ -203,6 +203,24 @@ async function main() {
     assert.equal(manifest.name, "NeoLinguaMeet");
   });
 
+  await t('the homepage leads with "LinguaMeet by Neo"; switched off it reads as before', async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const React = await import("react");
+    const { createElement } = React;
+    // This runner compiles JSX to React.createElement (Next does not need the global).
+    (globalThis as { React?: unknown }).React = React;
+    const Headline = (await import("../../app/HomeHeadline")).default;
+    const on = renderToStaticMarkup(createElement(Headline));
+    assert.match(on, /<h1[^>]*>[\s\S]*LinguaMeet[\s\S]*by Neo\.[\s\S]*<\/h1>/);
+    assert.match(on, /One meeting, every language\. NeoLinguaMeet translates your meetings live/);
+    const off = renderToStaticMarkup(createElement(Headline, { brand: B.brandFor(undefined) }));
+    assert.match(off, /One meeting\.[\s\S]*Every language\./);
+    assert.match(off, /NeoConference translates your meetings live/);
+    assert.doesNotMatch(off, /LinguaMeet/);
+    assert.equal(B.siteTitle(), "NeoLinguaMeet — LinguaMeet by Neo, video meetings with live translation");
+    assert.equal(B.siteTitle(B.brandFor(undefined)), "NeoConference — Video meetings with live translation");
+  });
+
   await t("the icons browsers fetch by fixed paths come from the NeoLinguaMeet set", async () => {
     const cfg = (await import("../../../next.config.mjs")).default as { redirects: () => Promise<{ source: string; destination: string }[]> };
     const r = await cfg.redirects();

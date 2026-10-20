@@ -32,6 +32,8 @@ export type Brand = {
   /** "https://neolinguameet.com", no trailing slash. */
   origin: string;
   supportEmail: string;
+  /** The line the homepage leads with, and the title carries ("LinguaMeet by Neo"). */
+  tagline: string | null;
 };
 
 const NEOCONFERENCE: Brand = {
@@ -43,6 +45,7 @@ const NEOCONFERENCE: Brand = {
   host: "www.neoconference.app",
   origin: "https://www.neoconference.app",
   supportEmail: "info@neoconference.app",
+  tagline: null,
 };
 
 const NEOLINGUAMEET: Brand = {
@@ -55,6 +58,8 @@ const NEOLINGUAMEET: Brand = {
   host: "neolinguameet.com",
   origin: "https://neolinguameet.com",
   supportEmail: "info@neolinguameet.com",
+  // The owner's line for the new name (2026-10-20).
+  tagline: "LinguaMeet by Neo",
 };
 
 export function brandFor(primaryDomain: string | undefined): Brand {
@@ -63,6 +68,13 @@ export function brandFor(primaryDomain: string | undefined): Brand {
 }
 
 export const BRAND: Brand = brandFor(process.env.NEXT_PUBLIC_PRIMARY_DOMAIN);
+
+/** The site's title: browser tabs, search results and link previews. */
+export function siteTitle(brand: Brand = BRAND): string {
+  return brand.tagline
+    ? `${brand.name} — ${brand.tagline}, video meetings with live translation`
+    : `${brand.name} — Video meetings with live translation`;
+}
 
 /** Every name the product has had, for values saved under an older one. */
 export const PAST_NAMES = [NEOCONFERENCE.name] as const;

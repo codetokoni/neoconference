@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import HomeHeroCTAs from "./HomeHeroCTAs";
 import HomeFinalCTAs from "./HomeFinalCTAs";
+import HomeHeadline from "./HomeHeadline";
 import { getPlatformSettings } from "@/lib/platform/settings";
 import { POPULAR_TRANSLATION_CODES, TRANSLATION_LANGUAGES as ALL_TRANSLATION_LANGUAGES } from "@/lib/translationLanguages";
 import { BRAND } from "@/lib/brand";
@@ -34,17 +35,7 @@ export default async function Home() {
               Live translation in 100+ languages
             </div>
 
-            <h1 className="mt-6 text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.05]">
-              <span className="text-white/90">One meeting.</span>
-              <br />
-              <span className="neo-gradient-text neo-text-glow">Every language.</span>
-            </h1>
-
-            <p className="mt-6 max-w-xl text-lg text-cyan-100/70 leading-relaxed">
-              {BRAND.name} translates your meetings live. Everyone picks their own language and
-              hears each speaker in it, spoken aloud as they talk, with the original voice quietly
-              underneath. On the web and in the Android app.
-            </p>
+            <HomeHeadline />
 
             <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center">
               <HomeHeroCTAs signedIn={signedIn} />
