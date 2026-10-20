@@ -197,7 +197,7 @@ async function main() {
       // no way in. Every app shows any other code as the message, with
       // Try again under it.
       assert.equal(first.body.error, "app_update_available");
-      assert.match(String(first.body.message), /1\.2\.6 is ready, and from 25 October older apps cannot join/);
+      assert.match(String(first.body.message), /1\.2\.7 is ready, and from 25 October older apps cannot join/);
       assert.match(String(first.body.message), /neoconference\.app\/download/);
       assert.match(String(first.body.message), /KingsChat/);
       assert.match(String(first.body.message), /tap Try again\.$/);
@@ -270,7 +270,7 @@ async function main() {
       body = (await (await latest.GET()).json()) as Record<string, string>;
     });
     assert.deepEqual(body, {
-      latestVersion: "1.2.6",
+      latestVersion: "1.2.7",
       minVersion: "1.2.4",
       storeUrl: "https://web.lwappstore.com/share/lW-APP-Y26-XG9328",
       updateUrl: "https://www.neoconference.app/download",
