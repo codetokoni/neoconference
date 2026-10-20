@@ -40,6 +40,9 @@ const isPublicRoute = createRouteMatcher([
   // Making keys (/dashboard/developers, /api/developers/keys) still needs
   // sign-in.
   '/api/v1/(.*)',
+  // Partner zone widgets (src/lib/partners): the partner backend's key,
+  // or the one-time code / signed session, is checked by each route.
+  '/api/partner/(.*)',
   '/docs',
   '/openapi.json',
   '/sign-in(.*)',
@@ -437,13 +440,45 @@ function forgetCookies<T extends Response>(res: T, names: string[], req: NextReq
  * Either way the browser is told to forget them. Before the switch this is
  * exactly clerkHandler.
  */
+/**
+ * The partner zone embed (/embed/zone, src/lib/partners) may be framed only
+ * by this site and the approved origins of active integrations
+ * (neo:partner:origins). Read here, not through src/lib/partners: this runs
+ * at the edge. Cached a minute per instance. Other pages are unaffected.
+ */
+let zoneEmbedOrigins: { at: number; value: string } | null = null;
+const ORIGIN_RE = /^https:\/\/[a-z0-9.-]+(:\d+)?$|^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+
+async function zoneEmbedFrameAncestors(): Promise<string> {
+  const now = Date.now();
+  if (zoneEmbedOrigins && now - zoneEmbedOrigins.at < 60_000) return zoneEmbedOrigins.value;
+  let origins: string[] = [];
+  try {
+    origins = (((await kv.smembers('neo:partner:origins')) as string[]) || []).filter((o) => ORIGIN_RE.test(o));
+  } catch (e) {
+    console.warn('[middleware] partner origins unavailable', e);
+  }
+  const value = ["'self'", ...origins].join(' ');
+  zoneEmbedOrigins = { at: now, value };
+  return value;
+}
+
+function isZoneEmbed(req: NextRequest): boolean {
+  const p = req.nextUrl.pathname;
+  return p === '/embed/zone' || p.startsWith('/embed/zone/');
+}
+
 export default async function middleware(req: NextRequest, event: NextFetchEvent) {
   const stale = staleClerkCookies(req);
   const moved = legacyRedirect(req.nextUrl, req.headers.get('host'));
   if (moved) return forgetCookies(NextResponse.redirect(moved, 308), stale, req);
-  if (stale.length === 0) return clerkHandler(req, event);
   for (const name of stale) req.cookies.delete(name);
-  const res = await clerkHandler(req, event);
+  let res = await clerkHandler(req, event);
+  if (isZoneEmbed(req)) {
+    if (!(res instanceof Response)) res = NextResponse.next();
+    res.headers.set('Content-Security-Policy', `frame-ancestors ${await zoneEmbedFrameAncestors()}`);
+  }
+  if (stale.length === 0) return res;
   return res instanceof Response ? forgetCookies(res, stale, req) : res;
 }
 

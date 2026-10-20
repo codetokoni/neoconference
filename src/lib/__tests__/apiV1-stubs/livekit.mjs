@@ -27,4 +27,12 @@ export class RoomServiceClient {
     if (globalThis.__livekitDown) throw new Error("twirp error unavailable");
     return globalThis.__rooms ?? [];
   }
+  // Who is in a room, only when a test sets globalThis.__lkParticipants
+  // ({ room: [{ identity }] }); otherwise it throws, as it always did, so
+  // routes that fail open on it behave as before.
+  async listParticipants(room) {
+    const all = globalThis.__lkParticipants;
+    if (!all) throw new Error("listParticipants: not stubbed");
+    return all[room] ?? [];
+  }
 }
