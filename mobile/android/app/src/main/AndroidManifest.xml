@@ -110,14 +110,15 @@
                     android:host="www.neoconference.app"
                     android:path="/app/auth"/>
             </intent-filter>
-            <!-- NeoLinguaMeet (2026-10-19): the same meeting and group links on
-                 the new domain. Not autoVerify yet: on Android 11 and older one
-                 host failing verification (the new domain before its DNS is
-                 live) unverifies every host, the old sign-in link included.
-                 Until a release adds it, a new-domain link opens the website,
-                 whose app gate hands it over through www.neoconference.app.
-                 The sign-in callback stays on the old host (Config). -->
-            <intent-filter>
+            <!-- NeoLinguaMeet: the same meeting and group links on the new
+                 domain. Verified since 1.2.7 (1.2.6 left it off while the domain
+                 was not live: on Android 11 and older one host failing
+                 verification unverifies every host, the old sign-in link
+                 included). neolinguameet.com serves the same assetlinks.json,
+                 straight, since 2026-10-20. Only the bare domain: www redirects,
+                 and a redirect fails verification. The sign-in callback stays
+                 on the old host (Config). -->
+            <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
