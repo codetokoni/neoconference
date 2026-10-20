@@ -26,13 +26,15 @@ import {
 } from "../ui";
 import type { IntegrationStatus } from "@/lib/platform/integrations";
 import type { Delivery, PublicEndpoint } from "@/lib/platform/webhooks";
+import PartnerZones from "./partner-zones";
 
 type Msg = { kind: "ok" | "err"; text: string } | null;
-type Tab = "integrations" | "webhooks" | "keys";
+type Tab = "integrations" | "webhooks" | "keys" | "partners";
 const TABS: { id: Tab; label: string }[] = [
   { id: "integrations", label: "Services" },
   { id: "webhooks", label: "Webhooks" },
   { id: "keys", label: "API keys" },
+  { id: "partners", label: "Partner zones" },
 ];
 
 export default function IntegrationsClient() {
@@ -41,7 +43,7 @@ export default function IntegrationsClient() {
   const [secret, setSecret] = useState<{ title: string; value: string; note: string } | null>(null);
   return (
     <div>
-      <PageHeader title="Integrations" sub="What this deployment is connected to, the platform's own webhooks, and every developer API key." />
+      <PageHeader title="Integrations" sub="What this deployment is connected to, the platform's own webhooks, every developer API key, and the partner websites that embed zone meetings." />
       {msg && (
         <Notice kind={msg.kind} onClose={() => setMsg(null)}>
           {msg.text}
@@ -58,7 +60,15 @@ export default function IntegrationsClient() {
         idBase="integrations"
       />
       <TabPanel idBase="integrations" value={tab}>
-        {tab === "integrations" ? <Services /> : tab === "webhooks" ? <Webhooks setMsg={setMsg} showSecret={setSecret} /> : <Keys setMsg={setMsg} showSecret={setSecret} />}
+        {tab === "integrations" ? (
+          <Services />
+        ) : tab === "webhooks" ? (
+          <Webhooks setMsg={setMsg} showSecret={setSecret} />
+        ) : tab === "keys" ? (
+          <Keys setMsg={setMsg} showSecret={setSecret} />
+        ) : (
+          <PartnerZones setMsg={setMsg} showSecret={setSecret} />
+        )}
       </TabPanel>
       {secret && <SecretOnce {...secret} onClose={() => setSecret(null)} />}
     </div>
