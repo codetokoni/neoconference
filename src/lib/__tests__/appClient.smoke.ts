@@ -212,26 +212,38 @@ async function main() {
     });
   });
 
-  await t("1.2.5, which has its own update pop-up, the newest app and the website are never nudged", async () => {
+  await t("1.2.5 and 1.2.6 are told too: the 25 October minimum (1.2.7) shuts them out, and their pop-up never says so", async () => {
+    await atTime(beforeCutOff, async () => {
+      for (const v of [v125, "android 1.2.6+5220 OPPO CPH2599 / Android 16"]) {
+        await kv.del(nudgeKey("user_app"));
+        const first = await join({ app: true, client: v });
+        assert.equal(first.body.error, "app_update_available", v);
+        assert.match(String(first.body.message), /from 25 October older apps cannot join/);
+        assert.equal((await join({ app: true, client: v })).status, 200, v);
+      }
+    });
+  });
+
+  await t("the newest app and the website are never nudged", async () => {
     await atTime(beforeCutOff, async () => {
       await kv.del(nudgeKey("user_app"));
-      // 1.2.5 is older than 1.2.6, but says so itself: joining never holds it up.
-      assert.equal((await join({ app: true, client: v125 })).status, 200);
-      assert.equal((await join({ app: true, client: "android 1.2.6+5220 OPPO CPH2599 / Android 16" })).status, 200);
+      assert.equal((await join({ app: true, client: "android 1.2.7+5221 OPPO CPH2599 / Android 16" })).status, 200);
       assert.equal((await join({ app: false })).status, 200);
       assert.equal(await kv.get(nudgeKey("user_app")), null);
     });
   });
 
-  await t("from 25 October 1.2.5 is the minimum: 1.2.4 must update, 1.2.5 joins", async () => {
+  await t("from 25 October 1.2.7 is the minimum: 1.2.4 to 1.2.6 must update, 1.2.7 joins", async () => {
     await atTime(afterCutOff, async () => {
       await kv.set(nudgeKey("user_app"), 1);
-      const old = await join({ app: true, client: v124 });
-      assert.equal(old.status, 426);
-      assert.equal(old.body.error, "app_update_required");
-      assert.equal((await join({ app: true, client: v125 })).status, 200);
+      for (const v of [v124, v125, "android 1.2.6+5220 OPPO CPH2599 / Android 16"]) {
+        const old = await join({ app: true, client: v });
+        assert.equal(old.status, 426, v);
+        assert.equal(old.body.error, "app_update_required", v);
+      }
+      assert.equal((await join({ app: true, client: "android 1.2.7+5221 OPPO CPH2599 / Android 16" })).status, 200);
       const latest = await import("../../app/api/app/latest/route");
-      assert.equal(((await (await latest.GET()).json()) as Record<string, string>).minVersion, "1.2.5");
+      assert.equal(((await (await latest.GET()).json()) as Record<string, string>).minVersion, "1.2.7");
     });
   });
 
