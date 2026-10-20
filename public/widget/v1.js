@@ -23,7 +23,10 @@
  *
  * sessionEndpoint is called with credentials (your visitor's cookies) and
  * must answer JSON { code } — the code from join-sessions — or an error
- * status. It is called again whenever the frame needs a new code.
+ * status. It is called again whenever the frame needs a new code. It is a
+ * POST; sessionBody (an object, or a function returning one or a promise of
+ * one) is sent as its JSON body — for example a guest's name. Never put
+ * who the visitor is in the endpoint's address.
  *
  * Methods: join(), leave(), requestFullscreen(), destroy(), on(type, fn),
  * off(type, fn). Events: ready, waiting, joined, left, meeting-ended,
@@ -102,15 +105,34 @@
       iframe.contentWindow.postMessage(msg, base);
     }
 
+    /** sessionBody: an object, or a function returning one (or a promise of one), sent as JSON. */
+    function bodyFor() {
+      var b = options.sessionBody;
+      try {
+        return Promise.resolve(typeof b === "function" ? b() : b);
+      } catch (e) {
+        return Promise.reject(e);
+      }
+    }
+
     function fetchCode() {
       if (fetching || destroyed) return;
       fetching = true;
-      fetch(options.sessionEndpoint, {
-        method: options.sessionMethod === "GET" ? "GET" : "POST",
-        credentials: "same-origin",
-        headers: { accept: "application/json" },
-        cache: "no-store",
-      })
+      var get = options.sessionMethod === "GET";
+      (get ? Promise.resolve(undefined) : bodyFor())
+        .then(function (body) {
+          var init = {
+            method: get ? "GET" : "POST",
+            credentials: "same-origin",
+            headers: { accept: "application/json" },
+            cache: "no-store",
+          };
+          if (!get && body != null) {
+            init.headers["content-type"] = "application/json";
+            init.body = JSON.stringify(body);
+          }
+          return fetch(options.sessionEndpoint, init);
+        })
         .then(function (res) {
           return res.json().then(
             function (data) {
