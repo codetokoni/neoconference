@@ -90,6 +90,11 @@ export async function ingestWebhook(eventId: string, body: string): Promise<{ ap
     ev.data?.reason ||
     undefined;
   const ref = await messageRef(resendId);
+  // Resend reports every email in the account here, other apps' mail
+  // included. Only mail this app sent (and remembered) is ours to record:
+  // anything else would put other apps' recipients and subjects in this
+  // log and their bounces on this app's suppression list.
+  if (!ref) return { applied: false, type };
   await recordDeliveryEvent({
     ts: Date.now(),
     eventId,
