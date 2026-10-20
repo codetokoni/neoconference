@@ -3,7 +3,7 @@ import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server
 import { kv } from '@/lib/kv';
 import { markActive } from '@/lib/activity';
 import { RESERVED_SHORT_URL_SLUGS } from '@/lib/reservedSlugs';
-import { isOwnHost, legacyRedirect } from '@/lib/brand';
+import { BRAND, LEGACY_HOSTS, isOwnHost, legacyRedirect } from '@/lib/brand';
 import { platformGate } from '@/lib/platform/gate';
 import {
   SESSION_COOKIE,
@@ -356,14 +356,11 @@ async function noteActive(auth: () => Promise<{ userId: string | null }>, event:
   }
 }
 
-export default clerkMiddleware(
+const clerkHandler = clerkMiddleware(
   async (auth, req, event) => {
     const nextReq = req as unknown as NextRequest;
-    // NeoLinguaMeet (src/lib/brand.ts): the old domain's pages, and
-    // www.neolinguameet.com, go to https://neolinguameet.com in one 308 hop
-    // with path and query. Off until the brand switch is set.
-    const moved = legacyRedirect(nextReq.nextUrl, req.headers.get('host'));
-    if (moved) return NextResponse.redirect(moved, 308);
+    // The brand switch (old domain -> neolinguameet.com) runs in middleware()
+    // below, before Clerk sees the request.
     // Maintenance mode and the registration rules (admin settings) come
     // before everything else. Who is asking is looked up only when one of
     // them is on (src/lib/platform/gate.ts); the owner, administrators and
@@ -398,6 +395,57 @@ export default clerkMiddleware(
     ],
   }
 );
+
+/** Clerk's own cookies. After the switch Clerk serves only neolinguameet.com, so on the old domain they can only fail. */
+const CLERK_COOKIE = /^(__client_uat|__session|__refresh|__clerk_db_jwt)(_|$)/;
+
+function requestHost(req: NextRequest): string {
+  return (req.headers.get('host') || req.nextUrl.host).toLowerCase().replace(/:\d+$/, '');
+}
+
+/** The old domain's Clerk cookies on this request once the brand has moved; otherwise none. */
+function staleClerkCookies(req: NextRequest): string[] {
+  if (!BRAND.moved || !(LEGACY_HOSTS as readonly string[]).includes(requestHost(req))) return [];
+  return req.cookies.getAll().map((c) => c.name).filter((name) => CLERK_COOKIE.test(name));
+}
+
+/** Tells the browser to drop those cookies, both host-only and on the apex domain. */
+function forgetCookies<T extends Response>(res: T, names: string[], req: NextRequest): T {
+  const apex = requestHost(req).replace(/^www\./, '');
+  try {
+    for (const name of names) {
+      res.headers.append('Set-Cookie', `${name}=; Path=/; Max-Age=0; Secure; SameSite=Lax`);
+      res.headers.append('Set-Cookie', `${name}=; Path=/; Domain=${apex}; Max-Age=0; Secure; SameSite=Lax`);
+    }
+  } catch {
+    // Immutable headers: the cookies were already dropped from the request.
+  }
+  return res;
+}
+
+/**
+ * NeoLinguaMeet (src/lib/brand.ts): the old domain's pages, and
+ * www.neolinguameet.com, go to https://neolinguameet.com in one 308 hop with
+ * path and query, ahead of Clerk. Inside clerkMiddleware the redirect came
+ * too late: a browser still holding the old domain's Clerk cookies (a
+ * __client_uat but no session) was first sent to Clerk's handshake, which
+ * accepts only a redirect_url on neolinguameet.com, and stopped on its
+ * "does not match one of the allowed values for parameter redirect_url"
+ * error instead of reaching the new domain. The paths the old domain keeps
+ * serving (/api, /.well-known, /app) reach Clerk with those dead cookies
+ * dropped, so they count as signed out instead of triggering the handshake.
+ * Either way the browser is told to forget them. Before the switch this is
+ * exactly clerkHandler.
+ */
+export default async function middleware(req: NextRequest, event: NextFetchEvent) {
+  const stale = staleClerkCookies(req);
+  const moved = legacyRedirect(req.nextUrl, req.headers.get('host'));
+  if (moved) return forgetCookies(NextResponse.redirect(moved, 308), stale, req);
+  if (stale.length === 0) return clerkHandler(req, event);
+  for (const name of stale) req.cookies.delete(name);
+  const res = await clerkHandler(req, event);
+  return res instanceof Response ? forgetCookies(res, stale, req) : res;
+}
 
 export const config = {
   matcher: [
