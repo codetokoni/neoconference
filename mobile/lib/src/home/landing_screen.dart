@@ -45,9 +45,18 @@ class LandingScreen extends ConsumerWidget {
                   padding: EdgeInsets.symmetric(vertical: 24),
                   child: Center(child: CircularProgressIndicator()),
                 ),
-                error: (e, _) => _Note(
-                  'Could not load your plan. ${describeLoadError(e)}',
-                  danger: true,
+                error: (e, _) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _Note(
+                      'Could not load your plan. ${describeLoadError(e)}',
+                      danger: true,
+                    ),
+                    TextButton(
+                      onPressed: () => ref.invalidate(planProvider),
+                      child: const Text('Try again'),
+                    ),
+                  ],
                 ),
                 data: (p) => _CurrentPlanCard(
                   plan: p,
