@@ -25,12 +25,16 @@ export const LATEST_APP_VERSION = "1.2.7";
 export const MIN_APP_VERSION = "1.2.4";
 
 /**
- * Moving everyone to 1.2.5 (owner, 2026-10-18): 53 people joined from 1.2.4
- * in the week before, and 1.2.4 has no update pop-up. So for a week an app
- * older than LATEST is nudged — told once a day, and let in on Try again —
- * and from this date the minimum rises and older apps must update.
+ * From this date the minimum rises and older apps must update. Until then
+ * an app it will shut out is told once a day at join, and let in on Try
+ * again (shouldNudgeUpdate).
+ *
+ * Set on 2026-10-18 to 1.2.5 (53 people joined from 1.2.4 that week, which
+ * has no update pop-up); raised by the owner on 2026-10-20 to 1.2.7, the
+ * NeoLinguaMeet app, so every app follows the server to the new domain and
+ * Clerk's new address before the switch (docs/runbooks/rebrand-neolinguameet.md).
  */
-export const SCHEDULED_MIN = { version: "1.2.5", from: Date.parse("2026-10-25T00:00:00Z") };
+export const SCHEDULED_MIN = { version: "1.2.7", from: Date.parse("2026-10-25T00:00:00Z") };
 
 export function minAppVersion(now: number = Date.now()): string {
   const env = (process.env.APP_MIN_VERSION || "").trim();
@@ -99,8 +103,11 @@ export function shouldNudgeUpdate(input: { authorization: string | null; client:
   if (!/^Bearer\s+\S/i.test(input.authorization || "")) return false;
   const version = appVersionOf(input.client);
   if (!version || compareVersions(version, minAppVersion()) < 0) return false;
-  if (compareVersions(version, FIRST_APP_WITH_UPDATE_PROMPT) >= 0) return false;
-  return compareVersions(version, LATEST_APP_VERSION) < 0;
+  if (compareVersions(version, LATEST_APP_VERSION) >= 0) return false;
+  // Too old to say so itself — or about to be shut out by the scheduled
+  // minimum, which its own pop-up never mentions.
+  const shutOutSoon = Date.now() < SCHEDULED_MIN.from && compareVersions(version, SCHEDULED_MIN.version) < 0;
+  return compareVersions(version, FIRST_APP_WITH_UPDATE_PROMPT) < 0 || shutOutSoon;
 }
 
 /**
