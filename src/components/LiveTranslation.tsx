@@ -40,6 +40,7 @@ import {
 } from 'livekit-client';
 import { TRANSLATION_LANGUAGES, matchesLanguage } from '@/lib/translationLanguages';
 import { BRAND } from "@/lib/brand";
+import { embedAuthHeaders } from "@/lib/partners/embedAuth";
 
 // The chosen language belongs to one meeting, in one tab. It used to live
 // under a single localStorage key, so a language picked in one conference
@@ -384,7 +385,7 @@ export default function LiveTranslation() {
       try {
         const res = await fetch('/api/voice/speak', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...embedAuthHeaders() },
           body: JSON.stringify({ room: room.name, identity, lang: targetLang, text }),
         });
         if (res.status === 200) return await res.blob();
@@ -496,7 +497,7 @@ export default function LiveTranslation() {
         try {
           const res = await fetch('/api/translate', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...embedAuthHeaders() },
             body: JSON.stringify({
               text,
               targetLang,

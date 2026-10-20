@@ -328,6 +328,67 @@ async function main() {
     assert.equal(other?.headers.get("content-security-policy") ?? null, null);
   });
 
+  await t("an embedded visitor translates in their own meeting only, through the embed session", async () => {
+    process.env.DEEPL_API_KEY = "deepl-test:fx";
+    const realFetch = globalThis.fetch;
+    let deepl = 0;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input instanceof Request ? input.url : input).startsWith("https://api-free.deepl.com/")) {
+        deepl++;
+        return Response.json({ translations: [{ text: "Bonjour à tous.", detected_source_language: "EN" }] });
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+    try {
+      const T = await import("../../app/api/translate/route");
+      const V = await import("../../app/api/voice/speak/route");
+      const v = await visit(pcLive, "FALF", { id: "pc_tr", displayName: "Tola" });
+      const room: string = v.joined.room;
+      const hdr = { "x-neo-embed-session": v.redeemed.session as string };
+      const tr = (body: unknown, headers: Record<string, string> = {}) => T.POST(post("https://neolinguameet.com/api/translate", body, headers));
+      const speak = (body: unknown, headers: Record<string, string> = {}) => V.POST(post("https://neolinguameet.com/api/voice/speak", body, headers));
+      const caption = { text: "Hello everyone.", targetLang: "fr", room };
+
+      // No account and no session, or a tampered one: refused as before.
+      assert.equal((await tr(caption)).status, 401);
+      assert.equal((await tr(caption, { "x-neo-embed-session": hdr["x-neo-embed-session"].slice(0, -3) + "AAA" })).status, 401);
+      assert.equal((await speak({ room, identity: "x", lang: "fr", text: "Hi" })).status, 401);
+
+      // Their own meeting: translated.
+      const ok = await tr(caption, hdr);
+      assert.equal(ok.status, 200);
+      assert.equal(((await ok.json()) as J).translated, "Bonjour à tous.");
+      assert.equal(deepl, 1);
+
+      // Another meeting, or none named: refused, and DeepL is not asked.
+      const elsewhere = (await visit(pcLive, "LAGOS-1", { id: "pc_tr", displayName: "Tola" })).joined.room as string;
+      assert.notEqual(elsewhere, room);
+      assert.equal((await tr({ ...caption, room: elsewhere }, hdr)).status, 403);
+      assert.equal((await tr({ text: "Hello", targetLang: "fr" }, hdr)).status, 403);
+      assert.equal((await speak({ room: elsewhere, identity: "x", lang: "fr", text: "Hi" }, hdr)).status, 403);
+      assert.notEqual((await speak({ room, identity: "x", lang: "fr", text: "Hi" }, hdr)).status, 401);
+      assert.equal(deepl, 1);
+
+      // The zone switched off: the session stops working here too.
+      await S.setZoneStatus(pc.id, "FALF", "disabled");
+      assert.equal((await tr(caption, hdr)).status, 401);
+      await S.setZoneStatus(pc.id, "FALF", "active");
+
+      // Middleware: signed out, these routes need sign-in unless the request carries the session.
+      const middleware = (await import("../../middleware")).default as unknown as (req: InstanceType<typeof NextRequest>, ev: unknown) => Promise<Response | undefined>;
+      const at = (headers: Record<string, string>) =>
+        new NextRequest("https://neolinguameet.com/api/translate", { method: "POST", headers: { host: "neolinguameet.com", ...headers } });
+      await assert.rejects(middleware(at({}), { waitUntil() {} }), /protect/);
+      await middleware(at(hdr), { waitUntil() {} });
+      await assert.rejects(
+        middleware(new NextRequest("https://neolinguameet.com/api/meetings", { method: "POST", headers: { host: "neolinguameet.com", ...hdr } }), { waitUntil() {} }),
+        /protect/,
+      );
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   await t("validation: zone ids, names and user ids", async () => {
     for (const zoneId of ["", "../x", "a b", "x".repeat(41), 42]) {
       assert.equal((await issue(pcLive, { zoneId, user: { id: "pc_1", displayName: "V" }, origin: PC })).body.error.code, "invalid_zone", String(zoneId));

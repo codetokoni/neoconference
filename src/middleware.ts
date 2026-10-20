@@ -301,6 +301,14 @@ async function maybeRewriteCustomDomain(req: NextRequest): Promise<NextResponse 
   return NextResponse.rewrite(url);
 }
 
+// The meeting calls a partner widget's visitor makes without an account
+// (live translation, the speaker's voice). Let through only with the embed
+// session header; each route verifies it and limits it to that meeting
+// (src/lib/partners/embedCaller.ts). Without the header they stay signed-in only.
+const isEmbedSessionRoute = createRouteMatcher(['/api/translate', '/api/voice/speak']);
+const carriesEmbedSession = (req: NextRequest) =>
+  isEmbedSessionRoute(req) && req.headers.has('x-neo-embed-session');
+
 // Routes that must never be bounced by the persistent-session check:
 // create-session mints the cookie, logout clears it, and /sign-out needs to
 // run its cleanup even when the session has already been revoked elsewhere.
@@ -378,7 +386,7 @@ const clerkHandler = clerkMiddleware(
     if (domainRewrite) return domainRewrite;
     const shortRewrite = await maybeRewriteShortMeetingUrl(nextReq);
     if (shortRewrite) return shortRewrite;
-    if (!isPublicRoute(req)) {
+    if (!isPublicRoute(req) && !carriesEmbedSession(nextReq)) {
       await auth.protect();
       if (!isSessionExemptRoute(req)) {
         const revoked = await enforcePersistentSession(req as unknown as NextRequest);
