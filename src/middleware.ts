@@ -302,10 +302,10 @@ async function maybeRewriteCustomDomain(req: NextRequest): Promise<NextResponse 
 }
 
 // The meeting calls a partner widget's visitor makes without an account
-// (live translation, the speaker's voice). Let through only with the embed
+// (live translation, the speaker's voice, the meeting's chat). Let through only with the embed
 // session header; each route verifies it and limits it to that meeting
 // (src/lib/partners/embedCaller.ts). Without the header they stay signed-in only.
-const isEmbedSessionRoute = createRouteMatcher(['/api/translate', '/api/voice/speak']);
+const isEmbedSessionRoute = createRouteMatcher(['/api/translate', '/api/voice/speak', '/api/events/(.*)/chat']);
 const carriesEmbedSession = (req: NextRequest) =>
   isEmbedSessionRoute(req) && req.headers.has('x-neo-embed-session');
 

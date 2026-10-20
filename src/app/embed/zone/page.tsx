@@ -22,12 +22,13 @@ import {
 } from "@livekit/components-react";
 import { DisconnectReason, MediaDeviceFailure } from "livekit-client";
 import "@livekit/components-styles";
-import { ExternalLink, Maximize, Minimize } from "lucide-react";
+import { ExternalLink, Maximize, MessageSquare, Minimize } from "lucide-react";
 import LiveTranslation from "@/components/LiveTranslation";
 import LiveCaptions from "@/components/LiveCaptions";
 import CaptionsToggle from "@/components/CaptionsToggle";
 import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
+import ChatPanel from "@/components/ChatPanel";
 import { setEmbedSession } from "@/lib/partners/embedAuth";
 import { PROTOCOL_VERSION, parseParentMessage, type EmbedEvent } from "@/lib/partners/protocol";
 import { BRAND } from "@/lib/brand";
@@ -383,6 +384,8 @@ function ZoneEmbed() {
     }
   }, [giveChildTheCode, theme]);
 
+  const [showChat, setShowChat] = useState(false);
+
   // ---- fullscreen ------------------------------------------------------------
   const [isFullscreen, setIsFullscreen] = useState(false);
   useEffect(() => {
@@ -521,6 +524,10 @@ function ZoneEmbed() {
             </span>
             <ParticipantCountBadge />
             <LiveTranslation />
+            <button type="button" data-room-chrome="true" onClick={() => setShowChat((v) => !v)} className={TOOLBAR_BTN_CLASS} title="Chat">
+              <MessageSquare size={16} aria-hidden />
+              <span className="hidden sm:inline">Chat</span>
+            </button>
             <button type="button" data-room-chrome="true" onClick={toggleFullscreen} className={TOOLBAR_BTN_CLASS} title="Full screen">
               {isFullscreen ? <Minimize size={16} aria-hidden /> : <Maximize size={16} aria-hidden />}
               <span className="hidden sm:inline">{isFullscreen ? "Exit full screen" : "Full screen"}</span>
@@ -535,6 +542,7 @@ function ZoneEmbed() {
           <VideoConference />
           <LiveCaptions />
           <CaptionsToggle roomRole="attendee" roomName={phase.live.room} eventSlug={phase.live.room} />
+          <ChatPanel eventId={phase.live.room} open={showChat} onClose={() => setShowChat(false)} canAttach={false} />
           {toast}
         </LiveKitRoom>
       </div>
@@ -685,7 +693,7 @@ function Spinner() {
   return <div aria-label="Loading" className="h-8 w-8 animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-400" />;
 }
 
-/** The prejoin's name box (the name comes from the partner) and LiveKit's own chat (not the meeting's chat) are hidden. */
+/** The prejoin's name box (the name comes from the partner) and LiveKit's own chat are hidden: the meeting's chat is ChatPanel, which the room uses too. */
 function EmbedStyles() {
   return (
     <style>{`

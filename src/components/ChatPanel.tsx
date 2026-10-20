@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, useCallback, useMemo, type ReactNode } fro
 import { useRoomContext, useParticipants, useLocalParticipant } from '@livekit/components-react';
 import { RoomEvent, type RemoteParticipant, type DataPacket_Kind } from "livekit-client";
 import type { ChatMessage, ChatAttachment } from '@/types/event';
+import { embedAuthHeaders } from '@/lib/partners/embedAuth';
 
 const TOPIC = 'neo-chat';
 const TYPING_TOPIC = 'neo-typing';
@@ -24,6 +25,8 @@ type Props = {
   open: boolean;
   onClose: () => void;
   isHost?: boolean;
+  /** Off where the person cannot upload (a partner embed's visitor has no account). */
+  canAttach?: boolean;
 };
 
 function fmtTime(iso: string): string {
@@ -80,7 +83,7 @@ function renderMessageText(text: string, knownNames: Map<string,string>, meIdent
   return out;
 }
 
-export default function ChatPanel({ eventId, open, onClose, isHost = false }: Props) {
+export default function ChatPanel({ eventId, open, onClose, isHost = false, canAttach = true }: Props) {
   const room = useRoomContext();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -159,7 +162,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
   useEffect(() => {
     if (!eventId) return;
     let cancelled = false;
-    fetch(`/api/events/${eventId}/chat`)
+    fetch(`/api/events/${eventId}/chat`, { headers: embedAuthHeaders() })
       .then((r) => (r.ok ? r.json() : { messages: [] }))
       .then((j) => { if (!cancelled && Array.isArray(j?.messages)) setMessages(j.messages); })
       .catch(() => {});
@@ -392,7 +395,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
       } else {
         const res = await fetch(`/api/events/${eventId}/chat`, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', ...embedAuthHeaders() },
           body: JSON.stringify({ text, ...(replyingTo ? { replyTo: { id: replyingTo.id, name: replyingTo.name, snippet: replyingTo.text.slice(0, 140) } } : {}), ...(mentionsRef.current.size > 0 ? { mentions: Array.from(mentionsRef.current) } : {}), ...(pendingAttachments.length > 0 ? { attachments: pendingAttachments } : {}) }),
         });
         if (!res.ok) {
@@ -929,7 +932,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
                 when we're not mid-send; upload progress lives above
                 the textarea so the button doesn't need to double as
                 a spinner. */}
-            <button
+            {canAttach && <button
               type='button'
               aria-label='Attach file'
               onClick={() => fileInputRef.current?.click()}
@@ -942,7 +945,7 @@ export default function ChatPanel({ eventId, open, onClose, isHost = false }: Pr
                 fontSize: isMobile ? 18 : 15, cursor: sending ? 'not-allowed' : 'pointer',
                 opacity: sending ? 0.5 : 1, padding: 0,
               }}
-            >📎</button>
+            >📎</button>}
             <span style={{ fontSize: 11, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {isMobile ? 'Tap send' : 'Enter to send · Shift+Enter for newline'}
             </span>

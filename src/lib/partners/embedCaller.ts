@@ -4,9 +4,9 @@
 import { eventStore } from "@/lib/eventStore";
 import { EMBED_SESSION_HEADER } from "@/lib/partners/embedAuth";
 import { getIntegration, getZone, verifySession } from "@/lib/partners/store";
-import { participantIdentity } from "@/lib/partners/join";
+import { participantIdentity, participantName } from "@/lib/partners/join";
 
-export type EmbedCaller = { identity: string; room: string; integrationId: string };
+export type EmbedCaller = { identity: string; name: string; room: string; eventId: string; integrationId: string };
 
 /** The embed visitor behind this request, or null (no header, or not a valid session). */
 export async function embedCaller(req: Request): Promise<EmbedCaller | null> {
@@ -20,7 +20,13 @@ export async function embedCaller(req: Request): Promise<EmbedCaller | null> {
     if (!zone || zone.status !== "active" || zone.eventId !== grant.eventId) return null;
     const ev = await eventStore.byId(grant.eventId);
     if (!ev) return null;
-    return { identity: participantIdentity(grant), room: ev.livekitRoom || ev.slug, integrationId: grant.integrationId };
+    return {
+      identity: participantIdentity(grant),
+      name: participantName(grant),
+      room: ev.livekitRoom || ev.slug,
+      eventId: ev.id,
+      integrationId: grant.integrationId,
+    };
   } catch {
     return null;
   }
