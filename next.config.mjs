@@ -1,8 +1,10 @@
-// NeoLinguaMeet (src/lib/brand.ts): once NEXT_PUBLIC_PRIMARY_DOMAIN is
-// neolinguameet.com, the icons browsers and phones fetch by fixed paths
-// come from public/brand/neolinguameet/ (drawn by mobile/tool/web_icons.mjs).
+// NeoLinguaMeet (src/lib/brand.ts): with the new name — the default since
+// 2026-10-20, unless NEXT_PUBLIC_BRAND_NAME=neoconference — the icons
+// browsers and phones fetch by fixed paths come from
+// public/brand/neolinguameet/ (drawn by mobile/tool/web_icons.mjs).
 // Redirects run before public files, so the NeoConference ones stay in place.
-const LINGUA = (process.env.NEXT_PUBLIC_PRIMARY_DOMAIN || "").trim().toLowerCase().replace(/^www\./, "") === "neolinguameet.com";
+const MOVED = (process.env.NEXT_PUBLIC_PRIMARY_DOMAIN || "").trim().toLowerCase().replace(/^www\./, "") === "neolinguameet.com";
+const LINGUA = MOVED || (process.env.NEXT_PUBLIC_BRAND_NAME || "").trim().toLowerCase() !== "neoconference";
 const BRAND_ICONS = {
   "/favicon.ico": "favicon.ico",
   "/icon.png": "icon.png",

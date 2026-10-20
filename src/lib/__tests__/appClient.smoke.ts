@@ -154,7 +154,7 @@ async function main() {
     const r = await join({ app: true });
     assert.equal(r.status, 426);
     assert.equal(r.body.error, "app_update_required");
-    assert.match(String(r.body.message), /new version of NeoConference/);
+    assert.match(String(r.body.message), /new version of NeoLinguaMeet/);
     // A short address to type, and the KingsChat sign-in on the store.
     assert.match(String(r.body.message), /neoconference\.app\/download/);
     assert.match(String(r.body.message), /KingsChat/);

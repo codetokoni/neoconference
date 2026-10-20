@@ -1,14 +1,21 @@
 // src/lib/brand.ts
 //
-// The product's name and address, in one place. NeoConference becomes
-// NeoLinguaMeet at neolinguameet.com (owner, 2026-10-19); one setting
-// switches the whole site:
+// The product's name and address, in one place. NeoConference became
+// NeoLinguaMeet at neolinguameet.com (owner, 2026-10-19). Two switches,
+// because the name could change at once but the address waits for Clerk:
 //
-//   NEXT_PUBLIC_PRIMARY_DOMAIN=neolinguameet.com   → NeoLinguaMeet
-//   unset (or neoconference.app)                   → NeoConference, as before
+//   The name (logo, wording, titles, emails, icons): NeoLinguaMeet since
+//   2026-10-20 (owner: "rename now"). NEXT_PUBLIC_BRAND_NAME=neoconference
+//   puts the old name back.
 //
-// NEXT_PUBLIC_, so pages in the browser read the same value. It is built
-// in at deploy time: change it in Vercel, then redeploy.
+//   The address (links built, redirects from the old domain, canonical
+//   host): moves with NEXT_PUBLIC_PRIMARY_DOMAIN=neolinguameet.com, set on
+//   switch day together with Clerk's new domain. Until then everything is
+//   served and linked on www.neoconference.app (and neolinguameet.com
+//   serves the same site).
+//
+// NEXT_PUBLIC_, so pages in the browser read the same values. They are
+// built in at deploy time: change them in Vercel, then redeploy.
 //
 // What must NOT follow the brand:
 //   - kc-<id>@kc.neoconference.app, a KingsChat account's identity in Clerk
@@ -34,6 +41,8 @@ export type Brand = {
   supportEmail: string;
   /** The line the homepage leads with, and the title carries ("LinguaMeet by Neo"). */
   tagline: string | null;
+  /** The site has moved to neolinguameet.com: the old domain's pages redirect there. */
+  moved: boolean;
 };
 
 const NEOCONFERENCE: Brand = {
@@ -46,6 +55,7 @@ const NEOCONFERENCE: Brand = {
   origin: "https://www.neoconference.app",
   supportEmail: "info@neoconference.app",
   tagline: null,
+  moved: false,
 };
 
 const NEOLINGUAMEET: Brand = {
@@ -60,14 +70,35 @@ const NEOLINGUAMEET: Brand = {
   supportEmail: "info@neolinguameet.com",
   // The owner's line for the new name (2026-10-20).
   tagline: "LinguaMeet by Neo",
+  moved: true,
 };
 
-export function brandFor(primaryDomain: string | undefined): Brand {
+/**
+ * The name from one switch, the address from the other (see the header).
+ * Moving the address brings the new name with it whatever the name says.
+ */
+export function brandFor(primaryDomain: string | undefined, brandName?: string): Brand {
   const d = (primaryDomain || "").trim().toLowerCase().replace(/^www\./, "");
-  return d === NEOLINGUAMEET.domain ? NEOLINGUAMEET : NEOCONFERENCE;
+  const moved = d === NEOLINGUAMEET.domain;
+  const named = moved || (brandName || "").trim().toLowerCase() !== NEOCONFERENCE.id;
+  const names = named ? NEOLINGUAMEET : NEOCONFERENCE;
+  const place = moved ? NEOLINGUAMEET : NEOCONFERENCE;
+  return {
+    id: names.id,
+    name: names.name,
+    nameHead: names.nameHead,
+    nameTail: names.nameTail,
+    tagline: names.tagline,
+    // info@neolinguameet.com receives mail already (Namecheap forwarding).
+    supportEmail: names.supportEmail,
+    domain: place.domain,
+    host: place.host,
+    origin: place.origin,
+    moved,
+  };
 }
 
-export const BRAND: Brand = brandFor(process.env.NEXT_PUBLIC_PRIMARY_DOMAIN);
+export const BRAND: Brand = brandFor(process.env.NEXT_PUBLIC_PRIMARY_DOMAIN, process.env.NEXT_PUBLIC_BRAND_NAME);
 
 /** The site's title: browser tabs, search results and link previews. */
 export function siteTitle(brand: Brand = BRAND): string {
@@ -139,7 +170,8 @@ const KEEP_ON_OLD_DOMAIN = /^\/(api|\.well-known|app)(\/|$)/;
  * the browser carries it across the redirect itself.
  */
 export function legacyRedirect(url: URL, host: string | null, brand: Brand = BRAND): URL | null {
-  if (brand.id !== "neolinguameet") return null;
+  // The address, not the name: renaming alone moves nobody.
+  if (!brand.moved) return null;
   const h = (host || url.host).toLowerCase().replace(/:\d+$/, "");
   const isOld = (LEGACY_HOSTS as readonly string[]).includes(h);
   const isNewWww = h === "www." + brand.domain;

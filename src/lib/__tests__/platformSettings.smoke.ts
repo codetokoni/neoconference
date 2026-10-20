@@ -234,7 +234,7 @@ async function main() {
     assert.equal(live.contacts.supportEmail, "help@acme.test");
     assert.equal(live.regional.adminTimezone, "Africa/Lagos");
     const { items } = await audit.listAdminAudit({ action: "settings.branding.update" });
-    assert.deepEqual(items[0].before, { platformName: "NeoConference" });
+    assert.deepEqual(items[0].before, { platformName: "NeoLinguaMeet" });
     assert.deepEqual(items[0].after, { platformName: "Acme Meet" });
     assert.equal(items[0].actorEmail, "ops@example.com");
   });
