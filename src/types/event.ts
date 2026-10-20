@@ -227,6 +227,11 @@ export interface NeoEvent {
    *  /api/user/personal-room. */
   isPermanent?: boolean;
 
+  /** A partner website's zone meeting (src/lib/partners): which
+   *  integration and zone it was made for. Set only on meetings the
+   *  integration created, so a slug clash can never hand over another. */
+  partner?: { integrationId: string; zoneId: string };
+
   /** FRS §11 inactivity detection — per-meeting configuration. Every field
    *  is optional; unset values fall through to the client-side defaults so
    *  older events continue to behave exactly as they did. */
