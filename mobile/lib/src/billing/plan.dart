@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_controller.dart';
+import '../core/load_error.dart';
 import '../events/event.dart';
 
 /// What the signed-in account is allowed to do.
@@ -68,9 +69,29 @@ final planProvider = FutureProvider<PlanInfo>((ref) async {
   // turns the upgrade into something the person can actually see.
   ref.watch(authProvider.select((s) => s.upgradedTo));
 
-  final body = await ref.watch(apiProvider).get('/api/user/plan');
-  if (body is! Map<String, dynamic>) {
-    throw const FormatException('Unexpected plan response');
+  final api = ref.watch(apiProvider);
+  // A phone whose network briefly cannot look a host up (seen on the
+  // owner's phone, 2026-10-20: "Failed host lookup: clerk.neoconference.app"
+  // between two requests that worked) is asked again, a few times, before
+  // the plan is reported as unreachable. Anything else fails at once.
+  for (var attempt = 0;; attempt++) {
+    try {
+      final body = await api.get('/api/user/plan');
+      if (body is! Map<String, dynamic>) {
+        throw const FormatException('Unexpected plan response');
+      }
+      return PlanInfo.fromJson(body);
+    } catch (e) {
+      if (!isNetworkError(e) || attempt >= planRetryDelays.length) rethrow;
+      await Future<void>.delayed(planRetryDelays[attempt]);
+    }
   }
-  return PlanInfo.fromJson(body);
 });
+
+/// How long to wait before asking again after each network failure.
+@visibleForTesting
+List<Duration> planRetryDelays = const [
+  Duration(seconds: 2),
+  Duration(seconds: 5),
+  Duration(seconds: 10),
+];

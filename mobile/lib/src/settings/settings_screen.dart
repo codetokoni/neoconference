@@ -81,10 +81,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               padding: EdgeInsets.symmetric(vertical: 20),
               child: Center(child: CircularProgressIndicator()),
             ),
+            // It said "try again" with no way to: the failed read stayed
+            // until the app restarted. Tapping reads the plan again.
             error: (e, _) => _Tile(
               title: 'Could not load your plan',
-              subtitle: describeLoadError(e),
+              subtitle: '${describeLoadError(e)} Tap to try again.',
               danger: true,
+              onTap: () => ref.invalidate(planProvider),
             ),
             data: (info) => _Tile(
               title: info.plan[0].toUpperCase() + info.plan.substring(1),
