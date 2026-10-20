@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { voiceClip } from "@/lib/voiceProfiles";
+import { embedCaller } from "@/lib/partners/embedCaller";
+import { hitRateLimit } from "@/lib/support/tickets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +18,12 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: Request) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  // A partner widget's visitor: their embed session, for their own meeting only.
+  const embed = userId ? null : await embedCaller(req);
+  if (!userId && !embed) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  if (embed && !(await hitRateLimit(`speak:embed:${embed.identity}`, 120, 60)).ok) {
+    return NextResponse.json({ ok: false, error: "rate_limited" }, { status: 429 });
+  }
 
   let body: { room?: unknown; identity?: unknown; lang?: unknown; text?: unknown };
   try {
@@ -31,6 +38,7 @@ export async function POST(req: Request) {
   if (!room || !identity || !lang || !text.trim()) {
     return NextResponse.json({ ok: false, error: "bad_request" }, { status: 400 });
   }
+  if (embed && room !== embed.room) return NextResponse.json({ ok: false, error: "wrong_room" }, { status: 403 });
 
   const r = await voiceClip({ room, identity, lang, text });
   if (r.status !== "ok") {

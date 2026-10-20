@@ -68,6 +68,9 @@ export function useOpenSupportChat() {
 
 export default function SupportWidget() {
   const path = usePathname() ?? "/";
+  // An embed sits inside someone else's page (/embed/zone on a partner's
+  // site): our help bubble does not belong there.
+  if (path.startsWith("/embed/")) return null;
   return (
     <Script
       src="https://cdn.neosupport.org/neo-support.js"

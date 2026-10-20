@@ -25,6 +25,8 @@ import { deeplTarget } from "@/lib/translationLanguages";
 import { activity } from "@/lib/activity";
 import { translationAllowedFor } from "@/lib/translationGate";
 import { BRAND } from "@/lib/brand";
+import { embedCaller } from "@/lib/partners/embedCaller";
+import { hitRateLimit } from "@/lib/support/tickets";
 
 // Who has translated without saying which meeting, logged once each per
 // instance: an app sends one request per caption.
@@ -53,7 +55,11 @@ const bad = (code: string, status = 400) =>
 
 export async function POST(req: Request) {
   const { userId } = await auth();
-  if (!userId) return bad("unauthenticated", 401);
+  // A visitor in a partner's widget (/embed/zone) has no account: their
+  // signed embed session stands in, for their own meeting only.
+  const embed = userId ? null : await embedCaller(req);
+  if (!userId && !embed) return bad("unauthenticated", 401);
+  if (embed && !(await hitRateLimit(`translate:embed:${embed.identity}`, 120, 60)).ok) return bad("rate_limited", 429);
 
   const apiKey = process.env.DEEPL_API_KEY;
   if (!apiKey) return bad("translation_not_configured", 503);
@@ -81,6 +87,7 @@ export async function POST(req: Request) {
   // counted in the log) until they are replaced — refusing them would stop
   // translation in Pro meetings too.
   const room = typeof body.room === "string" ? body.room.trim().slice(0, 64) : "";
+  if (embed && room !== embed.room) return bad("wrong_room", 403);
   if (room) {
     const gate = await translationAllowedFor(room);
     if (!gate.allowed) {
@@ -92,7 +99,7 @@ export async function POST(req: Request) {
         { status: 402 },
       );
     }
-  } else if (!noRoomLogged.has(userId)) {
+  } else if (userId && !noRoomLogged.has(userId)) {
     noRoomLogged.add(userId);
     console.info("[translate] no room given (older app)", JSON.stringify({ userId }));
   }
