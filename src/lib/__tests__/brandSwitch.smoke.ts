@@ -111,12 +111,28 @@ async function main() {
     assert.equal(go("http://localhost:3000/"), null);
   });
 
-  await t("with the switch off nothing moves", () => {
-    const off = B.brandFor(undefined);
-    assert.equal(off.name, "NeoConference");
+  await t("renamed but not moved (the default since 2026-10-20): the new name, the old address, nobody redirected", () => {
+    const renamed = B.brandFor(undefined);
+    assert.equal(renamed.name, "NeoLinguaMeet");
+    assert.equal(renamed.tagline, "LinguaMeet by Neo");
+    assert.equal(renamed.supportEmail, "info@neolinguameet.com");
+    assert.equal(renamed.origin, "https://www.neoconference.app");
+    assert.equal(renamed.domain, "neoconference.app");
+    assert.equal(renamed.moved, false);
     const u = new URL("https://www.neoconference.app/video/join?room=x");
-    assert.equal(B.legacyRedirect(u, u.host, off), null);
-    assert.equal(B.legacyRedirect(new URL("https://www.neolinguameet.com/"), "www.neolinguameet.com", off), null);
+    assert.equal(B.legacyRedirect(u, u.host, renamed), null);
+    assert.equal(B.legacyRedirect(new URL("https://www.neolinguameet.com/"), "www.neolinguameet.com", renamed), null);
+  });
+
+  await t("NEXT_PUBLIC_BRAND_NAME=neoconference puts the old name back; moving the address brings the new name anyway", () => {
+    const back = B.brandFor(undefined, "neoconference");
+    assert.equal(back.name, "NeoConference");
+    assert.equal(back.tagline, null);
+    assert.equal(back.origin, "https://www.neoconference.app");
+    const moved = B.brandFor("neolinguameet.com", "neoconference");
+    assert.equal(moved.name, "NeoLinguaMeet");
+    assert.equal(moved.origin, "https://neolinguameet.com");
+    assert.equal(moved.moved, true);
   });
 
   await t("links are built on the new domain, though Vercel still says the old one", () => {
@@ -213,12 +229,13 @@ async function main() {
     const on = renderToStaticMarkup(createElement(Headline));
     assert.match(on, /<h1[^>]*>[\s\S]*LinguaMeet[\s\S]*by Neo\.[\s\S]*<\/h1>/);
     assert.match(on, /One meeting, every language\. NeoLinguaMeet translates your meetings live/);
-    const off = renderToStaticMarkup(createElement(Headline, { brand: B.brandFor(undefined) }));
+    const off = renderToStaticMarkup(createElement(Headline, { brand: B.brandFor(undefined, "neoconference") }));
     assert.match(off, /One meeting\.[\s\S]*Every language\./);
     assert.match(off, /NeoConference translates your meetings live/);
     assert.doesNotMatch(off, /LinguaMeet/);
     assert.equal(B.siteTitle(), "NeoLinguaMeet — LinguaMeet by Neo, video meetings with live translation");
-    assert.equal(B.siteTitle(B.brandFor(undefined)), "NeoConference — Video meetings with live translation");
+    assert.equal(B.siteTitle(B.brandFor(undefined, "neoconference")), "NeoConference — Video meetings with live translation");
+    assert.equal(B.siteTitle(B.brandFor(undefined)), "NeoLinguaMeet — LinguaMeet by Neo, video meetings with live translation");
   });
 
   await t("the icons browsers fetch by fixed paths come from the NeoLinguaMeet set", async () => {

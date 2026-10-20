@@ -566,7 +566,7 @@ async function main() {
     const r = await raw("user_an", R.analytics.GET, { query: "?from=2026-08-03&to=2026-08-23&tz=UTC&format=csv&report=accounts" });
     assert.equal(r.status, 200);
     assert.match(r.headers.get("content-type") ?? "", /text\/csv/);
-    assert.match(r.headers.get("content-disposition") ?? "", /neoconference-analytics-2026-08-03-to-2026-08-23-accounts\.csv/);
+    assert.match(r.headers.get("content-disposition") ?? "", /neolinguameet-analytics-2026-08-03-to-2026-08-23-accounts\.csv/);
     // Response.text() drops a BOM, so look at the bytes.
     const bytes = Buffer.from(await r.arrayBuffer());
     assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf], "UTF-8 BOM so Excel reads names right");

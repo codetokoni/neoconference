@@ -47,7 +47,9 @@ test.describe("groups: public posture", () => {
     expect(await sw.text()).toContain("notificationclick");
     const manifest = await request.get("/manifest.webmanifest");
     expect(manifest.status()).toBe(200);
-    expect((await manifest.json()).name).toBe("NeoConference");
+    // NeoLinguaMeet since 2026-10-20; this runs against production, which
+    // says the old name until the rename deploys.
+    expect((await manifest.json()).name).toMatch(/^(NeoLinguaMeet|NeoConference)$/);
   });
 });
 

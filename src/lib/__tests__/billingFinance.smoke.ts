@@ -702,19 +702,19 @@ function legacyReminderEmail(r: { kind: string; amount: number | null; currency:
   let subject: string;
   let body: string[];
   if (r.kind === "failed") {
-    subject = `Your NeoConference ${PLAN(r.plan)} payment did not go through`;
+    subject = `Your NeoLinguaMeet ${PLAN(r.plan)} payment did not go through`;
     body = [`Your payment for the ${PLAN(r.plan)} plan${price} did not go through, so the plan was not added.`, `You can try again here: ${pricing}`];
   } else if (r.kind === "abandoned") {
-    subject = `Finish upgrading to NeoConference ${PLAN(r.plan)}`;
+    subject = `Finish upgrading to NeoLinguaMeet ${PLAN(r.plan)}`;
     body = [`You started upgrading to the ${PLAN(r.plan)} plan${price} but the payment was not completed.`, `Pick up where you left off: ${pricing}`];
   } else {
     const date = new Date(r.when).toUTCString().slice(0, 16);
-    subject = `Your NeoConference ${PLAN(r.plan)} plan ends on ${date}`;
+    subject = `Your NeoLinguaMeet ${PLAN(r.plan)} plan ends on ${date}`;
     body = [`Your ${PLAN(r.plan)} plan${price} runs until ${date}. It does not renew by itself: to keep it, buy another period before then.`, `Renew: ${pricing}`, `Your billing history: ${billing}`];
   }
-  const text = [...body, "", "— NeoConference"].join("\n\n");
+  const text = [...body, "", "— NeoLinguaMeet"].join("\n\n");
   const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const html = body.map((p) => `<p>${esc(p).replace(/(https?:\/\/\S+)/g, '<a href="$1">$1</a>')}</p>`).join("") + "<p>— NeoConference</p>";
+  const html = body.map((p) => `<p>${esc(p).replace(/(https?:\/\/\S+)/g, '<a href="$1">$1</a>')}</p>`).join("") + "<p>— NeoLinguaMeet</p>";
   return { subject, text, html };
 }
 

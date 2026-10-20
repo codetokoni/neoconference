@@ -730,7 +730,7 @@ async function main() {
     const r = await call("user_mod", R.case.POST as unknown as Handler<unknown>, { method: "POST", params: { id: eventCase }, body: { action: "warn", message: "Please keep slides respectful." } });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     const { items } = await notif.listNotifications("user_alice");
-    assert.equal(items[0].title, "A message from NeoConference about your content");
+    assert.equal(items[0].title, "A message from NeoLinguaMeet about your content");
     assert.match(items[0].body, /Please keep slides respectful/);
     const seen = JSON.stringify(items);
     for (const secret of ["user_bob", "bob@example.com", "Rude slides", "198.51.100"]) assert.equal(seen.includes(secret), false, `owner never sees ${secret}`);

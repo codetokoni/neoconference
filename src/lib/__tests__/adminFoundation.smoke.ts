@@ -150,7 +150,7 @@ async function main() {
     const e = await call("user_owner", R.enroll.POST, { method: "POST" });
     secrets.user_owner = e.body.secret as string;
     assert.match(String(e.body.qr), /^data:image\/png;base64,/);
-    assert.match(String(e.body.otpauthUrl), /^otpauth:\/\/totp\/NeoConference%20Admin/);
+    assert.match(String(e.body.otpauthUrl), /^otpauth:\/\/totp\/NeoLinguaMeet%20Admin/);
     const wrong = await call("user_owner", R.confirm.POST, { method: "POST", body: { code: "000000" } });
     assert.equal(wrong.body.error, "invalid_code");
     tick();

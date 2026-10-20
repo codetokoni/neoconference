@@ -643,23 +643,23 @@ async function main() {
     for (const count of [1, 3]) {
       const lines = "Sunday\n  - Ann (2026-10-09T09:00:00Z)";
       const r = await tpl.renderEmail("digest.redemptions", { count, plural: count === 1 ? "" : "s", details: lines });
-      assert.equal(r.subject, "NeoConference — " + count + " new redemption" + (count === 1 ? "" : "s") + " today");
-      assert.equal(r.text, "NeoConference daily digest\n\n" + count + " redemption" + (count === 1 ? "" : "s") + " in the last 24h:\n\n" + lines);
+      assert.equal(r.subject, "NeoLinguaMeet — " + count + " new redemption" + (count === 1 ? "" : "s") + " today");
+      assert.equal(r.text, "NeoLinguaMeet daily digest\n\n" + count + " redemption" + (count === 1 ? "" : "s") + " in the last 24h:\n\n" + lines);
       assert.equal(r.html, "");
     }
     // The appointment emails sent at the start of this file, through the real route.
-    const appointed = singles().filter((m) => (m.body as { subject: string }).subject === "You are now a NeoConference administrator");
+    const appointed = singles().filter((m) => (m.body as { subject: string }).subject === "You are now a NeoLinguaMeet administrator");
     assert.equal(appointed.length, 2);
     const body = appointed[0].body as { to: string[]; text: string; html: string };
     const origin = "https://www.neoconference.app";
     assert.deepEqual(body.to, ["comms@example.com"]);
     assert.equal(
       body.text,
-      `Owner made you an administrator (Comms) on NeoConference.\n\nOpen ${origin}/admin and set up two-factor authentication with an authenticator app to start.\n\nIf you did not expect this, reply to this email.`,
+      `Owner made you an administrator (Comms) on NeoLinguaMeet.\n\nOpen ${origin}/admin and set up two-factor authentication with an authenticator app to start.\n\nIf you did not expect this, reply to this email.`,
     );
     assert.equal(
       body.html,
-      `<p>Owner made you an administrator (<b>Comms</b>) on NeoConference.</p><p><a href="${origin}/admin">Open the admin area</a> and set up two-factor authentication with an authenticator app to start.</p><p>If you did not expect this, reply to this email.</p>`,
+      `<p>Owner made you an administrator (<b>Comms</b>) on NeoLinguaMeet.</p><p><a href="${origin}/admin">Open the admin area</a> and set up two-factor authentication with an authenticator app to start.</p><p>If you did not expect this, reply to this email.</p>`,
     );
   });
 
@@ -866,7 +866,7 @@ const legacySupport = (() => {
       link
         ? `<p style="font-family:system-ui,sans-serif"><a href="${esc(link.href)}" style="display:inline-block;padding:10px 18px;border-radius:999px;background:#06b6d4;color:#020617;text-decoration:none;font-weight:600">${esc(link.label)}</a></p>`
         : "",
-      `<p style="font-family:system-ui,sans-serif;font-size:12px;color:#64748b">NeoConference support · Replies to this email are not read; answer on the website.</p>`,
+      `<p style="font-family:system-ui,sans-serif;font-size:12px;color:#64748b">NeoLinguaMeet support · Replies to this email are not read; answer on the website.</p>`,
     ].join("");
   };
   const ticketLink = (t: LegacyTicket, origin: string) => ({ href: `${origin}/support/tickets/${t.id}`, label: t.userId ? "Open your ticket" : "Sign in to follow it" });
@@ -874,8 +874,8 @@ const legacySupport = (() => {
     received(t: LegacyTicket, origin: string) {
       const subject = `[#${t.number}] We received your request: ${t.subject}`;
       const intro = t.userId
-        ? "Thanks for getting in touch. Your request is with the NeoConference team and you can follow it on the website."
-        : `Thanks for getting in touch. Your request is with the NeoConference team. We'll answer at this address. To read the conversation on the website, sign in or sign up with ${t.email}.`;
+        ? "Thanks for getting in touch. Your request is with the NeoLinguaMeet team and you can follow it on the website."
+        : `Thanks for getting in touch. Your request is with the NeoLinguaMeet team. We'll answer at this address. To read the conversation on the website, sign in or sign up with ${t.email}.`;
       return {
         subject,
         text: `${intro}\n\nTicket #${t.number}: ${t.subject}\n\n${origin}/support/tickets/${t.id}`,
@@ -884,7 +884,7 @@ const legacySupport = (() => {
     },
     reply(t: LegacyTicket, body: string, agentName: string, origin: string) {
       return {
-        subject: `[#${t.number}] Reply from NeoConference support: ${t.subject}`,
+        subject: `[#${t.number}] Reply from NeoLinguaMeet support: ${t.subject}`,
         text: `${agentName} replied to your ticket #${t.number}:\n\n${body}\n\n${origin}/support/tickets/${t.id}`,
         html: page([`<b>${esc(agentName)}</b> replied to your ticket #${t.number}:`, esc(body)], ticketLink(t, origin)),
       };
