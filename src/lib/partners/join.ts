@@ -26,6 +26,11 @@ export function participantIdentity(grant: Pick<JoinGrant, "integrationId" | "ex
   return `pz-${grant.integrationId.slice(3, 9)}-${h}`;
 }
 
+/** The visitor's name in the room (and its chat): a guest is marked as one. */
+export function participantName(grant: Pick<JoinGrant, "displayName" | "verified">): string {
+  return grant.verified ? grant.displayName : `${grant.displayName} (guest)`;
+}
+
 export type JoinOutcome =
   | { status: "ready"; token: string; wsUrl: string; title: string; displayName: string; room: string }
   | { status: "waiting_room" | "wait_for_host" | "denied"; title: string };
@@ -90,7 +95,7 @@ export async function joinZone(grant: JoinGrant, now = Date.now()): Promise<Join
   if (!ev) throw new PartnerError(404, "meeting_not_found", "This meeting no longer exists.");
   const title = ev.name;
   const identity = participantIdentity(grant);
-  const name = grant.verified ? grant.displayName : `${grant.displayName} (guest)`;
+  const name = participantName(grant);
 
   // A finished session of a permanent room opens again for the next
   // visitor; any other finished meeting stays finished.

@@ -389,6 +389,70 @@ async function main() {
     }
   });
 
+  await t("an embedded visitor reads and sends their own meeting's chat, under their own name", async () => {
+    const C = await import("../../app/api/events/[id]/chat/route");
+    const v = await visit(pcLive, "FALF", { id: "pc_chat", displayName: "Chidi" });
+    const room: string = v.joined.room;
+    const session: string = v.redeemed.session;
+    const hdr = { "x-neo-embed-session": session };
+    const url = (id: string) => `https://neolinguameet.com/api/events/${encodeURIComponent(id)}/chat`;
+    const send = (id: string, body: unknown, headers: Record<string, string> = {}) => C.POST(post(url(id), body, headers), { params: { id } });
+    const read = (id: string, headers: Record<string, string> = {}) => C.GET(new NextRequest(url(id), { headers }), { params: { id } });
+
+    // No account and no session, or a tampered one: refused.
+    assert.equal((await send(room, { text: "Hi" })).status, 401);
+    assert.equal((await read(room)).status, 401);
+    assert.equal((await send(room, { text: "Hi" }, { "x-neo-embed-session": session.slice(0, -3) + "AAA" })).status, 401);
+    // A session the browser rewrote to post as someone else.
+    const [body, mac] = session.split(".");
+    const forged = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(body, "base64url").toString()), displayName: "Pastor", verified: true })).toString("base64url");
+    assert.equal((await send(room, { text: "Hi" }, { "x-neo-embed-session": `${forged}.${mac}` })).status, 401);
+    assert.equal((await read(room, { "x-neo-embed-session": `${forged}.${mac}` })).status, 401);
+
+    // Their own meeting: saved under their name and room identity, and in the history.
+    const ok = await send(room, { text: "Amen from Lagos", attachments: [{ url: "https://evil.example/x.exe", name: "x.exe" }], toUserId: "user_owner" }, hdr);
+    assert.equal(ok.status, 200);
+    const saved = ((await ok.json()) as J).message;
+    assert.equal(saved.name, "Chidi");
+    assert.equal(saved.userId, claims(v.joined.token).sub);
+    assert.equal(saved.text, "Amen from Lagos");
+    // No upload of ours to attach, and no private message by REST.
+    assert.equal(saved.attachments, undefined);
+    assert.equal(saved.toUserId, undefined);
+    const hist = await read(room, hdr);
+    assert.equal(hist.status, 200);
+    assert.ok(((await hist.json()) as J).messages.some((m: J) => m.id === saved.id));
+
+    // Another meeting: neither read nor written.
+    const elsewhere = (await visit(pcLive, "LAGOS-1", { id: "pc_chat", displayName: "Chidi" })).joined.room as string;
+    assert.notEqual(elsewhere, room);
+    assert.equal((await send(elsewhere, { text: "Hi" }, hdr)).status, 403);
+    assert.equal((await read(elsewhere, hdr)).status, 403);
+    const lagos = (await S.getZone(pc.id, "LAGOS-1"))!;
+    const { chatStore } = await import("../chatStore");
+    assert.equal((await chatStore.list(lagos.eventId)).length, 0);
+
+    // The zone switched off: the session stops working for chat too.
+    await S.setZoneStatus(pc.id, "FALF", "disabled");
+    assert.equal((await send(room, { text: "Hi" }, hdr)).status, 401);
+    assert.equal((await read(room, hdr)).status, 401);
+    await S.setZoneStatus(pc.id, "FALF", "active");
+
+    // Rate limited per visitor.
+    const g2 = await visit(pcLive, "FALF", { id: "pc_chat_fast", displayName: "Fast" });
+    const fast = { "x-neo-embed-session": g2.redeemed.session as string };
+    const codes: number[] = [];
+    for (let i = 0; i < 21; i++) codes.push((await send(room, { text: `m${i}` }, fast)).status);
+    assert.deepEqual(codes.slice(0, 20), Array(20).fill(200));
+    assert.equal(codes[20], 429);
+
+    // Middleware: signed out, the chat needs sign-in unless the request carries the session.
+    const middleware = (await import("../../middleware")).default as unknown as (req: InstanceType<typeof NextRequest>, ev: unknown) => Promise<Response | undefined>;
+    const at = (headers: Record<string, string>) => new NextRequest(url(room), { headers: { host: "neolinguameet.com", ...headers } });
+    await assert.rejects(middleware(at({}), { waitUntil() {} }), /protect/);
+    await middleware(at(hdr), { waitUntil() {} });
+  });
+
   await t("validation: zone ids, names and user ids", async () => {
     for (const zoneId of ["", "../x", "a b", "x".repeat(41), 42]) {
       assert.equal((await issue(pcLive, { zoneId, user: { id: "pc_1", displayName: "V" }, origin: PC })).body.error.code, "invalid_zone", String(zoneId));

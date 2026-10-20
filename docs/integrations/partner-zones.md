@@ -147,10 +147,9 @@ Inside the frame, the visitor has:
 - the meeting itself;
 - captions, once the host turns them on;
 - live translation into their language;
+- the meeting's chat, the same one people in the meeting room see, under the name you gave (no file attachments, which need an account);
 - full screen;
 - **Open in new tab**: the meeting moves to a tab of its own. The code passes by postMessage, never in the address, and the frame steps aside.
-
-The meeting chat is not in the embed yet, because sending to it needs an account.
 
 ## postMessage protocol, v1
 

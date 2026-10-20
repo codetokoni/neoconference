@@ -2,12 +2,18 @@
 //
 // GET  -> recent chat (public if event is public)
 // POST -> append message (must be authenticated)
+//
+// A visitor in a partner's widget (/embed/zone) has no account: their
+// signed embed session stands in, for their own meeting's chat only, and
+// they post under the name the partner gave them.
 
 import { errorMessage } from "@/lib/errorMessage";
 import { NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { eventStore } from '@/lib/eventStore';
 import { chatStore } from '@/lib/chatStore';
+import { embedCaller } from '@/lib/partners/embedCaller';
+import { hitRateLimit } from '@/lib/support/tickets';
 import type { ChatMessage, ChatAttachment } from '@/types/event';
 
 export const runtime = 'nodejs';
@@ -30,12 +36,22 @@ function rid(): string {
 }
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: { id: string } }
 ) {
+  const { userId } = await auth();
+  const embed = userId ? null : await embedCaller(req);
+  if (!userId && !embed) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (embed && !(await hitRateLimit(`chat-read:embed:${embed.identity}`, 60, 60)).ok) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  }
+
   const ev = await findEvent(params.id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  const messages = await chatStore.list(ev.id);
+  if (embed && ev.id !== embed.eventId) return NextResponse.json({ error: "wrong_room" }, { status: 403 });
+  let messages = await chatStore.list(ev.id);
+  // Private messages only to the two people in them.
+  if (embed) messages = messages.filter((m) => !m.toUserId || m.toUserId === embed.identity || m.userId === embed.identity);
   return NextResponse.json({ messages });
 }
 
@@ -44,10 +60,15 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const embed = userId ? null : await embedCaller(req);
+  if (!userId && !embed) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (embed && !(await hitRateLimit(`chat:embed:${embed.identity}`, 20, 60)).ok) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  }
 
   const ev = await findEvent(params.id);
   if (!ev) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (embed && ev.id !== embed.eventId) return NextResponse.json({ error: "wrong_room" }, { status: 403 });
 
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch {}
@@ -57,7 +78,9 @@ export async function POST(
   // re-sanitizes on append, so any shape the client sent that
   // doesn't match ChatAttachment is silently dropped there.
   let attachments: ChatAttachment[] | undefined;
-  if (Array.isArray(body?.attachments) && body.attachments.length > 0) {
+  // Uploading needs an account, so an embed visitor has no file of ours to
+  // attach: anything they send is a link they made up.
+  if (!embed && Array.isArray(body?.attachments) && body.attachments.length > 0) {
     attachments = body.attachments as ChatAttachment[];
   }
   if (!text && (!attachments || attachments.length === 0)) {
@@ -83,16 +106,22 @@ export async function POST(
   }
   // Optional DM target (private message)
   let toUserId: string | undefined;
-  if (typeof body?.toUserId === 'string' && body.toUserId.trim()) {
+  if (!embed && typeof body?.toUserId === 'string' && body.toUserId.trim()) {
     toUserId = body.toUserId.slice(0, 80);
   }
 
-  const u = await currentUser();
-  const name = u?.firstName || u?.username || (u?.emailAddresses?.[0]?.emailAddress?.split("@")[0]) || "Guest";
+  let name: string;
+  if (embed) {
+    name = embed.name;
+  } else {
+    const u = await currentUser();
+    name = u?.firstName || u?.username || (u?.emailAddresses?.[0]?.emailAddress?.split("@")[0]) || "Guest";
+  }
 
   const msg: ChatMessage = {
     id: rid(),
-    userId,
+    // An embed visitor is their room identity, as everyone in the room sees them.
+    userId: userId || embed?.identity || "",
     name: String(name).slice(0, 80),
     text,
     ts: new Date().toISOString(),
