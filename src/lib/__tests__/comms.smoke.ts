@@ -592,6 +592,16 @@ async function main() {
     assert.equal((await hook({ ...tampered.init, body: tampered.body.replace("delivered", "bounced") })).status, 401);
   });
 
+  await t("reports for mail this app did not send (other apps on the Resend account) are ignored", async () => {
+    const foreign = report("bounced", "re_other_app", { to: ["someone@other-app.example"], bounce: { type: "Permanent", message: "Mailbox does not exist" } });
+    const r = await hook(foreign.init);
+    assert.equal(r.status, 200);
+    assert.equal(((await r.json()) as { applied: boolean }).applied, false);
+    assert.equal(await logLib.isBounced("someone@other-app.example"), false);
+    const d = await call("user_comms", R.delivery.GET, { query: "?event=bounced" });
+    assert.deepEqual(d.body.events, []);
+  });
+
   await t("a bounce is listed with its reason and the address is skipped next time; a complaint turns email off", async () => {
     const news = (await sends.listSends("News"))[0];
     const cEmail = (await statusOf(news.id, 0, "u_c")).ch.email;
