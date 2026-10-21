@@ -51,7 +51,14 @@ export type PartnerIntegration = {
   createdAt: string;
   updatedAt: string;
   createdBy?: string;
+  /** IANA timezone for report periods (today, this week, this month). Absent: UTC. */
+  timezone?: string;
+  /** Aggregate figures a zone's public page may show; none unless switched on. */
+  publicStats?: PublicStat[];
 };
+
+export const PUBLIC_STATS = ["sessions", "uniqueParticipants", "connectedNow", "totalPrayerSeconds", "averagePrayerSeconds"] as const;
+export type PublicStat = (typeof PUBLIC_STATS)[number];
 
 export type PartnerKeyMeta = {
   id: string;
@@ -106,6 +113,8 @@ const K = {
   code: (hash: string) => `${P}code:${hash}`,
   codeUsed: (hash: string) => `${P}codeused:${hash}`,
   audit: (id: string) => `${P}${id}:audit`,
+  admins: (id: string) => `${P}${id}:admins`,
+  leaders: (id: string, zone: string) => `${P}${id}:zone:${zone}:leaders`,
 };
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
@@ -151,6 +160,20 @@ export function cleanUserId(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const s = raw.trim();
   return /^[A-Za-z0-9_.:@|+=-]{1,128}$/.test(s) ? s : null;
+}
+
+/** An IANA timezone this server knows ("Africa/Lagos", "UTC"), or null. */
+export function normalizeTimezone(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw.trim() || raw.length > 64) return null;
+  try {
+    return new Intl.DateTimeFormat("en-GB", { timeZone: raw.trim() }).resolvedOptions().timeZone;
+  } catch {
+    return null;
+  }
+}
+
+export function reportTimezone(i: Pick<PartnerIntegration, "timezone">): string {
+  return normalizeTimezone(i.timezone) ?? "UTC";
 }
 
 /* ------------------------------ integrations ----------------------------- */
@@ -212,7 +235,7 @@ export async function createIntegration(input: {
 }
 
 export type IntegrationPatch = Partial<
-  Pick<PartnerIntegration, "name" | "ownerUserId" | "ownerEmail" | "origins" | "autoCreateZones" | "guestAccess" | "titleTemplate" | "status">
+  Pick<PartnerIntegration, "name" | "ownerUserId" | "ownerEmail" | "origins" | "autoCreateZones" | "guestAccess" | "titleTemplate" | "status" | "timezone" | "publicStats">
 >;
 
 export async function updateIntegration(id: string, patch: IntegrationPatch, by?: string): Promise<PartnerIntegration> {
@@ -527,4 +550,66 @@ export async function listAudit(integrationId: string, limit = 100): Promise<Aud
       }
     })
     .filter((x): x is AuditEvent => !!x);
+}
+
+/* ------------------------- who may read the reports ----------------------- */
+//
+// The partner's own user ids (the `user.id` it sends with join-sessions).
+// Organisation administrators read every zone's reports; a zone's leaders
+// read that zone's. Set by the partner's server (it holds the key) or by an
+// administrator here; a report request names its viewer, and the viewer
+// is checked against these lists, never against what the page asked for.
+
+const MAX_ROLE_IDS = 500;
+
+function readIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) throw new PartnerError(400, "invalid_ids", "Send a list of user ids.");
+  const out: string[] = [];
+  for (const x of raw) {
+    const id = cleanUserId(x);
+    if (!id) throw new PartnerError(400, "invalid_ids", `${String(x).slice(0, 60)} is not a user id.`);
+    if (!out.includes(id)) out.push(id);
+  }
+  if (out.length > MAX_ROLE_IDS) throw new PartnerError(400, "too_many_ids", `At most ${MAX_ROLE_IDS}.`);
+  return out;
+}
+
+async function replaceSet(key: string, ids: string[]): Promise<void> {
+  await kv.del(key);
+  if (ids.length) await kv.sadd(key, ids[0], ...ids.slice(1));
+}
+
+export async function getOrgAdmins(integrationId: string): Promise<string[]> {
+  return (((await kv.smembers(K.admins(integrationId))) as string[]) || []).sort();
+}
+
+export async function setOrgAdmins(integrationId: string, raw: unknown, by?: string): Promise<string[]> {
+  const ids = readIds(raw);
+  await replaceSet(K.admins(integrationId), ids);
+  await audit(integrationId, "roles.admins", by, { count: ids.length });
+  return ids.sort();
+}
+
+export async function getZoneLeaders(integrationId: string, zone: string): Promise<string[]> {
+  return (((await kv.smembers(K.leaders(integrationId, zone))) as string[]) || []).sort();
+}
+
+export async function setZoneLeaders(integrationId: string, zone: string, raw: unknown, by?: string): Promise<string[]> {
+  const ids = readIds(raw);
+  await replaceSet(K.leaders(integrationId, zone), ids);
+  await audit(integrationId, "roles.leaders", by, { zone, count: ids.length });
+  return ids.sort();
+}
+
+/** What a viewer (the partner's user id) may read: everything, or the zones they lead. */
+export async function viewerRoles(integrationId: string, viewerId: string): Promise<{ orgAdmin: boolean; leads: string[] }> {
+  const orgAdmin = Number(await kv.sismember(K.admins(integrationId), viewerId)) === 1;
+  const zones = ((await kv.smembers(K.zones(integrationId))) as string[]) || [];
+  const leads: string[] = [];
+  await Promise.all(
+    zones.map(async (z) => {
+      if (Number(await kv.sismember(K.leaders(integrationId, z), viewerId)) === 1) leads.push(z);
+    }),
+  );
+  return { orgAdmin, leads: leads.sort() };
 }

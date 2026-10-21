@@ -78,6 +78,8 @@ async function main() {
     key: await import("../../app/api/admin/partners/[id]/keys/[keyId]/route"),
     zones: await import("../../app/api/admin/partners/[id]/zones/route"),
     zone: await import("../../app/api/admin/partners/[id]/zones/[zone]/route"),
+    roles: await import("../../app/api/admin/partners/[id]/roles/route"),
+    report: await import("../../app/api/admin/partners/[id]/zones/[zone]/report/route"),
     sessions: await import("../../app/api/partner/v1/join-sessions/route"),
   };
 
@@ -88,13 +90,13 @@ async function main() {
   async function call<P = Record<string, string>>(
     who: string,
     handler: (req: never, ctx: { params: P }) => Promise<Response>,
-    opts: { method?: string; body?: unknown; params?: P } = {},
+    opts: { method?: string; body?: unknown; params?: P; query?: string } = {},
   ) {
     g.__who = who;
     const headers: Record<string, string> = { "content-type": "application/json" };
     if (jar[who]) headers.cookie = `neo_admin_mfa=${jar[who]}`;
     const res = await handler(
-      new Request("https://neolinguameet.com/api/admin/partners", { method: opts.method ?? "GET", headers, body: opts.body === undefined ? undefined : JSON.stringify(opts.body) }) as never,
+      new Request(`https://neolinguameet.com/api/admin/partners${opts.query ?? ""}`, { method: opts.method ?? "GET", headers, body: opts.body === undefined ? undefined : JSON.stringify(opts.body) }) as never,
       { params: (opts.params ?? {}) as P },
     );
     const m = res.headers.get("set-cookie")?.match(/neo_admin_mfa=([^;]*)/);
@@ -252,6 +254,29 @@ async function main() {
     const s = await issue(secondKey, "LAGOS-1");
     assert.equal(s.body.meeting.title, "Lagos Prayer");
     assert.equal((await call("user_super", R.zones.POST as never, { method: "POST", params: { id }, body: { zoneId: "X", meeting: "no-such-meeting" } })).body.error, "meeting_not_found");
+  });
+
+  await t("report settings: timezone, public figures, leaders and report administrators; the zone report", async () => {
+    const tz = await call("user_super", R.one.PATCH as never, { method: "PATCH", params: { id }, body: { timezone: "Mars/Olympus" } });
+    assert.equal(tz.body.error, "invalid_timezone");
+    assert.equal((await call("user_super", R.one.PATCH as never, { method: "PATCH", params: { id }, body: { publicStats: ["names"] } })).body.error, "invalid_public_stats");
+    const set = await call("user_super", R.one.PATCH as never, { method: "PATCH", params: { id }, body: { timezone: "africa/lagos", publicStats: ["sessions", "uniqueParticipants"] } });
+    assert.equal(set.status, 200, JSON.stringify(set.body));
+    assert.equal(set.body.integration.timezone, "Africa/Lagos");
+    assert.equal((await call("user_analyst", R.roles.PUT as never, { method: "PUT", params: { id }, body: { orgAdmins: ["pc_admin"] } })).body.error, "forbidden");
+    assert.equal((await call("user_super", R.roles.PUT as never, { method: "PUT", params: { id }, body: { orgAdmins: ["pc_admin"] } })).status, 200);
+    assert.equal((await call("user_super", R.zone.PATCH as never, { method: "PATCH", params: { id, zone: "FALF" }, body: { leaders: ["pc_1", "<x>"] } })).status, 400);
+    assert.equal((await call("user_super", R.zone.PATCH as never, { method: "PATCH", params: { id, zone: "FALF" }, body: { leaders: ["pc_1"] } })).status, 200);
+    const detail = await call("user_super", R.one.GET as never, { params: { id } });
+    assert.deepEqual(detail.body.orgAdmins, ["pc_admin"]);
+    assert.deepEqual(detail.body.leaders.FALF, ["pc_1"]);
+    assert.deepEqual(await S.viewerRoles(id, "pc_1"), { orgAdmin: false, leads: ["FALF"] });
+    const report = await call("user_super", R.report.GET as never, { params: { id, zone: "FALF" }, query: "?period=week" });
+    assert.equal(report.status, 200, JSON.stringify(report.body));
+    assert.equal(report.body.period.timezone, "Africa/Lagos");
+    assert.ok("totalPrayerSeconds" in report.body.summary);
+    const actions = (await audit.listAdminAudit({})).items.map((e) => e.action);
+    assert.ok(actions.includes("partner.roles") && actions.includes("partner.zone.leaders"));
   });
 
   await t("every change is in the admin audit log and the partner's own history, with no secret anywhere", async () => {
