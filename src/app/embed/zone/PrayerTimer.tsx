@@ -105,9 +105,9 @@ export function PrayerTimer({ getSession, onTick }: { getSession: () => string |
       style={{
         // Placed by the page, under the NeoLinguaMeet badge.
         display: "flex",
-        alignItems: "baseline",
-        gap: 8,
-        padding: "6px 10px",
+        alignItems: "center",
+        gap: 10,
+        padding: "6px 12px",
         borderRadius: 10,
         background: "rgba(11,16,32,0.8)",
         backdropFilter: "blur(10px)",
@@ -117,8 +117,21 @@ export function PrayerTimer({ getSession, onTick }: { getSession: () => string |
         pointerEvents: "none",
       }}
     >
-      <span style={{ fontSize: 11, opacity: 0.8 }}>Your Prayer Time</span>
-      <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 15, fontWeight: 600, letterSpacing: 0.5, fontVariantNumeric: "tabular-nums" }}>
+      <span style={{ fontSize: 12, fontWeight: 600, opacity: 0.85 }}>Your Prayer Time</span>
+      {/* Bold, big and red (owner, 2026-10-21); dimmed while paused. */}
+      <span
+        style={{
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          fontSize: 26,
+          lineHeight: 1.1,
+          fontWeight: 800,
+          letterSpacing: 0.5,
+          fontVariantNumeric: "tabular-nums",
+          color: "#ff3b3b",
+          textShadow: "0 0 12px rgba(255,59,59,0.35)",
+          opacity: reading && !counting ? 0.7 : 1,
+        }}
+      >
         {formatPrayerTime(seconds)}
       </span>
       {reading && !counting && <span style={{ fontSize: 10, opacity: 0.6 }}>paused</span>}
@@ -142,7 +155,10 @@ export function PrayerTimeSoFar({ session }: { session: string | null }) {
   if (!r || !r.sessionId || r.seconds <= 0) return null;
   return (
     <p className="mt-3 text-sm">
-      Your prayer time this session: <strong style={{ fontVariantNumeric: "tabular-nums" }}>{formatPrayerTime(r.seconds)}</strong>
+      Your prayer time this session:{" "}
+      <strong style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 22, fontWeight: 800, color: "#ff3b3b", fontVariantNumeric: "tabular-nums" }}>
+        {formatPrayerTime(r.seconds)}
+      </strong>
     </p>
   );
 }
