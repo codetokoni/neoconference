@@ -30,9 +30,9 @@ import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import ChatPanel from "@/components/ChatPanel";
 import { PrayerTimeSoFar, PrayerTimer } from "./PrayerTimer";
+import { EmbedBrand } from "./EmbedBrand";
 import { setEmbedSession } from "@/lib/partners/embedAuth";
 import { PROTOCOL_VERSION, parseParentMessage, type EmbedEvent } from "@/lib/partners/protocol";
-import { BRAND } from "@/lib/brand";
 
 type Meeting = { title: string; zoneId: string };
 type Participant = { name: string; verified: boolean };
@@ -547,7 +547,11 @@ function ZoneEmbed() {
             )}
           </div>
           <VideoConference />
-          <PrayerTimer getSession={getSession} onTick={onPrayerTick} />
+          {/* Under the toolbar (about 60 px tall with two-line buttons on a phone): who runs the meeting, and the visitor's prayer time. */}
+          <div style={{ position: "absolute", top: 78, left: 8, zIndex: 13, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, pointerEvents: "none" }}>
+            <EmbedBrand />
+            <PrayerTimer getSession={getSession} onTick={onPrayerTick} />
+          </div>
           <LiveCaptions />
           <CaptionsToggle roomRole="attendee" roomName={phase.live.room} eventSlug={phase.live.room} />
           <ChatPanel eventId={phase.live.room} open={showChat} onClose={() => setShowChat(false)} canAttach={false} />
@@ -678,7 +682,9 @@ function ZoneEmbed() {
       <EmbedStyles />
       {body}
       {toast}
-      <p className="absolute bottom-3 left-0 right-0 text-center text-[11px] opacity-40">{BRAND.name}</p>
+      <div className="absolute bottom-3 left-0 right-0 flex justify-center">
+        <EmbedBrand size="md" />
+      </div>
     </Screen>
   );
 }

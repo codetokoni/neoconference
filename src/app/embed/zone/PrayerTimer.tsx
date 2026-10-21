@@ -103,11 +103,7 @@ export function PrayerTimer({ getSession, onTick }: { getSession: () => string |
       role="timer"
       aria-label={`Your prayer time ${formatPrayerTime(seconds)}${counting ? "" : ", paused"}`}
       style={{
-        // Under the toolbar (about 60 px tall with two-line buttons on a phone).
-        position: "absolute",
-        top: 78,
-        left: 8,
-        zIndex: 13,
+        // Placed by the page, under the NeoLinguaMeet badge.
         display: "flex",
         alignItems: "baseline",
         gap: 8,
