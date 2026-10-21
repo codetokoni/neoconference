@@ -78,7 +78,6 @@
     iframe.src = src.toString();
     iframe.title = options.title || "Meeting";
     iframe.setAttribute("allow", "camera; microphone; fullscreen; display-capture; autoplay; clipboard-write");
-    iframe.setAttribute("allowfullscreen", "");
     iframe.setAttribute("referrerpolicy", "origin");
     iframe.style.width = "100%";
     iframe.style.height = cssLength(options.height, "600px");

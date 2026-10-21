@@ -27,6 +27,18 @@ The full contract is in [`docs/integrations/partner-zones.md`](../../docs/integr
    ```
    Take the zone from your own route (`/zone/:id`). `server.mjs` shows a complete page, with sign-in state, the optional guest form and every event.
 
+## Prayer time and reports
+
+- **Inside the meeting:** the widget shows each visitor's "Your Prayer Time" itself. The page can mirror it with `widget.on("prayer-time", …)`.
+- **Below the meeting:** [`prayer-reports.js`](prayer-reports.js) adds the zone's prayer reports:
+  - the zone's public figures, if any are switched on;
+  - the signed-in visitor's own prayer time;
+  - for that zone's leaders and the organisation's administrators: the full report, with periods (current session, today, this week, this month, custom), sessions, session details, the participant table with pages, and a CSV download.
+- **Where reports come from:** it reads them only from your server, at `GET /api/prayer-meeting/reports/<view>` ([`server.mjs`](server.mjs), or [`reports.php`](reports.php)). Your server adds the key and names the signed-in user as the viewer.
+- **Who may see what:** NeoLinguaMeet decides. Tell it who your leaders and administrators are with `syncRoles()` in `server.mjs`, or in its admin. Never let the browser choose the viewer.
+
+How the time is counted, and the full report API: [Prayer time and reports](../../docs/integrations/partner-zones.md#prayer-time-and-reports).
+
 ## Try it
 
 ```bash

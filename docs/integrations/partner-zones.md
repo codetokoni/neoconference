@@ -138,6 +138,7 @@ Errors are `{ "error": { "code", "message" } }`:
 | `left` | `reason`: `left`, `removed`, `opened_in_tab`, `replaced` (joined elsewhere) or `disconnected` |
 | `meeting-ended` | — |
 | `permission-denied` | `device`: `camera`, `microphone` or `media` (once per device) |
+| `prayer-time` | `seconds`, `connected`, `sessionId`: the visitor's prayer time, every second in the meeting (see [Prayer time and reports](#prayer-time-and-reports)) |
 | `error` | `code`, `message` (and `status` for your endpoint's failures) |
 
 The frame is created with `allow="camera; microphone; fullscreen; display-capture; autoplay; clipboard-write"`. If you write the iframe yourself instead, keep those and follow the protocol below.
@@ -150,6 +151,107 @@ Inside the frame, the visitor has:
 - the meeting's chat, the same one people in the meeting room see, under the name you gave (no file attachments, which need an account);
 - full screen;
 - **Open in new tab**: the meeting moves to a tab of its own. The code passes by postMessage, never in the address, and the frame steps aside.
+
+## Prayer time and reports
+
+### What the visitor sees
+
+In the meeting, "Your Prayer Time" shows `HH:MM:SS` under the toolbar on phones, desktops and in full screen.
+
+- **When it starts:** only once LiveKit confirms the visitor's connection, not when the page or the camera preview opens.
+- **What it counts:** connected meeting attendance, labelled prayer time. It cannot tell whether anyone is praying.
+- **Where the number comes from:** the server works it out from LiveKit's timestamps (`src/lib/partners/attendance.ts`). The page only adds the seconds since the server's last answer, and redraws from the clock rather than counting ticks, so a slowed-down background tab can't make it wrong.
+- **When it is re-read:** every 20 s (the page's heartbeat) and on returning to the tab.
+- **Refresh and rejoin:** a reload or a rejoin in the same session resumes the total. A new session starts from 00:00:00.
+- **Leaving:** the left screen shows the session's total.
+- **Mirroring it:** the widget's `prayer-time` event carries the same value to the partner's page.
+
+### The counting rules
+
+All of these live in `src/lib/partners/attendanceMath.ts`.
+
+- **Prayer session.** One opening of the zone's room. It starts with the first connection to an empty room and ends when LiveKit closes the room (`room_finished`), or after 10 minutes with nothing happening if that event never arrives. **Session duration** runs from its first connection to its last departure.
+- **A connection.** It starts when LiveKit confirms it:
+  - by its join event; or
+  - by LiveKit's own join time, if the page's heartbeat arrives first.
+
+  It ends with LiveKit's leave event. If that never comes (a closed lid, a lost network), it ends at the page's last heartbeat once 150 s pass without one.
+
+  A heartbeat for a connection the server hasn't seen, or hasn't heard from for 30 s, is checked with LiveKit first. A browser can keep a connection alive; it can't invent one.
+- **Reconnect grace.** A gap of up to **60 seconds** between a person's connections counts as connected, so a blip doesn't break the timer. A longer gap is not counted, and the timer resumes from the earlier total. A gap at the end (they left) is never counted.
+- **No double counting.** All of a person's connections are merged before summing. Several tabs or devices, or two zones at once in an organisation report, count once.
+- **A person** is the integration plus the partner's stable user id. People are never merged by display name.
+
+### The figures
+
+| Figure | Meaning |
+|---|---|
+| Session duration | How long a prayer session ran. |
+| Participant prayer time | One person's counted time in the period. |
+| Total participant prayer time | The sum of every participant's time. 10 people × 30 min = **5 hours**, while the session lasted **30 minutes**. |
+| Average prayer time | Total participant prayer time ÷ unique participants, for the period. |
+| Unique participants | Distinct people with counted time in the period, or connected now. |
+| Connected now | People whose connection is on now. |
+
+- **Periods:** `current` (the open session), `today`, `week` (from Monday), `month`, or `custom` with `from`/`to` as whole days (`YYYY-MM-DD`, both included, at most 366 days).
+- **Where days begin:** at midnight in the partner's **report timezone** (Admin > Partner zones; default UTC).
+- **Clipping:** time is clipped to the period after merging. A session that crosses midnight is split between the two days.
+- **Times:** every timestamp is UTC milliseconds, and each report names its timezone.
+
+### Who may read what
+
+Reports are read by the partner's **server**, using its key and the header `X-Viewer-Id: <the partner's user id for the person looking>`. That id must come from the partner's own login, never from the browser. NeoLinguaMeet decides what the viewer may see from lists it keeps. The zone a page asks for is never treated as permission.
+
+| Viewer | Can read |
+|---|---|
+| Anyone | Their own attendance (`/attendance/me`) |
+| A zone's leaders | That zone's reports, participant table, sessions and CSV |
+| Organisation administrators | Every zone's reports, and the organisation report |
+| No viewer | Only the zone's **public figures** the integration switched on (none by default). Never names or anyone's own time. |
+
+The lists are the partner's user ids:
+- set through `PUT /api/partner/v1/roles { orgAdmins }` and `PUT /api/partner/v1/zones/:zone/leaders { leaders }`;
+- read back with `GET` on the same routes;
+- or managed in Admin > Partner zones.
+
+Keep them in step with the partner's own roles. The sample's `syncRoles()` does this.
+
+### Report API
+
+All routes take `Authorization: Bearer nlm_pk_…`, and all except public figures and the role lists take `X-Viewer-Id`. Periods use `?period=…&from=…&to=…`.
+
+| Route | Answer |
+|---|---|
+| `GET /api/partner/v1/attendance/me?zoneId=FALF` | `timer` (the current session: `seconds`, `connected`, `serverNow`) and `attendance` (`prayerSeconds`, `sessionsAttended`, `firstJoined`, `lastLeft`, `connected`, and `sessions[]` with their `intervals`) |
+| `GET /api/partner/v1/reports/zones/:zone` | `zone`, `period`, `summary` {sessions, uniqueParticipants, connectedNow, totalPrayerSeconds, averagePrayerSeconds}, `sessions[]` {id, meetingId, startedAt, endedAt, durationSeconds, participants, prayerSeconds}, `generatedAt` |
+| `GET …/zones/:zone/participants?page=1&pageSize=50` | `participants[]` {userId, guest, name, firstJoined, lastLeft (null while connected), sessionsAttended, prayerSeconds, connected}, most time first; `page`, `pages`, `total` (pageSize up to 200) |
+| `GET …/zones/:zone/sessions/:sessionId` | One session, with each participant's `intervals` |
+| `GET …/zones/:zone/export` | CSV, with times in the report timezone (named in the headers) and in UTC; names that would run as spreadsheet formulas are defused |
+| `GET /api/partner/v1/reports/org` | Organisation administrators: one summary across zones (each person once) and each zone's own |
+| `GET /api/partner/v1/zones/:zone/public-stats?period=today` | Only the enabled figures. No viewer, no names. Periods `current`, `today`, `week` or `month` only |
+
+Errors use the same `{ error: { code, message } }` shape:
+
+| Status | code | When |
+|---|---|---|
+| 400 | `viewer_required` | No `X-Viewer-Id` was sent. |
+| 403 | `not_authorised` | The viewer may not see this report. |
+| 404 | `zone_not_found` | The zone isn't one of this partner's. |
+| 404 | `session_not_found` | The session isn't in this zone. |
+| 400 | `invalid_range` / `range_too_long` / `invalid_period` | The period is malformed. |
+
+**Live updates**
+- Every report carries `generatedAt` and an `ETag`. Send `If-None-Match` to get `304` until something changes. While anyone's time is running, the tag also moves every 15 s, so an open report keeps counting.
+- The sample page refreshes every 15 s and shows when it last updated.
+- The visitor's own timer updates every second inside the meeting, mirrored to the page by `prayer-time`.
+
+### Stored
+
+Each person's connections per session (start, end, last heartbeat) and the session itself are kept for 400 days. That's enough for monthly and yearly reports.
+
+- They are stored under `neo:pz:*` (see the table below), with the partner's user id and the display name as sent.
+- No email address or other personal detail is stored.
+- They are not part of a NeoLinguaMeet account's data export or erasure, because these people have no account here. A partner asking to erase a person's attendance needs their identity's keys deleted by hand.
 
 ## postMessage protocol, v1
 
@@ -214,6 +316,11 @@ There is no SQL, so uniqueness uses set-if-absent keys:
 | `neo:partner:<id>:zone:<ZONE>` (set NX), `neo:partner:<id>:zones` | zone → meeting mapping; the zone list |
 | `neo:partner:code:<sha256>` (expires 2 min), `neo:partner:codeused:<sha256>` (NX) | one-time codes and their use |
 | `neo:partner:<id>:audit` | the partner's own history (newest first, 500 kept) |
+| `neo:partner:<id>:admins`, `neo:partner:<id>:zone:<ZONE>:leaders` | who reads the reports (the partner's user ids) |
+| `neo:pz:id:<identity>` | who a room identity is: partner user id, name, guest or not |
+| `neo:pz:<id>:<ZONE>:cur`, `neo:pz:sess:<sessionId>`, `…:sessions` / `…:ended` (zsets) | prayer sessions: the current one, each session, and an index of sessions by start and by end |
+| `neo:pz:sess:<sessionId>:people`, `neo:pz:att:<sessionId>:<identity>` | who was in a session, and each person's connections (`s:`/`e:`/`l:` per LiveKit connection id) |
+| `neo:pz:sid:<sid>`, `neo:pz:<id>:u:<identity>`, `neo:pz:<id>:<ZONE>:ver` | connection → session; a person's sessions; the change counter behind report ETags |
 
 **One zone, one meeting**
 - A zone's meeting has a fixed address per integration and zone: `z-<integration 6>-<zone>`.
@@ -234,6 +341,8 @@ There is no SQL, so uniqueness uses set-if-absent keys:
 **Automated**
 - `npx tsx src/lib/__tests__/partnerZones.smoke.ts`: issue, redeem, join, codes, origins, guests, waiting room, lock, cap, reopen, switches, key rotation, framing and embedded translation.
 - `npx tsx src/lib/__tests__/adminPartners.smoke.ts`: the admin routes.
+- `npx tsx src/lib/__tests__/partnerAttendance.smoke.ts`: the timer and the counting rules, through the real LiveKit webhook (start on connection, reload, reconnect grace, two tabs, abrupt close, new session, isolated zones).
+- `npx tsx src/lib/__tests__/partnerReports.smoke.ts`: report access, totals, timezone boundaries, CSV, public figures and 304s.
 - Both run in `npm run test:smoke`.
 
 **By hand with the sample**
