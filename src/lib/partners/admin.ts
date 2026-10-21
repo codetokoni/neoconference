@@ -6,8 +6,13 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { fail } from "@/lib/admin/http";
 import {
+  PUBLIC_STATS,
   PartnerError,
   getIntegration,
+  getOrgAdmins,
+  getZoneLeaders,
+  normalizeTimezone,
+  type PublicStat,
   listAudit,
   listPartnerKeys,
   listZones,
@@ -85,6 +90,17 @@ export async function readPatch(body: Record<string, unknown>): Promise<Integrat
     if (body.status !== "active" && body.status !== "disabled") throw new PartnerError(400, "invalid_status", "Status is active or disabled.");
     patch.status = body.status;
   }
+  if ("timezone" in body) {
+    const tz = normalizeTimezone(body.timezone);
+    if (!tz) throw new PartnerError(400, "invalid_timezone", "Use a timezone name like Africa/Lagos, Europe/London or UTC.");
+    patch.timezone = tz;
+  }
+  if ("publicStats" in body) {
+    const list = Array.isArray(body.publicStats) ? body.publicStats : [];
+    const bad = list.find((x) => !(PUBLIC_STATS as readonly unknown[]).includes(x));
+    if (bad !== undefined) throw new PartnerError(400, "invalid_public_stats", `Public figures are ${PUBLIC_STATS.join(", ")}.`);
+    patch.publicStats = [...new Set(list as PublicStat[])];
+  }
   if ("ownerEmail" in body) {
     const owner = await accountByEmail(body.ownerEmail);
     patch.ownerUserId = owner.userId;
@@ -98,8 +114,9 @@ export async function readPatch(body: Record<string, unknown>): Promise<Integrat
 export async function integrationDetail(id: string) {
   const integration = await getIntegration(id);
   if (!integration) throw new PartnerError(404, "integration_not_found", "No such integration.");
-  const [keys, zones, audit] = await Promise.all([listPartnerKeys(id), listZones(id), listAudit(id, 100)]);
-  return { integration, keys, zones, audit };
+  const [keys, zones, audit, orgAdmins] = await Promise.all([listPartnerKeys(id), listZones(id), listAudit(id, 100), getOrgAdmins(id)]);
+  const leaders = Object.fromEntries(await Promise.all(zones.map(async (z) => [z.zoneId, await getZoneLeaders(id, z.zoneId)] as const)));
+  return { integration, keys, zones, audit, orgAdmins, leaders };
 }
 
 /** What changed, for the admin audit log: field names and values, none of them secret. */

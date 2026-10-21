@@ -1,14 +1,15 @@
 // PATCH /api/admin/partners/[id]/zones/[zone] (integrations:write + fresh
-// code): switch a zone's meeting off or on ({ status }), or give it to
+// code): switch a zone's meeting off or on ({ status }), give it to
 // another account ({ ownerEmail }; that account's plan then sets its
-// limits).
+// limits), or set who leads it ({ leaders: [partner user ids] }: they read
+// its prayer reports).
 
 import { NextResponse } from "next/server";
 import { actorOf, requireAdmin } from "@/lib/admin/context";
 import { recordAdminAction } from "@/lib/admin/audit";
 import { readJson } from "@/lib/admin/http";
 import { accountByEmail, adminFail } from "@/lib/partners/admin";
-import { PartnerError, getIntegration, getZone, normalizeZone, setZoneOwner, setZoneStatus } from "@/lib/partners/store";
+import { PartnerError, getIntegration, getZone, getZoneLeaders, normalizeZone, setZoneLeaders, setZoneOwner, setZoneStatus } from "@/lib/partners/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +47,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string; zo
         after: { ownerUserId: next.ownerUserId, ownerEmail: owner.email },
       });
       return NextResponse.json({ ok: true, zone: next });
+    }
+    if ("leaders" in body) {
+      const before = await getZoneLeaders(integration.id, zone);
+      const leaders = await setZoneLeaders(integration.id, zone, body.leaders, g.ctx.email);
+      await recordAdminAction(actorOf(g.ctx), req, { action: "partner.zone.leaders", ...target, before: { leaders: before }, after: { leaders } });
+      return NextResponse.json({ ok: true, leaders });
     }
     throw new PartnerError(400, "nothing_to_change", "Nothing to change.");
   } catch (e) {

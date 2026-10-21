@@ -12,7 +12,22 @@ import type { AuditEvent, PartnerIntegration, PartnerKeyMeta, ZoneMapping } from
 type Msg = { kind: "ok" | "err"; text: string } | null;
 type ShowSecret = (s: { title: string; value: string; note: string }) => void;
 type Row = PartnerIntegration & { activeKeys: number; zones: number };
-type Detail = { integration: PartnerIntegration; keys: PartnerKeyMeta[]; zones: ZoneMapping[]; audit: AuditEvent[] };
+type Detail = {
+  integration: PartnerIntegration;
+  keys: PartnerKeyMeta[];
+  zones: ZoneMapping[];
+  audit: AuditEvent[];
+  orgAdmins: string[];
+  leaders: Record<string, string[]>;
+};
+
+const PUBLIC_STAT_LABELS: Record<string, string> = {
+  sessions: "Prayer sessions",
+  uniqueParticipants: "Unique participants",
+  connectedNow: "Connected now",
+  totalPrayerSeconds: "Total prayer time",
+  averagePrayerSeconds: "Average prayer time",
+};
 
 const KEY_NOTE =
   "Give it to the partner's developers over a safe channel. It goes in their server's environment, never in a web page: their backend sends it as \"Authorization: Bearer <key>\" to POST /api/partner/v1/join-sessions.";
@@ -166,6 +181,8 @@ function PartnerDetail({ id, setMsg, showSecret, onChanged }: { id: string; setM
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending>(null);
   const [owner, setOwner] = useState<ZoneMapping | null>(null);
+  const [leadersOf, setLeadersOf] = useState<ZoneMapping | null>(null);
+  const [reportOf, setReportOf] = useState<ZoneMapping | null>(null);
   const load = useCallback(async () => {
     setLoadErr(null);
     const r = await adminFetch<Detail>(`/api/admin/partners/${id}`);
@@ -278,6 +295,12 @@ function PartnerDetail({ id, setMsg, showSecret, onChanged }: { id: string; setM
                         <td className="px-3 py-1.5">{z.status === "active" ? <Badge tone="green">active</Badge> : <Badge tone="red">off</Badge>}</td>
                         <td className="py-1.5 text-right">
                           <span className="inline-flex gap-2">
+                            <button type="button" className={btn.ghost} onClick={() => setReportOf(z)}>
+                              Report
+                            </button>
+                            <button type="button" className={btn.ghost} onClick={() => setLeadersOf(z)} title="Who reads this zone's prayer reports">
+                              Leaders ({(x.leaders[z.zoneId] ?? []).length})
+                            </button>
                             <button type="button" className={btn.ghost} onClick={() => setOwner(z)}>
                               Owner
                             </button>
@@ -296,6 +319,13 @@ function PartnerDetail({ id, setMsg, showSecret, onChanged }: { id: string; setM
               connect={(zoneId, meeting) => run(`/api/admin/partners/${id}/zones`, { method: "POST", json: { zoneId, meeting } }, `Zone ${zoneId.toUpperCase()} connected.`)}
             />
           </section>
+
+          <IdList
+            title="Report administrators"
+            hint="The partner's own user ids. They read every zone's prayer reports and the organisation report; a zone's leaders (Leaders, above) read only theirs. The partner's server can set both lists too."
+            ids={x.orgAdmins}
+            save={(ids) => run(`/api/admin/partners/${id}/roles`, { method: "PUT", json: { orgAdmins: ids } }, "Report administrators saved.")}
+          />
 
           <section>
             <h3 className="mb-2 text-sm font-semibold text-white">History</h3>
@@ -367,6 +397,21 @@ function PartnerDetail({ id, setMsg, showSecret, onChanged }: { id: string; setM
               onCancel={() => setPending(null)}
             />
           )}
+          {leadersOf && (
+            <Dialog title={`Leaders of zone ${leadersOf.zoneId}`} onClose={() => setLeadersOf(null)}>
+              <IdList
+                title="Leaders"
+                hint="The partner's own user ids. They read this zone's prayer reports and its participant table."
+                ids={x.leaders[leadersOf.zoneId] ?? []}
+                save={async (ids) => {
+                  const done = await run(`/api/admin/partners/${id}/zones/${encodeURIComponent(leadersOf.zoneId)}`, { method: "PATCH", json: { leaders: ids } }, `Leaders of ${leadersOf.zoneId} saved.`);
+                  if (done) setLeadersOf(null);
+                  return done;
+                }}
+              />
+            </Dialog>
+          )}
+          {reportOf && <ZoneReport partnerId={id} zone={reportOf} onClose={() => setReportOf(null)} />}
           {owner && (
             <ZoneOwner
               zone={owner}
@@ -390,6 +435,8 @@ function Settings({ integration, save }: { integration: PartnerIntegration; save
   const [titleTemplate, setTitleTemplate] = useState(integration.titleTemplate);
   const [autoCreateZones, setAuto] = useState(integration.autoCreateZones);
   const [guestAccess, setGuests] = useState(integration.guestAccess);
+  const [timezone, setTimezone] = useState(integration.timezone ?? "UTC");
+  const [publicStats, setPublicStats] = useState<string[]>(integration.publicStats ?? []);
   const [busy, setBusy] = useState(false);
   const submit = async () => {
     const patch: Record<string, unknown> = {};
@@ -399,6 +446,8 @@ function Settings({ integration, save }: { integration: PartnerIntegration; save
     if (titleTemplate !== integration.titleTemplate) patch.titleTemplate = titleTemplate;
     if (autoCreateZones !== integration.autoCreateZones) patch.autoCreateZones = autoCreateZones;
     if (guestAccess !== integration.guestAccess) patch.guestAccess = guestAccess;
+    if (timezone.trim() !== (integration.timezone ?? "UTC")) patch.timezone = timezone.trim();
+    if ([...publicStats].sort().join() !== [...(integration.publicStats ?? [])].sort().join()) patch.publicStats = publicStats;
     if (!Object.keys(patch).length) return;
     setBusy(true);
     await save(patch);
@@ -432,6 +481,19 @@ function Settings({ integration, save }: { integration: PartnerIntegration; save
           <input type="checkbox" checked={guestAccess} onChange={(e) => setGuests(e.target.checked)} /> Allow guests
         </label>
       </div>
+      <Labeled label="Report timezone (today, this week, this month)">
+        <input className={`${field} font-mono`} value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="UTC, Africa/Lagos, Europe/London" />
+      </Labeled>
+      <fieldset className="text-sm text-zinc-200">
+        <legend className="text-xs text-zinc-400">Figures a zone&apos;s public page may show (never names)</legend>
+        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+          {Object.entries(PUBLIC_STAT_LABELS).map(([k, label]) => (
+            <label key={k} className="flex items-center gap-1.5">
+              <input type="checkbox" checked={publicStats.includes(k)} onChange={(e) => setPublicStats(e.target.checked ? [...publicStats, k] : publicStats.filter((x) => x !== k))} /> {label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <p className="text-xs text-zinc-400 md:col-span-2">
         Each zone is one permanent meeting: it reopens for the next visit after it ends. A new owner applies to zones made from now on; give an existing zone to someone with its Owner button.
       </p>
@@ -502,6 +564,164 @@ function ZoneOwner({ zone, onClose, save }: { zone: ZoneMapping; onClose: () => 
           </button>
         </div>
       </form>
+    </Dialog>
+  );
+}
+
+/** A list of the partner's user ids, one per line, saved whole. */
+function IdList({ title, hint, ids, save }: { title: string; hint: string; ids: string[]; save: (ids: string[]) => Promise<boolean> }) {
+  const [text, setText] = useState(ids.join("\n"));
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setText(ids.join("\n")), [ids]);
+  const list = text.split(/[\s,]+/).filter(Boolean);
+  return (
+    <section>
+      <h3 className="mb-1 text-sm font-semibold text-white">
+        {title} ({ids.length})
+      </h3>
+      <p className="mb-2 text-xs text-zinc-400">{hint}</p>
+      <form
+        className="flex flex-col gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          await save(list);
+          setBusy(false);
+        }}
+      >
+        <textarea className={`${field} min-h-[64px] font-mono`} value={text} onChange={(e) => setText(e.target.value)} placeholder="One user id per line" />
+        <div>
+          <button type="submit" className={btn.ghost} disabled={busy || list.join() === ids.join()}>
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+type ZoneReportData = {
+  zone: { zoneId: string; name: string };
+  period: { from: string; to: string; timezone: string; label: string };
+  summary: { sessions: number; uniqueParticipants: number; connectedNow: number; totalPrayerSeconds: number; averagePrayerSeconds: number };
+  sessions: { id: string; startedAt: number; endedAt: number | null; durationSeconds: number; participants: number; prayerSeconds: number }[];
+  participants: { userId: string; guest: boolean; name: string; firstJoined: number | null; lastLeft: number | null; sessionsAttended: number; prayerSeconds: number; connected: boolean }[];
+  totalParticipants: number;
+  generatedAt: string;
+};
+
+function hms(total: number): string {
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+/** The zone's prayer report as its leaders see it, for checking a partner's numbers. */
+function ZoneReport({ partnerId, zone, onClose }: { partnerId: string; zone: ZoneMapping; onClose: () => void }) {
+  const { adminFetch } = useAdmin();
+  const [period, setPeriod] = useState("today");
+  const [data, setData] = useState<ZoneReportData | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    setErr(null);
+    setData(null);
+    const r = await adminFetch<ZoneReportData>(`/api/admin/partners/${partnerId}/zones/${encodeURIComponent(zone.zoneId)}/report?period=${period}`);
+    if (r.ok) setData(r.data);
+    else setErr(r.data.message ?? "Could not load.");
+  }, [adminFetch, partnerId, zone.zoneId, period]);
+  useEffect(() => {
+    load();
+  }, [load]);
+  return (
+    <Dialog title={`Prayer report: ${zone.title}`} onClose={onClose} wide>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+        {["current", "today", "week", "month"].map((p) => (
+          <button key={p} type="button" className={p === period ? btn.primary : btn.ghost} aria-pressed={p === period} onClick={() => setPeriod(p)}>
+            {p === "current" ? "Current session" : p === "today" ? "Today" : p === "week" ? "This week" : "This month"}
+          </button>
+        ))}
+      </div>
+      <LoadState data={data} error={err} onRetry={load}>
+        {(r) => (
+          <div className="mt-3 space-y-3 text-xs text-zinc-300">
+            <p className="text-zinc-400">
+              {r.period.label} · {r.period.timezone} · updated {fmtTime(r.generatedAt)}
+            </p>
+            <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {[
+                ["Sessions", String(r.summary.sessions)],
+                ["Unique participants", String(r.summary.uniqueParticipants)],
+                ["Connected now", String(r.summary.connectedNow)],
+                ["Total prayer time", hms(r.summary.totalPrayerSeconds)],
+                ["Average per participant", hms(r.summary.averagePrayerSeconds)],
+              ].map(([k, v]) => (
+                <div key={k} className="rounded-lg border border-white/10 p-2">
+                  <dt className="text-zinc-400">{k}</dt>
+                  <dd className="mt-0.5 font-mono text-sm text-zinc-100">{v}</dd>
+                </div>
+              ))}
+            </dl>
+            {r.sessions.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px] text-left">
+                  <thead>
+                    <tr className="text-zinc-400">
+                      <th className="py-1 pr-3 font-medium">Session started</th>
+                      <th className="px-3 py-1 font-medium">Ended</th>
+                      <th className="px-3 py-1 font-medium">Session duration</th>
+                      <th className="px-3 py-1 font-medium">Participants</th>
+                      <th className="py-1 font-medium">Prayer time (all)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r.sessions.map((s) => (
+                      <tr key={s.id} className="border-t border-white/5">
+                        <td className="py-1 pr-3">{fmtTime(s.startedAt)}</td>
+                        <td className="px-3 py-1">{s.endedAt ? fmtTime(s.endedAt) : "running"}</td>
+                        <td className="px-3 py-1 font-mono">{hms(s.durationSeconds)}</td>
+                        <td className="px-3 py-1">{s.participants}</td>
+                        <td className="py-1 font-mono">{hms(s.prayerSeconds)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {r.participants.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[620px] text-left">
+                  <thead>
+                    <tr className="text-zinc-400">
+                      <th className="py-1 pr-3 font-medium">Participant</th>
+                      <th className="px-3 py-1 font-medium">First joined</th>
+                      <th className="px-3 py-1 font-medium">Last left</th>
+                      <th className="px-3 py-1 font-medium">Sessions</th>
+                      <th className="py-1 font-medium">Prayer time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r.participants.map((p) => (
+                      <tr key={`${p.guest}:${p.userId}`} className="border-t border-white/5">
+                        <td className="py-1 pr-3">
+                          {p.name} <span className="font-mono text-zinc-500">{p.userId}</span>
+                        </td>
+                        <td className="px-3 py-1">{p.firstJoined ? fmtTime(p.firstJoined) : "—"}</td>
+                        <td className="px-3 py-1">{p.connected ? <Badge tone="green">connected</Badge> : p.lastLeft ? fmtTime(p.lastLeft) : "—"}</td>
+                        <td className="px-3 py-1">{p.sessionsAttended}</td>
+                        <td className="py-1 font-mono">{hms(p.prayerSeconds)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {r.totalParticipants > r.participants.length && <p className="mt-1 text-zinc-400">First {r.participants.length} of {r.totalParticipants}.</p>}
+              </div>
+            ) : (
+              <Empty>Nobody prayed in this period.</Empty>
+            )}
+          </div>
+        )}
+      </LoadState>
     </Dialog>
   );
 }
