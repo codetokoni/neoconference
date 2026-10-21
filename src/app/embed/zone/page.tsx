@@ -29,6 +29,7 @@ import CaptionsToggle from "@/components/CaptionsToggle";
 import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import ChatPanel from "@/components/ChatPanel";
+import { PrayerTimeSoFar, PrayerTimer } from "./PrayerTimer";
 import { setEmbedSession } from "@/lib/partners/embedAuth";
 import { PROTOCOL_VERSION, parseParentMessage, type EmbedEvent } from "@/lib/partners/protocol";
 import { BRAND } from "@/lib/brand";
@@ -385,6 +386,12 @@ function ZoneEmbed() {
   }, [giveChildTheCode, theme]);
 
   const [showChat, setShowChat] = useState(false);
+  const getSession = useCallback(() => sessionRef.current, []);
+  // The partner's page hears the visitor's prayer time each second while it counts.
+  const onPrayerTick = useCallback(
+    (seconds: number, connected: boolean, sessionId: string | null) => emit({ type: "prayer-time", seconds, connected, sessionId }),
+    [emit],
+  );
 
   // ---- fullscreen ------------------------------------------------------------
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -540,6 +547,7 @@ function ZoneEmbed() {
             )}
           </div>
           <VideoConference />
+          <PrayerTimer getSession={getSession} onTick={onPrayerTick} />
           <LiveCaptions />
           <CaptionsToggle roomRole="attendee" roomName={phase.live.room} eventSlug={phase.live.room} />
           <ChatPanel eventId={phase.live.room} open={showChat} onClose={() => setShowChat(false)} canAttach={false} />
@@ -618,6 +626,7 @@ function ZoneEmbed() {
                   : "You left the meeting"}
           </h1>
           <p className="mt-1 text-sm opacity-75">{title}</p>
+          <PrayerTimeSoFar session={sessionRef.current} />
           {phase.reason !== "removed" && (
             <button type="button" onClick={() => void join()} className={primaryBtn}>
               Rejoin
@@ -642,6 +651,7 @@ function ZoneEmbed() {
         <>
           <h1 className="text-lg font-semibold">The meeting has ended</h1>
           <p className="mt-1 text-sm opacity-75">{title}</p>
+          <PrayerTimeSoFar session={sessionRef.current} />
           <button type="button" onClick={() => void join()} className={secondaryBtn}>
             Join again
           </button>

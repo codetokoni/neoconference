@@ -30,13 +30,14 @@
  *
  * Methods: join(), leave(), requestFullscreen(), destroy(), on(type, fn),
  * off(type, fn). Events: ready, waiting, joined, left, meeting-ended,
- * permission-denied, error. See docs/integrations/partner-zones.md.
+ * permission-denied, prayer-time ({ seconds, connected, sessionId }, each
+ * second in the meeting), error. See docs/integrations/partner-zones.md.
  */
 (function () {
   "use strict";
 
   var VERSION = 1;
-  var EVENTS = ["ready", "waiting", "joined", "left", "meeting-ended", "permission-denied", "error"];
+  var EVENTS = ["ready", "waiting", "joined", "left", "meeting-ended", "permission-denied", "prayer-time", "error"];
 
   // Where this script was loaded from is where the meeting lives.
   var scriptSrc = (document.currentScript && document.currentScript.src) || "";

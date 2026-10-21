@@ -23,6 +23,7 @@ import { isAudioKey, slugFromRecordingKey } from '@/lib/eventRecordings';
 import { publicOrigin } from '@/lib/publicOrigin';
 import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
+import { partnerParticipantEvent, partnerRoomClosed } from '@/lib/partners/attendanceHooks';
 import { disconnectReasonName } from '@/lib/disconnectReason';
 import { addRecordedSeconds, egressSeconds } from '@/lib/recordingUsage';
 import { indexEgressEnded } from '@/lib/content/files';
@@ -82,6 +83,8 @@ export async function POST(req: Request) {
       fileResults?: Array<{ filename?: string; location?: string; size?: unknown }>;
     };
     type LKParticipant = {
+      /** This connection's id: a reconnect or second tab is another sid. */
+      sid?: string;
       identity?: string;
       name?: string;
       metadata?: string;
@@ -144,6 +147,15 @@ export async function POST(req: Request) {
         ...(left ? { reason: disconnectReasonName(participant.disconnectReason) } : {}),
         ...(client ? { client } : {}),
       });
+      // A partner zone's room: prayer sessions and each visitor's prayer time.
+      if (ev.partner) {
+        await partnerParticipantEvent(ev, roomName, {
+          identity: baseIdentity,
+          sid: participant.sid || '',
+          ts: Number.isFinite(ts) ? ts : Date.now(),
+          left,
+        });
+      }
       if (!left) {
         await activity.record('meeting.joined', {
           userId: baseIdentity.startsWith('user_') ? baseIdentity : null,
@@ -184,6 +196,8 @@ export async function POST(req: Request) {
       // admitted once skipped that room's waiting room for good, and one
       // refused once could never knock again. Done first, because every
       // branch below returns.
+      // A partner zone's prayer session ends with its room.
+      if (ev.partner) await partnerRoomClosed(ev, roomName);
       const cleared = clearedForNewSession(ev);
       if (cleared) {
         await eventStore.update(ev.id, (prev) => ({

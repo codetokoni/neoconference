@@ -22,6 +22,8 @@
 //   left   { reason: "left" | "removed" | "opened_in_tab" | "replaced" | "disconnected" }
 //   meeting-ended
 //   permission-denied { device: "camera" | "microphone" | "media" }
+//   prayer-time { seconds, connected, sessionId }   each second in the meeting:
+//                          the visitor's counted time in the current prayer session
 //   error  { code, message }
 // Everything after request-session goes only to the origin the code was
 // redeemed for (verified by the server), never to "*".
@@ -41,6 +43,7 @@ export type EmbedEvent =
   | { type: "left"; reason: "left" | "removed" | "opened_in_tab" | "replaced" | "disconnected" }
   | { type: "meeting-ended" }
   | { type: "permission-denied"; device: "camera" | "microphone" | "media" }
+  | { type: "prayer-time"; seconds: number; connected: boolean; sessionId: string | null }
   | { type: "error"; code: string; message: string };
 
 /** A message from the parent page, or null when it is not one of ours. */
