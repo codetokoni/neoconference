@@ -14,6 +14,7 @@ import { reopensOnJoin } from "@/lib/meetingLifecycle";
 import { gateStatus, noteKnock } from "@/lib/waitingRoom";
 import type { NeoEvent, WaitingRoomEntry } from "@/types/event";
 import { PartnerError, type JoinGrant } from "@/lib/partners/store";
+import { rememberIdentity } from "@/lib/partners/attendance";
 
 /**
  * The visitor's identity in the room: fixed per (integration, partner user),
@@ -128,6 +129,9 @@ export async function joinZone(grant: JoinGrant, now = Date.now()): Promise<Join
     return { status: "wait_for_host", title };
   }
 
+  // The webhook only sees the room identity: who it is, for attendance.
+  await rememberIdentity(identity, { integrationId: grant.integrationId, zoneId: grant.zoneId, ext: grant.externalUserId, name, verified: grant.verified });
+
   const at = new AccessToken(apiKey, apiSecret, { identity, name, ttl: "2h" });
   // A participant, whatever the partner or the browser says.
   at.addGrant({ room, roomJoin: true, canPublish: true, canSubscribe: true, canPublishData: true });
@@ -150,4 +154,21 @@ export async function joinZone(grant: JoinGrant, now = Date.now()): Promise<Join
     partner: { integrationId: grant.integrationId, verified: grant.verified },
   });
   return { status: "ready", token: await at.toJwt(), wsUrl, title, displayName: name, room };
+}
+
+/**
+ * LiveKit's own word on a visitor's connection: when connection `sid` of
+ * `identity` joined `room` (ms), or null if that connection is not there.
+ */
+export async function liveConnection(room: string, identity: string, sid: string): Promise<number | null> {
+  const { svc } = livekit();
+  if (!svc) return null;
+  try {
+    const p = await svc.getParticipant(room, identity);
+    if (!p || p.sid !== sid) return null;
+    const joined = Number((p as { joinedAtMs?: unknown }).joinedAtMs ?? 0) || Number(p.joinedAt ?? 0) * 1000;
+    return joined > 0 ? joined : Date.now();
+  } catch {
+    return null;
+  }
 }

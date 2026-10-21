@@ -35,4 +35,13 @@ export class RoomServiceClient {
     if (!all) throw new Error("listParticipants: not stubbed");
     return all[room] ?? [];
   }
+  // One participant, from the same globalThis.__lkParticipants entries
+  // ({ identity, sid, joinedAt (seconds) }); as LiveKit, a miss throws.
+  async getParticipant(room, identity) {
+    const all = globalThis.__lkParticipants;
+    if (!all) throw new Error("getParticipant: not stubbed");
+    const p = (all[room] ?? []).find((x) => x.identity === identity);
+    if (!p) throw new Error("twirp error not_found: participant not found");
+    return p;
+  }
 }
