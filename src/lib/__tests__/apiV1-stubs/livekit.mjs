@@ -44,4 +44,9 @@ export class RoomServiceClient {
     if (!p) throw new Error("twirp error not_found: participant not found");
     return p;
   }
+  // Recorded in globalThis.__lkMuted ([{ room, identity, trackSid, muted }]).
+  async mutePublishedTrack(room, identity, trackSid, muted) {
+    (globalThis.__lkMuted ??= []).push({ room, identity, trackSid, muted });
+    return {};
+  }
 }

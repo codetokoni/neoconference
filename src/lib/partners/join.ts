@@ -13,7 +13,7 @@ import { featureDecisions } from "@/lib/platform/features";
 import { reopensOnJoin } from "@/lib/meetingLifecycle";
 import { gateStatus, noteKnock } from "@/lib/waitingRoom";
 import type { NeoEvent, WaitingRoomEntry } from "@/types/event";
-import { PartnerError, type JoinGrant } from "@/lib/partners/store";
+import { PartnerError, leadsZone, type JoinGrant } from "@/lib/partners/store";
 import { rememberIdentity } from "@/lib/partners/attendance";
 
 /**
@@ -33,10 +33,10 @@ export function participantName(grant: Pick<JoinGrant, "displayName" | "verified
 }
 
 export type JoinOutcome =
-  | { status: "ready"; token: string; wsUrl: string; title: string; displayName: string; room: string }
+  | { status: "ready"; token: string; wsUrl: string; title: string; displayName: string; room: string; moderator: boolean }
   | { status: "waiting_room" | "wait_for_host" | "denied"; title: string };
 
-function livekit(): { svc: RoomServiceClient | null; apiKey: string; apiSecret: string; wsUrl: string } {
+export function livekit(): { svc: RoomServiceClient | null; apiKey: string; apiSecret: string; wsUrl: string } {
   const apiKey = process.env.LIVEKIT_API_KEY || "";
   const apiSecret = process.env.LIVEKIT_API_SECRET || "";
   const wsUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || process.env.LIVEKIT_URL || "";
@@ -51,18 +51,19 @@ function livekit(): { svc: RoomServiceClient | null; apiKey: string; apiSecret: 
   return { svc, apiKey, apiSecret, wsUrl };
 }
 
+/** A person, not captions, a translator or another agent. */
+export function isHuman(p: { identity?: string; kind?: unknown }): boolean {
+  if (p.kind === 4) return false;
+  const id = (p.identity || "").toLowerCase();
+  return !id.startsWith("agent-") && !id.startsWith("neo-captions");
+}
+
 /** People in the room now (humans only; captions and other agents do not count). Null when it cannot be told. */
 async function humansIn(svc: RoomServiceClient | null, room: string): Promise<string[] | null> {
   if (!svc) return null;
   try {
     const parts = await svc.listParticipants(room);
-    return parts
-      .filter((p) => {
-        if ((p as { kind?: unknown }).kind === 4) return false;
-        const id = (p.identity || "").toLowerCase();
-        return !id.startsWith("agent-") && !id.startsWith("neo-captions");
-      })
-      .map((p) => p.identity || "");
+    return parts.filter((p) => isHuman(p as { identity?: string; kind?: unknown })).map((p) => p.identity || "");
   } catch {
     return null;
   }
@@ -132,8 +133,13 @@ export async function joinZone(grant: JoinGrant, now = Date.now()): Promise<Join
   // The webhook only sees the room identity: who it is, for attendance.
   await rememberIdentity(identity, { integrationId: grant.integrationId, zoneId: grant.zoneId, ext: grant.externalUserId, name, verified: grant.verified });
 
+  // The zone's leaders and the organisation's administrators (set by the
+  // partner's server or an administrator here, never by the page) may mute
+  // others (src/lib/partners/moderation.ts). A guest never.
+  const moderator = await leadsZone(grant);
+
   const at = new AccessToken(apiKey, apiSecret, { identity, name, ttl: "2h" });
-  // A participant, whatever the partner or the browser says.
+  // A participant to LiveKit, whatever the partner or the browser says.
   at.addGrant({ room, roomJoin: true, canPublish: true, canSubscribe: true, canPublishData: true });
   const planLimits = { ...limits };
   try {
@@ -150,10 +156,11 @@ export async function joinZone(grant: JoinGrant, now = Date.now()): Promise<Join
   at.metadata = JSON.stringify({
     planLimits,
     hostPlan: plan,
-    role: "attendee",
+    // "cohost" keeps a leader unmuted by anyone's Mute all.
+    role: moderator ? "cohost" : "attendee",
     partner: { integrationId: grant.integrationId, verified: grant.verified },
   });
-  return { status: "ready", token: await at.toJwt(), wsUrl, title, displayName: name, room };
+  return { status: "ready", token: await at.toJwt(), wsUrl, title, displayName: name, room, moderator };
 }
 
 /**

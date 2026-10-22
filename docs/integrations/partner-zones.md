@@ -216,6 +216,18 @@ The lists are the partner's user ids:
 
 Keep them in step with the partner's own roles. The sample's `syncRoles()` does this.
 
+### Muting in the meeting
+
+The same lists decide who may mute others inside the embed. A zone's leaders, and the organisation administrators in every zone, see a **People** button in the meeting's toolbar. It opens their list of the people present, with:
+- **Mute** beside each person whose microphone is on;
+- **Mute all**, for everyone else's microphone.
+
+A guest never gets this, even with a leader's id. Muting turns only the microphone off, and people can turn their own back on. No one is ever unmuted remotely.
+- **Mute all** leaves alone: the leader who pressed it, the other leaders and moderators, the meeting's hosts, and captions and translators.
+- A leader can't mute the meeting's host.
+
+The page shows the button when the join says `moderator: true`. That is worked out from the lists when the visitor joins. The server checks the lists again on every mute (`POST /api/partner/embed/moderate`), so someone taken off a list loses it straight away. Someone added to a list mid-meeting gets the button when they next join. Code: `src/lib/partners/moderation.ts`, `src/app/embed/zone/PeoplePanel.tsx`.
+
 ### Report API
 
 All routes take `Authorization: Bearer nlm_pk_…`, and all except public figures and the role lists take `X-Viewer-Id`. Periods use `?period=…&from=…&to=…`.
@@ -316,7 +328,7 @@ There is no SQL, so uniqueness uses set-if-absent keys:
 | `neo:partner:<id>:zone:<ZONE>` (set NX), `neo:partner:<id>:zones` | zone → meeting mapping; the zone list |
 | `neo:partner:code:<sha256>` (expires 2 min), `neo:partner:codeused:<sha256>` (NX) | one-time codes and their use |
 | `neo:partner:<id>:audit` | the partner's own history (newest first, 500 kept) |
-| `neo:partner:<id>:admins`, `neo:partner:<id>:zone:<ZONE>:leaders` | who reads the reports (the partner's user ids) |
+| `neo:partner:<id>:admins`, `neo:partner:<id>:zone:<ZONE>:leaders` | who reads the reports and may mute in the meeting (the partner's user ids) |
 | `neo:pz:id:<identity>` | who a room identity is: partner user id, name, guest or not |
 | `neo:pz:<id>:<ZONE>:cur`, `neo:pz:sess:<sessionId>`, `…:sessions` / `…:ended` (zsets) | prayer sessions: the current one, each session, and an index of sessions by start and by end |
 | `neo:pz:sess:<sessionId>:people`, `neo:pz:att:<sessionId>:<identity>` | who was in a session, and each person's connections (`s:`/`e:`/`l:` per LiveKit connection id) |
@@ -343,7 +355,8 @@ There is no SQL, so uniqueness uses set-if-absent keys:
 - `npx tsx src/lib/__tests__/adminPartners.smoke.ts`: the admin routes.
 - `npx tsx src/lib/__tests__/partnerAttendance.smoke.ts`: the timer and the counting rules, through the real LiveKit webhook (start on connection, reload, reconnect grace, two tabs, abrupt close, new session, isolated zones).
 - `npx tsx src/lib/__tests__/partnerReports.smoke.ts`: report access, totals, timezone boundaries, CSV, public figures and 304s.
-- Both run in `npm run test:smoke`.
+- `npx tsx src/lib/__tests__/partnerModeration.smoke.ts`: who may mute, what Mute and Mute all touch, and that a leader removed mid-meeting loses it.
+- All of them run in `npm run test:smoke`.
 
 **By hand with the sample**
 1. Run `examples/prayerclouds/server.mjs` against production. The key comes from an integration whose approved website is `http://localhost:4000`.

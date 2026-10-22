@@ -601,6 +601,18 @@ export async function setZoneLeaders(integrationId: string, zone: string, raw: u
   return ids.sort();
 }
 
+/**
+ * Whether a join grant's visitor runs its zone's meeting: an organisation
+ * administrator, or one of the zone's leaders. The lists hold the partner's
+ * own ids (a grant's "user:<id>"); a guest is never on them.
+ */
+export async function leadsZone(grant: Pick<JoinGrant, "integrationId" | "zoneId" | "externalUserId" | "verified">): Promise<boolean> {
+  if (!grant.verified || !grant.externalUserId.startsWith("user:")) return false;
+  const id = grant.externalUserId.slice("user:".length);
+  const [admin, leader] = await Promise.all([kv.sismember(K.admins(grant.integrationId), id), kv.sismember(K.leaders(grant.integrationId, grant.zoneId), id)]);
+  return Number(admin) === 1 || Number(leader) === 1;
+}
+
 /** What a viewer (the partner's user id) may read: everything, or the zones they lead. */
 export async function viewerRoles(integrationId: string, viewerId: string): Promise<{ orgAdmin: boolean; leads: string[] }> {
   const orgAdmin = Number(await kv.sismember(K.admins(integrationId), viewerId)) === 1;
