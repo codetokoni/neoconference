@@ -22,7 +22,7 @@ import {
 } from "@livekit/components-react";
 import { DisconnectReason, MediaDeviceFailure } from "livekit-client";
 import "@livekit/components-styles";
-import { ExternalLink, Maximize, MessageSquare, Minimize } from "lucide-react";
+import { ExternalLink, Maximize, MessageSquare, Minimize, Users } from "lucide-react";
 import LiveTranslation from "@/components/LiveTranslation";
 import LiveCaptions from "@/components/LiveCaptions";
 import CaptionsToggle from "@/components/CaptionsToggle";
@@ -31,12 +31,14 @@ import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import ChatPanel from "@/components/ChatPanel";
 import { PrayerTimeSoFar, PrayerTimer } from "./PrayerTimer";
 import { EmbedBrand } from "./EmbedBrand";
+import { PeoplePanel } from "./PeoplePanel";
 import { setEmbedSession } from "@/lib/partners/embedAuth";
 import { PROTOCOL_VERSION, parseParentMessage, type EmbedEvent } from "@/lib/partners/protocol";
 
 type Meeting = { title: string; zoneId: string };
 type Participant = { name: string; verified: boolean };
-type Live = { token: string; wsUrl: string; room: string };
+/** `moderator`: a zone leader, who may mute others (the server checks each time). */
+type Live = { token: string; wsUrl: string; room: string; moderator: boolean };
 
 type Phase =
   | { k: "handshake" }
@@ -181,14 +183,14 @@ function ZoneEmbed() {
     for (;;) {
       try {
         const r = await post<
-          | { status: "ready"; token: string; wsUrl: string; room: string }
+          | { status: "ready"; token: string; wsUrl: string; room: string; moderator?: boolean }
           | { status: "waiting_room" | "wait_for_host" | "denied" }
         >("/api/partner/embed/join", { session });
         if (attempt !== attemptRef.current) return;
         if (r.status === "ready") {
           leavingRef.current = null;
           connectedRef.current = false;
-          setPhase({ k: "live", live: { token: r.token, wsUrl: r.wsUrl, room: r.room } });
+          setPhase({ k: "live", live: { token: r.token, wsUrl: r.wsUrl, room: r.room, moderator: r.moderator === true } });
           return;
         }
         if (r.status === "denied") {
@@ -386,6 +388,7 @@ function ZoneEmbed() {
   }, [giveChildTheCode, theme]);
 
   const [showChat, setShowChat] = useState(false);
+  const [showPeople, setShowPeople] = useState(false);
   const getSession = useCallback(() => sessionRef.current, []);
   // The partner's page hears the visitor's prayer time each second while it counts.
   const onPrayerTick = useCallback(
@@ -531,7 +534,32 @@ function ZoneEmbed() {
             </span>
             <ParticipantCountBadge />
             <LiveTranslation />
-            <button type="button" data-room-chrome="true" onClick={() => setShowChat((v) => !v)} className={TOOLBAR_BTN_CLASS} title="Chat">
+            {phase.live.moderator && (
+              <button
+                type="button"
+                data-room-chrome="true"
+                onClick={() => {
+                  setShowPeople((v) => !v);
+                  setShowChat(false);
+                }}
+                className={TOOLBAR_BTN_CLASS}
+                title="People: mute one or all"
+                aria-pressed={showPeople}
+              >
+                <Users size={16} aria-hidden />
+                <span className="hidden sm:inline">People</span>
+              </button>
+            )}
+            <button
+              type="button"
+              data-room-chrome="true"
+              onClick={() => {
+                setShowChat((v) => !v);
+                setShowPeople(false);
+              }}
+              className={TOOLBAR_BTN_CLASS}
+              title="Chat"
+            >
               <MessageSquare size={16} aria-hidden />
               <span className="hidden sm:inline">Chat</span>
             </button>
@@ -554,6 +582,7 @@ function ZoneEmbed() {
           </div>
           <LiveCaptions />
           <CaptionsToggle roomRole="attendee" roomName={phase.live.room} eventSlug={phase.live.room} />
+          {phase.live.moderator && showPeople && <PeoplePanel getSession={getSession} onClose={() => setShowPeople(false)} onNotice={setNotice} />}
           <ChatPanel eventId={phase.live.room} open={showChat} onClose={() => setShowChat(false)} canAttach={false} />
           {toast}
         </LiveKitRoom>
