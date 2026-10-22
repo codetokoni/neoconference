@@ -3,7 +3,7 @@
 # Multi-stage build for Railway. Compiles TypeScript in a builder image then
 # copies the dist/ output and pruned node_modules into a slim runtime image.
 
-FROM node:20-bookworm-slim AS builder
+FROM node:24-bookworm-slim AS builder
 WORKDIR /app
 COPY package.json ./
 RUN npm install --no-audit --no-fund
@@ -12,7 +12,7 @@ COPY src ./src
 RUN npm run build
 RUN npm prune --omit=dev
 
-FROM node:20-bookworm-slim AS runner
+FROM node:24-bookworm-slim AS runner
 WORKDIR /app
 # Install CA certificates so the LiveKit Rust SDK can complete TLS handshakes
 # to https://<host>/settings/regions (fixes "failed to retrieve region info").

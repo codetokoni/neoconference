@@ -2,7 +2,7 @@
 # Alpine + Node 20 is small enough for a Hobby-tier deploy but has all
 # the C bindings the @livekit/rtc-node native module needs.
 
-FROM node:20-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 
 # Native deps for @livekit/rtc-node (WebRTC bindings, Opus, etc.)
@@ -17,7 +17,7 @@ COPY src ./src
 RUN npx tsc
 
 # --- runtime stage -----------------------------------------------------
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim
 WORKDIR /app
 
 # Only what the runtime needs — CA certs for HTTPS to LiveKit + Deepgram.
