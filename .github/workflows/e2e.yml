@@ -23,7 +23,10 @@ jobs:
   # the dependencies, and run in seconds.
   server:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The tests take seconds; the two installs normally take seconds too, but
+    # during npm's 2026-10-22 outage they took 5 minutes each and ran the job
+    # out of its 10 before the tests started.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
