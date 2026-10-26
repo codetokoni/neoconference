@@ -8,8 +8,9 @@
 // and fade. Place inside <LiveKitRoom> tree.
 //
 // Layout:
-// - Desktop (>640px): vertical stack of reaction buttons floating on the
-//   right edge of the video area (legacy behaviour).
+// - Desktop (>640px): one 😊 button on the right edge of the video area;
+//   clicking it opens the vertical stack of reactions above it, clicking
+//   it again closes them.
 // - Mobile (<=640px): a single trigger button anchored bottom-right
 //   above the mobile control bar. Tapping opens a compact horizontal
 //   row of reactions that auto-closes on selection / outside tap.
@@ -136,47 +137,116 @@ export default function ReactionsBar() {
     return null;
   }
 
-  // ---- Desktop layout (unchanged) ----
+  // ---- Desktop layout ----
+  // One 😊 button; clicking it opens the reactions above it, clicking it
+  // again closes them (as do Escape and a click elsewhere). Always open,
+  // the column covered the side panels (owner, 2026-10-26).
   return (
     <>
       {floatOverlay}
-      <div
+      <DesktopPicker onSend={send} />
+      {keyframes}
+    </>
+  );
+}
+
+function DesktopPicker({ onSend }: { onSend: (k: ReactionKey) => void }) {
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div
+      ref={boxRef}
+      style={{
+        position: 'fixed',
+        right: 18,
+        bottom: '18%',
+        zIndex: 70,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 8,
+      }}
+    >
+      {open && (
+        <div
+          id="neo-reactions-menu"
+          role="menu"
+          aria-label="Reactions"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            padding: 8,
+            borderRadius: 14,
+            background: 'rgba(15,23,42,0.55)',
+            border: '1px solid rgba(34,211,238,0.25)',
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          {REACTIONS.map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="menuitem"
+              aria-label={`Send ${k}`}
+              onClick={() => onSend(k)}
+              style={{
+                fontSize: '22px',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                width: 36,
+                height: 36,
+                borderRadius: 10,
+              }}
+            >
+              {EMOJI[k]}
+            </button>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        aria-label={open ? 'Close reactions' : 'Open reactions'}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-controls={open ? 'neo-reactions-menu' : undefined}
+        onClick={() => setOpen((v) => !v)}
         style={{
-          position: 'fixed',
-          right: 18,
-          bottom: '18%',
-          zIndex: 70,
+          width: 44,
+          height: 44,
+          borderRadius: '50%',
+          fontSize: open ? 18 : 22,
+          color: '#cbd5e1',
+          cursor: 'pointer',
           display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-          padding: 8,
-          borderRadius: 14,
-          background: 'rgba(15,23,42,0.55)',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(15,23,42,0.75)',
           border: '1px solid rgba(34,211,238,0.25)',
+          boxShadow: '0 6px 20px rgba(0,0,0,0.45)',
           backdropFilter: 'blur(12px)',
         }}
       >
-        {REACTIONS.map((k) => (
-          <button
-            key={k}
-            type="button"
-            aria-label={`Send ${k}`}
-            onClick={() => send(k)}
-            style={{
-              fontSize: '22px',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-            }}
-          >
-            {EMOJI[k]}
-          </button>
-        ))}
-      </div>
-      {keyframes}
-    </>
+        {open ? '✕' : '😊'}
+      </button>
+    </div>
   );
 }
