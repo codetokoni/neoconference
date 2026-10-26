@@ -180,3 +180,44 @@ export async function markRead(uid: string, which: { ids: string[] } | { all: tr
   }
   return recount(uid);
 }
+
+/** Remove some (by id) or all from someone's list; returns the unread count after. */
+export async function clearNotifications(uid: string, which: { ids: string[] } | { all: true }): Promise<number> {
+  const wanted = "ids" in which ? new Set(which.ids) : null;
+  const all = await readAll(uid);
+  const gone = (n: AppNotification) => wanted === null || wanted.has(n.id);
+  if (!all.some(gone)) return all.filter((n) => !n.read).length;
+
+  if (!isKvConfigured()) {
+    const next = all.filter((n) => !gone(n));
+    mem.set(uid, next);
+    return next.filter((n) => !n.read).length;
+  }
+  if (wanted === null) {
+    // Only the ones read above go. Anything that arrived since was pushed
+    // onto the head, so the list is cut back to that many from the top.
+    const length = Number(await kv.llen(listKey(uid))) || 0;
+    const keep = length - all.length;
+    if (keep > 0) await kv.ltrim(listKey(uid), 0, keep - 1);
+    else await kv.del(listKey(uid));
+    return recount(uid);
+  }
+  // Each one is overwritten with a marker at its confirmed position, as
+  // markRead finds it, and the markers are then removed by value.
+  const marker = `cleared:${randomBytes(9).toString("base64url")}`;
+  let shift = 0;
+  for (let i = 0; i < all.length; i++) {
+    const n = all[i];
+    if (!gone(n)) continue;
+    let index = i + shift;
+    if (parse(await kv.lindex(listKey(uid), index))?.id !== n.id) {
+      const current = (await kv.lrange(listKey(uid), 0, MAX_NOTIFICATIONS - 1)) as unknown[];
+      index = current.findIndex((r) => parse(r)?.id === n.id);
+      if (index < 0) continue;
+      shift = index - i;
+    }
+    await kv.lset(listKey(uid), index, marker);
+  }
+  await kv.lrem(listKey(uid), 0, marker);
+  return recount(uid);
+}

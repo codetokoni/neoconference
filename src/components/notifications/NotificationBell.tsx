@@ -5,7 +5,7 @@
 // and when the service worker reports a push — never on a timer.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Bell } from "lucide-react";
+import { Bell, X } from "lucide-react";
 import { NOTIFICATIONS_CHANGED } from "@/lib/pushClient";
 
 interface Item {
@@ -113,6 +113,20 @@ export default function NotificationBell() {
     );
   }
 
+  async function clear(body: { all: true } | { ids: string[] }) {
+    const res = await fetch("/api/me/notifications", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+    if (!res?.ok) return;
+    const data = (await res.json()) as { unread: number };
+    setUnread(data.unread);
+    setItems((prev) => ("all" in body ? [] : prev.filter((n) => !body.ids.includes(n.id))));
+    // Older ones move up into the page.
+    if (!("all" in body)) void load();
+  }
+
   return (
     <div ref={wrapRef} className="relative">
       <button
@@ -140,11 +154,18 @@ export default function NotificationBell() {
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
             <span className="text-sm font-semibold text-slate-100">Notifications</span>
-            {unread > 0 ? (
-              <button type="button" onClick={() => mark({ all: true })} className="text-xs text-cyan-300 hover:text-cyan-200">
-                Mark all read
-              </button>
-            ) : null}
+            <div className="flex items-center gap-3">
+              {unread > 0 ? (
+                <button type="button" onClick={() => mark({ all: true })} className="text-xs text-cyan-300 hover:text-cyan-200">
+                  Mark all read
+                </button>
+              ) : null}
+              {items.length > 0 ? (
+                <button type="button" onClick={() => clear({ all: true })} className="text-xs text-slate-400 hover:text-slate-200">
+                  Clear all
+                </button>
+              ) : null}
+            </div>
           </div>
           <ul className="max-h-[60vh] overflow-y-auto">
             {failed && items.length === 0 ? (
@@ -153,7 +174,7 @@ export default function NotificationBell() {
               <li className="px-4 py-6 text-center text-sm text-slate-400">Nothing yet.</li>
             ) : (
               items.map((n) => (
-                <li key={n.id} role="none">
+                <li key={n.id} role="none" className="relative">
                   <a
                     role="menuitem"
                     href={n.url}
@@ -161,7 +182,7 @@ export default function NotificationBell() {
                       if (!n.read) void mark({ ids: [n.id] });
                     }}
                     className={
-                      "block px-4 py-3 border-b border-slate-800/60 hover:bg-slate-900/70 transition " +
+                      "block pl-4 pr-11 py-3 border-b border-slate-800/60 hover:bg-slate-900/70 transition " +
                       (n.read ? "" : "bg-cyan-500/5")
                     }
                   >
@@ -174,6 +195,15 @@ export default function NotificationBell() {
                       </div>
                     </div>
                   </a>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => clear({ ids: [n.id] })}
+                    aria-label={`Clear “${n.title}”`}
+                    className="absolute right-1.5 top-2 inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:text-slate-200 hover:bg-white/5 transition"
+                  >
+                    <X className="h-4 w-4" aria-hidden />
+                  </button>
                 </li>
               ))
             )}

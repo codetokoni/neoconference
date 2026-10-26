@@ -454,6 +454,26 @@ for (const width of WIDTHS) {
     const heading = (await panel.getByText("Notifications", { exact: true }).boundingBox())!;
     expect(heading.x, `heading @${width}`).toBeGreaterThanOrEqual(box.x);
     await page.screenshot({ path: `test-results/group-screens/header-bell-${width}.png` });
+
+    // Each one can be cleared, by a button inside the panel that does not
+    // sit over its text; then all of them at once.
+    const sent = () =>
+      page.evaluate(() =>
+        (window as unknown as { __calls: Array<{ url: string; method: string; body: string }> }).__calls
+          .filter((c) => c.method === "DELETE")
+          .map((c) => c.body)
+      );
+    const clearOne = panel.getByRole("menuitem", { name: "Clear “Rehearsal”" });
+    const x = (await clearOne.boundingBox())!;
+    expect(x.x + x.width, `× inside the panel @${width}`).toBeLessThanOrEqual(box.x + box.width);
+    const title = (await panel.getByText("Rehearsal", { exact: true }).boundingBox())!;
+    expect(title.x + title.width, `× clear of the title @${width}`).toBeLessThanOrEqual(x.x);
+    await clearOne.click();
+    await expect.poll(sent).toEqual([JSON.stringify({ ids: ["n2"] })]);
+    await panel.getByRole("button", { name: "Clear all" }).click();
+    await expect.poll(sent).toEqual([JSON.stringify({ ids: ["n2"] }), JSON.stringify({ all: true })]);
+    await expect(panel.getByText("Nothing yet.")).toBeVisible();
+    await expectLabelledButtons(page, `header bell @${width}`);
     expect(errors).toEqual([]);
   });
 
