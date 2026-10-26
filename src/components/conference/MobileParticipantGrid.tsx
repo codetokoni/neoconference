@@ -206,12 +206,10 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
                 Loading screen share…
               </div>
             )}
-            <div
-              className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] uppercase tracking-wider text-cyan-200 border border-cyan-300/40"
-              style={{ pointerEvents: 'none' }}
-            >
-              Sharing · {activeShare.participant.name || activeShare.participant.identity}
-            </div>
+          </div>
+          {/* Under the share, not on it: on the share it covered the slide's heading. */}
+          <div className="mt-1.5 truncate px-1 text-[10px] uppercase tracking-wider text-cyan-200/90">
+            Sharing · {activeShare.participant.name || activeShare.participant.identity}
           </div>
         </div>
       )}
