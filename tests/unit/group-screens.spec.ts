@@ -275,6 +275,7 @@ const ENTRIES = [
   "src/app/dashboard/groups/[id]/GroupView.tsx",
   "src/components/notifications/IncomingCall.tsx",
   "src/components/notifications/NotificationBell.tsx",
+  "src/components/HeaderNav.tsx",
   "src/app/dashboard/groups/[id]/reports/[eid]/MeetingReportView.tsx",
   "src/app/dashboard/reports/page.tsx",
 ];
@@ -420,6 +421,39 @@ for (const width of WIDTHS) {
     await expectNoSideScroll(page, `bell @${width}`);
     await expectLabelledButtons(page, `bell @${width}`);
     await page.screenshot({ path: `test-results/group-screens/bell-${width}.png` });
+    expect(errors).toEqual([]);
+  });
+
+  // Seen on a phone (2026-10-26): in the site's header the avatar menu sits
+  // right of the bell, so a panel lined up with the bell's right edge started
+  // off the left of the screen ("otifications"). The page did not scroll
+  // sideways, so expectNoSideScroll never saw it. Rendered here in the
+  // layout's own header, with the real HeaderNav.
+  test(`the notification panel stays on screen in the site header at ${width}px`, async ({ page }) => {
+    const { errors } = await setup(page, width);
+    await page.evaluate(() => {
+      const w = window as unknown as { __require: (id: string) => { default: unknown }; React: typeof import("react"); ReactDOM: { createRoot: (el: Element) => { render: (n: unknown) => void } } };
+      const h = w.React.createElement;
+      const Nav = w.__require("src/components/HeaderNav.tsx").default as import("react").FC<{ role?: string | null }>;
+      // src/app/layout.tsx's header, with the logo and name.
+      w.ReactDOM.createRoot(document.getElementById("app")!).render(
+        h("header", { className: "sticky top-0 z-40 backdrop-blur-xl bg-[rgba(4,8,16,0.55)] border-b border-white/5" },
+          h("div", { className: "mx-auto max-w-7xl px-4 sm:px-6 py-3 flex items-center justify-between" },
+            h("a", { href: "/", className: "group inline-flex items-center gap-2.5" },
+              h("span", { className: "h-8 w-8 rounded-xl" }),
+              h("span", { className: "font-semibold tracking-tight text-cyan-100 text-[17px]" }, "NeoLinguaMeet")),
+            h(Nav, { role: null })))
+      );
+    });
+    await page.getByRole("button", { name: /Notifications/ }).click();
+    const panel = page.getByRole("menu");
+    await expect(panel).toBeVisible();
+    const box = (await panel.boundingBox())!;
+    expect(box.x, `panel's left edge @${width}`).toBeGreaterThanOrEqual(8);
+    expect(box.x + box.width, `panel's right edge @${width}`).toBeLessThanOrEqual(width - 8);
+    const heading = (await panel.getByText("Notifications", { exact: true }).boundingBox())!;
+    expect(heading.x, `heading @${width}`).toBeGreaterThanOrEqual(box.x);
+    await page.screenshot({ path: `test-results/group-screens/header-bell-${width}.png` });
     expect(errors).toEqual([]);
   });
 

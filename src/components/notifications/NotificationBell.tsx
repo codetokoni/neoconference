@@ -4,7 +4,7 @@
 // notifications. Refreshed when it mounts, when the window regains focus,
 // and when the service worker reports a push — never on a timer.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
 import { NOTIFICATIONS_CHANGED } from "@/lib/pushClient";
 
@@ -34,6 +34,11 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // How far the panel's right edge sits right of the bell's (px). Lined up
+  // with the bell, the panel started off the left of a phone's screen,
+  // because the avatar menu sits right of the bell in the header.
+  const [shift, setShift] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -74,6 +79,26 @@ export default function NotificationBell() {
     };
   }, [open]);
 
+  // Keep the open panel on screen: move it right until its left edge clears
+  // the screen's, but never past the right edge. Fixed positioning is not an
+  // option, because the header's backdrop blur makes fixed children position
+  // against the header rather than the screen.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const bell = wrapRef.current?.getBoundingClientRect();
+      const panel = panelRef.current;
+      if (!bell || !panel) return;
+      const margin = 16;
+      const screen = document.documentElement.clientWidth;
+      const right = Math.min(Math.max(bell.right, margin + panel.offsetWidth), screen - margin);
+      setShift(right - bell.right);
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [open]);
+
   async function mark(body: { all: true } | { ids: string[] }) {
     const res = await fetch("/api/me/notifications", {
       method: "PATCH",
@@ -108,8 +133,10 @@ export default function NotificationBell() {
 
       {open ? (
         <div
+          ref={panelRef}
           role="menu"
-          className="absolute right-0 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-slate-800 bg-[#0a0b12] text-slate-100 shadow-2xl overflow-hidden z-50"
+          style={{ right: -shift }}
+          className="absolute mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-slate-800 bg-[#0a0b12] text-slate-100 shadow-2xl overflow-hidden z-50"
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
             <span className="text-sm font-semibold text-slate-100">Notifications</span>
