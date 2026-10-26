@@ -5,10 +5,13 @@
 // PATCH { ids: string[] }    mark these read
 //       { all: true }        mark everything read
 //       -> { ok, unread }
+// DELETE { ids: string[] }   clear these from the list
+//        { all: true }       clear the whole list
+//       -> { ok, unread }
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { listNotifications, markRead } from "@/lib/notificationStore";
+import { clearNotifications, listNotifications, markRead } from "@/lib/notificationStore";
 import { invalidBody, readJsonObject } from "@/lib/groupAuthz";
 
 export const runtime = "nodejs";
@@ -23,14 +26,9 @@ export async function GET(req: Request) {
   return NextResponse.json(page, { headers: { "cache-control": "no-store" } });
 }
 
-export async function PATCH(req: Request) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const body = await readJsonObject(req);
-  if (!body) return invalidBody();
-  if (body.all === true) {
-    return NextResponse.json({ ok: true, unread: await markRead(userId, { all: true }) });
-  }
+/** `{ all: true }` or `{ ids }`, or null when the body is neither. */
+function which(body: Record<string, unknown>): { all: true } | { ids: string[] } | null {
+  if (body.all === true) return { all: true };
   const ids = body.ids;
   if (
     !Array.isArray(ids) ||
@@ -38,7 +36,27 @@ export async function PATCH(req: Request) {
     ids.length > 100 ||
     !ids.every((i) => typeof i === "string" && i.length > 0 && i.length <= 32)
   ) {
-    return invalidBody("invalid_ids");
+    return null;
   }
-  return NextResponse.json({ ok: true, unread: await markRead(userId, { ids: ids as string[] }) });
+  return { ids: ids as string[] };
+}
+
+export async function PATCH(req: Request) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const body = await readJsonObject(req);
+  if (!body) return invalidBody();
+  const target = which(body);
+  if (!target) return invalidBody("invalid_ids");
+  return NextResponse.json({ ok: true, unread: await markRead(userId, target) });
+}
+
+export async function DELETE(req: Request) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const body = await readJsonObject(req);
+  if (!body) return invalidBody();
+  const target = which(body);
+  if (!target) return invalidBody("invalid_ids");
+  return NextResponse.json({ ok: true, unread: await clearNotifications(userId, target) });
 }
