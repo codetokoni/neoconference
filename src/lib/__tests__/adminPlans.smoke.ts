@@ -475,7 +475,8 @@ async function main() {
     const end = (await sub("user_u11")).periodEnd!;
     const now = await act("user_billing", "user_u12", { action: "comp", planId: "pro", days: null });
     assert.equal(now.status, 200);
-    assert.equal(meta("user_u12").planExpiresAt, null, "complimentary with no end");
+    // Clerk removes a key written as null, so "no end" reads as absent.
+    assert.equal(meta("user_u12").planExpiresAt ?? null, null, "complimentary with no end");
     assert.equal((await sub("user_u12")).status, "complimentary");
     const cn = await act("user_billing", "user_u12", { action: "cancel", when: "now" });
     assert.ok(cn.body.lines.some((l: string) => /No refund/.test(l)));
@@ -627,7 +628,7 @@ async function main() {
     assert.equal(a.ended, "subscription");
     assert.equal((await sub("user_u8")).status, "cancelled");
     assert.equal(meta("user_u8").plan, "free");
-    assert.equal(meta("user_u8").planLimits, null);
+    assert.equal(meta("user_u8").planLimits ?? null, null);
     const h = (await subs.getHistory("user_u8"))[0];
     assert.equal(h.note, "refund ref_9");
     assert.equal(h.by.email, "billing@example.com");

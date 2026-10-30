@@ -235,8 +235,11 @@ export async function signInWithKcTokens(tokens: {
       return fail('create_failed', clerkMsg(e).slice(0, 200));
     }
   } else {
+    // Merged, never replaced: updateUser's publicMetadata replaces the whole
+    // object, which took a paid plan, its limits and the app role off the
+    // account on every KingsChat sign-in.
     try {
-      await cc.users.updateUser(user.id, {
+      await cc.users.updateUserMetadata(user.id, {
         publicMetadata: { kingschat: { id: kcId, username: kcUsername } },
       });
     } catch {}

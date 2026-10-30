@@ -1,11 +1,32 @@
 // Clerk: who is signed in (globalThis.__who, session globalThis.__sid) and
 // each user in globalThis.__users = { [id]: { plan?, role?, emails?, unverified?, first?, last?,
-// banned?, createdAt?, lastSignInAt?, password?, primary?, metadata?, locked? } }.
+// banned?, createdAt?, lastSignInAt?, password?, primary?, metadata?, locked?, externalId? } }.
 // `emails` are verified addresses; `unverified` are on the account but not verified.
 // Clerk sessions in globalThis.__clerkSessions = { [userId]: [{ id, status }] }.
+//
+// Metadata writes behave as Clerk's do: updateUserMetadata deep-merges (a
+// key set to null is removed), while updateUser's publicMetadata replaces
+// the whole object.
 export * from "real:clerk";
 
 const users = () => (globalThis.__users ??= {});
+
+function setPublicMetadata(u, md) {
+  const { plan, role, ...rest } = md ?? {};
+  u.plan = plan;
+  u.role = role;
+  u.metadata = rest;
+}
+
+function mergeMetadata(into, patch) {
+  const out = { ...into };
+  for (const [k, v] of Object.entries(patch ?? {})) {
+    if (v === null) delete out[k];
+    else if (typeof v === "object" && !Array.isArray(v) && out[k] && typeof out[k] === "object") out[k] = mergeMetadata(out[k], v);
+    else out[k] = v;
+  }
+  return out;
+}
 const sessions = () => (globalThis.__clerkSessions ??= {});
 const emailId = (uid, address) => `idn_${uid}_${address}`;
 
@@ -110,6 +131,11 @@ export async function clerkClient() {
       createBlocklistIdentifier: block.create,
       deleteBlocklistIdentifier: block.remove,
     },
+    signInTokens: {
+      async createSignInToken({ userId }) {
+        return { token: `ticket_${userId}` };
+      },
+    },
     instance: {
       async updateRestrictions(params) {
         Object.assign(lists().restrictions, params);
@@ -131,6 +157,7 @@ export async function clerkClient() {
         if (globalThis.__clerkListFails) throw new Error("clerk: unavailable (test)");
         let ids = Object.keys(users());
         if (params.userId?.length) ids = ids.filter((id) => params.userId.includes(id));
+        if (params.externalId?.length) ids = ids.filter((id) => params.externalId.includes(users()[id].externalId));
         if (params.emailAddress?.length) {
           const want = params.emailAddress.map((e) => e.toLowerCase());
           ids = ids.filter((id) => emailList(users()[id]).some((e) => want.includes(e.emailAddress.toLowerCase())));
@@ -152,10 +179,7 @@ export async function clerkClient() {
       async updateUserMetadata(id, { publicMetadata }) {
         const u = users()[id];
         if (!u) throw notFound();
-        const { plan, role, ...rest } = publicMetadata ?? {};
-        u.plan = plan;
-        u.role = role;
-        u.metadata = rest;
+        setPublicMetadata(u, mergeMetadata(toUser(id).publicMetadata, publicMetadata));
         return toUser(id);
       },
       async updateUser(id, params = {}) {
@@ -163,6 +187,8 @@ export async function clerkClient() {
         if (!u) throw notFound();
         if (params.firstName !== undefined) u.first = params.firstName || null;
         if (params.lastName !== undefined) u.last = params.lastName || null;
+        if (params.externalId !== undefined) u.externalId = params.externalId;
+        if (params.publicMetadata !== undefined) setPublicMetadata(u, params.publicMetadata);
         return toUser(id);
       },
       async banUser(id) {
