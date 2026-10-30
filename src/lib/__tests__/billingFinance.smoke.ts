@@ -462,7 +462,8 @@ async function main() {
     assert.equal((await readPayment(b1r.ref))?.status, "refunded", "the buyer's own billing page shows it");
     const { getSubscription } = await import("../billing/subscriptions");
     assert.equal((await getSubscription("buyer1"))?.status, "cancelled", "ended through the subscription record");
-    assert.equal(g.__users.buyer1.metadata?.planLimits, null, "no limits snapshot outlives the plan");
+    // Clerk removes a key written as null.
+    assert.equal(g.__users.buyer1.metadata?.planLimits ?? null, null, "no limits snapshot outlives the plan");
     assert.equal(calls.filter((c) => c.url.endsWith("/v1/refunds")).length, 2, "no API was called for eSPees");
     const { items } = await audit.listAdminAudit({ action: "billing.plan.end" });
     const before = items[0].before as { plan: string; planExpiresAt: number; subscription: { status: string; periodEnd: number } };
