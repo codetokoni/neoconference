@@ -61,12 +61,29 @@ async function freeLimits(): Promise<PlanFeatureLimits> {
     }
 }
 
+/**
+ * Enterprise for everyone until a date (ENTERPRISE_FOR_ALL_UNTIL, an ISO
+ * time such as 2027-01-01T00:00:00+01:00): every signed-in account counts as
+ * Enterprise, with Enterprise's limits, until then. Nothing is written to
+ * accounts, so each goes back to the plan it really has when the date passes,
+ * and a plan bought meanwhile runs its own term as usual. Returns the end
+ * (ms) while it lasts; null when unset, unreadable or over.
+ */
+export function enterpriseForAllUntil(now = Date.now()): number | null {
+    const raw = (process.env.ENTERPRISE_FOR_ALL_UNTIL || "").trim();
+    if (!raw) return null;
+    const until = Date.parse(raw);
+    return Number.isFinite(until) && now < until ? until : null;
+}
+
 type ClerkUserish = { emailAddresses?: { emailAddress: string; verification?: { status?: string | null } | null }[]; publicMetadata?: unknown };
 
 /** The plan and the limits enforced for it, for a Clerk user already fetched. */
 async function planAndLimitsOf(user: ClerkUserish): Promise<{ plan: Plan; limits: PlanFeatureLimits }> {
     if (isOwnerEmailList(user.emailAddresses)) return { plan: "enterprise", limits: extendedLimits("enterprise") };
     const explicit = readPlanFromMetadata(user.publicMetadata);
+    // An Enterprise subscription keeps the limits of the version bought.
+    if (explicit !== "enterprise" && enterpriseForAllUntil() !== null) return { plan: "enterprise", limits: extendedLimits("enterprise") };
     if (explicit !== "free") return { plan: explicit, limits: limitsFromMetadata(user.publicMetadata) };
     const emails = (user.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
     if (emails.some((e) => isAdmin(e))) return { plan: "enterprise", limits: extendedLimits("enterprise") };
@@ -122,6 +139,8 @@ export async function getCurrentPlan(): Promise<Plan | null> {
   // persisted — env var stays authoritative.
   if (emails.some((e) => isAdmin(e))) return "enterprise";
 
+  if (enterpriseForAllUntil() !== null) return "enterprise";
+
   const existing = readPlanFromMetadata(user.publicMetadata);
     if (existing !== "free") return existing;
 
@@ -167,6 +186,7 @@ export async function getPlanForUserId(userId: string): Promise<Plan> {
           // Owner first: a plan stored on the owner's account (an old
           // purchase, an admin's edit) must not lower it.
           if (isOwnerEmailList(user.emailAddresses)) return "enterprise";
+          if (enterpriseForAllUntil() !== null) return "enterprise";
           const explicit = readPlanFromMetadata(user.publicMetadata);
           if (explicit !== "free") return explicit;
           const emails = (user.emailAddresses || []).map((e) => e.emailAddress.toLowerCase());
