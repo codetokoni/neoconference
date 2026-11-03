@@ -4,7 +4,8 @@
 //
 //   failed     a plan payment failed (the eSPees fail route records these)
 //   abandoned  a checkout was started and never finished
-//   renewal    a paid plan is about to run out
+//   renewal    a paid plan is about to run out: its subscription's end date,
+//              whether bought through eSPees or assigned in admin
 //
 // Rules (KV, edited on the admin Billing settings page):
 //
@@ -33,6 +34,8 @@ import { CHECKOUT_WINDOW_MS, checkoutState, listCheckouts, type CheckoutLog } fr
 import { fmtMoney } from "@/lib/finance/money";
 import { DAY } from "@/lib/finance/revenue";
 import { siteOrigin } from "@/lib/brand";
+import { getSubscription, listByPeriodEnd } from "@/lib/billing/subscriptions";
+import type { Subscription } from "@/lib/billing/model";
 
 const RULES = "billing:reminders:rules";
 const LOG = "billing:reminders:log";
@@ -151,6 +154,8 @@ export function planReminders(
   entries: LedgerEntry[],
   checkouts: CheckoutLog[],
   now: number,
+  /** Each user's subscription (null: none). Without it, renewals follow payments alone. */
+  subscriptions?: ReadonlyMap<string, Subscription | null>,
 ): DueReminder[] {
   const out: DueReminder[] = [];
   const plans = entries.filter((e) => e.kind === "plan" && e.userId);
@@ -180,6 +185,8 @@ export function planReminders(
     }
   }
   if (rules.renewal.enabled) {
+    const renew = (base: Omit<DueReminder, "key" | "alsoClaims" | "step" | "kind">) =>
+      push({ kind: "renewal", ...base }, dueStep(rules.renewal.beforeDays, (d) => base.when - d * DAY, now, base.when));
     // Only each user's latest plan payment can come up for renewal.
     const latest = new Map<string, LedgerEntry>();
     for (const e of plans) {
@@ -187,13 +194,53 @@ export function planReminders(
       const cur = latest.get(e.userId!);
       if (!cur || e.at > cur.at) latest.set(e.userId!, e);
     }
+    const covered = new Set<string>();
     for (const e of latest.values()) {
       if (!e.periodEnd || e.periodEnd <= now || e.status === "refunded" || e.refunds.some((r) => r.downgraded)) continue;
-      const steps = dueStep(rules.renewal.beforeDays, (d) => e.periodEnd! - d * DAY, now, e.periodEnd);
-      push({ kind: "renewal", subject: e.ref, userId: e.userId!, amount: e.amount, currency: e.currency, plan: e.plan ?? "", cycle: e.cycle ?? "", when: e.periodEnd }, steps);
+      // The subscription is what actually ends: once extended, cancelled or
+      // changed in admin, the payment's own end date no longer says when.
+      const sub = subscriptions?.get(e.userId!);
+      if (sub && !(renewable(sub, now) && Math.abs(sub.periodEnd! - e.periodEnd) < DAY)) continue;
+      covered.add(e.userId!);
+      renew({ subject: e.ref, userId: e.userId!, amount: e.amount, currency: e.currency, plan: e.plan ?? "", cycle: e.cycle ?? "", when: e.periodEnd });
+    }
+    // Plans with no payment behind them, or a different end: assigned or
+    // extended by an administrator (owner, 2026-11-03).
+    for (const sub of subscriptions?.values() ?? []) {
+      if (!sub || covered.has(sub.userId) || !renewable(sub, now)) continue;
+      renew({
+        subject: `sub:${sub.userId}:${sub.periodEnd}`,
+        userId: sub.userId,
+        amount: sub.pricePaid?.amount ?? null,
+        currency: sub.pricePaid?.currency ?? "",
+        plan: sub.snapshot?.name ?? sub.baseTier,
+        cycle: sub.cycle ?? "",
+        when: sub.periodEnd!,
+      });
     }
   }
   return out;
+}
+
+/**
+ * A paid plan that runs out on its own date unless bought again: not a
+ * trial (it has its own reminder), a gift, paused, cancelled, or already
+ * set to change into something else at its end.
+ */
+function renewable(sub: Subscription, now: number): boolean {
+  return sub.status === "active" && sub.baseTier !== "free" && sub.periodEnd != null && sub.periodEnd > now && !sub.scheduled;
+}
+
+/** The subscription of everyone a renewal reminder could be about. */
+async function renewalSubscriptions(entries: LedgerEntry[], now: number, beforeDays: number[]): Promise<Map<string, Subscription | null>> {
+  const ahead = Math.max(0, ...beforeDays) * DAY + DAY;
+  const subs = new Map<string, Subscription | null>();
+  for (const s of await listByPeriodEnd(now, now + ahead)) subs.set(s.userId, s);
+  for (const e of entries) {
+    if (e.kind !== "plan" || !e.userId || subs.has(e.userId)) continue;
+    subs.set(e.userId, await getSubscription(e.userId));
+  }
+  return subs;
 }
 
 /* ------------------------------ emails ------------------------------ */
@@ -270,7 +317,8 @@ export async function runReminders(now: number, opts: RunOptions = {}): Promise<
   // Renewals look ahead up to 60 days; their payments started a year before.
   const entries = await entriesBetween(now - 400 * DAY, now);
   const checkouts = await listCheckouts(now - LOOKBACK - DAY, now);
-  const due = planReminders(rules, entries, checkouts, now);
+  const subscriptions = rules.renewal.enabled ? await renewalSubscriptions(entries, now, rules.renewal.beforeDays) : undefined;
+  const due = planReminders(rules, entries, checkouts, now, subscriptions);
   const result: RunResult = { ran: true, due: due.length, sent: 0, failed: 0, alreadySent: 0, noEmail: 0, deferred: 0 };
 
   if (opts.dryRun) {
