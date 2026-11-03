@@ -320,6 +320,30 @@ export async function listZones(integrationId: string): Promise<ZoneMapping[]> {
   return all.filter((x): x is ZoneMapping => !!x).sort((a, b) => a.zoneId.localeCompare(b.zoneId));
 }
 
+export async function countZones(integrationId: string): Promise<number> {
+  return Number(await kv.scard(K.zones(integrationId))) || 0;
+}
+
+/**
+ * One page of zones, in zone order, optionally only those whose id contains
+ * `q`. PrayerClouds has thousands of zones: reading every one (and its
+ * leaders) to show the admin panel took longer than the request was given,
+ * so the panel never opened (2026-11-03). Only the page's own zones are read.
+ */
+export async function listZonePage(
+  integrationId: string,
+  opts: { q?: string; offset?: number; limit?: number } = {},
+): Promise<{ zones: ZoneMapping[]; total: number }> {
+  const q = (opts.q ?? "").trim().toLowerCase();
+  const ids = ((((await kv.smembers(K.zones(integrationId))) as unknown[]) || []).map(String))
+    .filter((z) => !q || z.toLowerCase().includes(q))
+    .sort((a, b) => a.localeCompare(b));
+  const offset = Math.max(0, Math.floor(opts.offset ?? 0));
+  const limit = Math.min(200, Math.max(1, Math.floor(opts.limit ?? 50)));
+  const page = await Promise.all(ids.slice(offset, offset + limit).map((z) => getZone(integrationId, z)));
+  return { zones: page.filter((x): x is ZoneMapping => !!x), total: ids.length };
+}
+
 /**
  * The zone's meeting, made on the first visit when the integration allows
  * it. Idempotent and safe under concurrency: the meeting is claimed by its

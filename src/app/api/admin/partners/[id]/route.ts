@@ -1,5 +1,6 @@
 // GET   /api/admin/partners/[id] (integrations:write, read-only): the
-//       integration, its keys (masked), its zones and its own audit trail.
+//       integration, its keys (masked), one page of its zones
+//       (?zones=<search>&page=<n>, 50 a page) and its own audit trail.
 // PATCH /api/admin/partners/[id] (integrations:write + fresh code): change
 //       name, owner (by email), approved websites, automatic zones, guest
 //       access, the meeting title, or switch it on or off.
@@ -18,7 +19,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const g = await requireAdmin(req, "integrations:write", { readOnly: true });
   if (!g.ok) return g.response;
   try {
-    return NextResponse.json({ ok: true, ...(await integrationDetail(params.id)) });
+    const q = new URL(req.url).searchParams;
+    return NextResponse.json({ ok: true, ...(await integrationDetail(params.id, { q: q.get("zones") ?? "", page: Number(q.get("page") ?? 0) })) });
   } catch (e) {
     return adminFail(e);
   }

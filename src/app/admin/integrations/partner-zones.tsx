@@ -15,7 +15,11 @@ type Row = PartnerIntegration & { activeKeys: number; zones: number };
 type Detail = {
   integration: PartnerIntegration;
   keys: PartnerKeyMeta[];
+  /** One page of the zones (see zonePage); zoneTotal is how many match the search. */
   zones: ZoneMapping[];
+  zoneTotal: number;
+  zonePage: number;
+  zonePageSize: number;
   audit: AuditEvent[];
   orgAdmins: string[];
   leaders: Record<string, string[]>;
@@ -183,12 +187,17 @@ function PartnerDetail({ id, setMsg, showSecret, onChanged }: { id: string; setM
   const [owner, setOwner] = useState<ZoneMapping | null>(null);
   const [leadersOf, setLeadersOf] = useState<ZoneMapping | null>(null);
   const [reportOf, setReportOf] = useState<ZoneMapping | null>(null);
+  // Zones come a page at a time: a partner can have thousands.
+  const [zoneSearch, setZoneSearch] = useState("");
+  const [zoneQuery, setZoneQuery] = useState("");
+  const [zonePage, setZonePage] = useState(0);
   const load = useCallback(async () => {
     setLoadErr(null);
-    const r = await adminFetch<Detail>(`/api/admin/partners/${id}`);
+    const qs = new URLSearchParams({ zones: zoneQuery, page: String(zonePage) });
+    const r = await adminFetch<Detail>(`/api/admin/partners/${id}?${qs}`);
     if (r.ok) setD(r.data);
     else setLoadErr(r.data.message ?? "Could not load.");
-  }, [adminFetch, id]);
+  }, [adminFetch, id, zoneQuery, zonePage]);
   useEffect(() => {
     load();
   }, [load]);
@@ -267,9 +276,38 @@ function PartnerDetail({ id, setMsg, showSecret, onChanged }: { id: string; setM
           </section>
 
           <section>
-            <h3 className="mb-2 text-sm font-semibold text-white">Zones ({x.zones.length})</h3>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold text-white">
+                Zones ({x.zoneTotal}
+                {zoneQuery ? ` matching “${zoneQuery}”` : ""})
+              </h3>
+              <form
+                className="ml-auto flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setZonePage(0);
+                  setZoneQuery(zoneSearch.trim());
+                }}
+              >
+                <input
+                  type="search"
+                  value={zoneSearch}
+                  onChange={(e) => setZoneSearch(e.target.value)}
+                  placeholder="Find a zone"
+                  aria-label="Find a zone by its id"
+                  className="w-40 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white placeholder:text-zinc-500"
+                />
+                <button type="submit" className={btn.ghost}>
+                  Find
+                </button>
+              </form>
+            </div>
             {!x.zones.length ? (
-              <Empty>No zones yet. {x.integration.autoCreateZones ? "One is made on its first visit." : "Connect one below."}</Empty>
+              <Empty>
+                {zoneQuery
+                  ? `No zone id contains “${zoneQuery}”.`
+                  : `No zones yet. ${x.integration.autoCreateZones ? "One is made on its first visit." : "Connect one below."}`}
+              </Empty>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[640px] text-left text-xs">
@@ -313,6 +351,24 @@ function PartnerDetail({ id, setMsg, showSecret, onChanged }: { id: string; setM
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {x.zoneTotal > x.zonePageSize && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-zinc-400">
+                <span>
+                  {x.zonePage * x.zonePageSize + 1}–{Math.min(x.zoneTotal, (x.zonePage + 1) * x.zonePageSize)} of {x.zoneTotal}
+                </span>
+                <button type="button" className={`${btn.ghost} ml-auto`} disabled={x.zonePage === 0} onClick={() => setZonePage(x.zonePage - 1)}>
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className={btn.ghost}
+                  disabled={(x.zonePage + 1) * x.zonePageSize >= x.zoneTotal}
+                  onClick={() => setZonePage(x.zonePage + 1)}
+                >
+                  Next
+                </button>
               </div>
             )}
             <ConnectZone

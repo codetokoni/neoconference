@@ -15,7 +15,7 @@ import {
   type PublicStat,
   listAudit,
   listPartnerKeys,
-  listZones,
+  listZonePage,
   normalizeOrigin,
   type IntegrationPatch,
   type PartnerIntegration,
@@ -111,12 +111,25 @@ export async function readPatch(body: Record<string, unknown>): Promise<Integrat
 }
 
 /** One integration with everything the screen shows about it. */
-export async function integrationDetail(id: string) {
+/** Zones shown at a time in the admin panel. */
+export const ZONE_PAGE_SIZE = 50;
+
+/**
+ * The admin panel's view of an integration: everything about it, and one
+ * page of its zones (with those zones' leaders), searched by zone id.
+ */
+export async function integrationDetail(id: string, zonesQuery: { q?: string; page?: number } = {}) {
   const integration = await getIntegration(id);
   if (!integration) throw new PartnerError(404, "integration_not_found", "No such integration.");
-  const [keys, zones, audit, orgAdmins] = await Promise.all([listPartnerKeys(id), listZones(id), listAudit(id, 100), getOrgAdmins(id)]);
+  const zonePage = Math.max(0, Math.floor(zonesQuery.page ?? 0)) || 0;
+  const [keys, { zones, total }, audit, orgAdmins] = await Promise.all([
+    listPartnerKeys(id),
+    listZonePage(id, { q: zonesQuery.q, offset: zonePage * ZONE_PAGE_SIZE, limit: ZONE_PAGE_SIZE }),
+    listAudit(id, 100),
+    getOrgAdmins(id),
+  ]);
   const leaders = Object.fromEntries(await Promise.all(zones.map(async (z) => [z.zoneId, await getZoneLeaders(id, z.zoneId)] as const)));
-  return { integration, keys, zones, audit, orgAdmins, leaders };
+  return { integration, keys, zones, zoneTotal: total, zonePage, zonePageSize: ZONE_PAGE_SIZE, audit, orgAdmins, leaders };
 }
 
 /** What changed, for the admin audit log: field names and values, none of them secret. */

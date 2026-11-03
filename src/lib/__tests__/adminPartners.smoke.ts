@@ -256,6 +256,57 @@ async function main() {
     assert.equal((await call("user_super", R.zones.POST as never, { method: "POST", params: { id }, body: { zoneId: "X", meeting: "no-such-meeting" } })).body.error, "meeting_not_found");
   });
 
+  await t("a partner with thousands of zones: the panel gets one page of 50, searchable, and the list only counts them", async () => {
+    // PrayerClouds has 5436 zones; reading all of them and their leaders
+    // kept its Manage panel on "Loading…" for good (2026-11-03).
+    const { kv } = await import("../kv");
+    const base = (await S.getZone(id, "LAGOS-1"))!;
+    for (let i = 0; i < 120; i++) {
+      const zoneId = `Z${String(i).padStart(3, "0")}`;
+      await kv.set(`neo:partner:${id}:zone:${zoneId}`, { ...base, zoneId });
+      await kv.sadd(`neo:partner:${id}:zones`, zoneId);
+    }
+    const total = (await S.listZones(id)).length;
+    assert.ok(total >= 122, String(total));
+    // Counted where every store read lands: the stub store's own map.
+    const map = (globalThis as unknown as { __kvStore: Map<string, unknown> }).__kvStore;
+    const reads: string[] = [];
+    const get = map.get.bind(map);
+    map.get = (k: string) => {
+      reads.push(k);
+      return get(k);
+    };
+    const zoneRecordReads = () => reads.filter((k) => k.includes(":zone:") && !k.endsWith(":leaders")).length;
+    try {
+      const first = await call("user_super", R.one.GET as never, { params: { id } });
+      assert.equal(first.status, 200, JSON.stringify(first.body).slice(0, 300));
+      assert.equal(first.body.zones.length, 50);
+      assert.equal(first.body.zoneTotal, total);
+      assert.deepEqual(Object.keys(first.body.leaders).length, 50, "leaders only for the zones shown");
+      assert.equal(zoneRecordReads(), 50, "the page's own zones are read, and no more");
+      const zs = first.body.zones.map((z: { zoneId: string }) => z.zoneId);
+      assert.deepEqual(zs, [...zs].sort((a: string, b: string) => a.localeCompare(b)), "in zone order");
+      const last = await call("user_super", R.one.GET as never, { params: { id }, query: `?page=${Math.floor((total - 1) / 50)}` });
+      assert.equal(last.body.zones.length, total - Math.floor((total - 1) / 50) * 50);
+      const found = await call("user_super", R.one.GET as never, { params: { id }, query: "?zones=lagos" });
+      assert.deepEqual(found.body.zones.map((z: { zoneId: string }) => z.zoneId), ["LAGOS-1"]);
+      assert.equal(found.body.zoneTotal, 1);
+      const none = await call("user_super", R.one.GET as never, { params: { id }, query: "?zones=nowhere" });
+      assert.deepEqual([none.body.zones.length, none.body.zoneTotal], [0, 0]);
+      reads.length = 0;
+      const list = await call("user_super", R.list.GET as never, {});
+      assert.equal(list.body.integrations.find((i: { id: string }) => i.id === id).zones, total);
+      assert.equal(zoneRecordReads(), 0, "the list counts zones without reading them");
+    } finally {
+      map.get = get;
+    }
+    for (let i = 0; i < 120; i++) {
+      const zoneId = `Z${String(i).padStart(3, "0")}`;
+      await kv.del(`neo:partner:${id}:zone:${zoneId}`);
+      await kv.srem(`neo:partner:${id}:zones`, zoneId);
+    }
+  });
+
   await t("report settings: timezone, public figures, leaders and report administrators; the zone report", async () => {
     const tz = await call("user_super", R.one.PATCH as never, { method: "PATCH", params: { id }, body: { timezone: "Mars/Olympus" } });
     assert.equal(tz.body.error, "invalid_timezone");
