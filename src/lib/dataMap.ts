@@ -319,7 +319,7 @@ export const DATA_MAP: DataLocation[] = [
     id: "kv.sessions",
     store: "kv",
     pattern:
-      "neo:session:<hash>, neo:sessions:<uid>, neo:session-device:<uid>:<fingerprint>, neo:device-sid:<sessionId>, neo:device-sids:<uid>, neo:device-policy:<uid>",
+      "neo:session:<hash>, neo:sessions:<uid>, neo:session-device:<uid>:<fingerprint>, neo:device-sid:<sessionId>, neo:device-sids:<uid>, neo:device-policy:<uid>, neo:device-rooms:<sessionId>",
     holds: "Signed-in devices, and whether the account allows more than one",
     personal: "IP address, user agent, device fingerprint",
     exported: true,

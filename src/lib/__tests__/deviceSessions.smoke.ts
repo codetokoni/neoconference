@@ -10,7 +10,15 @@
 import assert from "node:assert/strict";
 import "./apiV1-stubs/install";
 
-Object.assign(process.env, { KV_REST_API_URL: "https://kv.invalid", KV_REST_API_TOKEN: "t", CLERK_SECRET_KEY: "sk_test_devices" });
+Object.assign(process.env, {
+  KV_REST_API_URL: "https://kv.invalid",
+  KV_REST_API_TOKEN: "t",
+  CLERK_SECRET_KEY: "sk_test_devices",
+  LIVEKIT_API_KEY: "lk",
+  LIVEKIT_API_SECRET: "lk-secret-lk-secret-lk-secret-123",
+  NEXT_PUBLIC_LIVEKIT_URL: "wss://lk.test",
+});
+delete process.env.LIVEKIT_URL;
 
 type S = { id: string; status: string; createdAt?: number; lastActiveAt?: number; actor?: unknown };
 type G = typeof globalThis & {
@@ -20,11 +28,18 @@ type G = typeof globalThis & {
   __kvTtl?: boolean;
   __clerkSessions: Record<string, S[]>;
   __clerkDown?: boolean;
+  __lkParticipants?: Record<string, { identity: string; joinedAt: number }[]>;
+  __lkRemoved?: { room: string; identity: string }[];
 };
 const g = globalThis as G;
 g.__kvTtl = true;
-g.__users = { user_ada: { emails: ["ada@example.com"] }, user_bo: { emails: ["bo@example.com"] } };
-g.__clerkSessions = { user_ada: [], user_bo: [] };
+g.__users = {
+  user_ada: { emails: ["ada@example.com"] },
+  user_bo: { emails: ["bo@example.com"] },
+  user_cy: { emails: ["cy@example.com"] },
+  user_host: { emails: ["host@example.com"] },
+};
+g.__clerkSessions = { user_ada: [], user_bo: [], user_cy: [] };
 
 const realNow = Date.now.bind(Date);
 let skew = 0;
@@ -79,12 +94,28 @@ async function main() {
     g.__sid = sid;
   };
 
+  // What middleware leaves running after it answers (event.waitUntil), and
+  // its call to its own site, answered by the real route instead of the network.
+  const deviceMeetingsRoute = await import("../../app/api/auth/device-meetings/route");
+  const tokenRoute = await import("../../app/api/livekit/token/route");
+  const pending: Promise<unknown>[] = [];
+  const settle = async () => {
+    while (pending.length) await pending.shift();
+  };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    // The route asks for no sign-in, so who the test is signed in as does not matter.
+    if (url.endsWith("/api/auth/device-meetings")) return deviceMeetingsRoute.POST(new NextRequest(url, init as never));
+    return realFetch(input, init);
+  }) as typeof fetch;
+
   /** A request through the middleware from this device; its response, if it answered. */
   const visit = async (userId: string, sid: string, path: string, ua = CHROME_WIN) => {
     as(userId, sid);
     const res = await middleware(
       new NextRequest(`https://neolinguameet.com${path}`, { headers: { host: "neolinguameet.com", "user-agent": ua, "x-real-ip": "203.0.113.7" } }),
-      { waitUntil() {} },
+      { waitUntil: (p: Promise<unknown>) => pending.push(p) },
     );
     return res ?? null;
   };
@@ -270,6 +301,78 @@ async function main() {
     assert.equal(await visit("user_ada", fresh, "/api/events"), null);
     assert.equal(statusOf("user_ada", phone), "revoked");
     phone = fresh;
+  });
+
+  // Signed out elsewhere means out of the meeting too (owner, 2026-11-03).
+  const { eventStore } = await import("../eventStore");
+  const ROOM = "sunday-prayer";
+  const at = new Date().toISOString();
+  await eventStore.create({
+    id: "ev_prayer", slug: ROOM, name: "Sunday prayer", ownerUserId: "user_host", ownerEmail: "host@example.com",
+    visibility: "public", state: "live", startedAt: at, createdAt: at, updatedAt: at, livekitRoom: ROOM, qrSeed: "x",
+    roles: [], waitingRoomEnabled: false, waitForHost: false,
+  } as unknown as Parameters<typeof eventStore.create>[0]);
+  /** This device asks for a meeting token, as the website and the app do, and is then in the room. */
+  const join = async (userId: string, sid: string, nonce: string) => {
+    as(userId, sid);
+    const res = await tokenRoute.GET(new NextRequest(`https://neolinguameet.com/api/livekit/token?room=${ROOM}&event=${ROOM}&nonce=${nonce}`));
+    assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
+    const identity = `${userId}#${nonce}`;
+    ((g.__lkParticipants ??= {})[ROOM] ??= []).push({ identity, joinedAt: Math.floor(Date.now() / 1000) });
+    return identity;
+  };
+  const inRoom = () => (g.__lkParticipants?.[ROOM] ?? []).map((p) => p.identity).sort();
+
+  await t("a device in a meeting is taken out of it when the account signs in on another device", async () => {
+    const laptop = signIn("user_cy", after(400));
+    await visit("user_cy", laptop, "/dashboard");
+    const onLaptop = await join("user_cy", laptop, "laptop1");
+    await join("user_host", "sess_hostAAAAAAAAAA", "host1");
+    tick(60_000);
+    const phone = signIn("user_cy", after(401));
+    assert.equal(await visit("user_cy", phone, "/api/events", APP), null);
+    await settle();
+    assert.deepEqual(g.__lkRemoved, [{ room: ROOM, identity: onLaptop }]);
+    assert.deepEqual(inRoom(), ["user_host#host1"], "the host stays");
+    // The phone joins the same meeting and is not touched by a second pass.
+    const onPhone = await join("user_cy", phone, "phone1");
+    assert.deepEqual((await (await deviceMeetingsRoute.POST(new NextRequest("https://neolinguameet.com/api/auth/device-meetings", { method: "POST", body: JSON.stringify({ sessions: [laptop] }) }))).json()), { removed: 0 });
+    assert.deepEqual(inRoom(), [onPhone, "user_host#host1"].sort());
+  });
+
+  await t("the public route acts only on signed-out sessions: an active one is never taken out", async () => {
+    const phone = g.__clerkSessions.user_cy.at(-1)!.id;
+    const res = await deviceMeetingsRoute.POST(new NextRequest("https://neolinguameet.com/api/auth/device-meetings", { method: "POST", body: JSON.stringify({ sessions: [phone, "sess_hostAAAAAAAAAA", "junk"] }) }));
+    assert.deepEqual(await res.json(), { removed: 0 });
+    assert.equal(inRoom().length, 2);
+    assert.equal((await deviceMeetingsRoute.POST(new NextRequest("https://neolinguameet.com/api/auth/device-meetings", { method: "POST", body: "{}" }))).status, 400);
+  });
+
+  await t("someone on the same identity who joined after the sign-out is a newer device and stays", async () => {
+    g.__lkRemoved = [];
+    const tablet = signIn("user_cy", after(410));
+    const onTablet = await join("user_cy", tablet, "shared");
+    tick(60_000);
+    const next = signIn("user_cy", after(411));
+    assert.equal(await visit("user_cy", next, "/api/events"), null);
+    // Before the removal runs, the new device rejoins on the very same identity.
+    for (const p of g.__lkParticipants![ROOM]) if (p.identity === onTablet) p.joinedAt = Math.floor(Date.now() / 1000) + 5;
+    await settle();
+    assert.ok(!g.__lkRemoved.some((r) => r.identity === onTablet), JSON.stringify(g.__lkRemoved));
+    assert.ok(inRoom().includes(onTablet));
+  });
+
+  await t("signing out a device from the list takes it out of its meeting too", async () => {
+    g.__lkRemoved = [];
+    const cur = g.__clerkSessions.user_cy.at(-1)!.id;
+    await devices("user_cy", cur, { action: "multi", on: true });
+    const other = signIn("user_cy", after(420));
+    await visit("user_cy", other, "/api/events");
+    const onOther = await join("user_cy", other, "other1");
+    tick(60_000);
+    const r = await devices("user_cy", cur, { action: "sign_out", id: other });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual(g.__lkRemoved, [{ room: ROOM, identity: onOther }]);
   });
 
   await t("erasing the account removes what was kept about its devices", async () => {

@@ -18,8 +18,13 @@
 //   neo:device-sid:<sessionId>   -> SidRecord          (TTL 400 days)
 //   neo:device-sids:<userId>     -> Set<sessionId>     (this account's, for erasure)
 //   neo:device-policy:<userId>   -> { multi: true }    (absent = one device)
+//   neo:device-rooms:<sessionId> -> Set<JSON {room, identity}> (TTL a day)
+//                                   the meetings this session joined, so a
+//                                   signed-out device can be taken out of
+//                                   them (src/lib/deviceMeetings.ts)
 //
-// EDGE-SAFE, like sessionStore: middleware imports it.
+// EDGE-SAFE, like sessionStore: middleware imports it. Taking a device out
+// of LiveKit is not: that is deviceMeetings, which runs in Node.
 
 import { clerkClient } from '@clerk/nextjs/server';
 import { kv } from '@/lib/kv';
@@ -28,7 +33,10 @@ import { dropForClerkSessions } from '@/lib/sessionStore';
 const SID_PREFIX = 'neo:device-sid:';
 const USER_SIDS_PREFIX = 'neo:device-sids:';
 const POLICY_PREFIX = 'neo:device-policy:';
+const ROOMS_PREFIX = 'neo:device-rooms:';
 const TTL_SECONDS = 400 * 24 * 60 * 60;
+/** A meeting token lasts an hour; a day covers the longest meeting on one join. */
+const ROOMS_TTL_SECONDS = 24 * 60 * 60;
 
 /**
  * Sessions signed in before the rule existed are left alone, so nobody was
@@ -65,7 +73,8 @@ export interface Device {
   current: boolean;
 }
 
-export type DeviceCheck = { status: 'ok' } | { status: 'revoked'; reason: SignOutReason };
+/** 'ok' with `signedOut`: this request was a sign-in that signed those sessions out. */
+export type DeviceCheck = { status: 'ok'; signedOut?: string[] } | { status: 'revoked'; reason: SignOutReason };
 
 /* ------------------------------------------------------------------ */
 /* Labels                                                              */
@@ -282,7 +291,7 @@ async function claim(
     console.info('[neo:deviceSessions] new sign-in; signing out', older.length, 'other device(s)', { userId });
     await revoke(userId, older, 'other_device');
   }
-  return { status: 'ok' };
+  return { status: 'ok', signedOut: older };
 }
 
 /* ------------------------------------------------------------------ */
@@ -321,18 +330,18 @@ export async function signOutDevice(userId: string, sessionId: string): Promise<
   return true;
 }
 
-/** Signs out every device but this one; how many. */
-export async function signOutOtherDevices(userId: string, currentSessionId: string): Promise<number> {
+/** Signs out every device but this one; their sessions. */
+export async function signOutOtherDevices(userId: string, currentSessionId: string): Promise<string[]> {
   const others = (await activeClerkSessions(userId)).filter((s) => s.id !== currentSessionId && !s.actor).map((s) => s.id);
   await revoke(userId, others, 'elsewhere');
-  return others.length;
+  return others;
 }
 
 /**
  * "Allow login on multiple devices". Turning it off keeps this device and
  * signs out the rest, so the account is back to one device straight away.
  */
-export async function setMultipleDevices(userId: string, on: boolean, currentSessionId: string): Promise<number> {
+export async function setMultipleDevices(userId: string, on: boolean, currentSessionId: string): Promise<string[]> {
   if (!isKvConfigured()) {
     if (on) memPolicy.set(userId, true);
     else memPolicy.delete(userId);
@@ -341,27 +350,84 @@ export async function setMultipleDevices(userId: string, on: boolean, currentSes
   } else {
     await kv.del(POLICY_PREFIX + userId);
   }
-  return on ? 0 : signOutOtherDevices(userId, currentSessionId);
+  return on ? [] : signOutOtherDevices(userId, currentSessionId);
 }
+
+const isSessionId = (id: string) => /^sess_[A-Za-z0-9]{10,64}$/.test(id);
 
 /** Why a session was signed out, for the device that held it; null if it was not. */
 export async function signedOutReason(sessionId: string): Promise<SignOutReason | null> {
-  if (!/^sess_[A-Za-z0-9]{10,64}$/.test(sessionId)) return null;
+  return (await signedOut(sessionId))?.reason ?? null;
+}
+
+/** Why and when a session was signed out here; null if it was not. */
+export async function signedOut(sessionId: string): Promise<{ reason: SignOutReason; at: number } | null> {
+  if (!isSessionId(sessionId)) return null;
   const record = await readSid(sessionId).catch(() => null);
-  return record?.state === 'revoked' ? (record.reason ?? 'elsewhere') : null;
+  return record?.state === 'revoked' ? { reason: record.reason ?? 'elsewhere', at: record.revokedAt ?? 0 } : null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Meetings a session joined                                           */
+/* ------------------------------------------------------------------ */
+
+export interface JoinedMeeting {
+  room: string;
+  identity: string;
+}
+
+const memRooms = new Map<string, Set<string>>();
+
+/** Called as a meeting token is issued: this session is in `room` as `identity`. */
+export async function rememberMeeting(sessionId: string, room: string, identity: string): Promise<void> {
+  if (!isSessionId(sessionId) || !room || !identity) return;
+  const entry = JSON.stringify({ room, identity } satisfies JoinedMeeting);
+  if (!isKvConfigured()) {
+    if (!memRooms.has(sessionId)) memRooms.set(sessionId, new Set());
+    memRooms.get(sessionId)!.add(entry);
+    return;
+  }
+  await kv.sadd(ROOMS_PREFIX + sessionId, entry);
+  await kv.expire(ROOMS_PREFIX + sessionId, ROOMS_TTL_SECONDS);
+}
+
+/** The meetings this session joined in the last day. */
+export async function meetingsJoinedBy(sessionId: string): Promise<JoinedMeeting[]> {
+  if (!isSessionId(sessionId)) return [];
+  const raw = !isKvConfigured()
+    ? Array.from(memRooms.get(sessionId) ?? [])
+    : (((await kv.smembers(ROOMS_PREFIX + sessionId)) ?? []) as unknown[]);
+  const out: JoinedMeeting[] = [];
+  for (const r of raw) {
+    // The KV client hands back parsed JSON for JSON-looking members.
+    const m = (typeof r === 'string' ? JSON.parse(r) : r) as Partial<JoinedMeeting>;
+    if (typeof m?.room === 'string' && typeof m?.identity === 'string') out.push({ room: m.room, identity: m.identity });
+  }
+  return out;
+}
+
+export async function forgetMeetings(sessionId: string): Promise<void> {
+  if (!isKvConfigured()) memRooms.delete(sessionId);
+  else await kv.del(ROOMS_PREFIX + sessionId);
 }
 
 /** Everything kept for this account (data erasure). */
 export async function forgetDevices(userId: string, dry = false): Promise<number> {
   if (!isKvConfigured()) {
     let n = memPolicy.delete(userId) ? 1 : 0;
-    for (const [id, r] of memSids) if (r.userId === userId && (n++, !dry)) memSids.delete(id);
+    for (const [id, r] of memSids) {
+      if (r.userId !== userId) continue;
+      n++;
+      if (dry) continue;
+      memSids.delete(id);
+      memRooms.delete(id);
+    }
     return n;
   }
   const sids = ((await kv.smembers(USER_SIDS_PREFIX + userId)) ?? []) as string[];
   const policy = (await kv.get(POLICY_PREFIX + userId)) ? 1 : 0;
   if (!dry) {
-    for (const id of sids) await kv.del(SID_PREFIX + id);
+    for (const id of sids) await kv.del(SID_PREFIX + id, ROOMS_PREFIX + id);
     await kv.del(USER_SIDS_PREFIX + userId, POLICY_PREFIX + userId);
   }
   return sids.length + policy;
