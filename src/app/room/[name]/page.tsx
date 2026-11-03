@@ -1087,7 +1087,7 @@ function RoomContainer({
             title="Invite people: share the meeting link"
           >
             <LinkIcon size={16} aria-hidden />
-            {copied ? "Link copied!" : "Invite"}
+            {copied ? "Invite copied!" : "Invite"}
           </button>
           <button
             type="button"
