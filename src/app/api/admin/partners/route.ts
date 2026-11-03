@@ -8,7 +8,7 @@ import { actorOf, requireAdmin } from "@/lib/admin/context";
 import { recordAdminAction } from "@/lib/admin/audit";
 import { readJson } from "@/lib/admin/http";
 import { adminFail, readCreate } from "@/lib/partners/admin";
-import { createIntegration, listIntegrations, listPartnerKeys, listZones, mintPartnerKey } from "@/lib/partners/store";
+import { countZones, createIntegration, listIntegrations, listPartnerKeys, mintPartnerKey } from "@/lib/partners/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,8 +20,9 @@ export async function GET(req: Request) {
     const all = await listIntegrations();
     const integrations = await Promise.all(
       all.map(async (i) => {
-        const [keys, zones] = await Promise.all([listPartnerKeys(i.id), listZones(i.id)]);
-        return { ...i, activeKeys: keys.filter((k) => !k.revokedAt).length, zones: zones.length };
+        // A count, not the zones: a partner can have thousands.
+        const [keys, zones] = await Promise.all([listPartnerKeys(i.id), countZones(i.id)]);
+        return { ...i, activeKeys: keys.filter((k) => !k.revokedAt).length, zones };
       }),
     );
     return NextResponse.json({ ok: true, integrations });
