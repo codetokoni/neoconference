@@ -2,7 +2,8 @@
 // each user in globalThis.__users = { [id]: { plan?, role?, emails?, unverified?, first?, last?,
 // banned?, createdAt?, lastSignInAt?, password?, primary?, metadata?, locked?, externalId? } }.
 // `emails` are verified addresses; `unverified` are on the account but not verified.
-// Clerk sessions in globalThis.__clerkSessions = { [userId]: [{ id, status }] }.
+// Clerk sessions in globalThis.__clerkSessions = { [userId]: [{ id, status, createdAt?, lastActiveAt?, actor? }] };
+// globalThis.__clerkDown makes the session list throw, as Clerk being unreachable would.
 //
 // Metadata writes behave as Clerk's do: updateUserMetadata deep-merges (a
 // key set to null is removed), while updateUser's publicMetadata replaces
@@ -241,9 +242,10 @@ export async function clerkClient() {
     },
     sessions: {
       async getSessionList({ userId, status } = {}) {
+        if (globalThis.__clerkDown) throw Object.assign(new Error("clerk: unavailable"), { status: 503 });
         const list = (sessions()[userId] ?? []).filter((s) => !status || s.status === status);
         return {
-          data: list.map((s) => ({ id: s.id, userId, status: s.status, createdAt: 1, lastActiveAt: 2, expireAt: 3, actor: null, latestActivity: null })),
+          data: list.map((s) => ({ id: s.id, userId, status: s.status, createdAt: s.createdAt ?? 1, lastActiveAt: s.lastActiveAt ?? 2, expireAt: 3, actor: s.actor ?? null, latestActivity: null })),
           totalCount: list.length,
         };
       },

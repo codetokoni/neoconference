@@ -24,6 +24,7 @@ import { eventStore } from "@/lib/eventStore";
 import { cancelMeetingJobs } from "@/lib/scheduler";
 import { adminRemoveMember, deleteGroup, listGroupsForUser, pendingKeyFor } from "@/lib/groupStore";
 import { logout } from "@/lib/sessionStore";
+import { forgetDevices } from "@/lib/deviceSessions";
 import { userPrefix } from "@/lib/eventRecordings";
 import { isOwnerEmailList } from "@/lib/admin/owner";
 import { forgetUser, type ClerkUserish } from "@/lib/admin/users";
@@ -417,10 +418,11 @@ export const ERASE_STEPS: EraseStep[] = [
       }
       const sessions = ((await kv.smembers(`neo:sessions:${p.uid}`)) ?? []) as string[];
       const devices = await scanKeys(`neo:session-device:${p.uid}:*`);
-      n += sessions.length + devices.length;
+      n += sessions.length + devices.length + (await forgetDevices(p.uid, true));
       if (!dry) {
         await logout(p.uid, null, "all");
         await kv.del(`neo:sessions:${p.uid}`, ...devices);
+        await forgetDevices(p.uid);
       }
       return n;
     },

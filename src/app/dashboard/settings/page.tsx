@@ -23,12 +23,14 @@ export default function SettingsPage() {
         </p>
       </header>
 
-      <section className="space-y-4">
+      <section id="security" className="scroll-mt-20 space-y-4">
         <div>
-          <h2 className="text-lg font-medium text-cyan-100">Signed-in devices</h2>
+          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Security</p>
+          <h2 className="text-lg font-medium text-cyan-100">Device sessions</h2>
           <p className="mt-1 text-sm text-zinc-400">
-            You stay signed in on every device until you sign out. If you see a device
-            you don&apos;t recognise, sign out everywhere and change your password.
+            Your account stays signed in on one device at a time: signing in somewhere new
+            signs out the others, unless you allow several below. If you see a device you
+            don&apos;t recognise, sign it out and change your password.
           </p>
         </div>
 

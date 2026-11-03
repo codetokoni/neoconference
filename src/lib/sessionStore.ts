@@ -370,6 +370,23 @@ export async function logout(
   await destroy(tokenHash, userId, record.fingerprint);
 }
 
+/**
+ * Drops the device cookies made from these Clerk sessions, once they were
+ * signed out from another device (deviceSessions). Clerk already refuses
+ * them; this keeps the cookie from outliving its session.
+ */
+export async function dropForClerkSessions(userId: string, clerkSessionIds: string[]): Promise<void> {
+  if (!userId || clerkSessionIds.length === 0) return;
+  const ids = new Set(clerkSessionIds);
+  const hashes = await listHashes(userId);
+  await Promise.all(
+    hashes.map(async (hash) => {
+      const record = await readRecord(hash);
+      if (record?.clerkSessionId && ids.has(record.clerkSessionId)) await destroy(hash, userId, record.fingerprint);
+    }),
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Listing                                                             */
 /* ------------------------------------------------------------------ */

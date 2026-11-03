@@ -2,45 +2,28 @@
 
 // src/components/SessionManager.tsx
 //
-// Lists the devices the user is currently signed in on, and offers the two
-// sign-out scopes: this device, or everywhere.
+// Settings → Security → Device sessions: the devices signed in to this
+// account, signing out one of them or all the others, "Allow login on
+// multiple devices", and the two sign-out scopes for this device or
+// everywhere. Backed by /api/auth/devices (src/lib/deviceSessions.ts).
 
 import { useCallback, useEffect, useState } from "react";
 import { useClerk } from "@clerk/nextjs";
 
 type Scope = "device" | "all";
 
-interface ActiveSession {
+interface Device {
   id: string;
-  userAgent: string | null;
+  label: string;
   ip: string | null;
-  createdAt: number;
-  lastActivityAt: number;
+  signedInAt: number;
+  lastActiveAt: number;
   current: boolean;
 }
 
-/** Best-effort, purely cosmetic label for the device list. */
-function describeDevice(userAgent: string | null): string {
-  const ua = userAgent || "";
-  if (!ua) return "Unknown device";
-
-  const browser =
-    /Edg\//.test(ua) ? "Edge"
-    : /OPR\/|Opera/.test(ua) ? "Opera"
-    : /Firefox\//.test(ua) ? "Firefox"
-    : /Chrome\//.test(ua) ? "Chrome"
-    : /Safari\//.test(ua) ? "Safari"
-    : "Browser";
-
-  const os =
-    /Windows/.test(ua) ? "Windows"
-    : /Android/.test(ua) ? "Android"
-    : /iPhone|iPad|iPod/.test(ua) ? "iOS"
-    : /Mac OS X|Macintosh/.test(ua) ? "macOS"
-    : /Linux/.test(ua) ? "Linux"
-    : "Unknown OS";
-
-  return `${browser} on ${os}`;
+interface DevicesState {
+  multiDevice: boolean;
+  devices: Device[];
 }
 
 function timeAgo(ts: number): string {
@@ -54,27 +37,54 @@ function timeAgo(ts: number): string {
   return `${days}d ago`;
 }
 
+async function readError(res: Response, fallback: string): Promise<string> {
+  const body = await res.json().catch(() => ({}));
+  return typeof body?.message === "string" ? body.message : fallback;
+}
+
 export default function SessionManager() {
   const { signOut } = useClerk();
-  const [sessions, setSessions] = useState<ActiveSession[] | null>(null);
-  const [pending, setPending] = useState<Scope | null>(null);
+  const [data, setData] = useState<DevicesState | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/auth/sessions", { credentials: "same-origin" });
-      if (!res.ok) throw new Error(`sessions ${res.status}`);
-      const data = await res.json();
-      setSessions(data.sessions ?? []);
+      const res = await fetch("/api/auth/devices", { credentials: "same-origin" });
+      if (!res.ok) throw new Error(`devices ${res.status}`);
+      setData(await res.json());
+      setLoadFailed(false);
     } catch (err) {
       console.error("[SessionManager] load failed", err);
-      setSessions([]);
+      setLoadFailed(true);
     }
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  async function act(key: string, body: Record<string, unknown>) {
+    if (pending) return;
+    setPending(key);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/devices", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await readError(res, `That did not go through (${res.status}).`));
+      setData(await res.json());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That did not go through.");
+      load();
+    } finally {
+      setPending(null);
+    }
+  }
 
   async function handleLogout(scope: Scope) {
     if (pending) return;
@@ -100,32 +110,64 @@ export default function SessionManager() {
     }
   }
 
+  const others = data?.devices.filter((d) => !d.current) ?? [];
+
   return (
     <div className="space-y-6">
+      <label className="flex items-start justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">
+        <span className="min-w-0">
+          <span className="block text-sm font-medium text-cyan-100">Allow login on multiple devices</span>
+          <span className="mt-0.5 block text-xs text-zinc-400">
+            {data?.multiDevice
+              ? "This account can stay signed in on several devices at once."
+              : "Off: signing in on another device signs this account out everywhere else."}
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="mt-1 h-5 w-5 shrink-0 accent-cyan-400"
+          checked={data?.multiDevice ?? false}
+          disabled={data === null || pending !== null}
+          aria-checked={data?.multiDevice ?? false}
+          onChange={(e) => act("multi", { action: "multi", on: e.target.checked })}
+        />
+      </label>
+
       <div className="rounded-xl border border-white/10 bg-white/[0.02] overflow-hidden">
-        {sessions === null ? (
-          <p className="px-4 py-6 text-sm text-zinc-500">Loading devices…</p>
-        ) : sessions.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-zinc-500">No other active devices.</p>
+        {data === null ? (
+          <p className="px-4 py-6 text-sm text-zinc-500">
+            {loadFailed ? "Could not load your devices. Reload the page to try again." : "Loading devices…"}
+          </p>
+        ) : data.devices.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-zinc-500">No active devices.</p>
         ) : (
           <ul className="divide-y divide-white/5">
-            {sessions.map((s) => (
-              <li key={s.id} className="flex items-center justify-between gap-4 px-4 py-3">
+            {data.devices.map((d) => (
+              <li key={d.id} className="flex items-center justify-between gap-4 px-4 py-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-cyan-100 truncate">
-                      {describeDevice(s.userAgent)}
-                    </span>
-                    {s.current && (
+                    <span className="text-sm text-cyan-100 truncate">{d.label}</span>
+                    {d.current && (
                       <span className="shrink-0 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-medium text-cyan-200">
                         This device
                       </span>
                     )}
                   </div>
                   <div className="text-xs text-zinc-500 truncate">
-                    {s.ip ?? "IP unknown"} · active {timeAgo(s.lastActivityAt)}
+                    {d.ip ?? "IP unknown"} · active {timeAgo(d.lastActiveAt)}
                   </div>
                 </div>
+                {!d.current && (
+                  <button
+                    type="button"
+                    onClick={() => act(d.id, { action: "sign_out", id: d.id })}
+                    disabled={pending !== null}
+                    className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cyan-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {pending === d.id ? "Signing out…" : "Sign out"}
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -133,6 +175,17 @@ export default function SessionManager() {
       </div>
 
       <div className="flex flex-wrap gap-3">
+        {others.length > 0 && (
+          <button
+            type="button"
+            onClick={() => act("others", { action: "sign_out_others" })}
+            disabled={pending !== null}
+            className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {pending === "others" ? "Signing out…" : "Sign out all other devices"}
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => handleLogout("device")}
