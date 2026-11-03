@@ -94,6 +94,17 @@ export const JOBS: JobDef[] = [
     load: () => import("@/app/api/cron/billing-reminders/route") as Promise<RouteModule>,
   }),
   routeJob({
+    name: "partner-totals",
+    label: "Partner prayer totals",
+    description: "Stores each partner website's finished days of prayer totals, which the organisation report adds up. Fills any missing day of the last 35.",
+    schedule: "20 1 * * *",
+    scheduleText: "Daily at 01:20 UTC",
+    retrySafe: true,
+    retryNote: "A day already stored is left alone, so a second run only stores days still missing.",
+    route: "/api/cron/partner-totals",
+    load: () => import("@/app/api/cron/partner-totals/route") as Promise<RouteModule>,
+  }),
+  routeJob({
     name: "comms",
     label: "Announcement delivery (backstop)",
     description: "Works through announcements that still have recipients left. The scheduler's 30-second tick does this all day; this daily run is the backstop if that container is down.",

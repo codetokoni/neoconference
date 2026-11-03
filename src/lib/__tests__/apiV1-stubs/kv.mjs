@@ -138,13 +138,52 @@ const base = {
   },
 };
 
+// MGET, as Upstash answers it: each key's value or null, in order.
+base.mget = async (...ks) => Promise.all(ks.flat().map((k) => base.get(k)));
+
+// globalThis.__kvRoundTrips counts what would be requests to Upstash: each
+// command, and each pipeline's exec() once however many commands it holds.
+const roundTrip = () => (globalThis.__kvRoundTrips = (globalThis.__kvRoundTrips ?? 0) + 1);
+
+// kv.pipeline(): commands queued and sent together, as Upstash does; exec()
+// answers with each command's result in order.
+function pipeline() {
+  const queued = [];
+  const p = new Proxy(
+    {},
+    {
+      get(_t, prop) {
+        if (prop === "exec") {
+          return async () => {
+            roundTrip();
+            const fault = globalThis.__kvFault?.("pipeline", queued);
+            if (fault === "fail") throw new Error("kv: unavailable (test)");
+            if (fault === "hang") return new Promise(() => {});
+            const out = [];
+            for (const [cmd, args] of queued) out.push(await base[cmd](...args));
+            return out;
+          };
+        }
+        if (typeof base[prop] !== "function") return undefined;
+        return (...args) => {
+          queued.push([prop, args]);
+          return p;
+        };
+      },
+    },
+  );
+  return p;
+}
+
 // globalThis.__kvFault = (method, args) => "fail" | "hang" | undefined lets a
 // test make KV refuse or never answer, to prove a caller survives it.
 export const kv = new Proxy(base, {
   get(target, prop) {
+    if (prop === "pipeline") return pipeline;
     const fn = target[prop];
     if (typeof fn !== "function") return fn;
     return (...args) => {
+      roundTrip();
       const fault = globalThis.__kvFault?.(prop, args);
       if (fault === "fail") return Promise.reject(new Error("kv: unavailable (test)"));
       if (fault === "hang") return new Promise(() => {});

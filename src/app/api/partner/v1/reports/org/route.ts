@@ -4,30 +4,24 @@
 
 import { NextRequest } from "next/server";
 import { fail } from "@/lib/partners/http";
-import { buildReport, reportTag } from "@/lib/partners/reports";
+import { orgReport, orgReportTag } from "@/lib/partners/orgTotals";
 import { partnerCaller, periodOf, requireOrgAdmin, tagged } from "@/lib/partners/reportAccess";
 import { listZones } from "@/lib/partners/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// A day not stored yet is worked out on the spot (the nightly job normally has).
+export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
   try {
     const { integration, viewerId } = await partnerCaller(req);
     await requireOrgAdmin(integration, viewerId);
-    const zones = await listZones(integration.id);
     const now = Date.now();
     const period = periodOf(req, integration, now);
-    return tagged(req, `${await reportTag(integration.id, zones.map((z) => z.zoneId), now)}-org`, async () => {
-      const all = await buildReport({ integration, zones, period, now });
-      const perZone = await Promise.all(
-        zones.map(async (z) => {
-          const r = await buildReport({ integration, zones: [z], period, now });
-          return { zone: r.zones[0], summary: r.summary };
-        }),
-      );
-      return { period: all.period, summary: all.summary, zones: perZone, generatedAt: all.generatedAt };
-    });
+    // From day totals (src/lib/partners/orgTotals.ts): built zone by zone
+    // it could not finish for a partner with thousands of zones.
+    return tagged(req, await orgReportTag(integration.id, period, now), async () => orgReport(integration, await listZones(integration.id), period, now));
   } catch (e) {
     return fail(e);
   }

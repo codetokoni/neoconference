@@ -315,8 +315,14 @@ export async function getZone(integrationId: string, zone: string): Promise<Zone
 }
 
 export async function listZones(integrationId: string): Promise<ZoneMapping[]> {
-  const ids = ((await kv.smembers(K.zones(integrationId))) as string[]) || [];
-  const all = await Promise.all(ids.map((z) => getZone(integrationId, z)));
+  const ids = (((await kv.smembers(K.zones(integrationId))) as unknown[]) || []).map(String);
+  // Read 500 at a time: one request each for thousands of zones ran out of
+  // connections (2026-11-03).
+  const all: (ZoneMapping | null)[] = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    const keys = ids.slice(i, i + 500).map((z) => K.zone(integrationId, z));
+    all.push(...((await kv.mget<(ZoneMapping | null)[]>(...keys)) ?? []));
+  }
   return all.filter((x): x is ZoneMapping => !!x).sort((a, b) => a.zoneId.localeCompare(b.zoneId));
 }
 
