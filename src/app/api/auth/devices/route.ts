@@ -19,6 +19,7 @@ import {
   signOutDevice,
   signOutOtherDevices,
 } from '@/lib/deviceSessions';
+import { removeFromMeetings } from '@/lib/deviceMeetings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,10 +60,11 @@ export async function POST(request: NextRequest) {
       if (!(await signOutDevice(userId, body.id))) {
         return err('not_found', 'That device is already signed out.', 404);
       }
+      await removeFromMeetings([body.id]);
     } else if (body?.action === 'sign_out_others') {
-      await signOutOtherDevices(userId, sessionId);
+      await removeFromMeetings(await signOutOtherDevices(userId, sessionId));
     } else if (body?.action === 'multi' && typeof body.on === 'boolean') {
-      await setMultipleDevices(userId, body.on, sessionId);
+      await removeFromMeetings(await setMultipleDevices(userId, body.on, sessionId));
     } else {
       return err('bad_request', 'Unknown action.', 400);
     }

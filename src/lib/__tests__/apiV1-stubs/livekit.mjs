@@ -44,6 +44,15 @@ export class RoomServiceClient {
     if (!p) throw new Error("twirp error not_found: participant not found");
     return p;
   }
+  // Recorded in globalThis.__lkRemoved ([{ room, identity }]) and taken out
+  // of globalThis.__lkParticipants; as LiveKit, someone not there throws.
+  async removeParticipant(room, identity) {
+    const list = globalThis.__lkParticipants?.[room] ?? [];
+    if (!list.some((x) => x.identity === identity)) throw new Error("twirp error not_found: participant not found");
+    globalThis.__lkParticipants[room] = list.filter((x) => x.identity !== identity);
+    (globalThis.__lkRemoved ??= []).push({ room, identity });
+    return {};
+  }
   // Recorded in globalThis.__lkMuted ([{ room, identity, trackSid, muted }]).
   async mutePublishedTrack(room, identity, trackSid, muted) {
     (globalThis.__lkMuted ??= []).push({ room, identity, trackSid, muted });

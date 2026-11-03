@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
+import { rememberMeeting } from "@/lib/deviceSessions";
 import { getPlanLimits, getPlanLimitsForUserId, type Plan, type PlanFeatureLimits } from "@/lib/plan";
 import { hasMeetingAdminPower, isAdmin } from "@/lib/roles";
 import { featureDecisions } from "@/lib/platform/features";
@@ -17,7 +18,7 @@ const ROOM_NAME_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
 
 export async function GET(req: NextRequest) {
   try {
-    const { userId } = await auth();
+    const { userId, sessionId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -480,6 +481,11 @@ export async function GET(req: NextRequest) {
     if (client) console.info("[token] app join", JSON.stringify({ room, event: eventSlug, identity: at.identity, client }));
 
     const token = await at.toJwt();
+    // Which sign-in is in this meeting, so signing that device out from
+    // another one also takes it out of here (src/lib/deviceMeetings.ts).
+    if (sessionId) {
+      await rememberMeeting(sessionId, room, at.identity ?? "").catch((e) => console.error("[livekit/token] could not note the meeting for its sign-in", e));
+    }
     return NextResponse.json({ token, wsUrl });
   } catch (err) {
     console.error("[livekit/token] Unexpected error:", err);

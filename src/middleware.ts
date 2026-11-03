@@ -32,6 +32,9 @@ const isPublicRoute = createRouteMatcher([
   '/api/app/gate',
   // Asked by a device after it was signed out, so by definition signed out.
   '/api/auth/signed-out-reason',
+  // Called by middleware itself after a sign-in signs devices out; acts
+  // only on sessions already signed out (src/lib/deviceMeetings.ts).
+  '/api/auth/device-meetings',
   '/download',
   // For search engines (src/app/robots.ts, sitemap.ts).
   '/robots.txt',
@@ -374,6 +377,7 @@ const isOneDeviceExemptRoute = createRouteMatcher([
 async function enforceOneDevice(
   auth: () => Promise<{ userId: string | null; sessionId?: string | null }>,
   req: NextRequest,
+  event: NextFetchEvent,
 ): Promise<NextResponse | null> {
   if (isOneDeviceExemptRoute(req)) return null;
   const { userId, sessionId } = await auth();
@@ -382,7 +386,23 @@ async function enforceOneDevice(
     userAgent: req.headers.get('user-agent'),
     ip: getClientIp(req.headers),
   });
-  if (check.status === 'ok') return null;
+  if (check.status === 'ok') {
+    // A sign-in that signed other devices out: take them out of their
+    // meetings too. LiveKit is out of reach from here, so a Node route does it.
+    if (check.signedOut?.length) {
+      event.waitUntil(
+        fetch(new URL('/api/auth/device-meetings', req.url), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ sessions: check.signedOut }),
+        }).then(
+          () => undefined,
+          (error) => console.error('[middleware] could not take signed-out devices out of meetings', error),
+        ),
+      );
+    }
+    return null;
+  }
   if (req.nextUrl.pathname.startsWith('/api/') || req.nextUrl.pathname.startsWith('/trpc/')) {
     return NextResponse.json(
       { error: 'signed_out', reason: check.reason, message: SIGNED_OUT_MESSAGE[check.reason] },
@@ -423,7 +443,7 @@ const clerkHandler = clerkMiddleware(
     const gated = await platformGate(nextReq, async () => (await auth()).userId ?? null);
     if (gated) return gated;
     await noteActive(auth, event);
-    const signedOutHere = await enforceOneDevice(auth, nextReq);
+    const signedOutHere = await enforceOneDevice(auth, nextReq, event);
     if (signedOutHere) return signedOutHere;
     // Custom-domain rewrite runs first because it's tenant-scoped and
     // consumes the whole path. Short-meeting-URL rewrite runs second so
