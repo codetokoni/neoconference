@@ -19,9 +19,10 @@
 // the minimum on a date, after a week of nudges.
 
 import { BRAND } from "@/lib/brand";
-// 1.2.8 live on the LoveWorld AppStore, 2026-11-03 (invites carry the app
+// 1.2.9 live on the LoveWorld AppStore, 2026-11-03 (says why it was signed
+// out, Device sessions; 1.2.8 earlier that day, invites carry the app
 // download link; 1.2.7 2026-10-20; 1.2.6, the NeoLinguaMeet rename, 2026-10-19).
-export const LATEST_APP_VERSION = "1.2.8";
+export const LATEST_APP_VERSION = "1.2.9";
 export const MIN_APP_VERSION = "1.2.4";
 
 /**
