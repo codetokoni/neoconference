@@ -55,6 +55,8 @@ export const AK = {
   byEnd: (integ: string, zone: string) => `neo:pz:${integ}:${zone}:ended`,
   personSessions: (integ: string, identity: string) => `neo:pz:${integ}:u:${identity}`,
   version: (integ: string, zone: string) => `neo:pz:${integ}:${zone}:ver`,
+  /** Bumped with every zone's version: "anything changed" for the organisation report. */
+  orgVersion: (integ: string) => `neo:pz:${integ}:ver`,
 };
 
 export type PrayerSession = {
@@ -100,7 +102,7 @@ export async function identityInfo(identity: string): Promise<IdentityInfo | nul
 
 /* -------------------------------- sessions -------------------------------- */
 
-function parseSession(h: Record<string, unknown> | null): PrayerSession | null {
+export function parseSession(h: Record<string, unknown> | null): PrayerSession | null {
   if (!h || typeof h.id !== "string") return null;
   return {
     id: h.id,
@@ -124,12 +126,13 @@ export async function getSessions(ids: string[]): Promise<PrayerSession[]> {
   return all.filter((s): s is PrayerSession => !!s);
 }
 
-function isStale(s: PrayerSession, now: number): boolean {
+export function isStale(s: PrayerSession, now: number): boolean {
   return s.endedAt == null && now - s.lastActivity > STALE_SESSION_MS;
 }
 
 async function bump(integ: string, zone: string): Promise<void> {
   await kv.incr(AK.version(integ, zone));
+  await kv.incr(AK.orgVersion(integ));
 }
 
 /** Ends a session once: at its last departure (or last activity), never before it began. */

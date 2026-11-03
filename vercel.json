@@ -27,6 +27,10 @@
     {
       "path": "/api/cron/automation",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/partner-totals",
+      "schedule": "20 1 * * *"
     }
   ]
 }
