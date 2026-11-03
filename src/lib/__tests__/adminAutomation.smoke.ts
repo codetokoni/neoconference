@@ -270,6 +270,22 @@ async function main() {
     assert.equal(r.status, 200, JSON.stringify(r.body));
   });
 
+  await t("Renewal reminders cover a plan assigned in admin with no payment behind it; trials are left to their own reminder", async () => {
+    // user_paid: Pro assigned for 2 days, nothing paid through eSPees
+    // (owner, 2026-11-03: "make renewal reminders cover assigned plans").
+    const p = await ruleCall("user_owner", R.preview.POST, "builtin_renewal");
+    assert.equal(p.status, 200, JSON.stringify(p.body));
+    assert.deepEqual(p.body.preview.items.map((i: { label: string; outcome: string }) => [i.label, i.outcome]), [["paid@example.com", "would_do"]]);
+    const mailed = mailTo("paid@example.com").length;
+    const r1 = await ruleCall("user_owner", R.run.POST, "builtin_renewal");
+    assert.equal(r1.body.detail.counts.done, 1, JSON.stringify(r1.body.detail));
+    assert.equal(mailTo("paid@example.com").length, mailed + 1);
+    assert.match(mailTo("paid@example.com").at(-1)!.subject, /Pro plan ends on/);
+    const r2 = await ruleCall("user_owner", R.run.POST, "builtin_renewal");
+    assert.equal(r2.body.detail.counts.done, 0, "once per step");
+    assert.equal(mailTo("paid@example.com").length, mailed + 1);
+  });
+
   let trialRule = "";
   await t("a 'trial ends in 3 days' rule finds exactly the trial ending in 3 days; its preview sends, claims and records nothing", async () => {
     const mailed = mail.length;
@@ -303,7 +319,7 @@ async function main() {
     assert.equal(runs[0].trigger, "manual");
     assert.equal(runs[0].actor, "writer@example.com");
     const { items } = await audit.listAdminAudit({ action: "automation.run" });
-    assert.equal(items.length, 2);
+    assert.equal(items.filter((i) => i.targetId === trialRule).length, 2);
   });
 
   await t("a send that fails gives its claim back: the retry sends it, once", async () => {
