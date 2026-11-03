@@ -3,10 +3,12 @@ import 'package:neoconference/src/meetings/meeting_share.dart';
 
 /// What a shared meeting link says, wherever it is shared from.
 void main() {
-  test('the meeting, and the link', () {
+  const download = '\n\nGet the NeoLinguaMeet app: https://web.lwappstore.com/share/lW-APP-Y26-XG9328';
+
+  test('the meeting, the link, and where to get the app', () {
     expect(
       meetingInviteText('Sunday service', 'sunday-service'),
-      'Join "Sunday service" on NeoLinguaMeet:\nhttps://www.neoconference.app/e/sunday-service',
+      'Join "Sunday service" on NeoLinguaMeet:\nhttps://www.neoconference.app/e/sunday-service$download',
     );
   });
 
@@ -14,7 +16,7 @@ void main() {
     expect(
       meetingInviteText('Prayer', 'prayer', when: DateTime(2026, 9, 29, 10, 0)),
       'Join "Prayer" on NeoLinguaMeet on Tuesday 29 September at 10:00:\n'
-      'https://www.neoconference.app/e/prayer',
+      'https://www.neoconference.app/e/prayer$download',
     );
   });
 

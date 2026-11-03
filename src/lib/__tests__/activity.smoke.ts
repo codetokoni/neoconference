@@ -23,6 +23,10 @@ Object.assign(process.env, {
   S3_ENDPOINT: "https://r2.test",
   S3_BUCKET: "bkt",
   CRON_SECRET: "cron-secret",
+  // The fixed August 2026 data must stay inside retention, which counts back
+  // from today: at the 90-day default it fell out on 1 November 2026. 400 (the
+  // maximum) holds it until early September 2027; move the dates before then.
+  ACTIVITY_RETENTION_DAYS: "400",
 });
 delete process.env.ADMIN_EMAILS;
 delete process.env.RESEND_API_KEY;

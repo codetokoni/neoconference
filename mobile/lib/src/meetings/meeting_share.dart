@@ -4,13 +4,19 @@ import 'package:share_plus/share_plus.dart';
 import 'meeting_links.dart';
 import 'when.dart';
 
+/// Where people get the app: the LoveWorld AppStore page, as the website's
+/// invites give it (src/lib/appGate.ts APP_STORE_URL).
+const appDownloadLink = 'https://web.lwappstore.com/share/lW-APP-Y26-XG9328';
+
 /// What a shared meeting link says: the meeting, when (for a scheduled
-/// one), and the link. One wording wherever the link is shared from — the
-/// Manage page, the meeting, the "Meeting scheduled" dialog, the QR sheet.
+/// one), the link, and where to get the app, so the people it reaches can
+/// pass the download on too. One wording wherever the link is shared from —
+/// the Manage page, the meeting, the "Meeting scheduled" dialog, the QR sheet.
 String meetingInviteText(String title, String slug, {DateTime? when}) {
   final name = title.trim().isEmpty ? 'a meeting' : '"${title.trim()}"';
   final at = when == null ? '' : ' on ${_day(when)} at ${neoClock(when)}';
-  return 'Join $name on NeoLinguaMeet$at:\n${meetingShareLink(slug)}';
+  return 'Join $name on NeoLinguaMeet$at:\n${meetingShareLink(slug)}\n\n'
+      'Get the NeoLinguaMeet app: $appDownloadLink';
 }
 
 String _day(DateTime d) {
