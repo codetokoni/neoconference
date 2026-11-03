@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding, WidgetsBindingObserver;
 import 'package:http/http.dart' as http;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -71,13 +72,23 @@ class AuthState {
 ///     routes in the phone's browser. Those already finish by minting a
 ///     Clerk sign-in ticket, so the app hands the ticket back to Clerk
 ///     rather than reimplementing either provider.
-class AuthController extends StateNotifier<AuthState> {
-  AuthController(this._clerk) : super(const AuthState()) {
+class AuthController extends StateNotifier<AuthState> with WidgetsBindingObserver {
+  AuthController(this._clerk, {http.Client? site})
+      : _site = site ?? http.Client(),
+        super(const AuthState()) {
     _restore();
     _listenForCallback();
+    try {
+      WidgetsBinding.instance.addObserver(this);
+    } catch (_) {
+      // No binding (a plain unit test): coming back to the app is not checked.
+    }
   }
 
   final ClerkClient _clerk;
+
+  /// Asks neoconference.app why a session ended (see [_ended]).
+  final http.Client _site;
   late final _tokens = TokenCache(fetch: _clerk.sessionToken);
   final _links = AppLinks();
   StreamSubscription<Uri>? _linkSub;
@@ -136,9 +147,48 @@ class AuthController extends StateNotifier<AuthState> {
     if (state.sessionId != sessionId) return;
     if (token == null) {
       debugPrint('[auth] Clerk no longer accepts the stored session');
-      await _forget();
-      state = state.copyWith(clearSession: true);
+      await _ended(sessionId);
     }
+  }
+
+  /// Coming back to the app checks the session is still good, so a phone
+  /// signed out from another device while it sat in the background says so
+  /// at once. Only Clerk refusing the session signs out: leaving the app,
+  /// switching to another one or locking the phone never does.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
+    final sessionId = state.sessionId;
+    if (lifecycle == AppLifecycleState.resumed && sessionId != null) {
+      unawaited(_verify(sessionId));
+    }
+  }
+
+  String? _ending;
+
+  /// Clerk refused the session the app was using. On NeoLinguaMeet that is
+  /// most often a sign-in on another device (one device at a time, unless
+  /// the account allows several), so ask the site why and say it on the
+  /// sign-in screen, rather than the app quietly landing there. Without an
+  /// answer the sign-out is just as real, only unexplained.
+  Future<void> _ended(String sessionId) async {
+    if (state.sessionId != sessionId || _ending == sessionId) return;
+    _ending = sessionId;
+    String? message;
+    try {
+      final res = await _site
+          .get(Uri.parse('${Config.site}/api/auth/signed-out-reason')
+              .replace(queryParameters: {'session': sessionId}))
+          .timeout(const Duration(seconds: 8));
+      final body = jsonDecode(res.body);
+      if (body is Map && body['message'] is String) message = body['message'] as String;
+    } catch (_) {
+      // Signed out regardless.
+    }
+    if (state.sessionId != sessionId) return;
+    await _forget();
+    state = message == null
+        ? state.copyWith(clearSession: true, busy: false)
+        : state.copyWith(clearSession: true, busy: false, error: message);
   }
 
   void _listenForCallback() {
@@ -367,7 +417,9 @@ class AuthController extends StateNotifier<AuthState> {
   Future<String?> currentToken() async {
     final sessionId = state.sessionId;
     if (sessionId == null) return null;
-    return _tokens.get(sessionId);
+    final token = await _tokens.get(sessionId);
+    if (token == null) unawaited(_ended(sessionId));
+    return token;
   }
 
   /// A token fetched from Clerk now, for retrying a request the server
@@ -375,12 +427,18 @@ class AuthController extends StateNotifier<AuthState> {
   Future<String?> freshToken() async {
     final sessionId = state.sessionId;
     if (sessionId == null) return null;
-    return _tokens.renew(sessionId);
+    final token = await _tokens.renew(sessionId);
+    if (token == null) unawaited(_ended(sessionId));
+    return token;
   }
 
   @override
   void dispose() {
+    try {
+      WidgetsBinding.instance.removeObserver(this);
+    } catch (_) {}
     _linkSub?.cancel();
+    _site.close();
     super.dispose();
   }
 }

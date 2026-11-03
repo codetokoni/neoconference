@@ -12,6 +12,7 @@ import '../billing/upgrade.dart';
 import '../design/brand.dart';
 import '../design/theme_picker.dart';
 import '../home/landing_screen.dart';
+import 'device_sessions_screen.dart';
 import 'meeting_defaults.dart';
 import '../core/config.dart';
 
@@ -140,6 +141,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
           ],
+          const SizedBox(height: 28),
+
+          const _Label('Security'),
+          _Tile(
+            title: 'Device sessions',
+            subtitle: 'Where you are signed in, and multiple devices',
+            trailing: Icon(Icons.chevron_right_rounded, color: p.textFaint),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DeviceSessionsScreen()),
+            ),
+          ),
           const SizedBox(height: 28),
 
           const _Label('Appearance'),

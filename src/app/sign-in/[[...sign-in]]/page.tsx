@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import EmailPasswordSignIn from './EmailPasswordSignIn';
+import { SIGNED_OUT_MESSAGE } from '@/lib/deviceSessions';
 
 type SP = {
   kc_error?: string;
@@ -7,7 +8,8 @@ type SP = {
   /** Set by the Neoemail callback when that flow fails, mirroring kc_error. */
   ne_error?: string;
   ne_debug?: string;
-  /** Set by SessionManager after a deliberate sign-out. */
+  /** Set by SessionManager after a deliberate sign-out ('device', 'all'), or
+   *  when another device ended this one ('other_device', 'elsewhere'). */
   signed_out?: string;
   /** Set by middleware when a persistent session was revoked or expired. */
   session_ended?: string;
@@ -23,6 +25,8 @@ type SP = {
  * first sign that someone else revoked your sessions.
  */
 function sessionNotice(sp: SP): string | null {
+  if (sp?.signed_out === 'other_device') return SIGNED_OUT_MESSAGE.other_device;
+  if (sp?.signed_out === 'elsewhere') return SIGNED_OUT_MESSAGE.elsewhere;
   if (sp?.signed_out === 'all') return "You've been signed out on all your devices.";
   if (sp?.signed_out === 'device') return "You've been signed out on this device.";
   if (sp?.session_ended) {

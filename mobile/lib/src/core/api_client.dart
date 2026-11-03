@@ -32,6 +32,9 @@ class ApiClient {
 
   Map<String, String> _headersWith(String? jwt) => {
         'accept': 'application/json',
+        // Names this phone in Settings → Device sessions ("NeoLinguaMeet app
+        // on Android") rather than Dart's own "Dart/3.8 (dart:io)".
+        'user-agent': 'NeoLinguaMeet (${defaultTargetPlatform.name})',
         if (jwt != null) 'authorization': 'Bearer $jwt',
       };
 

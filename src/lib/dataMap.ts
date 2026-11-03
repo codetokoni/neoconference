@@ -318,13 +318,14 @@ export const DATA_MAP: DataLocation[] = [
   {
     id: "kv.sessions",
     store: "kv",
-    pattern: "neo:session:<hash>, neo:sessions:<uid>, neo:session-device:<uid>:<fingerprint>",
-    holds: "Signed-in devices",
+    pattern:
+      "neo:session:<hash>, neo:sessions:<uid>, neo:session-device:<uid>:<fingerprint>, neo:device-sid:<sessionId>, neo:device-sids:<uid>, neo:device-policy:<uid>",
+    holds: "Signed-in devices, and whether the account allows more than one",
     personal: "IP address, user agent, device fingerprint",
     exported: true,
     onDelete: "delete",
     why: "Signed out everywhere and the records removed.",
-    ttl: "90 days sliding, 1 year cap",
+    ttl: "400 days sliding",
     erasedBy: "personalKeys",
   },
 

@@ -5,6 +5,7 @@ import { markActive } from '@/lib/activity';
 import { RESERVED_SHORT_URL_SLUGS } from '@/lib/reservedSlugs';
 import { BRAND, LEGACY_HOSTS, isOwnHost, legacyRedirect } from '@/lib/brand';
 import { platformGate } from '@/lib/platform/gate';
+import { SIGNED_OUT_MESSAGE, checkDevice } from '@/lib/deviceSessions';
 import {
   SESSION_COOKIE,
   generateDeviceFingerprint,
@@ -29,6 +30,8 @@ const isPublicRoute = createRouteMatcher([
   '/api/version',
   '/api/app/latest',
   '/api/app/gate',
+  // Asked by a device after it was signed out, so by definition signed out.
+  '/api/auth/signed-out-reason',
   '/download',
   // For search engines (src/app/robots.ts, sitemap.ts).
   '/robots.txt',
@@ -352,6 +355,47 @@ async function enforcePersistentSession(req: NextRequest): Promise<NextResponse 
   return res;
 }
 
+// Where a device signed out elsewhere must still get to: the sign-in pages
+// it is sent to, its own sign-out, and the question of why it was signed out.
+const isOneDeviceExemptRoute = createRouteMatcher([
+  '/sign-in(.*)',
+  '/sign-up(.*)',
+  '/sign-out',
+  '/api/auth/logout',
+  '/api/auth/signed-out-reason',
+]);
+
+/**
+ * One device at a time (src/lib/deviceSessions.ts). The first request of a
+ * new Clerk session signs out the account's older ones; a session signed out
+ * that way is refused here at once, though its token would pass Clerk for up
+ * to another minute. Public routes too: some act for whoever is signed in.
+ */
+async function enforceOneDevice(
+  auth: () => Promise<{ userId: string | null; sessionId?: string | null }>,
+  req: NextRequest,
+): Promise<NextResponse | null> {
+  if (isOneDeviceExemptRoute(req)) return null;
+  const { userId, sessionId } = await auth();
+  if (!userId || !sessionId) return null;
+  const check = await checkDevice(userId, sessionId, {
+    userAgent: req.headers.get('user-agent'),
+    ip: getClientIp(req.headers),
+  });
+  if (check.status === 'ok') return null;
+  if (req.nextUrl.pathname.startsWith('/api/') || req.nextUrl.pathname.startsWith('/trpc/')) {
+    return NextResponse.json(
+      { error: 'signed_out', reason: check.reason, message: SIGNED_OUT_MESSAGE[check.reason] },
+      { status: 401 },
+    );
+  }
+  const signIn = new URL('/sign-in', req.url);
+  signIn.searchParams.set('signed_out', check.reason);
+  const res = NextResponse.redirect(signIn);
+  res.cookies.delete(SESSION_COOKIE);
+  return res;
+}
+
 /**
  * Daily-active mark for the admin analytics (src/lib/activity.ts). Runs after
  * the response via waitUntil, so it adds no latency; markActive is memoised
@@ -379,6 +423,8 @@ const clerkHandler = clerkMiddleware(
     const gated = await platformGate(nextReq, async () => (await auth()).userId ?? null);
     if (gated) return gated;
     await noteActive(auth, event);
+    const signedOutHere = await enforceOneDevice(auth, nextReq);
+    if (signedOutHere) return signedOutHere;
     // Custom-domain rewrite runs first because it's tenant-scoped and
     // consumes the whole path. Short-meeting-URL rewrite runs second so
     // it only sees canonical-domain requests.
