@@ -464,6 +464,31 @@ async function main() {
     assert.equal(claims(v.joined.token).name, "<b>Ann</b>");
   });
 
+  await t("ids that look like numbers come back as they were", async () => {
+    // Upstash JSON-parses what it reads: "12e45678" would come back as 1.2e+46.
+    const { kv } = await import("../kv");
+    const keyId = "12e45678";
+    await kv.set(`neo:partner:keymeta:${keyId}`, { id: keyId, integrationId: pc.id, masked: `nlm_pk_${keyId}…0000`, createdAt: new Date().toISOString() });
+    await kv.sadd(`neo:partner:${pc.id}:keys`, keyId);
+    assert.ok((await S.listPartnerKeys(pc.id)).some((k) => k.id === keyId));
+    await S.revokePartnerKey(pc.id, keyId);
+
+    const zones = ["1E5", "12345678901234567890"];
+    for (const z of zones) assert.equal((await visit(pcLive, z, { id: "pc_1", displayName: "V" })).joined.status, "ready", z);
+    const listed = (await S.listZones(pc.id)).map((z) => z.zoneId);
+    for (const z of zones) assert.ok(listed.includes(z), z);
+    assert.deepEqual((await S.listZonePage(pc.id, { q: "1E5" })).zones.map((z) => z.zoneId), ["1E5"]);
+
+    const people = ["1.50", "12345678901234567890123"];
+    assert.deepEqual(await S.setZoneLeaders(pc.id, "1E5", people), [...people].sort());
+    assert.deepEqual(await S.getZoneLeaders(pc.id, "1E5"), [...people].sort());
+    assert.deepEqual((await S.viewerRoles(pc.id, "1.50")).leads, ["1E5"]);
+    const admins = await S.getOrgAdmins(pc.id);
+    await S.setOrgAdmins(pc.id, ["2e3"]);
+    assert.deepEqual(await S.getOrgAdmins(pc.id), ["2e3"]);
+    await S.setOrgAdmins(pc.id, admins);
+  });
+
   finished = true;
   console.log(`\n${n} checks passed`);
 }

@@ -25,7 +25,7 @@
 //   neo:partner:<id>:audit               its last 500 events, newest first
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { kv } from "@/lib/kv";
+import { kv, kvRaw } from "@/lib/kv";
 import { eventStore, generateId, generateQrSeed } from "@/lib/eventStore";
 import type { NeoEvent } from "@/types/event";
 
@@ -117,6 +117,16 @@ const K = {
   leaders: (id: string, zone: string) => `${P}${id}:zone:${zone}:leaders`,
 };
 
+/**
+ * A set's members exactly as stored. Upstash JSON-parses what it reads
+ * back, so an id that looks like a number changes on the way out: key id
+ * "12e45678" came back as 1.2e+46 and its key was lost (a CI run,
+ * 2026-11-03), zone "1E5" as 100000, a long numeric user id rounded.
+ */
+async function members(key: string): Promise<string[]> {
+  return (((await kvRaw.smembers(key)) as unknown[]) || []).map(String);
+}
+
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 const rand = (bytes: number) => randomBytes(bytes).toString("hex");
 const nowIso = () => new Date().toISOString();
@@ -184,7 +194,7 @@ export async function getIntegration(id: string): Promise<PartnerIntegration | n
 }
 
 export async function listIntegrations(): Promise<PartnerIntegration[]> {
-  const ids = ((await kv.smembers(K.all)) as string[]) || [];
+  const ids = await members(K.all);
   const all = await Promise.all(ids.map((id) => getIntegration(id)));
   return all.filter((x): x is PartnerIntegration => !!x).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
@@ -198,7 +208,7 @@ async function refreshOrigins(): Promise<void> {
 }
 
 export async function approvedOrigins(): Promise<string[]> {
-  return (((await kv.smembers(K.origins)) as string[]) || []).filter((o) => !!normalizeOrigin(o));
+  return (await members(K.origins)).filter((o) => !!normalizeOrigin(o));
 }
 
 export async function createIntegration(input: {
@@ -271,7 +281,7 @@ export async function mintPartnerKey(integrationId: string, by?: string): Promis
 }
 
 export async function listPartnerKeys(integrationId: string): Promise<PartnerKeyMeta[]> {
-  const ids = ((await kv.smembers(K.keys(integrationId))) as string[]) || [];
+  const ids = await members(K.keys(integrationId));
   const metas = await Promise.all(ids.map((k) => kv.get<PartnerKeyMeta>(K.keyMeta(k))));
   return metas.filter((m): m is PartnerKeyMeta => !!m).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
@@ -315,7 +325,7 @@ export async function getZone(integrationId: string, zone: string): Promise<Zone
 }
 
 export async function listZones(integrationId: string): Promise<ZoneMapping[]> {
-  const ids = (((await kv.smembers(K.zones(integrationId))) as unknown[]) || []).map(String);
+  const ids = await members(K.zones(integrationId));
   // Read 500 at a time: one request each for thousands of zones ran out of
   // connections (2026-11-03).
   const all: (ZoneMapping | null)[] = [];
@@ -341,7 +351,7 @@ export async function listZonePage(
   opts: { q?: string; offset?: number; limit?: number } = {},
 ): Promise<{ zones: ZoneMapping[]; total: number }> {
   const q = (opts.q ?? "").trim().toLowerCase();
-  const ids = ((((await kv.smembers(K.zones(integrationId))) as unknown[]) || []).map(String))
+  const ids = (await members(K.zones(integrationId)))
     .filter((z) => !q || z.toLowerCase().includes(q))
     .sort((a, b) => a.localeCompare(b));
   const offset = Math.max(0, Math.floor(opts.offset ?? 0));
@@ -610,7 +620,7 @@ async function replaceSet(key: string, ids: string[]): Promise<void> {
 }
 
 export async function getOrgAdmins(integrationId: string): Promise<string[]> {
-  return (((await kv.smembers(K.admins(integrationId))) as string[]) || []).sort();
+  return (await members(K.admins(integrationId))).sort();
 }
 
 export async function setOrgAdmins(integrationId: string, raw: unknown, by?: string): Promise<string[]> {
@@ -621,7 +631,7 @@ export async function setOrgAdmins(integrationId: string, raw: unknown, by?: str
 }
 
 export async function getZoneLeaders(integrationId: string, zone: string): Promise<string[]> {
-  return (((await kv.smembers(K.leaders(integrationId, zone))) as string[]) || []).sort();
+  return (await members(K.leaders(integrationId, zone))).sort();
 }
 
 export async function setZoneLeaders(integrationId: string, zone: string, raw: unknown, by?: string): Promise<string[]> {
@@ -646,7 +656,7 @@ export async function leadsZone(grant: Pick<JoinGrant, "integrationId" | "zoneId
 /** What a viewer (the partner's user id) may read: everything, or the zones they lead. */
 export async function viewerRoles(integrationId: string, viewerId: string): Promise<{ orgAdmin: boolean; leads: string[] }> {
   const orgAdmin = Number(await kv.sismember(K.admins(integrationId), viewerId)) === 1;
-  const zones = ((await kv.smembers(K.zones(integrationId))) as string[]) || [];
+  const zones = await members(K.zones(integrationId));
   const leads: string[] = [];
   await Promise.all(
     zones.map(async (z) => {
