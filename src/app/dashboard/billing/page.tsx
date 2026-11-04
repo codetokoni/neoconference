@@ -22,11 +22,9 @@ import { redirect } from "next/navigation";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { isAdmin } from "@/lib/roles";
 import {
-  enterpriseForAllUntil,
   getCurrentPlan,
   getPlanLimits,
   getPlanLimitsForUserId,
-  readPlanFromMetadata,
   type Plan,
 } from "@/lib/plan";
 import { listUserPayments, type PaymentRecord } from "@/lib/paymentsStore";
@@ -97,14 +95,6 @@ export default async function BillingPage() {
   const plan = (await getCurrentPlan()) ?? "free";
   const planExpiresAt = readPlanExpiresAt(user?.publicMetadata);
   const remainingDays = daysUntil(planExpiresAt);
-  // Enterprise for everyone (ENTERPRISE_FOR_ALL_UNTIL), for an account that
-  // has it only that way: say until when, and what it goes back to.
-  const ownPlan = readPlanFromMetadata(user?.publicMetadata);
-  const promoUntil = enterpriseForAllUntil();
-  const promo =
-    promoUntil !== null && ownPlan !== "enterprise" && !viewerIsAdmin
-      ? { until: promoUntil, then: ownPlan, thenEnds: ownPlan === "free" ? null : planExpiresAt }
-      : null;
   // The limits this account actually has: a subscription's own (its plan
   // version, add-ons, custom terms), not only its tier's defaults.
   const { limits } = await getPlanLimitsForUserId(userId!);
@@ -143,7 +133,6 @@ export default async function BillingPage() {
         limits={limits}
         recordingUsedSeconds={recordingUsedSeconds}
         uncapped={viewerIsAdmin}
-        promo={promo}
       />
 
       <section className="mt-10">
@@ -171,7 +160,6 @@ function PlanCard({
   limits,
   recordingUsedSeconds,
   uncapped,
-  promo,
 }: {
   plan: Plan;
   planExpiresAt: number | null;
@@ -181,26 +169,21 @@ function PlanCard({
   recordingUsedSeconds: number | null;
   /** Operators: no recording cap. */
   uncapped: boolean;
-  /** Enterprise for everyone: until when, and the account's own plan after. */
-  promo: { until: number; then: Plan; thenEnds: number | null } | null;
 }) {
   const isFree = plan === "free";
-  const isEnterprise = plan === "enterprise" && !promo;
-  const ctaLabel = promo ? "See plans" : isFree ? "Choose a plan" : "Change plan";
+  const isEnterprise = plan === "enterprise";
+  const ctaLabel = isFree ? "Choose a plan" : "Change plan";
 
   // Plans are paid a month or a year at a time and do not renew by
   // themselves (the eSPees return route sets planExpiresAt once), so this
   // is when the plan ends, not when it renews.
   const renewalLabel = (() => {
-    // The last day it lasts (it ends at the first moment of the next).
-    if (promo) return formatDate(promo.until - 1);
     if (isFree) return "No end date";
     if (!planExpiresAt) return "No end date (permanent)";
     return formatDate(planExpiresAt);
   })();
 
   const remainingLabel = (() => {
-    if (promo) return null;
     if (isFree || !planExpiresAt) return null;
     if (remainingDays === 0) return "Expires today";
     if (remainingDays === 1) return "1 day left";
@@ -219,7 +202,7 @@ function PlanCard({
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-zinc-400">
             <span>
-              <span className="text-zinc-500">{promo ? "Free until:" : "Ends:"}</span> {renewalLabel}
+              <span className="text-zinc-500">Ends:</span> {renewalLabel}
             </span>
             {remainingLabel && (
               <span
@@ -233,13 +216,6 @@ function PlanCard({
               </span>
             )}
           </div>
-          {promo && (
-            <p className="mt-2 text-sm text-cyan-200/80" data-billing-promo>
-              Enterprise is free for everyone until {formatDate(promo.until - 1)}. Then your account
-              is on {PLAN_LABELS[promo.then]}
-              {promo.thenEnds && promo.thenEnds > promo.until ? ` until ${formatDate(promo.thenEnds)}` : ""}.
-            </p>
-          )}
         </div>
         <Link
           href={isEnterprise ? `mailto:${BRAND.supportEmail}` : "/pricing"}

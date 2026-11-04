@@ -22,7 +22,7 @@ import { kv } from "@/lib/kv";
 import type { Rule } from "@/lib/automation/model";
 import { previousRun } from "@/lib/automation/schedule";
 import { addNotification } from "@/lib/notificationStore";
-import { enterpriseForAllUntil, getPlanLimitsForUserId } from "@/lib/plan";
+import { getPlanLimitsForUserId } from "@/lib/plan";
 import { limitsFromMetadata } from "@/lib/planLimits";
 import { effectivePlan, type ClerkUserish } from "@/lib/admin/users";
 import { usageMonth, recordedSeconds } from "@/lib/recordingUsage";
@@ -174,9 +174,6 @@ const reminder: ActionImpl = {
       }
       case "meeting_cap": {
         const targets: Target[] = [];
-        // Enterprise for everyone (ENTERPRISE_FOR_ALL_UNTIL): no account is capped, so none is warned.
-        const promo = enterpriseForAllUntil();
-        if (promo !== null) return { targets, note: `nobody is capped: Enterprise for everyone until ${new Date(promo).toISOString()}` };
         for (const u of await allUsers()) {
           // The owner and ADMIN_EMAILS accounts are never capped (effectivePlan → enterprise).
           const plan = effectivePlan(u);
