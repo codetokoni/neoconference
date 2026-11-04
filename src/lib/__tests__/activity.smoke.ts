@@ -44,6 +44,19 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const T = (iso: string) => Date.parse(iso);
 
+// A clock the test moves, so authenticator codes advance step by step. It
+// starts on the real UTC day but at least two hours from its midnight: the
+// checks count "today", and an account made an hour ago or a meeting run
+// five minutes on would land on the other side of it (CI at 23:57 and a
+// run at 00:05, 2026-11-03/04).
+const realNow = Date.now.bind(Date);
+const sinceMidnight = realNow() % DAY;
+let skew = sinceMidnight < 2 * HOUR ? 2 * HOUR - sinceMidnight : sinceMidnight > 22 * HOUR ? 22 * HOUR - sinceMidnight : 0;
+Date.now = () => realNow() + skew;
+const tick = (ms = 30_000) => {
+  skew += ms;
+};
+
 g.__users = {
   user_owner: { emails: ["owner@example.com"], first: "Owner" },
   user_an: { emails: ["analyst@example.com"] },
@@ -63,13 +76,6 @@ globalThis.fetch = (async () => {
   throw new Error("network disabled in tests");
 }) as typeof fetch;
 
-// A clock the test moves, so authenticator codes advance step by step.
-const realNow = Date.now.bind(Date);
-let skew = 0;
-Date.now = () => realNow() + skew;
-const tick = (ms = 30_000) => {
-  skew += ms;
-};
 
 // A promise that never settles lets Node exit early with code 0, which would
 // read as a pass. Only reaching the end counts.
