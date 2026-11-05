@@ -80,10 +80,12 @@ export default function HostMenuOverlay({
         // can gate role-management items (e.g. Demote is only shown
         // when the target actually holds an elevated role).
         let targetRole: string | null = null;
+        let targetIsOwner = false;
         if (p.metadata) {
           try {
-            const j = JSON.parse(p.metadata) as { role?: unknown };
+            const j = JSON.parse(p.metadata) as { role?: unknown; owner?: unknown };
             if (typeof j?.role === 'string') targetRole = j.role;
+            targetIsOwner = j?.owner === true;
           } catch {
             // ignore
           }
@@ -97,6 +99,7 @@ export default function HostMenuOverlay({
             isOwner={isOwner}
             roomRole={roomRole}
             targetRole={targetRole}
+            targetIsOwner={targetIsOwner}
             slug={slug}
           />,
           tile,

@@ -279,12 +279,7 @@ export async function assignMeetingRole(
   if (!event) throw new MeetingRoleError("event_not_found");
 
   // Ownership is not grantable or transferable through this API.
-  const ownerId = (event.ownerUserId || "").toLowerCase();
-  const ownerEmail = (event.ownerEmail || "").toLowerCase();
-  const targetIsOwner =
-    (!!ownerId && target.keys.some((k) => k.toLowerCase() === ownerId)) ||
-    (!!ownerEmail && target.emails.includes(ownerEmail));
-  if (targetIsOwner) throw new MeetingRoleError("cannot_target_owner");
+  if (targetsOwner(event, target)) throw new MeetingRoleError("cannot_target_owner");
   if (newRole === "owner") throw new MeetingRoleError("cannot_assign_owner");
 
   // Self-promotion is the classic escalation; block it before the rank check
@@ -345,9 +340,32 @@ export async function removeMeetingRole(eventId: string, userIdentity: UserIdent
   }
 }
 
-/** Strip an elevated role; the person reverts to an ordinary participant. */
+/**
+ * Strip an elevated role; the person reverts to an ordinary participant.
+ * The owner cannot be demoted: ownership lives on the event, not in the
+ * hash, so without this check the call "succeeded" and the room was told
+ * the owner was now an attendee.
+ *
+ * @throws MeetingRoleError  event_not_found | empty_identity | cannot_target_owner | write_failed
+ */
 export async function demoteToParticipant(eventId: string, userIdentity: UserIdentity): Promise<void> {
+  const target = resolveIdentity(userIdentity);
+  if (target.keys.length === 0) throw new MeetingRoleError("empty_identity");
+  const { eventStore } = await import("@/lib/eventStore");
+  const event = await eventStore.byId(eventId);
+  if (!event) throw new MeetingRoleError("event_not_found");
+  if (targetsOwner(event, target)) throw new MeetingRoleError("cannot_target_owner");
   return removeMeetingRole(eventId, userIdentity);
+}
+
+/** Whether any of the target's keys or emails is the event's owner. */
+function targetsOwner(event: NeoEvent, target: { keys: string[]; emails: string[] }): boolean {
+  const ownerId = (event.ownerUserId || "").toLowerCase();
+  const ownerEmail = (event.ownerEmail || "").toLowerCase();
+  return (
+    (!!ownerId && target.keys.some((k) => k.toLowerCase() === ownerId)) ||
+    (!!ownerEmail && target.emails.includes(ownerEmail))
+  );
 }
 
 /* -------------------------------------------------------------------------- */
