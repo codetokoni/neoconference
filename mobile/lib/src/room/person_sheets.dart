@@ -11,7 +11,7 @@ import 'room_controller.dart';
 /// Pin, for everyone. Then the web's tile menu, item for item and with its
 /// rules: a host or moderator can mute, turn off a camera, ask to unmute and
 /// mute everyone else (moderator rank on the server); only a host gets roles
-/// and Remove (host rank), Make Host is the owner's alone (FRS §1.1), and
+/// and Remove (host rank) — a host may make another host since 2026-11-05 — and
 /// Demote only appears for someone who is a host or moderator. The owner is
 /// never offered to be demoted or removed. The server checks the role again
 /// on each of them.
@@ -115,7 +115,7 @@ class PersonActionsSheet extends ConsumerWidget {
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(color: palette.textMuted),
                 ),
               ),
-              if (state.isOwner && person.role != 'host')
+              if (person.role != 'host')
                 item(Icons.star_rounded, 'Make Host',
                     () => run(() => controller.assignRole(person.id, 'host'))),
               if (person.role != 'cohost')

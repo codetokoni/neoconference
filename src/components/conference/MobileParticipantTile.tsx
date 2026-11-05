@@ -28,8 +28,8 @@ interface MobileParticipantTileProps {
    *  and Remove are host rank on the server (role:grant, role:revoke,
    *  participant:kick; FRS §1.3), while localIsHost also covers a cohost. */
   localIsHostRank?: boolean;
-  /** Whether the local viewer is the actual event owner — controls the
-   *  Make Host action gate in the long-press menu (FRS §1.1). */
+  /** Whether the local viewer is the actual event owner: opens the
+   *  long-press menu's host items for an owner whose role has not arrived. */
   localIsOwner?: boolean;
   participantIsHost: boolean;
   slug: string;
@@ -695,14 +695,14 @@ function MobileParticipantTileInner({
                 {(localIsHostRank || localIsOwner) && (
                   <>
                     <MenuSection label="Role" />
-                    {localIsOwner && (
-                      <MenuBtn
-                        label="Make Host"
-                        disabled={pending !== null}
-                        loading={pending === 'role:host'}
-                        onClick={() => assignRole('host')}
-                      />
-                    )}
+                    {/* The owner and hosts both appoint hosts (since
+                        2026-11-05); removing a host stays the owner's. */}
+                    <MenuBtn
+                      label="Make Host"
+                      disabled={pending !== null}
+                      loading={pending === 'role:host'}
+                      onClick={() => assignRole('host')}
+                    />
                     <MenuBtn
                       label="Make Moderator"
                       disabled={pending !== null}

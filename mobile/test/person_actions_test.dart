@@ -24,6 +24,12 @@ class _Room extends RoomController {
 
   @override
   Future<void> moderate(String identity, String action) async => calls.add('$action $identity');
+
+  @override
+  Future<bool> assignRole(String identity, String role) async {
+    calls.add('role $identity $role');
+    return true;
+  }
 }
 
 const _grace = PersonView(id: 'user_2#1', name: 'Grace', role: 'attendee');
@@ -93,12 +99,20 @@ void main() {
     await close(tester);
   });
 
-  testWidgets('a host gets everything but Make Host', (tester) async {
+  testWidgets('a host gets everything, Make Host included', (tester) async {
     await open(tester, const RoomState(role: 'host'));
-    for (final a in [..._muteActions, ..._hostActions]) {
+    for (final a in [..._muteActions, ..._hostActions, 'Make Host']) {
       expect(find.text(a), findsOneWidget, reason: a);
     }
-    expect(find.text('Make Host'), findsNothing);
+    await close(tester);
+  });
+
+  testWidgets("a host's Make Host reaches the server", (tester) async {
+    await open(tester, const RoomState(role: 'host'));
+    await tester.ensureVisible(find.text('Make Host'));
+    await tester.tap(find.text('Make Host'));
+    await tester.pump();
+    expect(room.calls, contains('role user_2#1 host'));
     await close(tester);
   });
 
