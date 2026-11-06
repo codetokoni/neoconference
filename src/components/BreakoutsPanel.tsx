@@ -19,6 +19,7 @@
 // because the host re-sends on RoomEvent.ParticipantConnected.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { tileIdentityOf } from "@/components/conference/roomLayout";
 import {
   useRoomContext,
   useParticipants,
@@ -207,11 +208,9 @@ export default function BreakoutsPanel({
         ".lk-participant-tile"
       );
       tiles.forEach((tile) => {
-        const identity =
-          tile.getAttribute("data-lk-participant-identity") ||
-          tile.querySelector("[data-lk-participant-identity]")?.getAttribute(
-            "data-lk-participant-identity"
-          );
+        // Computer tiles carry it as data-neo-identity; this looked only
+        // for the phone tiles' attribute and so hid nobody on a computer.
+        const identity = tileIdentityOf(tile);
         if (!identity) return;
         if (hostIdentity && identity === hostIdentity) {
           tile.setAttribute("data-breakout-group", "__host__");

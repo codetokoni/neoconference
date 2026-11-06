@@ -33,6 +33,24 @@ export function watchToolbarSpace(shell: HTMLElement, bar: HTMLElement): () => v
 }
 
 /**
+ * Whose tile this is. Computer tiles say it as `data-neo-identity`
+ * (NeoVideoConference); phone tiles (MobileParticipantTile) as
+ * `data-lk-participant-identity`. LiveKit's own computer tiles said neither,
+ * so features that looked only for the second one (spotlight, breakout
+ * rooms) did nothing on a computer.
+ */
+export const TILE_IDENTITY_SELECTOR = '[data-neo-identity], [data-lk-participant-identity]';
+
+export function tileIdentityOf(tile: Element): string | null {
+  return (
+    tile.getAttribute('data-neo-identity') ||
+    tile.getAttribute('data-lk-participant-identity') ||
+    tile.querySelector('[data-lk-participant-identity]')?.getAttribute('data-lk-participant-identity') ||
+    null
+  );
+}
+
+/**
  * Whether the tile enlarged on this screen can no longer be shown, so the
  * gallery should come back: that person left, their video is hidden (on
  * this screen or for everyone), or it is you and "Hide me" is on. LiveKit

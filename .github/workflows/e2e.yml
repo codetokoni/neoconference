@@ -43,6 +43,12 @@ jobs:
       - name: Install translation worker dependencies
         run: npm ci --prefix translation-worker
 
+      # The whole project, tests included. `next build` (Vercel) checks only
+      # what the site imports, so a type error in tests/ or a script merged
+      # unseen: #639's room-layout spec did, found by hand in #641.
+      - name: Typecheck
+        run: npx tsc --noEmit -p .
+
       - name: Run server smoke tests
         run: npm run test:smoke
 

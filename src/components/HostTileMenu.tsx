@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react
 import { createPortal } from 'react-dom';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
+import { requestSpotlight, useSpotlit } from '@/components/SpotlightOverlay';
 
 /**
  * HostTileMenu
@@ -50,6 +51,7 @@ export function HostTileMenu({
   // useRoomContext call kept for hook stability (must be called before early return)
   useRoomContext();
   const hiddenVideos = useHiddenVideos();
+  const spotlit = useSpotlit();
   const [open, setOpen] = useState(false);
   const [confirmKick, setConfirmKick] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
@@ -394,6 +396,20 @@ export function HostTileMenu({
               disabled={pending !== null}
               onClick={toggleHideGlobal}
               pending={pending === 'hideGlobal'}
+            />
+          )}
+
+          {/* Meeting-wide, so a menu item and not a double-click: on a
+              computer a double-click enlarges the tile on your own screen. */}
+          {showHostActions && (
+            <MenuItem
+              label={spotlit === participantIdentity ? 'Remove spotlight' : 'Spotlight for everyone'}
+              icon="✦"
+              disabled={pending !== null}
+              onClick={() => {
+                requestSpotlight(participantIdentity);
+                setOpen(false);
+              }}
             />
           )}
 
