@@ -26,6 +26,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRoomContext, useLocalParticipant, useParticipants } from '@livekit/components-react';
 import { RoomEvent } from 'livekit-client';
+import { createPortal } from 'react-dom';
+import { usePhoneStatusSlot } from '@/components/conference/phoneStatusSlot';
 
 // How long to wait for the captions worker to join after a host clicks
 // ON before surfacing "worker did not join" as a warning. Railway
@@ -46,6 +48,9 @@ type Props = {
 const CAPTIONS_FLOWING_WINDOW_MS = 45_000;
 
 export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props) {
+  // On a phone, in the status strip above the tiles rather than floating
+  // over the right-hand tiles (phoneStatusSlot).
+  const phoneSlot = usePhoneStatusSlot();
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
   const participants = useParticipants();
@@ -297,8 +302,8 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
     }
   })();
 
-  return (
-    <div className="fixed bottom-36 right-4 z-50 flex items-center gap-1">
+  const pill = (
+    <div className={phoneSlot ? "relative flex items-center gap-1" : "fixed bottom-36 right-4 z-50 flex items-center gap-1"}>
       <button
         type="button"
         data-room-chrome="true"
@@ -344,4 +349,5 @@ export default function CaptionsToggle({ roomRole, roomName, eventSlug }: Props)
       )}
     </div>
   );
+  return phoneSlot ? createPortal(pill, phoneSlot) : pill;
 }
