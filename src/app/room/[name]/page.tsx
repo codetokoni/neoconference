@@ -16,6 +16,7 @@ import {
   useParticipants,
   useLocalParticipant,
 } from "@livekit/components-react";
+import { watchToolbarSpace } from "@/components/conference/roomLayout";
 import MobileVideoConference from "@/components/MobileVideoConference";
 import HostMenuOverlay from "@/components/HostMenuOverlay";
 import MediaRequestPrompt from "@/components/MediaRequestPrompt";
@@ -865,10 +866,28 @@ function RoomContainer({
     return () => { cancelled = true; };
   }, [eventSlug]);
 
+  // The top toolbar's own space. It floats (centred, over the room), so the
+  // grid below used to start under it and its first row's names, menus and
+  // enlarge buttons were covered. Its height is measured and handed to the
+  // grid as --room-toolbar-space (initials-overlay.css): taller when it
+  // grows, nothing when it folds away (phones fold it into More).
+  // A callback ref: the toolbar remounts if the conference UI recovers
+  // from an error (ConferenceErrorBoundary), and the new one is measured.
+  const [toolbarEl, setToolbarEl] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const shell = containerRef.current;
+    if (!shell || !toolbarEl) return;
+    return watchToolbarSpace(shell, toolbarEl);
+  }, [toolbarEl]);
+
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
     const onDbl = (ev: MouseEvent) => {
+      // A spotlight from the tile menu (MobileParticipantTile) arrives as a
+      // made-up dblclick for SpotlightOverlay: that is the meeting-wide
+      // action, and it must not also enlarge the tile on this screen.
+      if (!ev.isTrusted) return;
       const target = ev.target as HTMLElement | null;
       const tile = target?.closest(".lk-participant-tile") as HTMLElement | null;
       if (!tile) return;
@@ -942,6 +961,7 @@ function RoomContainer({
         </div>
         <MobileMoreMenu />
         <div
+          ref={setToolbarEl}
           data-room-chrome="true"
           className="room-toolbar"
           style={{
@@ -1127,7 +1147,7 @@ function RoomContainer({
         <SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
         <ChatTranscriptDownloader roomName={roomName} />
         <InitialsOverlay />
-        <RoomIdleController /><MobileVideoConference />
+        <RoomIdleController /><MobileVideoConference hideSelf={hideSelf} />
         <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} roomRole={roomRole} slug={eventSlug} />
         <MediaRequestPrompt />
         <RoomAudioRenderer />

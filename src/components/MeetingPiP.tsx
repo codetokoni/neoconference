@@ -710,7 +710,18 @@ export default function MeetingPiP({ slug }: { slug?: string }) {
 
   const closeAll = useCallback(async () => {
     if (pipWindowRef.current) closeDocPiP();
-    if (videoPiPActiveRef.current) await exitAnyVideoElementPiP();
+    if (videoPiPActiveRef.current) {
+      await exitAnyVideoElementPiP();
+      // The floating video's element can be gone already (LiveKit remounts
+      // a tile when the grid reorders or a tile is enlarged), and then the
+      // browser sends no leavepictureinpicture: the button stayed on
+      // "Unfloat" and the meeting could not be floated again without a
+      // refresh. Closing is closing, whatever the browser says.
+      if (!document.pictureInPictureElement) {
+        videoPiPActiveRef.current = false;
+        setVideoPiPActive(false);
+      }
+    }
     autoEnteredRef.current = null;
   }, [closeDocPiP]);
 

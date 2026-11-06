@@ -42,6 +42,59 @@ class _MeetingStageState extends State<MeetingStage> {
   RoomLayout _layout = RoomLayout.speaker;
   bool _chromeVisible = true;
 
+  // A tap anywhere on the stage brings hidden controls back. It is read
+  // from the raw pointer, not a tap recogniser: LiveKit wraps this phone's
+  // own video in a GestureDetector of its own (tap to focus), which won the
+  // gesture arena, so with the controls hidden and your own camera filling
+  // the screen no tap ever reached the stage and Leave was out of reach.
+  Offset? _downAt;
+  DateTime? _downTime;
+  bool _justRevealed = false;
+
+  /// What is on the screen: a pin always shows the speaker view.
+  RoomLayout get _shown =>
+      widget.room.pinned != null ? RoomLayout.speaker : _layout;
+
+  void _toggleLayout() {
+    setState(() {
+      if (widget.room.pinned != null) {
+        // The grid button while someone is pinned used to flip a hidden
+        // setting and change nothing (the pin kept the speaker view).
+        // Asking for the grid means letting the pin go.
+        widget.actions.unpin?.call();
+        _layout = RoomLayout.grid;
+      } else {
+        _layout = _layout == RoomLayout.speaker ? RoomLayout.grid : RoomLayout.speaker;
+      }
+    });
+  }
+
+  void _onPointerDown(PointerDownEvent e) {
+    _downAt = e.position;
+    _downTime = DateTime.now();
+    _justRevealed = false;
+  }
+
+  void _onPointerUp(PointerUpEvent e) {
+    final at = _downAt, time = _downTime;
+    _downAt = null;
+    if (_chromeVisible || at == null || time == null) return;
+    final tap = (e.position - at).distance < 18 &&
+        DateTime.now().difference(time) < const Duration(milliseconds: 500);
+    if (!tap) return;
+    _justRevealed = true;
+    setState(() => _chromeVisible = true);
+  }
+
+  void _onStageTap() {
+    // The pointer-up above already brought the controls back for this tap.
+    if (_justRevealed) {
+      _justRevealed = false;
+      return;
+    }
+    setState(() => _chromeVisible = !_chromeVisible);
+  }
+
   @override
   Widget build(BuildContext context) {
     // The palette is whatever the caller handed down. The meeting is kept
@@ -49,103 +102,103 @@ class _MeetingStageState extends State<MeetingStage> {
     // video reads better against black — and that decision belongs to
     // whoever wraps this, not here.
     final room = widget.room;
+    final size = MediaQuery.sizeOf(context);
+    // A phone held sideways has little height: the bars get thinner so the
+    // video keeps most of it.
+    final compact = size.height < 500;
+    final shown = _shown;
 
+    // The header, the banners and the control bar each take their own
+    // space in a column, and the tiles get what is left. They used to be
+    // drawn over the tiles with a fixed gap reserved (64 at the top, 132 at
+    // the bottom): a header grown by large text, a three-line caption or a
+    // banner covered the first row, its names and its menus.
     return Stack(
       children: [
-        GestureDetector(
-          onTap: () => setState(() => _chromeVisible = !_chromeVisible),
-          behavior: HitTestBehavior.opaque,
-          child: AnimatedPadding(
-            duration: NeoMotion.base,
-            curve: NeoMotion.curve,
-            padding: EdgeInsets.only(
-              top: _chromeVisible ? 64 : 0,
-              bottom: (_chromeVisible ? 132 : 0) +
-                  (widget.captions != null ? 56 : 0),
-            ),
-            child: room.people.isEmpty
-                ? const _Alone()
-                // Pinning someone means seeing them large: the grid gives
-                // way to the speaker view while a pin lasts.
-                : _layout == RoomLayout.speaker || room.pinned != null
-                    ? _SpeakerView(
-                        room: room,
-                        onPerson: widget.actions.openPersonMenu,
-                        onUnpin: widget.actions.unpin,
-                      )
-                    : _GridView(room: room, onPerson: widget.actions.openPersonMenu),
-          ),
-        ),
-        AnimatedPositioned(
-          duration: NeoMotion.base,
-          curve: NeoMotion.curve,
-          top: _chromeVisible ? 0 : -80,
-          left: 0,
-          right: 0,
-          child: _Header(
-            room: room,
-            layout: _layout,
-            onToggleLayout: () => setState(() {
-              _layout = _layout == RoomLayout.speaker
-                  ? RoomLayout.grid
-                  : RoomLayout.speaker;
-            }),
-            onParticipants: widget.actions.openParticipants,
-            onWaitingRoom: widget.actions.openWaitingRoom,
-            onInvite: widget.actions.invite,
-          ),
-        ),
-        AnimatedPositioned(
-          duration: NeoMotion.base,
-          curve: NeoMotion.curve,
-          bottom: _chromeVisible ? 0 : -160,
-          left: 0,
-          right: 0,
-          // Captions ride with the control bar so they slide away with it
-          // when the chrome is hidden for a clean view.
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (widget.captions != null) widget.captions!,
-              _Controls(
+        Column(
+          children: [
+            _Slide(
+              visible: _chromeVisible,
+              fromTop: true,
+              child: _Header(
                 room: room,
-                onMic: widget.actions.toggleMic,
-                onCamera: widget.actions.toggleCamera,
-                onMicMenu: widget.actions.openMicPicker,
-                onCameraMenu: widget.actions.openCameraPicker,
-                onChat: widget.actions.openChat,
-                onMore: _openMore,
-                onLeave: widget.actions.leave,
+                layout: shown,
+                compact: compact,
+                onToggleLayout: _toggleLayout,
+                onParticipants: widget.actions.openParticipants,
+                onWaitingRoom: widget.actions.openWaitingRoom,
+                onInvite: widget.actions.invite,
               ),
-            ],
-          ),
+            ),
+            if (room.onPhoneCall)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(NeoSpace.lg, NeoSpace.xs, NeoSpace.lg, 0),
+                child: NeoBanner(
+                  icon: Icons.phone_in_talk_rounded,
+                  tone: NeoBannerTone.warning,
+                  message: 'On a phone call. Your microphone is off in the '
+                      'meeting.',
+                ),
+              )
+            else if (room.callEndedMuted)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(NeoSpace.lg, NeoSpace.xs, NeoSpace.lg, 0),
+                child: NeoBanner(
+                  icon: Icons.mic_off_rounded,
+                  tone: NeoBannerTone.info,
+                  message: 'Phone call ended. Your microphone is still off.',
+                  actionLabel: 'Unmute',
+                  action: widget.actions.toggleMic,
+                  onClose: widget.actions.dismissCallEnded,
+                ),
+              ),
+            Expanded(
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: _onPointerDown,
+                onPointerUp: _onPointerUp,
+                child: GestureDetector(
+                  onTap: _onStageTap,
+                  behavior: HitTestBehavior.opaque,
+                  child: room.people.isEmpty
+                      ? const _Alone()
+                      // Pinning someone means seeing them large: the grid
+                      // gives way to the speaker view while a pin lasts.
+                      : shown == RoomLayout.speaker
+                          ? _SpeakerView(
+                              room: room,
+                              onPerson: widget.actions.openPersonMenu,
+                              onUnpin: widget.actions.unpin,
+                            )
+                          : _GridView(room: room, onPerson: widget.actions.openPersonMenu),
+                ),
+              ),
+            ),
+            // Captions ride with the control bar so they slide away with it
+            // when the chrome is hidden for a clean view.
+            _Slide(
+              visible: _chromeVisible,
+              fromTop: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.captions != null) widget.captions!,
+                  _Controls(
+                    room: room,
+                    compact: compact,
+                    onMic: widget.actions.toggleMic,
+                    onCamera: widget.actions.toggleCamera,
+                    onMicMenu: widget.actions.openMicPicker,
+                    onCameraMenu: widget.actions.openCameraPicker,
+                    onChat: widget.actions.openChat,
+                    onMore: _openMore,
+                    onLeave: widget.actions.leave,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-        if (room.onPhoneCall)
-          Positioned(
-            top: 72,
-            left: NeoSpace.lg,
-            right: NeoSpace.lg,
-            child: NeoBanner(
-              icon: Icons.phone_in_talk_rounded,
-              tone: NeoBannerTone.warning,
-              message: 'On a phone call. Your microphone is off in the '
-                  'meeting.',
-            ),
-          )
-        else if (room.callEndedMuted)
-          Positioned(
-            top: 72,
-            left: NeoSpace.lg,
-            right: NeoSpace.lg,
-            child: NeoBanner(
-              icon: Icons.mic_off_rounded,
-              tone: NeoBannerTone.info,
-              message: 'Phone call ended. Your microphone is still off.',
-              actionLabel: 'Unmute',
-              action: widget.actions.toggleMic,
-              onClose: widget.actions.dismissCallEnded,
-            ),
-          ),
         if (room.link == RoomLinkState.reconnecting)
           const Positioned.fill(child: _ReconnectingOverlay()),
       ],
@@ -368,18 +421,46 @@ class _MeetingStageState extends State<MeetingStage> {
   }
 }
 
+/// A bar that slides out of the way and gives its space back: hidden, it is
+/// no height at all, so the tiles grow into it; shown, it takes its own
+/// height, however tall large text or a wrapped caption makes it.
+class _Slide extends StatelessWidget {
+  const _Slide({required this.visible, required this.fromTop, required this.child});
+  final bool visible;
+  final bool fromTop;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: AnimatedAlign(
+        duration: NeoMotion.base,
+        curve: NeoMotion.curve,
+        // The header leaves upwards, the control bar downwards.
+        alignment: fromTop ? Alignment.bottomCenter : Alignment.topCenter,
+        heightFactor: visible ? 1 : 0,
+        child: IgnorePointer(ignoring: !visible, child: child),
+      ),
+    );
+  }
+}
+
 class _Header extends StatelessWidget {
   const _Header({
     required this.room,
     required this.layout,
     required this.onToggleLayout,
+    this.compact = false,
     this.onParticipants,
     this.onWaitingRoom,
     this.onInvite,
   });
 
   final RoomView room;
+
+  /// What the stage is showing now (a pin shows the speaker view).
   final RoomLayout layout;
+  final bool compact;
   final VoidCallback onToggleLayout;
   final VoidCallback? onParticipants;
   final VoidCallback? onWaitingRoom;
@@ -415,17 +496,12 @@ class _Header extends StatelessWidget {
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(
+      padding: EdgeInsets.symmetric(
         horizontal: NeoSpace.lg,
-        vertical: NeoSpace.md,
+        vertical: compact ? NeoSpace.xs : NeoSpace.md,
       ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [p.bg.withValues(alpha: 0.95), p.bg.withValues(alpha: 0)],
-        ),
-      ),
+      // Its own space now, not drawn over the video: plain background.
+      color: p.bg,
       child: Row(
         children: [
           Expanded(
@@ -515,49 +591,79 @@ class _SpeakerView extends StatelessWidget {
     if (focus == null) return const SizedBox.shrink();
 
     final pinned = room.pinned != null;
-    return Column(
+    final big = Column(
       children: [
+        if (pinned)
+          // Says why this person stays put, and lets them go. Above the
+          // tile, not on it: on the tile it shared a corner with the tile's
+          // menu and its raised hand, under the phone-call banner.
+          Padding(
+            padding: const EdgeInsets.only(top: NeoSpace.sm),
+            child: ActionChip(
+              avatar: const Icon(Icons.push_pin_rounded, size: 16),
+              label: const Text('Pinned · tap to unpin'),
+              visualDensity: VisualDensity.compact,
+              onPressed: onUnpin,
+            ),
+          ),
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(NeoSpace.md),
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: ParticipantTile(person: focus, large: true, onLongPress: onPerson),
-                ),
-                if (pinned)
-                  // Says why this person stays put, and lets them go.
-                  Positioned(
-                    top: NeoSpace.sm,
-                    right: NeoSpace.sm,
-                    child: ActionChip(
-                      avatar: const Icon(Icons.push_pin_rounded, size: 16),
-                      label: const Text('Pinned · tap to unpin'),
-                      visualDensity: VisualDensity.compact,
-                      onPressed: onUnpin,
-                    ),
-                  ),
-              ],
+            child: ParticipantTile(
+              key: ValueKey('focus:${focus.id}'),
+              person: focus,
+              large: true,
+              onLongPress: onPerson,
             ),
           ),
         ),
-        if (others.isNotEmpty) ...[
-          SizedBox(
-            height: 96,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: NeoSpace.md),
-              itemCount: others.length,
-              separatorBuilder: (_, _) => const SizedBox(width: NeoSpace.sm),
-              itemBuilder: (context, i) => SizedBox(
-                width: 128,
-                child: ParticipantTile(person: others[i], onLongPress: onPerson),
-              ),
-            ),
-          ),
-          const SizedBox(height: NeoSpace.md),
-        ],
       ],
+    );
+    if (others.isEmpty) return big;
+
+    Widget strip(Axis axis) => ListView.separated(
+          scrollDirection: axis,
+          padding: axis == Axis.horizontal
+              ? const EdgeInsets.symmetric(horizontal: NeoSpace.md)
+              : const EdgeInsets.fromLTRB(0, NeoSpace.md, NeoSpace.md, NeoSpace.md),
+          itemCount: others.length,
+          // Each tile follows its person when the strip reorders (a new
+          // speaker moves to the big tile), so a hold or a menu tap lands
+          // on the person it started on, not on whoever slid into the slot.
+          findItemIndexCallback: (key) {
+            final id = (key as ValueKey<String>).value;
+            final i = others.indexWhere((o) => o.id == id);
+            return i < 0 ? null : i;
+          },
+          separatorBuilder: (_, _) => const SizedBox(width: NeoSpace.sm, height: NeoSpace.sm),
+          itemBuilder: (context, i) => SizedBox(
+            key: ValueKey(others[i].id),
+            width: 128,
+            height: 96,
+            child: ParticipantTile(person: others[i], onLongPress: onPerson),
+          ),
+        );
+
+    return LayoutBuilder(
+      builder: (context, box) {
+        // Sideways, the strip goes down the right-hand side: below the big
+        // tile it left the big tile no height at all.
+        if (box.maxWidth > box.maxHeight) {
+          return Row(
+            children: [
+              Expanded(child: big),
+              SizedBox(width: 140, child: strip(Axis.vertical)),
+            ],
+          );
+        }
+        return Column(
+          children: [
+            Expanded(child: big),
+            SizedBox(height: 96, child: strip(Axis.horizontal)),
+            const SizedBox(height: NeoSpace.md),
+          ],
+        );
+      },
     );
   }
 }
@@ -574,20 +680,38 @@ class _GridView extends StatelessWidget {
     if (people.length == 1) {
       return Padding(
         padding: const EdgeInsets.all(NeoSpace.md),
-        child: ParticipantTile(person: people.first, large: true, onLongPress: onPerson),
+        child: ParticipantTile(key: ValueKey(people.first.id), person: people.first, large: true, onLongPress: onPerson),
       );
     }
 
-    return GridView.builder(
-      padding: const EdgeInsets.all(NeoSpace.md),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: people.length == 2 ? 1 : 2,
-        childAspectRatio: people.length == 2 ? 1.2 : 0.82,
-        mainAxisSpacing: NeoSpace.sm,
-        crossAxisSpacing: NeoSpace.sm,
-      ),
-      itemCount: people.length,
-      itemBuilder: (context, i) => ParticipantTile(person: people[i], onLongPress: onPerson),
+    return LayoutBuilder(
+      builder: (context, box) {
+        final wide = box.maxWidth > box.maxHeight;
+        final n = people.length;
+        // Sideways: more columns of wider tiles, so a row fits the height.
+        final columns = wide ? (n <= 2 ? n : (n <= 6 ? 3 : 4)) : (n == 2 ? 1 : 2);
+        final aspect = wide ? 16 / 10 : (n == 2 ? 1.2 : 0.82);
+        return GridView.builder(
+          padding: const EdgeInsets.all(NeoSpace.md),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            childAspectRatio: aspect,
+            mainAxisSpacing: NeoSpace.sm,
+            crossAxisSpacing: NeoSpace.sm,
+          ),
+          itemCount: n,
+          // Keyed by person, as the strip is: someone joining or leaving
+          // moves the others along, and their tiles (and a hold in
+          // progress) move with them.
+          findChildIndexCallback: (key) {
+            final id = (key as ValueKey<String>).value;
+            final i = people.indexWhere((o) => o.id == id);
+            return i < 0 ? null : i;
+          },
+          itemBuilder: (context, i) =>
+              ParticipantTile(key: ValueKey(people[i].id), person: people[i], onLongPress: onPerson),
+        );
+      },
     );
   }
 }
@@ -615,6 +739,7 @@ class ParticipantTile extends StatelessWidget {
     final video = person.video;
     final hold = onLongPress;
     final roleLabel = person.roleLabel;
+    final menu = hold != null && !person.isMe;
 
     final tile = Container(
       clipBehavior: Clip.antiAlias,
@@ -639,7 +764,8 @@ class ParticipantTile extends StatelessWidget {
             Positioned(
               top: NeoSpace.sm,
               left: NeoSpace.sm,
-              right: NeoSpace.xxl,
+              // Clear of the menu button (the raised hand goes under it).
+              right: menu ? 44 : NeoSpace.xxl,
               child: Wrap(
                 spacing: NeoSpace.xs,
                 runSpacing: NeoSpace.xs,
@@ -652,10 +778,35 @@ class ParticipantTile extends StatelessWidget {
               ),
             ),
           if (person.handRaised)
-            const Positioned(
-              top: NeoSpace.sm,
+            Positioned(
+              // Under the menu button, not beside it: beside it took the
+              // width the role pill needs on a small tile.
+              top: menu ? 44 : NeoSpace.sm,
               right: NeoSpace.sm,
-              child: _Chip(child: Text('✋')),
+              child: const _Chip(child: Text('✋')),
+            ),
+          if (menu)
+            // The tile's menu, as on the web: holding the tile does the
+            // same, but nobody finds a long press they were never told of.
+            Positioned(
+              top: 2,
+              right: 2,
+              child: Semantics(
+                button: true,
+                label: 'Options for ${person.name}',
+                child: IconButton(
+                  tooltip: 'Options for ${person.name}',
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.black.withValues(alpha: 0.45),
+                    foregroundColor: Colors.white,
+                  ),
+                  iconSize: 20,
+                  icon: const Icon(Icons.more_vert_rounded),
+                  onPressed: () => hold(person),
+                ),
+              ),
             ),
 
           Positioned(
@@ -728,6 +879,7 @@ class _Chip extends StatelessWidget {
 class _Controls extends StatelessWidget {
   const _Controls({
     required this.room,
+    this.compact = false,
     required this.onMic,
     required this.onCamera,
     required this.onMore,
@@ -738,6 +890,9 @@ class _Controls extends StatelessWidget {
   });
 
   final RoomView room;
+
+  /// Sideways: less padding, so the video keeps the height.
+  final bool compact;
   final Future<void> Function() onMic;
   final Future<void> Function() onCamera;
   final VoidCallback? onMicMenu;
@@ -749,21 +904,12 @@ class _Controls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = NeoTheme.of(context);
+    final v = compact ? NeoSpace.xs : NeoSpace.lg;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(
-        NeoSpace.sm,
-        NeoSpace.lg,
-        NeoSpace.sm,
-        NeoSpace.lg,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.bottomCenter,
-          end: Alignment.topCenter,
-          colors: [p.bg, p.bg.withValues(alpha: 0)],
-        ),
-      ),
+      padding: EdgeInsets.fromLTRB(NeoSpace.sm, v, NeoSpace.sm, v),
+      // Its own space below the tiles, not drawn over them.
+      color: p.bg,
       // Five, each given an equal share of the width so they fit on any
       // phone. Six fixed-width buttons needed 468pt on a 393pt screen and
       // pushed Leave off the edge, which is the one that must never go.

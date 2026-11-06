@@ -1259,7 +1259,11 @@ class RoomController extends StateNotifier<RoomState> {
       ..on<ParticipantDisconnectedEvent>((e) {
         final hands = Map<String, String>.from(state.raisedHands)
           ..remove(e.participant.identity);
-        state = state.copyWith(raisedHands: hands);
+        // Someone pinned who leaves takes the pin with them: it used to
+        // linger and snap back when they rejoined (their own reconnect
+        // included), holding this screen on them again.
+        final pinLeft = state.pinnedId == e.participant.identity;
+        state = state.copyWith(raisedHands: hands, clearPin: pinLeft);
       })
       ..on<TrackSubscribedEvent>((_) {
         // Someone who starts speaking after a language was chosen is kept

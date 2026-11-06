@@ -238,16 +238,42 @@ export function HostTileMenu({
       setMenuPos({ top, left, maxHeight: Math.max(120, maxHeight) });
     };
     place();
-    // Second pass on the next paint: menu is mounted, we can measure it
-    // and correct if the rough estimate over- or under-shot.
-    const raf = requestAnimationFrame(place);
-    window.addEventListener('scroll', place, true);
-    window.addEventListener('resize', place);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener('scroll', place, true);
-      window.removeEventListener('resize', place);
+    // Then every frame while it is open: the menu follows its button when
+    // the tiles move (a new speaker reorders the grid, a tile is enlarged,
+    // a panel opens and the grid narrows), which scroll and resize alone
+    // never told it. If the tile went away (that person left, the layout
+    // changed), the menu closes rather than float over someone else.
+    let raf = 0;
+    let last = '';
+    const follow = () => {
+      const b = buttonRef.current;
+      if (!b || !b.isConnected) {
+        setOpen(false);
+        return;
+      }
+      const r = b.getBoundingClientRect();
+      const key = `${r.top}|${r.left}|${r.width}|${window.innerWidth}|${window.innerHeight}|${menuRef.current?.offsetHeight ?? 0}`;
+      if (key !== last) {
+        last = key;
+        place();
+      }
+      raf = requestAnimationFrame(follow);
     };
+    raf = requestAnimationFrame(follow);
+    return () => cancelAnimationFrame(raf);
+  }, [open]);
+
+  // Esc closes the menu (and is not then taken as "back to gallery").
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [open]);
 
   // Outside-click close: the menu is portaled to <body>, so it isn't in the
@@ -271,10 +297,15 @@ export function HostTileMenu({
 
   return (
     <div
+      data-neo-tile-menu="true"
+      data-neo-menu-for={participantIdentity}
       style={{
         position: 'absolute',
         top: 6,
-        right: 6,
+        // Left of LiveKit's enlarge / shrink button (top right, about
+        // 32px): the menu sat right on top of it, and the shrink button
+        // was the only way back from an enlarged tile.
+        right: 44,
         zIndex: 10,
         pointerEvents: 'auto',
       }}
@@ -283,7 +314,10 @@ export function HostTileMenu({
       <button
         ref={buttonRef}
         type="button"
-        aria-label={`Host actions for ${participantName}`}
+        aria-label={`Options for ${participantName}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={`Options for ${participantName}`}
         onClick={() => setOpen((v) => !v)}
         style={{
           width: 28,
@@ -514,7 +548,9 @@ export function HostTileMenu({
             </div>
           )}
         </div>,
-        document.body,
+        // Inside the fullscreen element when there is one: anything outside
+        // it is not drawn while the room (or a tile) is fullscreen.
+        document.fullscreenElement ?? document.body,
       )}
     </div>
   );
