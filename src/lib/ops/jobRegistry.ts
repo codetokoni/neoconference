@@ -97,8 +97,10 @@ export const JOBS: JobDef[] = [
     name: "partner-totals",
     label: "Partner prayer totals",
     description: "Stores each partner website's finished days of prayer totals, which the organisation report adds up. Fills any missing day of the last 35.",
-    schedule: "20 1 * * *",
-    scheduleText: "Daily at 01:20 UTC",
+    // After 06:00 UTC: a UTC day is stored GRACE_MS (6 h) after it ends, so
+    // at 01:20 yesterday was not ready yet and waited a whole day more.
+    schedule: "20 6 * * *",
+    scheduleText: "Daily at 06:20 UTC",
     retrySafe: true,
     retryNote: "A day already stored is left alone, so a second run only stores days still missing.",
     route: "/api/cron/partner-totals",
