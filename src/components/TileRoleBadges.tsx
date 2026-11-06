@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParticipants } from '@livekit/components-react';
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { tileIdentityOf } from '@/components/conference/roomLayout';
 
 type BadgeRole = 'owner' | 'host' | 'moderator';
 
@@ -57,9 +58,12 @@ export default function TileRoleBadges({ ownerUserId }: { ownerUserId: string | 
 
   if (isMobile) return null;
 
-  // Build name -> role map. Owner detection wins over metadata: if the
-  // participant IS the owner they get the Owner badge even if their token
-  // metadata says "host".
+  // Role by identity (and by name, for a tile that says no identity).
+  // Owner detection wins over metadata: if the participant IS the owner
+  // they get the Owner badge even if their token metadata says "host".
+  // By name alone, a Host badge went on every tile of that name: another
+  // person called Grace looked like the host.
+  const roleById = new Map<string, BadgeRole>();
   const roleByName = new Map<string, BadgeRole>();
   for (const p of participants) {
     if (!p) continue;
@@ -77,13 +81,24 @@ export default function TileRoleBadges({ ownerUserId }: { ownerUserId: string | 
         // not JSON
       }
     }
-    if (role) roleByName.set(key, role);
+    if (role) {
+      roleById.set(p.identity, role);
+      roleByName.set(key, role);
+    }
   }
 
   const items: Array<{ key: string; role: BadgeRole; target: Element }> = [];
   if (typeof document !== 'undefined') {
     const tiles = document.querySelectorAll<HTMLElement>('.lk-participant-tile');
     tiles.forEach((tile, idx) => {
+      const identity = tileIdentityOf(tile);
+      if (identity) {
+        // A person's badge goes on their camera tile, not their screen.
+        if (tile.getAttribute('data-neo-source') === 'screen_share') return;
+        const role = roleById.get(identity);
+        if (role) items.push({ key: identity, role, target: tile });
+        return;
+      }
       const nameEl = tile.querySelector('.lk-participant-name, [data-lk-participant-name]');
       const displayed = nameEl ? (nameEl.textContent || '').trim() : '';
       if (!displayed) return;

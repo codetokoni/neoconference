@@ -37,19 +37,13 @@ export default function HiddenVideoOverlay() {
   const participants = useParticipants();
   const localIdentity = localParticipant?.identity ?? null;
 
-  // LiveKit's built-in ParticipantTile only exposes
-  // `data-lk-participant-name` in its DOM — never
-  // `data-lk-participant-identity` (verified against
-  // @livekit/components-react 2.9.20). So a selector keyed on identity
-  // matches nothing on desktop, which is why hidden tiles were staying
-  // visible even though the local state had flipped. Map identity →
-  // name here and hide by name via CSS `:has()`.
-  //
-  // Names aren't strictly unique in LiveKit, but if two participants
-  // share a display name and the moderator hides one, hiding both is
-  // acceptable — the alternative is a MutationObserver / class-toggle
-  // dance that fights every LiveKit re-render. `:has()` is available
-  // in every browser we support.
+  // The room's computer tiles say whose they are (`data-neo-identity`,
+  // NeoVideoConference), so a hidden person's tiles (camera and screen
+  // share) are hidden by identity. LiveKit's own tiles say only the
+  // display name, so this hid by name, and hiding one Grace hid every
+  // Grace, and both of one person's devices. Only a tile that says no
+  // identity (LiveKit's stock layout, as in the embeds) still falls back to
+  // its name.
   //
   // Mobile is unaffected: MobileParticipantGrid filters its own
   // participants array by isHidden(id) before mapping — the tile isn't
@@ -60,19 +54,20 @@ export default function HiddenVideoOverlay() {
     nameForId.set(p.identity, (p.name || p.identity).trim());
   }
 
-  const targetNames = Array.from(hiddenSet)
-    .filter((id) => id && id !== localIdentity)
-    .map((id) => nameForId.get(id))
-    .filter((n): n is string => Boolean(n));
+  const targetIds = Array.from(hiddenSet).filter((id) => id && id !== localIdentity);
+  if (targetIds.length === 0) return null;
 
-  if (targetNames.length === 0) return null;
-
-  const unique = Array.from(new Set(targetNames));
-  const selector = unique
-    .map(
-      (name) =>
-        `.lk-participant-tile:has([data-lk-participant-name="${cssEscape(name)}"])`,
-    )
+  const selector = targetIds
+    .flatMap((id) => {
+      const rules = [`.lk-participant-tile[data-neo-identity="${cssEscape(id)}"]`];
+      const name = nameForId.get(id);
+      if (name) {
+        rules.push(
+          `.lk-participant-tile:not([data-neo-identity]):has([data-lk-participant-name="${cssEscape(name)}"])`,
+        );
+      }
+      return rules;
+    })
     .join(', ');
 
   // display: none fully collapses the cell so LiveKit's CSS-grid
