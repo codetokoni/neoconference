@@ -9,9 +9,17 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 /**
  * HostMenuOverlay
  *
- * For host/cohost only. Iterates remote LiveKit participants and portals
- * a <HostTileMenu /> into each one's tile DOM (.lk-participant-tile).
- * Tiles are matched to participants via data-lk-participant-name.
+ * Portals a <HostTileMenu /> into each remote participant's tile
+ * (.lk-participant-tile) on a computer or tablet. Every viewer gets it, as
+ * HostTileMenu intends ("Hide on my screen" is for anyone); the host and
+ * moderator actions inside it stay gated on the viewer's role, and the
+ * server checks the role again on each one.
+ *
+ * Tiles are matched by identity (`data-neo-identity`, set by
+ * NeoVideoConference), preferring the camera tile over a screen share.
+ * They used to be matched by display name, so two people with one name, or
+ * one person on two devices, shared a single menu on the first such tile,
+ * and a person's menu could land on their screen share instead.
  */
 export default function HostMenuOverlay({
   isHost,
@@ -33,7 +41,7 @@ export default function HostMenuOverlay({
 
   // Re-scan tiles whenever the DOM mutates (tiles get added/removed/paginated).
   useEffect(() => {
-    if (!isHost || isMobile) return;
+    if (isMobile) return;
     let raf = 0;
     const obs = new MutationObserver(() => {
       cancelAnimationFrame(raf);
@@ -41,9 +49,9 @@ export default function HostMenuOverlay({
     });
     obs.observe(document.body, { childList: true, subtree: true });
     return () => { obs.disconnect(); cancelAnimationFrame(raf); };
-  }, [isHost, isMobile]);
+  }, [isMobile]);
 
-  if (!isHost || isMobile) return null;
+  if (isMobile) return null;
 
   const localIdentity = localParticipant?.identity || '';
   // Snapshot tiles (read at render time; tick triggers re-render).
@@ -57,15 +65,8 @@ export default function HostMenuOverlay({
       {participants.map((p) => {
         if (!p || p.identity === localIdentity) return null;
         const displayName = (p.name || p.identity || '').trim();
-        // Find the FIRST tile in DOM whose name matches AND isn't already mounted.
-        // Multiple tiles may share the same name in test setups; that's fine -- we mount per identity.
-        const tile = tiles.find((el) => {
-          const nameEl = el.querySelector('[data-lk-participant-name]') as HTMLElement | null;
-          const tileName = nameEl?.getAttribute('data-lk-participant-name')?.trim() || '';
-          if (tileName !== displayName) return false;
-          const isLocalTile = el.querySelector('[data-lk-local-participant="true"]') !== null;
-          return !isLocalTile;
-        });
+        const own = tiles.filter((el) => el.getAttribute('data-neo-identity') === p.identity);
+        const tile = own.find((el) => el.getAttribute('data-neo-source') === 'camera') ?? own[0];
         if (!tile) return null;
         if (getComputedStyle(tile).position === 'static') {
           tile.style.position = 'relative';
@@ -87,7 +88,7 @@ export default function HostMenuOverlay({
             key={p.identity}
             participantIdentity={p.identity}
             participantName={displayName}
-            isHost={true}
+            isHost={isHost}
             roomRole={roomRole}
             targetRole={targetRole}
             slug={slug}

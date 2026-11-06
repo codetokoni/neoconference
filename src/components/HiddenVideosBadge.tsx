@@ -240,7 +240,8 @@ export default function HiddenVideosBadge({
             </div>
           </div>
         </div>,
-        document.body,
+        // In fullscreen, only what is inside the fullscreen element shows.
+        document.fullscreenElement ?? document.body,
       )}
     </>
   );
