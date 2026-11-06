@@ -66,10 +66,14 @@ const throws = async (code: string, fn: () => Promise<unknown>) => {
     await throws("insufficient_rank", () => assignMeetingRole(EVENT_ID, "user_dave", "host", mod));
   });
 
-  await t("host may make a moderator but not another host", async () => {
+  await t("host may make a moderator and another host (2026-11-05)", async () => {
     await assignMeetingRole(EVENT_ID, "user_erin", "moderator", host);
     assert.equal(await getMeetingRole(EVENT_ID, "user_erin"), "moderator");
-    await throws("insufficient_rank", () => assignMeetingRole(EVENT_ID, "user_frank", "host", host));
+    await assignMeetingRole(EVENT_ID, "user_frank", "host", host);
+    assert.equal(await getMeetingRole(EVENT_ID, "user_frank"), "host");
+    // Not themselves, and a moderator still cannot.
+    await throws("cannot_manage_self", () => assignMeetingRole(EVENT_ID, "user_host", "host", host));
+    await throws("insufficient_rank", () => assignMeetingRole(EVENT_ID, "user_dave", "host", mod));
   });
 
   await t("nobody promotes themselves", async () => {

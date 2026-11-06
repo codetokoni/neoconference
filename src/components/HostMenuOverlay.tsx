@@ -15,16 +15,10 @@ import { useIsMobile } from '@/hooks/useIsMobile';
  */
 export default function HostMenuOverlay({
   isHost,
-  isOwner = false,
   roomRole,
   slug,
 }: {
   isHost: boolean;
-  /** Threaded through to HostTileMenu so the FRS §1.1 "Make Host"
-   *  action is gated on owner only (a plain host cannot appoint
-   *  another host). Also unlocks the same role/moderation surface for
-   *  a real owner whose LiveKit metadata hasn't reported "host" yet. */
-  isOwner?: boolean;
   /** Wire-format role. Threaded through to HostTileMenu so roles and
    *  Remove are gated on owner+host. */
   roomRole?: string;
@@ -96,7 +90,6 @@ export default function HostMenuOverlay({
             participantIdentity={p.identity}
             participantName={displayName}
             isHost={true}
-            isOwner={isOwner}
             roomRole={roomRole}
             targetRole={targetRole}
             targetIsOwner={targetIsOwner}

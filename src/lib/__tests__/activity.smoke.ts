@@ -48,11 +48,23 @@ const T = (iso: string) => Date.parse(iso);
 // starts on the real UTC day but at least two hours from its midnight: the
 // checks count "today", and an account made an hour ago or a meeting run
 // five minutes on would land on the other side of it (CI at 23:57 and a
-// run at 00:05, 2026-11-03/04).
+// run at 00:05, 2026-11-03/04). `new Date()` reads the same clock: code
+// stamping with it (a meeting's start, a LiveKit event's time) otherwise ran
+// ahead of the test's clock and dropped out of "until now" (CI at 22:16,
+// 2026-11-05).
 const realNow = Date.now.bind(Date);
 const sinceMidnight = realNow() % DAY;
 let skew = sinceMidnight < 2 * HOUR ? 2 * HOUR - sinceMidnight : sinceMidnight > 22 * HOUR ? 22 * HOUR - sinceMidnight : 0;
-Date.now = () => realNow() + skew;
+const RealDate = Date;
+globalThis.Date = class extends RealDate {
+  constructor(...args: unknown[]) {
+    if (args.length === 0) super(realNow() + skew);
+    else super(...(args as [string | number | Date]));
+  }
+  static now() {
+    return realNow() + skew;
+  }
+} as DateConstructor;
 const tick = (ms = 30_000) => {
   skew += ms;
 };

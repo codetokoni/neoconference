@@ -254,7 +254,10 @@ export class MeetingRoleError extends Error {
 /**
  * Grant a role. The rank guard is the point of this function: `canManageRole`
  * refuses anything at or above the actor's own rank, so a moderator cannot mint
- * moderators and nobody can touch the owner.
+ * moderators and nobody can touch the owner. One exception: a host may make
+ * another host (owner's decision 2026-11-05: a prayer meeting's hosts hand
+ * the meeting on). Taking a host's role away stays the owner's, in the roles
+ * route's check of the target's current rank.
  *
  * Writes one field per identity key, so a person invited by email and later
  * signed in under a Clerk id resolves the same either way.
@@ -291,7 +294,8 @@ export async function assignMeetingRole(
     throw new MeetingRoleError("cannot_manage_self");
   }
 
-  if (!canManageRole(actor, newRole, false)) throw new MeetingRoleError("insufficient_rank");
+  const hostMakesHost = newRole === "host" && actor.role === "host";
+  if (!hostMakesHost && !canManageRole(actor, newRole, false)) throw new MeetingRoleError("insufficient_rank");
 
   const entry: RoleAssignmentEntry = {
     role: newRole,
