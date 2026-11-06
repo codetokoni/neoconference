@@ -37,11 +37,11 @@ export async function readHash<T>(key: string): Promise<Record<string, T>> {
  * Keys matching `match` (a Redis glob), by SCAN — never KEYS, which blocks
  * the store. Stops at `cap` keys; `truncated` says it did.
  */
-export async function scanKeys(match: string, cap = 5000): Promise<{ keys: string[]; truncated: boolean }> {
+export async function scanKeys(match: string, cap = 5000, count = 1000): Promise<{ keys: string[]; truncated: boolean }> {
   const keys: string[] = [];
   let cursor: string | number = 0;
   do {
-    const [next, batch] = (await kv.scan(cursor, { match, count: 1000 })) as [string | number, string[]];
+    const [next, batch] = (await kv.scan(cursor, { match, count })) as [string | number, string[]];
     keys.push(...batch);
     cursor = next;
     if (keys.length >= cap) return { keys: keys.slice(0, cap), truncated: true };

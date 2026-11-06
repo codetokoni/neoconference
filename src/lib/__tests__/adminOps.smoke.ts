@@ -766,6 +766,65 @@ async function main() {
     assert.equal(await backup.deleteBackup(one.id), false);
   });
 
+  await t("a snapshot is written one entry per line, and one past a cap says which cap", async () => {
+    const full = await backup.createSnapshot({ kind: "manual", by: "test", prefixes: ["neo:event:"] });
+    const { gunzipSync } = await import("node:zlib");
+    const text = gunzipSync(g.__r2Bytes!.get(full.r2Key)!).toString();
+    const lines = text.split("\n");
+    assert.match(lines[0], /"entries":\[$/);
+    assert.equal(lines[lines.length - 1], "]}");
+    assert.equal(lines.length - 2, full.keyCount, "one line per key");
+    assert.equal(JSON.parse(text).entries.length, full.keyCount, "still one JSON document");
+    assert.equal(full.rawBytes, Buffer.byteLength(text));
+
+    const bySize = await backup.createSnapshot({ kind: "manual", by: "test", prefixes: ["neo:event:"], limits: { maxRawBytes: 2 * 1024 * 1024 * 1024 } });
+    assert.equal(bySize.truncated, false);
+    const small = await backup.createSnapshot({ kind: "manual", by: "test", prefixes: ["neo:event:"], limits: { maxRawBytes: 400 } });
+    assert.equal(small.truncated, true);
+    assert.match(small.truncatedReason!, /^more than .* MB of data$/);
+    assert.ok(small.keyCount < full.keyCount && small.rawBytes <= 400);
+    assert.equal(small.verify?.ok, true, "what it holds still verifies");
+    const keys = await backup.createSnapshot({ kind: "manual", by: "test", prefixes: ["neo:event:"], limits: { maxKeys: 2 } });
+    assert.equal(keys.truncatedReason, "more than 2 keys");
+    const slow = await backup.createSnapshot({ kind: "manual", by: "test", prefixes: ["neo:event:"], limits: { budgetMs: -1 } });
+    assert.equal(slow.truncatedReason, "took longer than 0 s to read");
+    assert.equal(slow.keyCount, 0);
+    assert.equal(slow.verify?.ok, true);
+    await stepUp("user_owner");
+    const refused = await call("user_owner", R.restore.POST as never, { method: "POST", body: { snapshotId: small.id, prefixes: ["neo:event:"], mode: "preview" } });
+    assert.equal(refused.body.error, "snapshot_incomplete");
+  });
+
+  await t("a snapshot written on one line (before November 2026) still verifies and restores", async () => {
+    const b = await backup.createSnapshot({ kind: "manual", by: "test", prefixes: ["neo:event:"] });
+    const { gunzipSync, gzipSync } = await import("node:zlib");
+    const { createHash } = await import("node:crypto");
+    const oneLine = gzipSync(Buffer.from(JSON.stringify(JSON.parse(gunzipSync(g.__r2Bytes!.get(b.r2Key)!).toString()))));
+    g.__r2Bytes!.set(b.r2Key, oneLine);
+    const sha256 = createHash("sha256").update(oneLine).digest("hex");
+    await kv.hset("neo:ops:backups", { [b.id]: JSON.stringify({ ...b, bytes: oneLine.byteLength, sha256, verify: undefined }) });
+    const v = await backup.verifySnapshot(b.id);
+    assert.equal(v?.verify?.ok, true, v?.verify?.detail);
+    const pv = await backup.previewRestore(b.id, ["neo:event:"]);
+    assert.equal(pv.counts.added + pv.counts.changed + pv.counts.removed + pv.unchanged > 0, true);
+  });
+
+  await t("retention keeps the newest complete snapshot even when newer ones are all partial", async () => {
+    const good = await backup.createSnapshot({ kind: "scheduled", by: "test", prefixes: ["neo:other:"] });
+    assert.equal(backup.isRestorable(good), true);
+    for (let i = 0; i < backup.KEEP_SNAPSHOTS + 1; i++) {
+      tick(1000);
+      const p = await backup.createSnapshot({ kind: "scheduled", by: "test", prefixes: ["neo:event:"], limits: { maxKeys: 1 } });
+      assert.equal(p.truncated, true);
+    }
+    await backup.applyRetention();
+    const left = (await backup.listBackups()).filter((b) => b.kind !== "pre-restore");
+    assert.ok(left.some((b) => b.id === good.id), "the last complete snapshot is kept");
+    assert.ok(g.__r2Bytes!.has(good.r2Key));
+    assert.equal(left.length, backup.KEEP_SNAPSHOTS + 1);
+    assert.equal(left.filter(backup.isRestorable).length, 1);
+  });
+
   await t("the scheduled backup cron is a recorded job like the others", async () => {
     const c = await cron(R.cronBackup.GET as never);
     assert.equal(c.status, 200, JSON.stringify(c.body));

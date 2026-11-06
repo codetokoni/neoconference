@@ -147,7 +147,7 @@ export default function OpsBackupsClient() {
                   the app cannot start, list or restore them. The snapshots here are copied by the app: every key except caches, rate limits, presence and locks (
                   <span className="break-all font-mono text-xs">{d.config.exclude.join(" ")}</span>), compressed, with a SHA-256 checksum, read back and verified after writing.
                   Capped at {fmtNumber(d.config.maxKeys)} keys / {fmtBytes(d.config.maxRawBytes)}; the newest {d.config.keep} snapshots and {d.config.keepPreRestore} pre-restore
-                  snapshots are kept.
+                  snapshots are kept, and always the newest complete one.
                 </p>
               </Panel>
 

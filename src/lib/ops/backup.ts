@@ -11,8 +11,15 @@
 // with its type and remaining TTL, written as gzipped JSON to
 // R2 ops-backups/kv/<id>.json.gz with a SHA-256 of the compressed bytes. It
 // is read back from R2 and checked once written; "Verify" checks it again.
-// Capped at MAX_KEYS keys / MAX_RAW_BYTES uncompressed — a snapshot that
-// hit a cap says so and is never offered for restore.
+// Capped at MAX_KEYS keys / MAX_RAW_BYTES uncompressed / SNAPSHOT_BUDGET_MS
+// of reading — a snapshot that hit a cap says so and is never offered for
+// restore. Retention always keeps the newest complete one.
+//
+// The file is one JSON document, written as it is read (a gzip stream, one
+// entry per line) so the store never has to fit in one string: the first
+// line is the header up to `"entries":[`, then one entry per line (each but
+// the last ending in a comma), then `]}`. Verify and restore read it back a
+// line at a time. Older single-line files still read.
 //
 // Restore (owner only, step-up, typed confirmation — the route enforces
 // those) is by key prefix: a preview lists the keys it would add, change and
@@ -26,8 +33,10 @@
 //
 //   neo:ops:backups   hash id -> BackupMeta
 
-import { gzipSync, gunzipSync } from "node:zlib";
+import { createGzip, createGunzip, gunzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
+import { createInterface } from "node:readline";
+import { Readable } from "node:stream";
 import { kv, kvRaw } from "@/lib/kv";
 import { deleteObject, getObjectBytes, isR2Configured, putObject } from "@/lib/r2";
 import { newId, parseJson, readHash, scanKeys } from "@/lib/ops/util";
@@ -50,8 +59,12 @@ export const SNAPSHOT_EXCLUDE = [
 // neo:data: holds data-governance records (erasure tombstones): a restore must never un-erase anyone.
 export const RESTORE_PROTECTED = ["neo:admin:audit:", "neo:admin:mfa", "neo:ops:backups", "neo:ops:job:", "neo:data:"];
 
-export const MAX_KEYS = 100_000;
-export const MAX_RAW_BYTES = 64 * 1024 * 1024;
+// The store passed the first caps (100,000 keys / 64 MB) on 23 Oct 2026, at
+// about 196,000 keys and 170 MB; every snapshot after that was partial.
+export const MAX_KEYS = 1_000_000;
+export const MAX_RAW_BYTES = 1024 * 1024 * 1024;
+/** Reading stops here, well inside the cron's 300 s, so a slow night says why instead of being killed. */
+export const SNAPSHOT_BUDGET_MS = 200_000;
 export const KEEP_SNAPSHOTS = 14;
 export const KEEP_PRE_RESTORE = 10;
 
@@ -68,13 +81,23 @@ export interface SnapshotEntry {
   x?: number;
 }
 
-interface SnapshotFile {
+interface SnapshotHeader {
   format: "neo-kv-snapshot/1";
   id: string;
   createdAt: number;
   prefixes: string[] | null;
   excluded: string[];
+}
+
+interface SnapshotFile extends SnapshotHeader {
   entries: SnapshotEntry[];
+}
+
+/** Lower limits, for tests. */
+export interface SnapshotLimits {
+  maxKeys?: number;
+  maxRawBytes?: number;
+  budgetMs?: number;
 }
 
 export type BackupKind = "scheduled" | "manual" | "pre-restore";
@@ -105,14 +128,29 @@ function globEscape(prefix: string): string {
   return prefix.replace(/[*?[\]\\]/g, "\\$&");
 }
 
-/** Read keys verbatim with their type and TTL. Missing keys (expired since the scan) are skipped. */
+/** Keys read per round: the client pipelines each round's commands into one request. */
+const DUMP_BATCH = 1000;
+/** Keys asked for per SCAN step (a hint to the store), for fewer round trips over a big store. */
+const SCAN_COUNT = 5000;
+
+/**
+ * Read keys verbatim with their type and TTL. Missing keys (expired since
+ * the scan) are skipped. Two round trips a batch: every key's type and TTL,
+ * then every value. (It was three per 200 keys, and at 196,000 keys a full
+ * snapshot no longer fitted in the cron's 300 s.)
+ */
 export async function dumpKeys(keys: string[]): Promise<SnapshotEntry[]> {
   const out: SnapshotEntry[] = [];
-  for (let i = 0; i < keys.length; i += 200) {
-    const batch = keys.slice(i, i + 200);
+  for (let i = 0; i < keys.length; i += DUMP_BATCH) {
+    const batch = keys.slice(i, i + DUMP_BATCH);
+    const heads = await Promise.all(
+      batch.map(async (k) => {
+        const [t, ttl] = await Promise.all([kvRaw.type(k), kvRaw.pttl(k)]);
+        return { k, t: String(t) as KvType | "none", ttl: Number(ttl) };
+      }),
+    );
     const rows = await Promise.all(
-      batch.map(async (k): Promise<SnapshotEntry | null> => {
-        const t = String(await kvRaw.type(k)) as KvType | "none";
+      heads.map(async ({ k, t, ttl }): Promise<SnapshotEntry | null> => {
         let v: unknown;
         if (t === "string") v = await kvRaw.get(k);
         else if (t === "hash") v = await kvRaw.hgetall(k);
@@ -121,7 +159,6 @@ export async function dumpKeys(keys: string[]): Promise<SnapshotEntry[]> {
         else if (t === "zset") v = await kvRaw.zrange(k, 0, -1, { withScores: true });
         else return null;
         if (v == null) return null;
-        const ttl = Number(await kvRaw.pttl(k));
         return ttl > 0 ? { k, t, v, x: ttl } : { k, t, v };
       }),
     );
@@ -161,19 +198,45 @@ async function writeEntry(e: SnapshotEntry, takenAt: number, now: number): Promi
   return "written";
 }
 
-async function keysFor(prefixes: string[] | null): Promise<{ keys: string[]; truncated: boolean }> {
+async function keysFor(prefixes: string[] | null, maxKeys = MAX_KEYS): Promise<{ keys: string[]; truncated: boolean }> {
   if (!prefixes) {
-    const r = await scanKeys("*", MAX_KEYS + 1);
-    return { keys: r.keys, truncated: r.truncated || r.keys.length > MAX_KEYS };
+    const r = await scanKeys("*", maxKeys + 1, SCAN_COUNT);
+    return { keys: r.keys, truncated: r.truncated || r.keys.length > maxKeys };
   }
   const all = new Set<string>();
   let truncated = false;
   for (const p of prefixes) {
-    const r = await scanKeys(globEscape(p) + "*", MAX_KEYS + 1);
+    const r = await scanKeys(globEscape(p) + "*", maxKeys + 1, SCAN_COUNT);
     r.keys.forEach((k) => all.add(k));
     truncated ||= r.truncated;
   }
-  return { keys: [...all], truncated: truncated || all.size > MAX_KEYS };
+  return { keys: [...all], truncated: truncated || all.size > maxKeys };
+}
+
+/** Gzip text as it is written, keeping the compressed bytes. */
+function gzipWriter() {
+  const gz = createGzip();
+  const chunks: Buffer[] = [];
+  gz.on("data", (c: Buffer) => chunks.push(c));
+  const done = new Promise<void>((resolve, reject) => {
+    gz.on("end", resolve);
+    gz.on("error", reject);
+  });
+  let raw = 0;
+  return {
+    get rawBytes() {
+      return raw;
+    },
+    async write(text: string) {
+      raw += Buffer.byteLength(text, "utf8");
+      if (!gz.write(text, "utf8")) await new Promise((r) => gz.once("drain", r));
+    },
+    async end(): Promise<Buffer> {
+      gz.end();
+      await done;
+      return Buffer.concat(chunks);
+    },
+  };
 }
 
 function sha256(b: Uint8Array): string {
@@ -192,32 +255,50 @@ async function saveMeta(m: BackupMeta): Promise<void> {
   await kv.hset(INDEX, { [m.id]: JSON.stringify(m) });
 }
 
+const sizeText = (bytes: number) => (bytes >= 1024 * 1024 * 1024 ? `${bytes / 1024 / 1024 / 1024} GB` : `${bytes / 1024 / 1024} MB`);
+
 /** Take a snapshot (all keys, or only `prefixes`), store it in R2, read it back and verify it. */
-export async function createSnapshot(opts: { kind: BackupKind; by: string; prefixes?: string[]; restoreOf?: string }): Promise<BackupMeta> {
+export async function createSnapshot(opts: {
+  kind: BackupKind;
+  by: string;
+  prefixes?: string[];
+  restoreOf?: string;
+  limits?: SnapshotLimits;
+}): Promise<BackupMeta> {
   if (!isR2Configured()) throw new Error("R2 is not configured; snapshots are stored there");
+  const maxKeys = opts.limits?.maxKeys ?? MAX_KEYS;
+  const maxRawBytes = opts.limits?.maxRawBytes ?? MAX_RAW_BYTES;
+  const budgetMs = opts.limits?.budgetMs ?? SNAPSHOT_BUDGET_MS;
   const createdAt = Date.now();
   const id = newId(opts.kind === "pre-restore" ? "pre" : "snap");
   const prefixes = opts.prefixes?.length ? opts.prefixes : null;
-  const scanned = await keysFor(prefixes);
-  let truncatedReason = scanned.truncated ? `more than ${MAX_KEYS.toLocaleString("en")} keys` : undefined;
-  const keys = scanned.keys.filter((k) => !isExcluded(k)).sort().slice(0, MAX_KEYS);
-  const entries: SnapshotEntry[] = [];
-  let rawBytes = 0;
-  for (let i = 0; i < keys.length; i += 1000) {
-    const part = await dumpKeys(keys.slice(i, i + 1000));
-    for (const e of part) {
-      rawBytes += JSON.stringify(e).length + 1;
-      if (rawBytes > MAX_RAW_BYTES) {
-        truncatedReason = `more than ${MAX_RAW_BYTES / 1024 / 1024} MB of data`;
+  const scanned = await keysFor(prefixes, maxKeys);
+  let truncatedReason = scanned.truncated ? `more than ${maxKeys.toLocaleString("en")} keys` : undefined;
+  const keys = scanned.keys.filter((k) => !isExcluded(k)).sort().slice(0, maxKeys);
+  const header: SnapshotHeader = { format: "neo-kv-snapshot/1", id, createdAt, prefixes, excluded: SNAPSHOT_EXCLUDE };
+  const out = gzipWriter();
+  await out.write(JSON.stringify(header).slice(0, -1) + ',"entries":[');
+  let keyCount = 0;
+  let stop = false;
+  for (let i = 0; i < keys.length && !stop; i += 1000) {
+    if (Date.now() - createdAt > budgetMs) {
+      truncatedReason = `took longer than ${Math.round(budgetMs / 1000)} s to read`;
+      break;
+    }
+    for (const e of await dumpKeys(keys.slice(i, i + 1000))) {
+      const line = (keyCount ? ",\n" : "\n") + JSON.stringify(e);
+      if (out.rawBytes + Buffer.byteLength(line, "utf8") > maxRawBytes) {
+        truncatedReason = `more than ${sizeText(maxRawBytes)} of data`;
+        stop = true;
         break;
       }
-      entries.push(e);
+      await out.write(line);
+      keyCount++;
     }
-    if (truncatedReason && rawBytes > MAX_RAW_BYTES) break;
   }
-  const file: SnapshotFile = { format: "neo-kv-snapshot/1", id, createdAt, prefixes, excluded: SNAPSHOT_EXCLUDE, entries };
-  const json = Buffer.from(JSON.stringify(file), "utf8");
-  const gz = gzipSync(json);
+  await out.write("\n]}");
+  const rawBytes = out.rawBytes;
+  const gz = await out.end();
   const meta: BackupMeta = {
     id,
     kind: opts.kind,
@@ -225,8 +306,8 @@ export async function createSnapshot(opts: { kind: BackupKind; by: string; prefi
     createdBy: opts.by,
     r2Key: r2KeyFor(id),
     bytes: gz.byteLength,
-    rawBytes: json.byteLength,
-    keyCount: entries.length,
+    rawBytes,
+    keyCount,
     sha256: sha256(gz),
     truncated: !!truncatedReason,
     ...(truncatedReason ? { truncatedReason } : {}),
@@ -238,7 +319,49 @@ export async function createSnapshot(opts: { kind: BackupKind; by: string; prefi
   return (await verifySnapshot(id)) ?? meta;
 }
 
-async function readSnapshot(meta: BackupMeta): Promise<{ ok: true; file: SnapshotFile } | { ok: false; detail: string }> {
+/**
+ * Decompress and parse a snapshot a line at a time, keeping only the
+ * entries `keep` wants (all of them when it is left out). `count` is every
+ * entry in the file. Throws when it does not decompress or parse.
+ */
+async function parseSnapshot(
+  bytes: Uint8Array,
+  keep?: (k: string) => boolean,
+): Promise<{ header: SnapshotHeader; entries: SnapshotEntry[]; count: number }> {
+  const lines = createInterface({ input: Readable.from([Buffer.from(bytes)]).pipe(createGunzip()), crlfDelay: Infinity });
+  let header: SnapshotHeader | null = null;
+  const entries: SnapshotEntry[] = [];
+  let count = 0;
+  let closed = false;
+  for await (const line of lines) {
+    if (!header) {
+      if (!line.endsWith('"entries":[')) {
+        // A file written before 7 Nov 2026: the whole document on one line.
+        lines.close();
+        const file = JSON.parse(gunzipSync(bytes).toString("utf8")) as SnapshotFile;
+        const { entries: all, ...head } = file;
+        return { header: head, entries: keep ? all.filter((e) => keep(e.k)) : all, count: all.length };
+      }
+      header = JSON.parse(line + "]}") as SnapshotHeader;
+      continue;
+    }
+    if (line === "]}") {
+      closed = true;
+      continue;
+    }
+    if (closed) throw new Error("text after the end");
+    const e = JSON.parse(line.endsWith(",") ? line.slice(0, -1) : line) as SnapshotEntry;
+    count++;
+    if (!keep || keep(e.k)) entries.push(e);
+  }
+  if (!header || !closed) throw new Error("ends early");
+  return { header, entries, count };
+}
+
+async function readSnapshot(
+  meta: BackupMeta,
+  keep?: (k: string) => boolean,
+): Promise<{ ok: true; file: SnapshotFile } | { ok: false; detail: string }> {
   let bytes: Uint8Array;
   try {
     bytes = await getObjectBytes(meta.r2Key);
@@ -248,22 +371,24 @@ async function readSnapshot(meta: BackupMeta): Promise<{ ok: true; file: Snapsho
   if (bytes.byteLength !== meta.bytes) return { ok: false, detail: `size ${bytes.byteLength} bytes, expected ${meta.bytes}` };
   const sum = sha256(bytes);
   if (sum !== meta.sha256) return { ok: false, detail: `checksum mismatch (${sum.slice(0, 12)}… ≠ ${meta.sha256.slice(0, 12)}…)` };
-  let file: SnapshotFile;
+  let parsed: Awaited<ReturnType<typeof parseSnapshot>>;
   try {
-    file = JSON.parse(gunzipSync(bytes).toString("utf8")) as SnapshotFile;
+    parsed = await parseSnapshot(bytes, keep);
   } catch {
     return { ok: false, detail: "does not decompress or parse" };
   }
-  if (file.format !== "neo-kv-snapshot/1" || file.id !== meta.id) return { ok: false, detail: "not this snapshot" };
-  if (file.entries.length !== meta.keyCount) return { ok: false, detail: `${file.entries.length} keys, expected ${meta.keyCount}` };
-  return { ok: true, file };
+  const { header, entries, count } = parsed;
+  if (header.format !== "neo-kv-snapshot/1" || header.id !== meta.id) return { ok: false, detail: "not this snapshot" };
+  if (count !== meta.keyCount) return { ok: false, detail: `${count} keys, expected ${meta.keyCount}` };
+  return { ok: true, file: { ...header, entries } };
 }
 
 /** Re-read the snapshot from R2 and check size, checksum, format and key count. */
 export async function verifySnapshot(id: string): Promise<BackupMeta | null> {
   const meta = await getBackup(id);
   if (!meta) return null;
-  const r = await readSnapshot(meta);
+  // Verify reads every line but keeps none of the entries.
+  const r = await readSnapshot(meta, () => false);
   const next: BackupMeta = {
     ...meta,
     verify: { at: Date.now(), ok: r.ok, detail: r.ok ? `checksum and ${meta.keyCount.toLocaleString("en")} keys match` : r.detail },
@@ -285,13 +410,22 @@ export async function deleteBackup(id: string): Promise<boolean> {
   return true;
 }
 
-/** Keep the newest KEEP_SNAPSHOTS scheduled/manual and KEEP_PRE_RESTORE pre-restore snapshots. */
+/** A snapshot a restore can use: complete and verified. */
+export const isRestorable = (b: BackupMeta) => !b.truncated && !!b.verify?.ok;
+
+/**
+ * Keep the newest KEEP_SNAPSHOTS scheduled/manual and KEEP_PRE_RESTORE
+ * pre-restore snapshots, and always the newest complete one: when the
+ * store outgrew the caps in October 2026, fourteen partial nights pushed the
+ * last complete snapshot out and left nothing to restore from.
+ */
 export async function applyRetention(): Promise<string[]> {
   const all = await listBackups();
+  const lastGood = all.find((b) => b.kind !== "pre-restore" && isRestorable(b));
   const drop = [
     ...all.filter((b) => b.kind !== "pre-restore").slice(KEEP_SNAPSHOTS),
     ...all.filter((b) => b.kind === "pre-restore").slice(KEEP_PRE_RESTORE),
-  ];
+  ].filter((b) => b !== lastGood);
   for (const b of drop) {
     try {
       await deleteObject(b.r2Key);
@@ -332,9 +466,9 @@ const inPrefixes = (k: string, prefixes: string[]) => prefixes.some((p) => k.sta
 
 async function plan(meta: BackupMeta, prefixes: string[]) {
   if (meta.truncated) throw new RestoreError("snapshot_incomplete", "This snapshot is incomplete (it hit a size cap) and cannot be restored from.");
-  const read = await readSnapshot(meta);
+  const read = await readSnapshot(meta, (k) => inPrefixes(k, prefixes));
   if (!read.ok) throw new RestoreError("snapshot_invalid", `The snapshot failed verification: ${read.detail}`);
-  const want = read.file.entries.filter((e) => inPrefixes(e.k, prefixes));
+  const want = read.file.entries;
   const protectedSkipped = want.filter((e) => isProtected(e.k)).length;
   const erased = await erasedUserIds();
   const mentionsErased = (e: SnapshotEntry) => erased.some((id) => id && (e.k.includes(id) || JSON.stringify(e.v).includes(id)));
