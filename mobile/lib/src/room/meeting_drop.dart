@@ -30,6 +30,15 @@ class MeetingDrop {
   final bool retryAutomatically;
 }
 
+/// This phone was signed out (the account signed in on another device) and
+/// the server took it out of the meeting with it. [message] is the site's
+/// own words. Rejoining needs signing in again, so no Rejoin here.
+MeetingDrop signedOutDrop(String message) => MeetingDrop(
+      headline: 'You were signed out',
+      message: message,
+      canRejoin: false,
+    );
+
 /// Null when the person left on purpose — there is nothing to explain.
 ///
 /// LiveKit's reasons split three ways. The server ended it for everyone,
