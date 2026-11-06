@@ -884,9 +884,10 @@ function RoomContainer({
     const root = containerRef.current;
     if (!root) return;
     const onDbl = (ev: MouseEvent) => {
-      // A spotlight from the tile menu (MobileParticipantTile) arrives as a
-      // made-up dblclick for SpotlightOverlay: that is the meeting-wide
-      // action, and it must not also enlarge the tile on this screen.
+      // Only a real double-click enlarges a tile on this screen. Spotlight
+      // (for everyone) is a menu action now (SpotlightOverlay's
+      // requestSpotlight); it used to arrive here as a made-up dblclick and
+      // enlarge the tile too.
       if (!ev.isTrusted) return;
       const target = ev.target as HTMLElement | null;
       const tile = target?.closest(".lk-participant-tile") as HTMLElement | null;

@@ -19,7 +19,12 @@ import { enlargedTileGone } from "../../src/components/conference/roomLayout";
  * - an open menu stayed where it opened when the tiles moved, over
  *   whoever slid into that place;
  * - an enlarged tile stayed enlarged after that person left or was hidden,
- *   on an empty stage, until a refresh.
+ *   on an empty stage, until a refresh;
+ * - spotlight and breakout rooms found tiles only by an attribute LiveKit's
+ *   computer tiles never had, so on a computer the spotlight highlighted
+ *   nobody and a breakout hid nobody; spotlight also shared the double-click
+ *   with "enlarge on my screen", and people who joined later never heard of
+ *   a spotlight already on.
  *
  * The components run as they are, with real React in a browser; LiveKit's
  * hooks are stood in for, since there is no meeting.
@@ -52,6 +57,9 @@ function moduleScript(file: string, name: string): string {
       if (name === "@/components/HiddenVideosProvider") return window.__hidden;
       if (name === "@/hooks/useIsMobile") return { useIsMobile: function () { return false; } };
       if (name === "./HostTileMenu") return window.__mods.HostTileMenu;
+      if (name === "livekit-client") return { RoomEvent: { DataReceived: "dataReceived", ParticipantConnected: "participantConnected", ParticipantDisconnected: "participantDisconnected" } };
+      if (name === "@/components/SpotlightOverlay") return window.__mods.SpotlightOverlay;
+      if (name === "@/components/conference/roomLayout") return window.__mods.roomLayout;
       throw new Error("unexpected import " + name);
     };
     ${code}
@@ -61,11 +69,14 @@ function moduleScript(file: string, name: string): string {
 }
 
 type Person = { identity: string; name: string; metadata?: string };
+type Sent = { msg: { identity: string | null; ts: number }; opts: { topic?: string; destinationIdentities?: string[] } };
 type Win = {
   React: typeof import("react");
   ReactDOM: { createRoot: typeof import("react-dom/client").createRoot };
   __mods: Record<string, Record<string, unknown>>;
   __participants: Person[];
+  __sent: Sent[];
+  __room: { emit: (event: string, ...args: unknown[]) => void; remoteParticipants: Map<string, Person> };
 };
 
 async function load(page: Page): Promise<string[]> {
@@ -77,10 +88,27 @@ async function load(page: Page): Promise<string[]> {
   await page.addScriptTag({
     content: `
       window.__participants = [];
+      window.__sent = [];
+      // A LiveKit room that records what is broadcast and lets a test send
+      // it events (someone joins, a spotlight message arrives).
+      window.__room = {
+        handlers: {},
+        on: function (e, f) { (this.handlers[e] = this.handlers[e] || []).push(f); return this; },
+        off: function (e, f) { this.handlers[e] = (this.handlers[e] || []).filter(function (g) { return g !== f; }); return this; },
+        emit: function (e) { var args = Array.prototype.slice.call(arguments, 1); (this.handlers[e] || []).forEach(function (f) { f.apply(null, args); }); },
+        localParticipant: {
+          identity: "me#1",
+          publishData: function (payload, opts) {
+            window.__sent.push({ msg: JSON.parse(new TextDecoder().decode(payload)), opts: opts });
+            return Promise.resolve();
+          },
+        },
+        remoteParticipants: new Map(),
+      };
       window.__lk = {
         useParticipants: function () { return window.__participants; },
         useLocalParticipant: function () { return { localParticipant: { identity: "me#1" } }; },
-        useRoomContext: function () { return {}; },
+        useRoomContext: function () { return window.__room; },
       };
       window.__hidden = { useHiddenVideos: function () { return {
         isHiddenLocally: function () { return false; },
@@ -90,9 +118,10 @@ async function load(page: Page): Promise<string[]> {
         toggleGlobal: function () { return Promise.resolve(); },
       }; } };`,
   });
+  await page.addScriptTag({ content: moduleScript("src/components/conference/roomLayout.ts", "roomLayout") });
+  await page.addScriptTag({ content: moduleScript("src/components/SpotlightOverlay.tsx", "SpotlightOverlay") });
   await page.addScriptTag({ content: moduleScript("src/components/HostTileMenu.tsx", "HostTileMenu") });
   await page.addScriptTag({ content: moduleScript("src/components/HostMenuOverlay.tsx", "HostMenuOverlay") });
-  await page.addScriptTag({ content: moduleScript("src/components/conference/roomLayout.ts", "roomLayout") });
   return errors;
 }
 
@@ -128,9 +157,17 @@ async function renderOverlay(page: Page, people: Person[], isHost: boolean) {
     ({ people, isHost }) => {
       const w = window as unknown as Win;
       w.__participants = people;
+      for (const p of people) if (p.identity !== "me#1") w.__room.remoteParticipants.set(p.identity, p);
       const Overlay = w.__mods.HostMenuOverlay.default as (p: { isHost: boolean; roomRole: string; slug: string }) => null;
+      const Spotlight = w.__mods.SpotlightOverlay.default as (p: { isHost: boolean }) => null;
+      const h = w.React.createElement;
       w.ReactDOM.createRoot(document.getElementById("app")!).render(
-        w.React.createElement(Overlay, { isHost, roomRole: isHost ? "host" : "attendee", slug: "weekly" }),
+        h(
+          w.React.Fragment,
+          null,
+          h(Overlay, { isHost, roomRole: isHost ? "host" : "attendee", slug: "weekly" }),
+          h(Spotlight, { isHost }),
+        ),
       );
     },
     { people, isHost },
@@ -329,4 +366,95 @@ test("an enlarged tile gives way to the gallery when it can no longer be shown",
   expect(enlargedTileGone({ ...mine, hideSelf: true })).toBe(true);
   // Hiding is about others: your own tile is never "hidden" by that list.
   expect(enlargedTileGone({ ...mine, isHidden: () => true })).toBe(false);
+});
+
+const spotlit = (page: Page) =>
+  page.evaluate(() => Array.from(document.querySelectorAll(".neo-spotlight")).map((t) => t.id));
+
+test("a host spotlights someone for everyone from the tile menu, and takes it off again", async ({ page }) => {
+  const errors = await load(page);
+  await tiles(page, [
+    { id: ada.identity, name: "Ada", source: "camera" },
+    { id: grace1.identity, name: "Grace", source: "camera" },
+  ]);
+  await renderOverlay(page, [me, ada, grace1], true);
+  await page.getByRole("button", { name: "Options for Ada" }).click();
+  await page.getByText("Spotlight for everyone").click();
+
+  const sent = () => page.evaluate(() => (window as unknown as Win).__sent);
+  await expect.poll(async () => (await sent()).map((s) => s.msg.identity)).toEqual(["user_a#1"]);
+  expect((await sent())[0].opts.topic).toBe("neo-spotlight");
+  // On a computer tile, which is what never worked.
+  await expect.poll(() => spotlit(page)).toEqual(["user_a#1:camera"]);
+  // Said by name, not by "user_a#1".
+  await expect(page.getByText("Spotlight for everyone: Ada")).toBeVisible();
+
+  await page.getByRole("button", { name: "Options for Ada" }).click();
+  await page.getByText("Remove spotlight").click();
+  await expect.poll(async () => (await sent()).map((s) => s.msg.identity)).toEqual(["user_a#1", null]);
+  await expect.poll(() => spotlit(page)).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test("spotlight is not a double-click: that stays enlarge-on-my-screen, and spotlights nobody", async ({ page }) => {
+  await load(page);
+  await tiles(page, [{ id: ada.identity, name: "Ada", source: "camera" }]);
+  await renderOverlay(page, [me, ada], true);
+  await page.locator("#user_a\\#1\\:camera").dblclick();
+  await page.waitForTimeout(200);
+  expect(await page.evaluate(() => (window as unknown as Win).__sent)).toEqual([]);
+});
+
+test("a viewer who is not a host is not offered it, and sees a host's spotlight on a computer tile", async ({ page }) => {
+  await load(page);
+  await tiles(page, [
+    { id: ada.identity, name: "Ada", source: "camera" },
+    { id: grace1.identity, name: "Grace", source: "camera" },
+  ]);
+  await renderOverlay(page, [me, ada, grace1], false);
+  await page.getByRole("button", { name: "Options for Grace" }).click();
+  await expect(page.getByText("Spotlight for everyone")).toHaveCount(0);
+
+  await page.evaluate(() => {
+    const w = window as unknown as Win;
+    const msg = new TextEncoder().encode(JSON.stringify({ identity: "user_g#1", ts: Date.now() }));
+    w.__room.emit("dataReceived", msg, undefined, undefined, "neo-spotlight");
+  });
+  await expect.poll(() => spotlit(page)).toEqual(["user_g#1:camera"]);
+  await expect(page.getByText("Spotlight for everyone: Grace")).toBeVisible();
+
+  // Grace leaves: the chip goes with her.
+  await page.evaluate(() => (window as unknown as Win).__room.emit("participantDisconnected", { identity: "user_g#1" }));
+  await expect(page.getByText("Spotlight for everyone: Grace")).toHaveCount(0);
+});
+
+test("someone who joins after the spotlight was set is told, with its original time", async ({ page }) => {
+  await load(page);
+  await tiles(page, [{ id: ada.identity, name: "Ada", source: "camera" }]);
+  await renderOverlay(page, [me, ada], true);
+  await page.getByRole("button", { name: "Options for Ada" }).click();
+  await page.getByText("Spotlight for everyone").click();
+  await expect.poll(async () => (await page.evaluate(() => (window as unknown as Win).__sent)).length).toBe(1);
+
+  await page.evaluate(() => (window as unknown as Win).__room.emit("participantConnected", { identity: "user_late#1", name: "Late" }));
+  await expect.poll(async () => (await page.evaluate(() => (window as unknown as Win).__sent)).length).toBe(2);
+  const [first, catchUp] = await page.evaluate(() => (window as unknown as Win).__sent);
+  expect(catchUp.msg).toEqual(first.msg); // the same choice and the same time
+  expect(catchUp.opts.destinationIdentities).toEqual(["user_late#1"]);
+});
+
+test("breakout rooms and spotlight find whose tile it is on a computer and on a phone", async ({ page }) => {
+  await load(page);
+  const ids = await page.evaluate(() => {
+    const w = window as unknown as Win;
+    const of = w.__mods.roomLayout.tileIdentityOf as (el: Element) => string | null;
+    const computer = document.createElement("div");
+    computer.setAttribute("data-neo-identity", "user_a#1");
+    const phone = document.createElement("div");
+    phone.setAttribute("data-lk-participant-identity", "user_b#1");
+    const stock = document.createElement("div");
+    stock.innerHTML = '<span data-lk-participant-name="Ada">Ada</span>';
+    return [of(computer), of(phone), of(stock)];
+  });
+  expect(ids).toEqual(["user_a#1", "user_b#1", null]);
 });

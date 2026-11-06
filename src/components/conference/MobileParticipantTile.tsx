@@ -17,6 +17,7 @@ import {
   getInitials,
 } from '@/lib/avatarColor';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
+import { requestSpotlight, useSpotlit } from '@/components/SpotlightOverlay';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -212,18 +213,15 @@ function MobileParticipantTileInner({
   }, [hasCam, trackSid]);
 
   /* ---------- host menu (long press) ---------- */
+  const spotlit = useSpotlit();
   const [menuOpen, setMenuOpen] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [menuError, setMenuError] = useState<string | null>(null);
 
-  // Spotlight is host-level. Fire the same dblclick that
-  // SpotlightOverlay listens for at the document level (see
-  // src/components/SpotlightOverlay.tsx) so this menu item is exactly
-  // equivalent to the double-tap gesture we already ship — no duplicate
-  // data-channel wiring, no drift.
+  // Spotlight is host-level: SpotlightOverlay does it (and broadcasts it),
+  // exactly as for the double tap below.
   const spotlightTarget = useCallback(() => {
-    if (!rootRef.current) return;
-    rootRef.current.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    requestSpotlight(participant.identity);
     onSpotlight?.(participant.identity);
     setMenuOpen(false);
   }, [onSpotlight, participant.identity]);
@@ -346,8 +344,8 @@ function MobileParticipantTileInner({
     const now = Date.now();
     if (now - lastTap.current < 300) {
       // double-tap — spotlight is a host-level action, so owner counts too.
-      if ((localIsHost || localIsOwner) && rootRef.current) {
-        rootRef.current.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      if (localIsHost || localIsOwner) {
+        requestSpotlight(participant.identity);
         onSpotlight?.(participant.identity);
       }
       lastTap.current = 0;
@@ -700,7 +698,7 @@ function MobileParticipantTileInner({
               <>
                 <MenuSection label="For everyone" />
                 <MenuBtn
-                  label="Spotlight"
+                  label={spotlit === participant.identity ? "Remove spotlight" : "Spotlight for everyone"}
                   disabled={pending !== null}
                   onClick={spotlightTarget}
                 />
