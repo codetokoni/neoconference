@@ -532,3 +532,19 @@ test("the host's badge goes on the host's tile, not on everyone with the host's 
   await expect.poll(badges).toEqual(["user_g#1:camera=Host", "user_a#1:camera=Moderator"]);
   expect(errors).toEqual([]);
 });
+
+test("the room plays each voice once: one audio player, whatever the layout", () => {
+  // LiveKit's prefab brings its own RoomAudioRenderer, and the room page
+  // has one too: on a computer each voice played twice, in step. The page's
+  // is the room's only one, outside the layouts, so phones keep it.
+  const count = (file: string) =>
+    (readFileSync(path.join(root, file), "utf8").match(/<RoomAudioRenderer\b/g) ?? []).length;
+  expect(count("src/app/room/[name]/page.tsx")).toBe(1);
+  expect(count("src/components/conference/NeoVideoConference.tsx")).toBe(0);
+  expect(count("src/components/MobileVideoConference.tsx")).toBe(0);
+  const page = readFileSync(path.join(root, "src/app/room/[name]/page.tsx"), "utf8");
+  // Not inside a layout's branch: it renders whether the phone or the
+  // computer layout is showing.
+  const line = page.split("\n").find((l) => l.includes("<RoomAudioRenderer"))!;
+  expect(line.trim()).toBe("<RoomAudioRenderer />");
+});
