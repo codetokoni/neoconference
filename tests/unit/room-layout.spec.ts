@@ -128,7 +128,7 @@ async function renderOverlay(page: Page, people: Person[], isHost: boolean) {
     ({ people, isHost }) => {
       const w = window as unknown as Win;
       w.__participants = people;
-      const Overlay = w.__mods.HostMenuOverlay.default as (p: object) => null;
+      const Overlay = w.__mods.HostMenuOverlay.default as (p: { isHost: boolean; roomRole: string; slug: string }) => null;
       w.ReactDOM.createRoot(document.getElementById("app")!).render(
         w.React.createElement(Overlay, { isHost, roomRole: isHost ? "host" : "attendee", slug: "weekly" }),
       );
