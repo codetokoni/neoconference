@@ -24,7 +24,10 @@ import { enlargedTileGone } from "../../src/components/conference/roomLayout";
  *   computer tiles never had, so on a computer the spotlight highlighted
  *   nobody and a breakout hid nobody; spotlight also shared the double-click
  *   with "enlarge on my screen", and people who joined later never heard of
- *   a spotlight already on.
+ *   a spotlight already on;
+ * - hiding a video, and the role badges, went by display name: hiding one
+ *   Grace hid every Grace, and the host's badge went on every tile of the
+ *   host's name.
  *
  * The components run as they are, with real React in a browser; LiveKit's
  * hooks are stood in for, since there is no meeting.
@@ -114,6 +117,7 @@ async function load(page: Page): Promise<string[]> {
         isHiddenLocally: function () { return false; },
         isHiddenGlobally: function () { return false; },
         isHidden: function () { return false; },
+        hiddenSet: window.__hiddenSet || new Set(),
         toggleLocal: function () {},
         toggleGlobal: function () { return Promise.resolve(); },
       }; } };`,
@@ -122,6 +126,8 @@ async function load(page: Page): Promise<string[]> {
   await page.addScriptTag({ content: moduleScript("src/components/SpotlightOverlay.tsx", "SpotlightOverlay") });
   await page.addScriptTag({ content: moduleScript("src/components/HostTileMenu.tsx", "HostTileMenu") });
   await page.addScriptTag({ content: moduleScript("src/components/HostMenuOverlay.tsx", "HostMenuOverlay") });
+  await page.addScriptTag({ content: moduleScript("src/components/HiddenVideoOverlay.tsx", "HiddenVideoOverlay") });
+  await page.addScriptTag({ content: moduleScript("src/components/TileRoleBadges.tsx", "TileRoleBadges") });
   return errors;
 }
 
@@ -457,4 +463,72 @@ test("breakout rooms and spotlight find whose tile it is on a computer and on a 
     return [of(computer), of(phone), of(stock)];
   });
   expect(ids).toEqual(["user_a#1", "user_b#1", null]);
+});
+
+/** Renders one of the room's tile overlays on its own. */
+async function renderOne(page: Page, people: Person[], component: string, props: object, hidden: string[] = []) {
+  await page.evaluate(
+    ({ people, component, props, hidden }) => {
+      const w = window as unknown as Win & { __hiddenSet: Set<string> };
+      w.__participants = people;
+      w.__hiddenSet = new Set(hidden);
+      const C = w.__mods[component].default as (p: object) => null;
+      w.ReactDOM.createRoot(document.getElementById("app")!).render(w.React.createElement(C, props));
+    },
+    { people, component, props, hidden },
+  );
+}
+
+const shown = (page: Page) =>
+  page.evaluate(() =>
+    Array.from(document.querySelectorAll<HTMLElement>(".lk-participant-tile"))
+      .filter((t) => getComputedStyle(t).display !== "none")
+      .map((t) => t.id),
+  );
+
+test("hiding one Grace hides her tiles only, not the other Grace's", async ({ page }) => {
+  const errors = await load(page);
+  await tiles(page, [
+    { id: grace1.identity, name: "Grace", source: "camera" },
+    { id: grace1.identity, name: "Grace", source: "screen_share" },
+    { id: grace2.identity, name: "Grace", source: "camera" },
+    { id: ada.identity, name: "Ada", source: "camera" },
+  ]);
+  await renderOne(page, [me, grace1, grace2, ada], "HiddenVideoOverlay", {}, [grace1.identity]);
+  await expect.poll(() => shown(page)).toEqual(["user_g#2:camera", "user_a#1:camera"]);
+  expect(errors).toEqual([]);
+});
+
+test("a tile that says no identity (LiveKit's stock layout, the embeds) is still hidden by name", async ({ page }) => {
+  await load(page);
+  await page.evaluate(() => {
+    const grid = document.createElement("div");
+    grid.innerHTML =
+      '<div class="lk-participant-tile" id="stock-ada"><span data-lk-participant-name="Ada">Ada</span></div>' +
+      '<div class="lk-participant-tile" id="stock-ben"><span data-lk-participant-name="Ben">Ben</span></div>';
+    document.body.insertBefore(grid, document.getElementById("app"));
+  });
+  await renderOne(page, [me, ada, { identity: "user_b#1", name: "Ben" }], "HiddenVideoOverlay", {}, [ada.identity]);
+  await expect.poll(() => shown(page)).toEqual(["stock-ben"]);
+});
+
+test("the host's badge goes on the host's tile, not on everyone with the host's name", async ({ page }) => {
+  const errors = await load(page);
+  await tiles(page, [
+    { id: grace1.identity, name: "Grace", source: "camera" },
+    { id: grace1.identity, name: "Grace", source: "screen_share" },
+    { id: grace2.identity, name: "Grace", source: "camera" },
+    { id: ada.identity, name: "Ada", source: "camera" },
+  ]);
+  const host = { ...grace1, metadata: JSON.stringify({ role: "host" }) };
+  const mod = { ...ada, metadata: JSON.stringify({ role: "cohost" }) };
+  await renderOne(page, [me, host, grace2, mod], "TileRoleBadges", { ownerUserId: null });
+  const badges = () =>
+    page.evaluate(() =>
+      Array.from(document.querySelectorAll("[data-tile-role-badge]")).map(
+        (b) => `${b.closest(".lk-participant-tile")!.id}=${b.textContent}`,
+      ),
+    );
+  await expect.poll(badges).toEqual(["user_g#1:camera=Host", "user_a#1:camera=Moderator"]);
+  expect(errors).toEqual([]);
 });
