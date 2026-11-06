@@ -27,7 +27,10 @@ import { enlargedTileGone } from "../../src/components/conference/roomLayout";
  *   a spotlight already on;
  * - hiding a video, and the role badges, went by display name: hiding one
  *   Grace hid every Grace, and the host's badge went on every tile of the
- *   host's name.
+ *   host's name;
+ * - on a phone, the meeting timer floated over the first row's right-hand
+ *   tile and took the taps meant for its menu button, and the host's
+ *   spotlight hint sat over the bottom row for the whole meeting.
  *
  * The components run as they are, with real React in a browser; LiveKit's
  * hooks are stood in for, since there is no meeting.
@@ -63,6 +66,10 @@ function moduleScript(file: string, name: string): string {
       if (name === "livekit-client") return { RoomEvent: { DataReceived: "dataReceived", ParticipantConnected: "participantConnected", ParticipantDisconnected: "participantDisconnected" } };
       if (name === "@/components/SpotlightOverlay") return window.__mods.SpotlightOverlay;
       if (name === "@/components/conference/roomLayout") return window.__mods.roomLayout;
+      if (name === "@/components/conference/phoneStatusSlot") return window.__mods.phoneStatusSlot;
+      if (name === "@/lib/timer") return window.__mods.timer;
+      if (name === "@/lib/kv") return { kv: {} };
+      if (name === "lucide-react") return new Proxy({}, { get: function () { return function () { return null; }; } });
       throw new Error("unexpected import " + name);
     };
     ${code}
@@ -123,6 +130,9 @@ async function load(page: Page): Promise<string[]> {
       }; } };`,
   });
   await page.addScriptTag({ content: moduleScript("src/components/conference/roomLayout.ts", "roomLayout") });
+  await page.addScriptTag({ content: moduleScript("src/components/conference/phoneStatusSlot.ts", "phoneStatusSlot") });
+  await page.addScriptTag({ content: moduleScript("src/lib/timer.ts", "timer") });
+  await page.addScriptTag({ content: moduleScript("src/components/MeetingTimer.tsx", "MeetingTimer") });
   await page.addScriptTag({ content: moduleScript("src/components/SpotlightOverlay.tsx", "SpotlightOverlay") });
   await page.addScriptTag({ content: moduleScript("src/components/HostTileMenu.tsx", "HostTileMenu") });
   await page.addScriptTag({ content: moduleScript("src/components/HostMenuOverlay.tsx", "HostMenuOverlay") });
@@ -547,4 +557,97 @@ test("the room plays each voice once: one audio player, whatever the layout", ()
   // computer layout is showing.
   const line = page.split("\n").find((l) => l.includes("<RoomAudioRenderer"))!;
   expect(line.trim()).toBe("<RoomAudioRenderer />");
+});
+
+/**
+ * The phone layout as MobileVideoConference draws it: the room-name row,
+ * the status strip, then the tiles (the first row's right-hand tile with
+ * its menu button at the top right).
+ */
+async function phoneLayout(page: Page) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => {
+    const shell = document.createElement("div");
+    shell.style.cssText = "position:fixed;top:65px;left:0;right:0;bottom:0;display:flex;flex-direction:column";
+    shell.innerHTML = `
+      <div style="height:36px">Weekly · 4 IN ROOM</div>
+      <div id="nc-phone-status" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center"></div>
+      <div style="flex:1;position:relative;overflow:hidden">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px">
+          <div class="lk-participant-tile" style="position:relative;aspect-ratio:1;background:#222">Ada</div>
+          <div class="lk-participant-tile" style="position:relative;aspect-ratio:1;background:#222">Grace
+            <button id="grace-menu" aria-label="Options for Grace" style="position:absolute;top:4px;right:4px;width:28px;height:28px">⋮</button>
+          </div>
+        </div>
+      </div>
+      <div style="height:60px">controls</div>`;
+    document.body.insertBefore(shell, document.getElementById("app"));
+  });
+}
+
+async function renderComponent(page: Page, component: string, props: object) {
+  await page.evaluate(
+    ({ component, props }) => {
+      const w = window as unknown as Win;
+      const C = w.__mods[component].default as (p: object) => null;
+      w.ReactDOM.createRoot(document.getElementById("app")!).render(w.React.createElement(C, props));
+    },
+    { component, props },
+  );
+}
+
+/** What is on top at the middle of the element: the element, or what covers it. */
+const onTop = (page: Page, selector: string) =>
+  page.evaluate((sel) => {
+    const el = document.querySelector(sel)!;
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return hit === el || el.contains(hit);
+  }, selector);
+
+test("on a phone the meeting timer sits in the status strip, not on the first row's menu button", async ({ page }) => {
+  await load(page);
+  await phoneLayout(page);
+  // A host who opened the timer: the full card, with its controls.
+  await renderComponent(page, "MeetingTimer", { slug: "weekly", roomRole: "host", open: true });
+  const card = page.locator('#nc-phone-status [data-room-chrome="true"]');
+  await expect(card).toHaveCount(1);
+  expect(await card.evaluate((el) => getComputedStyle(el).position)).not.toBe("fixed");
+  // The tiles start below it, and Grace's menu button is the one tapped.
+  const strip = (await page.locator("#nc-phone-status").boundingBox())!;
+  const grace = (await page.locator("#grace-menu").boundingBox())!;
+  expect(grace.y).toBeGreaterThanOrEqual(strip.y + strip.height);
+  expect(await onTop(page, "#grace-menu")).toBe(true);
+});
+
+test("on a computer the meeting timer still floats at the top right", async ({ page }) => {
+  await load(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await renderComponent(page, "MeetingTimer", { slug: "weekly", roomRole: "host", open: true });
+  const card = page.locator('[data-room-chrome="true"]');
+  await expect(card).toHaveCount(1);
+  expect(await card.evaluate((el) => getComputedStyle(el).position)).toBe("fixed");
+});
+
+test("on a phone the host's spotlight hint is not shown, and a spotlight's chip goes in the strip", async ({ page }) => {
+  await load(page);
+  await phoneLayout(page);
+  await renderComponent(page, "SpotlightOverlay", { isHost: true });
+  await page.waitForTimeout(100);
+  await expect(page.getByText("Spotlight someone for everyone")).toHaveCount(0);
+
+  await page.evaluate(() => {
+    const w = window as unknown as Win;
+    w.__room.remoteParticipants.set("user_g#1", { identity: "user_g#1", name: "Grace" });
+    const msg = new TextEncoder().encode(JSON.stringify({ identity: "user_g#1", ts: Date.now() }));
+    w.__room.emit("dataReceived", msg, undefined, undefined, "neo-spotlight");
+  });
+  await expect(page.locator("#nc-phone-status").getByText("Spotlight for everyone: Grace")).toBeVisible();
+});
+
+test("on a computer the host's spotlight hint is still shown", async ({ page }) => {
+  await load(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await renderComponent(page, "SpotlightOverlay", { isHost: true });
+  await expect(page.getByText("Spotlight someone for everyone")).toBeVisible();
 });

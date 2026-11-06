@@ -21,7 +21,9 @@
 import { useEffect, useRef, useState, useCallback, useSyncExternalStore } from "react";
 import { useRoomContext } from "@livekit/components-react";
 import { RoomEvent, type Participant, type RemoteParticipant, type DataPacket_Kind } from "livekit-client";
+import { createPortal } from "react-dom";
 import { TILE_IDENTITY_SELECTOR, tileIdentityOf } from "@/components/conference/roomLayout";
+import { usePhoneStatusSlot } from "@/components/conference/phoneStatusSlot";
 
 const TOPIC = "neo-spotlight";
 const REQUEST = "neo-spotlight-request";
@@ -61,6 +63,8 @@ export function useSpotlit(): string | null {
 }
 
 export default function SpotlightOverlay({ isHost = false }: Props) {
+  // On a phone the chip goes in the status strip, above the tiles.
+  const phoneSlot = usePhoneStatusSlot();
   const room = useRoomContext();
   const [pinned, setPinned] = useState<string | null>(null);
   const [pinnedAt, setPinnedAt] = useState<number>(0);
@@ -157,7 +161,10 @@ export default function SpotlightOverlay({ isHost = false }: Props) {
 
   // Render a small status chip + clear button when pinned (and host).
   if (!pinned) {
-    if (!isHost) return null;
+    // The hint is for a computer. On a phone it sat over the bottom row's
+    // names for the whole meeting; the tile menu there says "Spotlight for
+    // everyone" itself.
+    if (!isHost || phoneSlot) return null;
     return (
       <div className={"pointer-events-none fixed bottom-24 left-1/2 -translate-x-1/2 z-40 px-3 py-1.5 rounded-full bg-slate-900/70 border border-cyan-500/20 text-[11px] text-slate-400 backdrop-blur"}>
         Spotlight someone for everyone from their tile&apos;s ⋮ menu
@@ -165,6 +172,7 @@ export default function SpotlightOverlay({ isHost = false }: Props) {
     );
   }
 
+  const chip = (el: React.ReactElement) => (phoneSlot ? createPortal(el, phoneSlot) : el);
   const who = pinned === room?.localParticipant?.identity
     ? "You"
     : room?.remoteParticipants.get(pinned)?.name || room?.remoteParticipants.get(pinned)?.identity || pinned;
@@ -181,7 +189,7 @@ export default function SpotlightOverlay({ isHost = false }: Props) {
           z-index: 10;
         }
       `}</style>
-      <div data-room-chrome={"true"} className={"fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/15 border border-cyan-400/40 text-cyan-200 text-xs backdrop-blur shadow-[0_0_24px_rgba(34,211,238,0.25)]"}>
+      {chip(<div data-room-chrome={"true"} className={(phoneSlot ? "relative" : "fixed bottom-24 left-1/2 -translate-x-1/2 z-40") + " flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/15 border border-cyan-400/40 text-cyan-200 text-xs backdrop-blur shadow-[0_0_24px_rgba(34,211,238,0.25)]"}>
         <span className={"inline-block w-1.5 h-1.5 rounded-full bg-cyan-300 animate-pulse"}></span>
         <span className={"font-medium"}>Spotlight for everyone: {who}</span>
         {isHost && (
@@ -193,7 +201,7 @@ export default function SpotlightOverlay({ isHost = false }: Props) {
             Clear
           </button>
         )}
-      </div>
+      </div>)}
     </>
   );
 }

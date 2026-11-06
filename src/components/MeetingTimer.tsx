@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRoomContext, useLocalParticipant } from "@livekit/components-react";
 import { RoomEvent } from "livekit-client";
 import { Play, Pause, RotateCcw, Plus, Minus, Timer as TimerIcon, Eye, EyeOff, Volume2, VolumeX } from "lucide-react";
+import { createPortal } from "react-dom";
 import { computeRemaining, IDLE_TIMER, type TimerState, type TimerVisibility } from "@/lib/timer";
+import { usePhoneStatusSlot } from "@/components/conference/phoneStatusSlot";
 
 /**
  * MeetingTimer
@@ -77,6 +79,10 @@ export default function MeetingTimer({
   open?: boolean;
   onClose?: () => void;
 }) {
+  // On a phone the card goes in the status strip, above the tiles: fixed
+  // at top 128 / right 16 it sat on the first row's right-hand tile and its
+  // menu button, and (for a host) took their taps.
+  const phoneSlot = usePhoneStatusSlot();
   const room = useRoomContext();
   const { localParticipant } = useLocalParticipant();
   const [state, setState] = useState<TimerState>(IDLE_TIMER);
@@ -223,16 +229,16 @@ export default function MeetingTimer({
   const expired = state.status === "running" && remaining === 0;
   const display = expired ? "00:00" : formatMs(remaining);
 
-  return (
+  const card = (
     <div
       data-room-chrome="true"
       style={{
         // Sits below the "Rename URL" chip hosts see, so the two right-rail
-        // elements don't stack on top of each other.
-        position: "fixed",
-        top: 128,
-        right: 16,
-        zIndex: 60,
+        // elements don't stack on top of each other. On a phone it is in
+        // the status strip instead (phoneStatusSlot).
+        ...(phoneSlot
+          ? { position: "relative" as const }
+          : { position: "fixed" as const, top: 128, right: 16, zIndex: 60 }),
         display: "flex",
         flexDirection: "column",
         gap: 6,
@@ -387,6 +393,7 @@ export default function MeetingTimer({
       )}
     </div>
   );
+  return phoneSlot ? createPortal(card, phoneSlot) : card;
 }
 
 const btnBase: React.CSSProperties = {
