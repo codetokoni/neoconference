@@ -9,6 +9,7 @@ import { rejoinDropsToAttendee, reopensOnJoin } from "@/lib/meetingLifecycle";
 import { gateStatus } from "@/lib/waitingRoom";
 import { needsAppUpdate, nudgeKey, nudgeMessage, NUDGE_TTL_SECONDS, shouldNudgeUpdate, UPDATE_MESSAGE } from "@/lib/appRelease";
 import { kv } from "@/lib/kv";
+import { recordAppJoin } from "@/lib/appVersionCounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +46,8 @@ export async function GET(req: NextRequest) {
     // Which app and phone is asking (the mobile app sends it; the web does
     // not). Plain text only, kept short: it rides in the token metadata.
     const client = (req.nextUrl.searchParams.get("client") ?? "").replace(/[^A-Za-z0-9 ._()+/-]/g, "").trim().slice(0, 100);
+    // People per app version per day, refused or not (Analytics → App versions).
+    await recordAppJoin(client, userId);
     // A meeting link opens whatever app is installed, and an old app has no
     // way to hear of an update: joining is where it is told (src/lib/
     // appRelease.ts). Every app version shows this message as the failure.

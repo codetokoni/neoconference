@@ -54,6 +54,10 @@ const base = {
   // As Redis: how many were actually there to remove.
   async srem(k, ...m) { const s = store.get(k) ?? sets(); let n = 0; m.forEach((x) => { if (s.delete(x)) n++; }); store.set(k, s); return n; },
   async smembers(k) { return [...(store.get(k) ?? [])].map(de); },
+  // HyperLogLog, exactly: a set of what was added. As Redis: 1 when the
+  // count changed; PFCOUNT over several keys counts their union.
+  async pfadd(k, ...m) { alive(k); const s = store.get(k) ?? sets(); const before = s.size; m.forEach((x) => s.add(String(x))); store.set(k, s); return s.size !== before ? 1 : 0; },
+  async pfcount(...ks) { const u = new Set(); for (const k of ks) if (alive(k)) for (const x of store.get(k)) u.add(x); return u.size; },
   async sismember(k, m) { return (store.get(k) ?? sets()).has(m) ? 1 : 0; },
   async incr(k) { const n = Number(store.get(k) ?? 0) + 1; store.set(k, n); return n; },
   async incrby(k, by) { const n = Number(store.get(k) ?? 0) + Number(by); store.set(k, n); return n; },
