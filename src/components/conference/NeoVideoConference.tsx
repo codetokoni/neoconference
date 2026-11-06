@@ -11,7 +11,6 @@ import {
   GridLayout,
   LayoutContextProvider,
   ParticipantTile,
-  RoomAudioRenderer,
   isTrackReference,
   useCreateLayoutContext,
   useParticipants,
@@ -28,6 +27,7 @@ import { enlargedTileGone } from './roomLayout';
  * The meeting's video layout on a computer or tablet: LiveKit's own
  * <VideoConference> (components-react 2.9.20, prefabs.mjs), the same grid,
  * focus view, control bar and chat, with three things it could not do.
+ * (Its audio player is not here: the room page has the one for the room.)
  *
  * - Every tile carries who it is (`data-neo-identity`, `data-neo-source`).
  *   LiveKit's tiles say only the display name, so the tile menu was put on
@@ -170,7 +170,10 @@ export default function NeoVideoConference({ hideSelf = false }: { hideSelf?: bo
         </div>
         <Chat style={{ display: widget.showChat ? 'grid' : 'none' } as CSSProperties} />
       </LayoutContextProvider>
-      <RoomAudioRenderer />
+      {/* No RoomAudioRenderer here, unlike LiveKit's prefab: the room page
+          renders one for every layout (phones included), and with this one
+          as well a computer played every voice twice, in step: louder
+          than on a phone, never quieter. One player per room. */}
       <ConnectionStateToast />
     </div>
   );
