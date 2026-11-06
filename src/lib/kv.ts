@@ -10,8 +10,18 @@
 // - created lazily, on first use. Several stores fall back to in-memory when
 //   those vars are absent and decide that at call time; the smoke tests
 //   delete them after import. Creating the client at import would throw first;
-// - the same options (`cache: "default"`, auto-pipelining) and Upstash's
-//   default JSON (de)serialisation, so values round-trip as before;
+// - auto-pipelining and Upstash's default JSON (de)serialisation, so values
+//   round-trip as before;
+// - `cache: "no-store"` (Upstash's own default; @vercel/kv set "default").
+//   Next 14 patches fetch, and in a GET-only route handler that exports no
+//   `revalidate` it keeps every fetch in its Data Cache, keyed by the request
+//   body. A command is a POST whose body is the command, so a second
+//   `hget k f` was answered from that cache instead of Redis — and an
+//   identical write (`del k`) never reached Redis at all. The automation
+//   dispatcher (/api/cron/automation) read a rule's state from before its
+//   run and wrote that back, so Renewal reminders' "last run" stayed blank
+//   (2026-11-06). `export const dynamic = "force-dynamic"` does not prevent
+//   this. A KV read must always reach the store;
 // - Edge-safe: middleware and sessionStore import it. @upstash/redis picks
 //   its runtime build by package export conditions, as it did under @vercel/kv.
 
@@ -30,9 +40,8 @@ function create(): Redis {
     );
   }
   return new Redis({
-    // Next.js recommends no value or `default` for fetch's `cache`;
-    // @upstash/redis defaults to `no-store`. As @vercel/kv set it.
-    cache: "default",
+    // Never Next's Data Cache: see the header.
+    cache: "no-store",
     enableAutoPipelining: true,
     url,
     token,
@@ -60,7 +69,7 @@ export const kvRaw: Redis = new Proxy({} as Redis, {
       const url = process.env.KV_REST_API_URL;
       const token = process.env.KV_REST_API_TOKEN;
       if (!url || !token) throw new Error("kv: Missing required environment variables KV_REST_API_URL and KV_REST_API_TOKEN");
-      rawClient = new Redis({ cache: "default", enableAutoPipelining: true, automaticDeserialization: false, url, token });
+      rawClient = new Redis({ cache: "no-store", enableAutoPipelining: true, automaticDeserialization: false, url, token });
     }
     return Reflect.get(rawClient, prop);
   },
