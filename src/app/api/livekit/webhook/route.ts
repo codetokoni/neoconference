@@ -50,8 +50,15 @@ function requiredEnv(name: string): string {
 /**
  * LiveKit emits unix seconds in `createdAt`. Some SDK builds vary; defensively
  * handle either seconds or milliseconds. Falls back to now on invalid input.
+ *
+ * WebhookReceiver.receive gives a protobuf WebhookEvent, whose int64
+ * `createdAt` is a bigint (0 when absent). Only numbers were read until
+ * 2026-11-06, so every event fell back to the time it arrived here: a
+ * meeting's start and end, and the order check on webhooks that arrive late.
  */
-function isoFromWebhookCreatedAt(createdAt: unknown): string {
+function isoFromWebhookCreatedAt(raw: unknown): string {
+  const createdAt =
+    typeof raw === 'bigint' ? Number(raw) : typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : raw;
   if (typeof createdAt !== 'number' || !Number.isFinite(createdAt) || createdAt <= 0) {
     return new Date().toISOString();
   }
