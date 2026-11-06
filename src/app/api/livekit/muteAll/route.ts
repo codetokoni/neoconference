@@ -22,6 +22,7 @@ import { NextResponse } from "next/server";
 import { RoomServiceClient } from "livekit-server-sdk";
 import { authorize } from "@/lib/authz";
 import { eventStore } from "@/lib/eventStore";
+import { MUTE_CONCURRENCY, planMuteAll, runLimited } from "@/lib/muteAll";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,64 +76,33 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "livekit_list_failed" }, { status: 500 });
   }
 
-  let muted = 0;
-  let skipped = 0;
-
-  for (const p of list) {
-    const base = (p.identity || "").split("#")[0].toLowerCase();
-
-    // Never mute the caller — defensive belt-and-suspenders with the role check.
-    if (actorId && base === actorId) {
-      skipped++;
-      continue;
-    }
-
-    // §5.2: keep the exempted speaker unmuted.
-    if (exceptBase && base === exceptBase) {
-      skipped++;
-      continue;
-    }
-
-    // Skip elevated roles per FRS §5.1. Metadata uses wire-format role
-    // (owner/host collapse to "host", moderator to "cohost" via toLegacyRole).
-    let role: string | undefined;
+  // Only live microphones, several at a time (src/lib/muteAll.ts): one by
+  // one, already-muted ones included, it kept the host on "Muting…".
+  const started = Date.now();
+  const plan = planMuteAll(list, { actorId, exceptBase });
+  const result = await runLimited(plan.jobs, MUTE_CONCURRENCY, async (job) => {
     try {
-      const md = p.metadata ? JSON.parse(p.metadata) : {};
-      role = typeof (md as { role?: unknown })?.role === "string"
-        ? (md as { role: string }).role
-        : undefined;
-    } catch {
-      role = undefined;
+      await svc.mutePublishedTrack(roomName, job.identity, job.trackSid, true);
+    } catch (e) {
+      // Usually someone who left between the list and the mute.
+      console.warn("[muteAll] mutePublishedTrack failed", job.identity, job.trackSid, e);
+      throw e;
     }
-    if (role === "host" || role === "cohost") {
-      skipped++;
-      continue;
-    }
-
-    // Find any published microphone tracks and mute them.
-    const tracks = (p.tracks || []) as Array<{
-      sid: string;
-      source?: number | string;
-      type?: number | string;
-    }>;
-    for (const t of tracks) {
-      const src = typeof t.source === "string" ? t.source.toUpperCase() : t.source;
-      const typ = typeof t.type === "string" ? t.type.toUpperCase() : t.type;
-      // LiveKit sends source as enum int (2 = MICROPHONE) and type as int
-      // (0 = AUDIO). Match by source first; fall back to type if unset.
-      const isMic =
-        src === "MICROPHONE" ||
-        src === 2 ||
-        (src === undefined && (typ === "AUDIO" || typ === 0));
-      if (!isMic) continue;
-      try {
-        await svc.mutePublishedTrack(roomName, p.identity, t.sid, true);
-        muted++;
-      } catch (e) {
-        console.warn("[muteAll] mutePublishedTrack failed", p.identity, t.sid, e);
-      }
-    }
-  }
+  });
+  const muted = result.ok;
+  const skipped = plan.skipped;
+  // Counts and time only, so a slow "Muting…" can be read from the logs.
+  console.info(
+    "[muteAll] done",
+    JSON.stringify({
+      participants: list.length,
+      muted,
+      failed: result.failed,
+      alreadyMuted: plan.alreadyMuted,
+      skipped,
+      ms: Date.now() - started,
+    }),
+  );
 
   return NextResponse.json({ ok: true, muted, skipped });
 }
