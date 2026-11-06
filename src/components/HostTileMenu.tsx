@@ -29,7 +29,6 @@ export function HostTileMenu({
   participantIdentity,
   participantName,
   isHost,
-  isOwner = false,
   roomRole,
   targetRole = null,
   slug,
@@ -37,9 +36,6 @@ export function HostTileMenu({
   participantIdentity: string;
   participantName: string;
   isHost: boolean;
-  /** Whether the local viewer is the actual event owner. Only the owner
-   *  may appoint a Host (FRS §1.1). */
-  isOwner?: boolean;
   /** Wire-format role — 'host' covers owner+host after toLegacyRole. Used to
    *  gate the host-rank items: roles and Remove. */
   roomRole?: string;
@@ -432,15 +428,15 @@ export function HostTileMenu({
               >
                 Role
               </div>
-              {isOwner && (
-                <MenuItem
-                  label="Make Host"
-                  icon="H"
-                  disabled={pending !== null}
-                  onClick={() => assignRole('host')}
-                  pending={pending === 'role:host'}
-                />
-              )}
+              {/* The owner and hosts both appoint hosts (since 2026-11-05);
+                  removing a host stays the owner's. */}
+              <MenuItem
+                label="Make Host"
+                icon="H"
+                disabled={pending !== null}
+                onClick={() => assignRole('host')}
+                pending={pending === 'role:host'}
+              />
               <MenuItem
                 label="Make Moderator"
                 icon="M"

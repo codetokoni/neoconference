@@ -695,7 +695,6 @@ function RoomContainer({
   const [roomRole, setRoomRole] = useState<string>("guest");
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
   const [eventId, setEventId] = useState<string | null>(null);
-  const [isOwner, setIsOwner] = useState(false);
   const [isMeetingLocked, setIsMeetingLocked] = useState(false);
   const [endPinRequired, setEndPinRequired] = useState(false);
   const [inactivityConfig, setInactivityConfig] = useState<{
@@ -840,7 +839,6 @@ function RoomContainer({
             setRoomRole(j.role);
             setOwnerUserId(typeof j.ownerUserId === "string" ? j.ownerUserId : null);
             setEventId(typeof j.id === "string" ? j.id : null);
-            setIsOwner(j.isOwner === true);
             setIsMeetingLocked(Boolean(j.isLocked));
             setEndPinRequired(Boolean(j.endPinRequired));
             setInactivityConfig(
@@ -1130,7 +1128,7 @@ function RoomContainer({
         <ChatTranscriptDownloader roomName={roomName} />
         <InitialsOverlay />
         <RoomIdleController /><MobileVideoConference />
-        <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} isOwner={isOwner} roomRole={roomRole} slug={eventSlug} />
+        <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} roomRole={roomRole} slug={eventSlug} />
         <MediaRequestPrompt />
         <RoomAudioRenderer />
         <BackgroundContinuity eventName={roomName} eventSlug={eventSlug} />
@@ -1150,7 +1148,7 @@ function RoomContainer({
         <ChatPanel eventId={roomName} open={showChat} onClose={() => setShowChat(false)} isHost={roomRole === 'host' || roomRole === 'cohost'} />
         <Whiteboard open={showWhiteboard} onClose={() => setShowWhiteboard(false)} />
         <PollsPanel open={showPolls} onClose={() => setShowPolls(false)} />
-        <ManageParticipantsPanel open={showParticipants} onClose={() => setShowParticipants(false)} isHost={roomRole === "host" || roomRole === "cohost"} roomRole={roomRole} slug={eventSlug} ownerUserId={ownerUserId} isOwner={isOwner} isLocked={isMeetingLocked} onLockChanged={setIsMeetingLocked} />
+        <ManageParticipantsPanel open={showParticipants} onClose={() => setShowParticipants(false)} isHost={roomRole === "host" || roomRole === "cohost"} roomRole={roomRole} slug={eventSlug} ownerUserId={ownerUserId} isLocked={isMeetingLocked} onLockChanged={setIsMeetingLocked} />
         <WaitingRoomPanel open={showWaitingRoom} onClose={() => setShowWaitingRoom(false)} eventSlug={eventSlug} isHost={roomRole === "host" || roomRole === "cohost"} />          <BreakoutsPanel open={showBreakouts} onClose={() => setShowBreakouts(false)} isHost={roomRole === "host" || roomRole === "cohost"} eventSlug={eventSlug} /><PlanGateOverlay />
         <SpeakerBadge />
         <RenameRedirectListener />

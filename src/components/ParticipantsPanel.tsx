@@ -57,7 +57,6 @@ export default function ParticipantsPanel({
   isHost,
   roomRole,
   ownerUserId,
-  isOwner,
   slug,
   isLocked,
   onLockChanged,
@@ -70,11 +69,6 @@ export default function ParticipantsPanel({
    *  cannot see it, even though they can mute individuals). */
   roomRole?: string;
   ownerUserId?: string | null;
-  /** True only for the actual event creator (from /api/events/role). Used to
-   *  gate the FRS §1.1 "Make Host" action — canManageRole in permissions.ts
-   *  refuses to grant a Host role from a Host actor (needs strictly higher
-   *  rank), so only the Owner may promote to Host. */
-  isOwner?: boolean;
   slug: string;
   /** FRS §12.8 meeting lock state — reflected on the toggle button. */
   isLocked?: boolean;
@@ -101,10 +95,10 @@ export default function ParticipantsPanel({
   // is the UI-side gate so the button doesn't leak to Moderator and
   // silently 403 on click.
   const canRemoveOrPromote = roomRole === 'host';
-  // FRS §1.1: only the Owner may appoint Hosts. canManageRole in
-  // permissions.ts refuses to grant a Host role from a Host actor because
-  // it requires strictly higher rank, so this is server-enforced too.
-  const canMakeHost = Boolean(isOwner);
+  // The owner and hosts may appoint Hosts (a host making a host since
+  // 2026-11-05, assignMeetingRole); taking a host's role away stays the
+  // owner's, and the server refuses it from a host.
+  const canMakeHost = canRemoveOrPromote;
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -474,7 +468,7 @@ export default function ParticipantsPanel({
                         disabled={!!pending}
                         onClick={() => assignRole('host', id)}
                         style={{ flex: '1 1 auto', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(80,140,220,0.45)', background: 'rgba(80,140,220,0.12)', color: '#cfe1ff', cursor: 'pointer' }}
-                        title="Appoint this participant as Host (Owner only per FRS §1.1)"
+                        title="Appoint this participant as Host"
                       >
                         {busy('role:host') ? '...' : 'Make Host'}
                       </button>
