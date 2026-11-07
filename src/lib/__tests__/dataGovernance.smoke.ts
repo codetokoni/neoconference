@@ -732,6 +732,24 @@ async function main() {
     assert.equal((await bulk("user_super", "purge", "apply", { selection: { category: "backups" }, token: backups.body.token, confirm: "purge 1" })).status, 200);
     assert.deepEqual(Object.keys((await kv.hgetall("neo:ops:backups")) ?? {}), ["bk_new"]);
     assert.deepEqual(g.__objects.filter((o) => o.key.startsWith("ops-backups/")).map((o) => o.key), ["ops-backups/kv/bk_new.json.gz"]);
+    // The newest complete snapshot stays however old: the newer ones hit a size cap and cannot be restored from.
+    const verified = (id: string, age: number, extra: object = {}) =>
+      JSON.stringify({ ...JSON.parse(meta(id, age)), verify: { at: Date.now(), ok: true, detail: "ok" }, ...extra });
+    await kv.hset("neo:ops:backups", {
+      bk_good_older: verified("bk_good_older", 40 * day),
+      bk_good: verified("bk_good", 30 * day),
+      bk_partial: verified("bk_partial", 20 * day, { truncated: true, truncatedReason: "more than 64 MB of data" }),
+    });
+    g.__objects.push(
+      { key: "ops-backups/kv/bk_good_older.json.gz", size: 10 },
+      { key: "ops-backups/kv/bk_good.json.gz", size: 10 },
+      { key: "ops-backups/kv/bk_partial.json.gz", size: 10 },
+    );
+    const keepLast = await bulk("user_super", "purge", "preview", { selection: { category: "backups" } });
+    assert.equal(keepLast.body.count, 2, JSON.stringify(keepLast.body));
+    assert.equal((await bulk("user_super", "purge", "apply", { selection: { category: "backups" }, token: keepLast.body.token, confirm: keepLast.body.confirmPhrase })).status, 200);
+    assert.deepEqual(Object.keys((await kv.hgetall("neo:ops:backups")) ?? {}).sort(), ["bk_good", "bk_new"]);
+    assert.ok(g.__objects.some((o) => o.key === "ops-backups/kv/bk_good.json.gz"), "the last complete snapshot's file is kept");
     // Every purge ran through the operations job runner, recorded and locked.
     const runs = await jobs.listRuns("data-purge", 50);
     assert.ok(runs.length >= 3 && runs.every((x) => x.outcome === "ok" && x.actor === "super@example.com"), JSON.stringify(runs));
