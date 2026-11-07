@@ -24,7 +24,7 @@ export async function GET(req: NextRequest, { params }: { params: { zone: string
     const period = periodOf(req, integration, now);
     return tagged(req, await reportTag(integration.id, [zone.zoneId], now), async () => {
       const r = await buildReport({ integration, zones: [zone], period, now });
-      return { zone: r.zones[0], period: r.period, summary: r.summary, sessions: r.sessions, generatedAt: r.generatedAt };
+      return { zone: r.zones[0], period: r.period, summary: r.summary, sessions: r.sessions, generatedAt: r.generatedAt, ...(r.incomplete ? { incomplete: r.incomplete } : {}) };
     });
   } catch (e) {
     return fail(e);

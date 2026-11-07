@@ -193,7 +193,7 @@ All of these live in `src/lib/partners/attendanceMath.ts`.
 | Unique participants | Distinct people with counted time in the period, or connected now. |
 | Connected now | People whose connection is on now. |
 
-- **Periods:** `current` (the open session), `today`, `week` (from Monday), `month`, or `custom` with `from`/`to` as whole days (`YYYY-MM-DD`, both included, at most 366 days).
+- **Periods:** `current` (the open session), `today`, `week` (from Monday), `month`, or `custom` with `from`/`to` as whole days (`YYYY-MM-DD`, both included, at most 366 days). Zone reports reach back 90 days and organisation reports 400 (see **Stored**).
 - **Where days begin:** at midnight in the partner's **report timezone** (Admin > Partner zones; default UTC).
 - **Clipping:** time is clipped to the period after merging. A session that crosses midnight is split between the two days.
 - **Times:** every timestamp is UTC milliseconds, and each report names its timezone.
@@ -259,7 +259,11 @@ Errors use the same `{ error: { code, message } }` shape:
 
 ### Stored
 
-Each person's connections per session (start, end, last heartbeat) and the session itself are kept for 400 days. That's enough for monthly and yearly reports.
+Each person's connections per session (start, end, last heartbeat) and the session itself are kept for **90 days** (400 days until November 2026). Zone and participant reports can reach back 90 days.
+
+Each day's totals, for every zone and for the organisation, are kept for 400 days once the day is over. So `GET /api/partner/v1/reports/org` still covers a year, and so do its per-zone summaries.
+
+A zone report whose period starts more than 90 days ago covers only the part since then, and says so: it carries `incomplete` {`keptFrom`, `reason`}. An organisation report carries `incomplete` {`unavailableDays`, `reason`} if some days older than 90 days have no stored totals (for example days before the nightly totals began, or after the report timezone changed).
 
 - They are stored under `neo:pz:*` (see the table below), with the partner's user id and the display name as sent.
 - No email address or other personal detail is stored.

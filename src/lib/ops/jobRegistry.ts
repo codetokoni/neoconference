@@ -52,11 +52,11 @@ export const JOBS: JobDef[] = [
   routeJob({
     name: "ops-health",
     label: "Service health checks",
-    description: "Probes every dependency, keeps the history, evaluates alert rules and starts or ends scheduled maintenance windows.",
+    description: "Probes every dependency, keeps the history, evaluates alert rules and starts or ends scheduled maintenance windows. Until it is done, it also moves older data onto the November 2026 retention periods, a little each run.",
     schedule: "*/5 * * * *",
     scheduleText: "Every 5 minutes",
     retrySafe: true,
-    retryNote: "Read-only probes; alerts de-duplicate, so running it again only refreshes the figures.",
+    retryNote: "Read-only probes; alerts de-duplicate, and the retention sweep only shortens what is still on an old period, so running it again only refreshes the figures.",
     route: "/api/cron/ops-health",
     load: () => import("@/app/api/cron/ops-health/route") as Promise<RouteModule>,
   }),

@@ -26,7 +26,7 @@
 // once ran the connection pool dry (the admin panel's 500s, 2026-11-03).
 
 import { kv } from "@/lib/kv";
-import { AK, closeSession, isStale, parsePerson, parseSession, personIntervals, type PersonRecord, type PrayerSession } from "@/lib/partners/attendance";
+import { AK, closeSession, detailFrom, DETAIL_DAYS, isStale, parsePerson, parseSession, personIntervals, type PersonRecord, type PrayerSession } from "@/lib/partners/attendance";
 import { clipIntervals, mergeIntervals, totalMs, type Interval } from "@/lib/partners/attendanceMath";
 import { midnightIn, wallClock, type Period, type ReportSummary } from "@/lib/partners/reports";
 import type { PartnerIntegration, ZoneMapping } from "@/lib/partners/store";
@@ -196,7 +196,10 @@ export function daysOf(from: number, to: number, tz: string): { day: string; fro
 
 /**
  * The totals for these days: stored ones as they are, the rest worked out
- * (one read of the window they span) and stored when the day is over.
+ * (one read of the window they span) and stored when the day is over. A day
+ * that starts before the kept session detail (DETAIL_DAYS) cannot be worked
+ * out — its sessions are gone — so it is counted in `unavailable`, never
+ * stored as zeros.
  */
 async function totalsForDays(
   integ: string,
@@ -204,12 +207,15 @@ async function totalsForDays(
   tz: string,
   days: { day: string; from: number; to: number }[],
   now: number,
-): Promise<{ totals: DayTotals[]; stored: number; computed: number }> {
+): Promise<{ totals: DayTotals[]; stored: number; computed: number; unavailable: number }> {
   const closed = (d: { to: number }) => d.to + GRACE_MS <= now;
   const keep = days.filter(closed);
   const kept = await batched<{ day: string }, DayTotals | null>(keep, (p, d) => p.get(dayKey(integ, tz, d.day)));
   const have = new Map(keep.map((d, i) => [d.day, kept[i]]));
-  const need = days.filter((d) => !have.get(d.day));
+  const oldest = detailFrom(now);
+  const missing = days.filter((d) => !have.get(d.day));
+  const need = missing.filter((d) => d.from >= oldest);
+  const unavailable = missing.length - need.length;
   const totals: DayTotals[] = days.map((d) => have.get(d.day)).filter((t): t is DayTotals => !!t);
   let computed = 0;
   if (need.length) {
@@ -227,7 +233,7 @@ async function totalsForDays(
       computed = fresh.length;
     }
   }
-  return { totals, stored: totals.length - need.length, computed };
+  return { totals, stored: totals.length - need.length, computed, unavailable };
 }
 
 export type OrgReport = {
@@ -235,6 +241,8 @@ export type OrgReport = {
   summary: ReportSummary;
   zones: { zone: { zoneId: string; name: string; meetingId: string }; summary: ReportSummary }[];
   generatedAt: string;
+  /** Only when some days of the period have no stored totals and are older than the kept session detail. */
+  incomplete?: { unavailableDays: number; reason: string };
 };
 
 /** The organisation report: the whole organisation, and each zone's own summary. */
@@ -243,6 +251,7 @@ export async function orgReport(integration: PartnerIntegration, zones: ZoneMapp
   const zoneIds = zones.map((z) => z.zoneId);
   let total: DayTotals;
   let from = period.from;
+  let unavailable = 0;
   if (period.kind === "current") {
     const g = await gather(integ, zoneIds, "open", now);
     from = Math.min(...g.sessions.map((s) => s.startedAt), now);
@@ -250,7 +259,9 @@ export async function orgReport(integration: PartnerIntegration, zones: ZoneMapp
   } else {
     // Days still to come have nothing in them yet.
     const days = daysOf(period.from, period.to, period.timezone).filter((d) => d.from < now);
-    total = combine((await totalsForDays(integ, zoneIds, period.timezone, days, now)).totals);
+    const r = await totalsForDays(integ, zoneIds, period.timezone, days, now);
+    total = combine(r.totals);
+    unavailable = r.unavailable;
   }
   return {
     period: {
@@ -263,6 +274,14 @@ export async function orgReport(integration: PartnerIntegration, zones: ZoneMapp
     summary: summaryOf(total.org),
     zones: zones.map((z) => ({ zone: { zoneId: z.zoneId, name: z.title, meetingId: z.eventId }, summary: summaryOf(total.zones[z.zoneId]) })),
     generatedAt: new Date(now).toISOString(),
+    ...(unavailable
+      ? {
+          incomplete: {
+            unavailableDays: unavailable,
+            reason: `${unavailable} day${unavailable === 1 ? "" : "s"} of this period had no totals stored and are older than the ${DETAIL_DAYS} days of session detail kept, so they are not counted.`,
+          },
+        }
+      : {}),
   };
 }
 

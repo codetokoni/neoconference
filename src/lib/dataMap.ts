@@ -548,7 +548,7 @@ export const DATA_MAP: DataLocation[] = [
     exported: true,
     onDelete: "anonymise",
     why: "The person's own stream and their raw events are deleted (src/lib/activity.ts forgetUserActivity); in the daily counts the id becomes the pseudonym, so totals stay right. Raw events also go with the activity retention (ACTIVITY_RETENTION_DAYS, and the purge here); daily counts after 400 days.",
-    ttl: "Raw events: activity retention (90 days); counts: 400 days",
+    ttl: "Raw events: activity retention (30 days); counts: 400 days",
     erasedBy: "activity",
   },
   {

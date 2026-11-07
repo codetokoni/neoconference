@@ -162,7 +162,7 @@ export default function LogsClient() {
               {data.adminAuditHidden && " · the admin audit needs audit:read"}. Developer API calls are counted, not logged one by one.
             </p>
             {data.items.length === 0 ? (
-              <Empty>Nothing matches. Activity is logged from the day the log began; raw entries are kept for 90 days unless configured otherwise.</Empty>
+              <Empty>Nothing matches. Activity is logged from the day the log began; raw entries are kept for 30 days unless configured otherwise.</Empty>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[760px] text-left text-sm">

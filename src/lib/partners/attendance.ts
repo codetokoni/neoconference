@@ -33,7 +33,17 @@ import { kv } from "@/lib/kv";
 import { connectionEnd, countedIntervals, mergeIntervals, totalMs, type ConnectionRecord, type Interval } from "@/lib/partners/attendanceMath";
 
 export const STALE_SESSION_MS = 10 * 60_000;
-const RETENTION_S = 400 * 24 * 60 * 60;
+/**
+ * How long sessions and who attended them are kept: 90 days (was 400 until
+ * November 2026; at ~18 MB a week it would have grown the store past 1 GB).
+ * Each zone's and the organisation's day totals are kept 400 days
+ * (orgTotals.ts), so organisation reports still reach back a year.
+ */
+export const DETAIL_DAYS = 90;
+const DETAIL_MS = DETAIL_DAYS * 24 * 60 * 60 * 1000;
+const RETENTION_S = DETAIL_DAYS * 24 * 60 * 60;
+/** The oldest moment whose session detail is still kept. */
+export const detailFrom = (now: number) => now - DETAIL_MS;
 const SID_TTL_S = 3 * 24 * 60 * 60;
 const MAX_CONNECTIONS = 300;
 
@@ -142,6 +152,8 @@ export async function closeSession(s: PrayerSession, at?: number): Promise<Praye
   const won = await kv.hsetnx(AK.session(s.id), "endedAt", endedAt);
   const final = won ? endedAt : (num(await kv.hget(AK.session(s.id), "endedAt")) ?? endedAt);
   await kv.zadd(AK.byEnd(s.integrationId, s.zoneId), { score: final, member: s.id });
+  // The index outlives the sessions: drop ids whose sessions have expired.
+  await kv.zremrangebyscore(AK.byEnd(s.integrationId, s.zoneId), 0, final - DETAIL_MS);
   await bump(s.integrationId, s.zoneId);
   return { ...s, endedAt: final };
 }
@@ -189,6 +201,7 @@ export async function ensureSession(z: ZoneRoom, at: number, now = Date.now()): 
     await kv.hset(AK.session(s.id), s);
     await kv.expire(AK.session(s.id), RETENTION_S);
     await kv.zadd(AK.byStart(z.integrationId, z.zoneId), { score: s.startedAt, member: s.id });
+    await kv.zremrangebyscore(AK.byStart(z.integrationId, z.zoneId), 0, s.startedAt - DETAIL_MS);
     await bump(z.integrationId, z.zoneId);
     return s;
   }
@@ -273,6 +286,7 @@ export async function connectionOpened(z: ZoneRoom, identity: string, sid: strin
   await kv.sadd(AK.people(s.id), identity);
   await kv.expire(AK.people(s.id), RETENTION_S);
   await kv.zadd(AK.personSessions(z.integrationId, identity), { score: s.startedAt, member: s.id });
+  await kv.zremrangebyscore(AK.personSessions(z.integrationId, identity), 0, s.startedAt - DETAIL_MS);
   await kv.expire(AK.personSessions(z.integrationId, identity), RETENTION_S);
   await touch(s, at);
   await bump(z.integrationId, z.zoneId);
