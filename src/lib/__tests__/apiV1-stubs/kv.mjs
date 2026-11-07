@@ -90,6 +90,7 @@ const base = {
   // the subscription indexes (src/lib/billing/subscriptions.ts).
   async zadd(k, ...entries) { const z = store.get(k) ?? new Map(); for (const e of entries) z.set(String(e.member), Number(e.score)); store.set(k, z); return entries.length; },
   async zrem(k, ...members) { const z = store.get(k) ?? new Map(); let n = 0; for (const m of members) if (z.delete(String(m))) n++; store.set(k, z); return n; },
+  async zremrangebyscore(k, min, max) { const z = store.get(k); if (!(z instanceof Map)) return 0; let n = 0; for (const [m, s] of [...z]) if (s >= Number(min) && s <= Number(max)) { z.delete(m); n++; } return n; },
   async zscore(k, m) { const z = store.get(k); return z?.has(String(m)) ? z.get(String(m)) : null; },
   async zcard(k) { return (store.get(k) ?? new Map()).size; },
   async zrange(k, a, b, opts = {}) {
@@ -137,6 +138,28 @@ const base = {
       hashes.delete(k);
       expires.delete(k);
       return 1;
+    }
+    if (name.startsWith("-- shorten-ttl:")) {
+      // src/lib/ops/retentionSweep.ts: keys with more than ARGV[1] ms left lose ARGV[2] ms, or go.
+      const to = Number(args[0]);
+      const delta = Number(args[1]);
+      let shortened = 0;
+      let removed = 0;
+      for (const k of keys) {
+        if (!alive(k) || !expires.has(k)) continue;
+        const left = expires.get(k) - Date.now();
+        if (left <= to) continue;
+        if (left - delta <= 0) {
+          store.delete(k);
+          expires.delete(k);
+          hashes.delete(k);
+          removed++;
+        } else {
+          expires.set(k, Date.now() + left - delta);
+          shortened++;
+        }
+      }
+      return [shortened, removed];
     }
     throw new Error(`kv stub: no EVAL for ${name}`);
   },

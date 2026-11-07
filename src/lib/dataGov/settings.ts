@@ -69,8 +69,8 @@ export const RETENTION: RetentionDef[] = [
   {
     id: "activity",
     label: "Raw activity logs",
-    meaning: "Individual activity events (analytics). Daily totals are kept separately. The analytics store's own expiry (ACTIVITY_RETENTION_DAYS) is the ceiling.",
-    defaultDays: 90,
+    meaning: "Individual activity events (analytics). Daily totals are kept separately, for 400 days. The analytics store's own expiry (ACTIVITY_RETENTION_DAYS, 30 days unless set) is the ceiling.",
+    defaultDays: 30,
     minDays: 7,
     maxDays: 400,
     allowForever: false,

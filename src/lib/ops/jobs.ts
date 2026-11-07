@@ -78,7 +78,9 @@ export type RunJobResult =
   | { status: "locked"; heldBy: string | null };
 
 export const DEFAULT_LOCK_MS = 15 * 60 * 1000;
-const RUN_TTL_SECONDS = 60 * 24 * 60 * 60;
+// 14 days (60 until November 2026): the Jobs page lists the newest 100
+// runs of each job, and the two five-minute jobs alone wrote 576 a day.
+export const RUN_TTL_SECONDS = 14 * 24 * 60 * 60;
 const RUNS_CAP = 100;
 const FAILED_CAP = 100;
 

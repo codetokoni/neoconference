@@ -19,7 +19,7 @@
 // timestamp is stored and answered in UTC (ms) with the timezone named.
 
 import { kv } from "@/lib/kv";
-import { AK, currentSession, getPerson, getSessions, personIntervals, type PersonRecord, type PrayerSession } from "@/lib/partners/attendance";
+import { AK, currentSession, detailFrom, DETAIL_DAYS, getPerson, getSessions, personIntervals, type PersonRecord, type PrayerSession } from "@/lib/partners/attendance";
 import { clipIntervals, mergeIntervals, totalMs, type Interval } from "@/lib/partners/attendanceMath";
 import { PartnerError, type PartnerIntegration, type ZoneMapping } from "@/lib/partners/store";
 
@@ -200,7 +200,18 @@ export type Report = {
   sessions: SessionRow[];
   participants: ParticipantRow[];
   generatedAt: string;
+  /** Only when the period starts before the kept session detail: it covers keptFrom onwards. */
+  incomplete?: Incomplete;
 };
+
+export type Incomplete = { keptFrom: string; reason: string };
+
+/** Set when a period reaches back past the session detail that is kept (DETAIL_DAYS). */
+export function incompleteFor(from: number, now: number): Incomplete | undefined {
+  const kept = detailFrom(now);
+  if (from >= kept) return undefined;
+  return { keptFrom: new Date(kept).toISOString(), reason: `Session detail is kept for ${DETAIL_DAYS} days; this covers only the part of the period since then.` };
+}
 
 function splitExt(ext: string): { userId: string; guest: boolean } {
   if (ext.startsWith("user:")) return { userId: ext.slice(5), guest: false };
@@ -319,6 +330,7 @@ export async function buildReport(opts: {
     sessions: sessionRows,
     participants,
     generatedAt: new Date(now).toISOString(),
+    ...(period.kind !== "current" && incompleteFor(from, now) ? { incomplete: incompleteFor(from, now) } : {}),
     intervals,
   };
 }
