@@ -414,6 +414,14 @@ export async function deleteBackup(id: string): Promise<boolean> {
 export const isRestorable = (b: BackupMeta) => !b.truncated && !!b.verify?.ok;
 
 /**
+ * The newest complete, verified scheduled or manual snapshot: never removed,
+ * by the count cap below or by data governance's age-based purge.
+ */
+export function newestRestorable(all: BackupMeta[]): BackupMeta | undefined {
+  return [...all].sort((a, b) => b.createdAt - a.createdAt).find((b) => b.kind !== "pre-restore" && isRestorable(b));
+}
+
+/**
  * Keep the newest KEEP_SNAPSHOTS scheduled/manual and KEEP_PRE_RESTORE
  * pre-restore snapshots, and always the newest complete one: when the
  * store outgrew the caps in October 2026, fourteen partial nights pushed the
@@ -421,7 +429,7 @@ export const isRestorable = (b: BackupMeta) => !b.truncated && !!b.verify?.ok;
  */
 export async function applyRetention(): Promise<string[]> {
   const all = await listBackups();
-  const lastGood = all.find((b) => b.kind !== "pre-restore" && isRestorable(b));
+  const lastGood = newestRestorable(all);
   const drop = [
     ...all.filter((b) => b.kind !== "pre-restore").slice(KEEP_SNAPSHOTS),
     ...all.filter((b) => b.kind === "pre-restore").slice(KEEP_PRE_RESTORE),
