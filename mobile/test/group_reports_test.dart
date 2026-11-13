@@ -223,5 +223,10 @@ void main() {
     expect(attendedText(20 * 1000), 'under a minute');
     expect(attendedText(42 * 60000), '42 min');
     expect(attendedText(65 * 60000), '1 h 05 min');
+    expect(attendedText(23 * 60 * 60000 + 59 * 60000), '23 h 59 min');
+    // An always-open room's day-long stretches: days and hours, not
+    // "64515 min" or "3632 h 07 min" (neomeeting's report, 2026-11-13).
+    expect(minutesText(64515), '44 d 19 h');
+    expect(attendedText((3632 * 60 + 7) * 60000), '151 d 8 h');
   });
 }

@@ -23,8 +23,8 @@ class MeetingReportScreen extends ConsumerStatefulWidget {
   const MeetingReportScreen({super.key, required this.groupId, required this.eventId, required this.canExport})
       : reopen = null;
 
-  /// Any meeting's report, by its owner or a host. [reopen] opens the meeting
-  /// again (History's rows used to do only that).
+  /// Any meeting's report, by its owner or a host. [reopen] enters the
+  /// meeting (opening it again if it ended): the first thing on the page.
   const MeetingReportScreen.forMeeting({super.key, required this.eventId, this.reopen})
       : groupId = null,
         canExport = true;
@@ -152,13 +152,11 @@ class _MeetingReportScreenState extends ConsumerState<MeetingReportScreen> {
                     actionLabel: 'Retry',
                   ),
                   // A meeting that never started has no report, but can
-                  // still be opened.
-                  if (widget.reopen != null)
-                    TextButton.icon(
-                      onPressed: widget.reopen,
-                      icon: const Icon(Icons.replay_rounded),
-                      label: const Text('Open the meeting again'),
-                    ),
+                  // still be entered.
+                  if (widget.reopen != null) ...[
+                    const SizedBox(height: NeoSpace.lg),
+                    _EnterButton(onPressed: widget.reopen!),
+                  ],
                 ],
               ),
             );
@@ -181,6 +179,12 @@ class _MeetingReportScreenState extends ConsumerState<MeetingReportScreen> {
                   'Scheduled ${neoClock(r.scheduledStart!)} · started ${neoClock(r.actualStart!)}',
                   style: TextStyle(color: p.textFaint, fontSize: 12),
                 ),
+              // Into the meeting, first: it was a small "Open the meeting
+              // again" link under the group buttons (owner, 2026-11-13).
+              if (widget.reopen != null) ...[
+                const SizedBox(height: NeoSpace.lg),
+                _EnterButton(onPressed: widget.reopen!),
+              ],
               const SizedBox(height: NeoSpace.lg),
               GridView.count(
                 crossAxisCount: 3,
@@ -193,7 +197,7 @@ class _MeetingReportScreenState extends ConsumerState<MeetingReportScreen> {
                   _Stat('Invited', '${r.invited}'),
                   _Stat('Attended', '${r.attended}', color: p.success),
                   _Stat('Absent', '${r.absent}', color: r.absent > 0 ? p.warning : null),
-                  _Stat(r.permanent ? 'Time in use' : 'Duration', r.durationMin > 0 ? '${r.durationMin} min' : '—'),
+                  _Stat(r.permanent ? 'Time in use' : 'Duration', r.durationMin > 0 ? minutesText(r.durationMin) : '—'),
                   if (widget.groupId != null) ...[
                     _Stat('Call attempts', '${r.callAttempts}'),
                     _Stat('Missed calls', '${r.missedCalls}'),
@@ -206,7 +210,7 @@ class _MeetingReportScreenState extends ConsumerState<MeetingReportScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: FilledButton.icon(
+                      child: OutlinedButton.icon(
                         onPressed: () => _toGroup(r, startNew: true),
                         icon: const Icon(Icons.group_add_rounded),
                         label: const Text('Create a group'),
@@ -222,15 +226,6 @@ class _MeetingReportScreenState extends ConsumerState<MeetingReportScreen> {
                     ),
                   ],
                 ),
-                if (widget.reopen != null)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: widget.reopen,
-                      icon: const Icon(Icons.replay_rounded),
-                      label: const Text('Open the meeting again'),
-                    ),
-                  ),
               ],
               const SizedBox(height: NeoSpace.lg),
               Text('First to join: ${r.firstToJoin ?? '—'}', style: TextStyle(color: p.text)),
@@ -275,6 +270,23 @@ class _MeetingReportScreenState extends ConsumerState<MeetingReportScreen> {
       ),
     );
   }
+}
+
+/// "Enter meeting": the report's first action when the meeting can be joined.
+class _EnterButton extends StatelessWidget {
+  const _EnterButton({required this.onPressed});
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: onPressed,
+          icon: const Icon(Icons.videocam_rounded),
+          label: const Text('Enter meeting'),
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+        ),
+      );
 }
 
 class _Stat extends StatelessWidget {

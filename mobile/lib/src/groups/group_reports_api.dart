@@ -267,8 +267,14 @@ String attendedText(int ms) {
   final min = ms ~/ 60000;
   if (min < 1) return ms > 0 ? 'under a minute' : '—';
   if (min < 60) return '$min min';
+  // A day or more (an always-open room, someone who stays in it): days and
+  // hours. "3632 h 07 min" told nobody anything.
+  if (min >= 24 * 60) return '${min ~/ (24 * 60)} d ${(min % (24 * 60)) ~/ 60} h';
   return '${min ~/ 60} h ${(min % 60).toString().padLeft(2, '0')} min';
 }
+
+/// A length in minutes, as [attendedText] says it.
+String minutesText(int min) => attendedText(min * 60000);
 
 /// Any meeting's report (`/api/events/<id>/report`), for History: in a group
 /// or not. Hosts and the owner of the meeting only, as its spreadsheet.

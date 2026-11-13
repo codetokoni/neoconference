@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../groups/add_to_group_sheet.dart';
 import '../groups/group_calling_panel.dart';
+import '../groups/ring_into_section.dart';
 import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
@@ -762,6 +763,8 @@ class ParticipantsSheet extends ConsumerWidget {
             Expanded(
               child: ListView(
                 children: [
+                  // Any other meeting: ring members of your groups into it.
+                  if (state.canManage) RingIntoSection(slug: slug),
                   // A group meeting's calls, for its hosts (nothing otherwise).
                   if (state.canManage)
                     GroupCallingSection(

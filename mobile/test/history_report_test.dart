@@ -13,6 +13,7 @@ import 'package:neoconference/src/meetings/meeting_board.dart';
 import 'package:neoconference/src/meetings/meeting_view.dart';
 import 'package:neoconference/src/meetings/meeting_share.dart';
 import 'package:neoconference/src/screens/history_screen.dart';
+import 'package:neoconference/src/screens/prejoin_screen.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// History's report of a meeting outside any group, and making a group of
@@ -166,9 +167,45 @@ void main() {
     expect(find.text('CALL ATTEMPTS'), findsNothing);
     expect(find.text('Visitor'), findsOneWidget);
     expect(find.textContaining('left'), findsWidgets);
-    expect(find.text('Open the meeting again'), findsOneWidget);
+    expect(find.text('Enter meeting'), findsOneWidget);
+    expect(find.text('Open the meeting again'), findsNothing);
     expect(find.text('Create a group'), findsOneWidget);
     expect(find.text('Add to a group'), findsOneWidget);
+  });
+
+  testWidgets("the report's first action is Enter meeting, above the figures and the group buttons", (tester) async {
+    tall(tester);
+    var entered = 0;
+    await tester.pumpWidget(app(MeetingReportScreen.forMeeting(eventId: 'e9', reopen: () => entered++)));
+    await tester.pumpAndSettle();
+    final enter = find.widgetWithText(FilledButton, 'Enter meeting');
+    expect(enter, findsOneWidget);
+    expect(tester.getTopLeft(enter).dy, lessThan(tester.getTopLeft(find.text('INVITED')).dy));
+    expect(tester.getTopLeft(enter).dy, lessThan(tester.getTopLeft(find.text('Create a group')).dy));
+    // The group buttons are the secondary ones now.
+    expect(find.widgetWithText(FilledButton, 'Create a group'), findsNothing);
+    expect(find.widgetWithText(OutlinedButton, 'Create a group'), findsOneWidget);
+    await tester.tap(enter);
+    expect(entered, 1);
+  });
+
+  testWidgets('without a way in (a meeting that cannot be joined) there is no Enter meeting', (tester) async {
+    tall(tester);
+    await tester.pumpWidget(app(const MeetingReportScreen.forMeeting(eventId: 'e9')));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter meeting'), findsNothing);
+  });
+
+  testWidgets('a History row has its own Enter: one tap, without the report', (tester) async {
+    tall(tester);
+    await tester.pumpWidget(app(const HistoryScreen()));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Enter Bible study'), findsOneWidget);
+    await tester.tap(find.byTooltip('Enter Bible study'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(MeetingReportScreen), findsNothing, reason: 'straight in, not to the report');
+    expect(find.byType(PreJoinScreen), findsOneWidget);
   });
 
   testWidgets('Create a group: who came goes in with the group; invitees and typed handles wait to sign up', (tester) async {
