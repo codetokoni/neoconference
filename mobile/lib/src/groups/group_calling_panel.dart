@@ -9,6 +9,7 @@ import '../design/components.dart';
 import '../design/tokens.dart';
 import '../events/event.dart';
 import 'groups_api.dart';
+import 'ring_into_section.dart' show ringIntoChanged;
 
 /// One person a group meeting has been calling (`GET /api/events/<id>/calls`).
 class CallPerson {
@@ -95,12 +96,23 @@ class _GroupCallingSectionState extends ConsumerState<GroupCallingSection> {
     _load();
     _loadParticipants();
     _timer = Timer.periodic(GroupCallingSection.every, (_) => _load());
+    ringIntoChanged.addListener(_lookAgain);
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    ringIntoChanged.removeListener(_lookAgain);
     super.dispose();
+  }
+
+  /// People were just rung into this meeting (RingIntoSection): it was not a
+  /// group meeting, so this had hidden itself; now it has people to show.
+  void _lookAgain() {
+    _hidden = false;
+    _timer?.cancel();
+    _timer = Timer.periodic(GroupCallingSection.every, (_) => _load());
+    _load();
   }
 
   Future<void> _load() async {

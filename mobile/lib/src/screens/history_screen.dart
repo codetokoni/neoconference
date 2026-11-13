@@ -5,6 +5,7 @@ import '../core/load_error.dart';
 import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
+import '../groups/group_reports_api.dart' show minutesText;
 import '../groups/meeting_report_screen.dart';
 import '../meetings/meeting_board.dart';
 import '../meetings/meeting_view.dart';
@@ -144,7 +145,7 @@ class _PastRow extends StatelessWidget {
 
     final detail = <String>[
       if (meeting.startsAt case final at?) neoWhen(at, now: now),
-      if (meeting.durationMinutes case final d?) '$d min',
+      if (meeting.durationMinutes case final d?) minutesText(d),
       if (meeting.knownParticipants case final n?) '$n people',
       if (meeting.startsAt == null) meeting.code,
     ].join(' · ');
@@ -198,6 +199,13 @@ class _PastRow extends StatelessWidget {
           ),
           if (meeting.hasRecording)
             Icon(Icons.play_circle_fill_rounded, color: p.primary),
+          // Straight in, one tap, without going through the report.
+          if (meeting.canJoin)
+            IconButton(
+              tooltip: 'Enter ${meeting.title}',
+              onPressed: reopen,
+              icon: Icon(Icons.videocam_rounded, color: p.primary),
+            ),
           ManageMeetingButton(meeting: meeting),
         ],
       ),
@@ -271,7 +279,7 @@ class _RecordingList extends ConsumerWidget {
                     Text(
                       [
                         if (m.startsAt case final at?) neoWhen(at, now: now),
-                        if (m.durationMinutes case final d?) '$d min',
+                        if (m.durationMinutes case final d?) minutesText(d),
                       ].join(' · '),
                       style: text.bodySmall?.copyWith(color: p.textMuted),
                     ),
