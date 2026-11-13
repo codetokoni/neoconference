@@ -63,7 +63,28 @@ function moduleScript(file: string, name: string): string {
       if (name === "@/components/HiddenVideosProvider") return window.__hidden;
       if (name === "@/hooks/useIsMobile") return { useIsMobile: function () { return false; } };
       if (name === "./HostTileMenu") return window.__mods.HostTileMenu;
-      if (name === "livekit-client") return { RoomEvent: { DataReceived: "dataReceived", ParticipantConnected: "participantConnected", ParticipantDisconnected: "participantDisconnected" } };
+      if (name === "livekit-client") return {
+        RoomEvent: { DataReceived: "dataReceived", ParticipantConnected: "participantConnected", ParticipantDisconnected: "participantDisconnected" },
+        ParticipantEvent: new Proxy({}, { get: function (_t, k) { return String(k); } }),
+        Track: { Source: { Camera: "camera", Microphone: "microphone", ScreenShare: "screen_share" } },
+      };
+      if (name === "framer-motion") return {
+        motion: new Proxy({}, { get: function (_t, tag) {
+          return window.React.forwardRef(function (props, ref) {
+            var rest = Object.assign({}, props);
+            ["initial", "animate", "exit", "transition", "layout", "layoutId", "whileTap", "whileHover", "variants"].forEach(function (k) { delete rest[k]; });
+            rest.ref = ref;
+            return window.React.createElement(tag, rest);
+          });
+        } }),
+        AnimatePresence: function (p) { return p.children; },
+        LayoutGroup: function (p) { return p.children; },
+      };
+      if (name === "@/lib/avatarColor") return {
+        getAvatarColor: function () { return "#334455"; },
+        getAvatarColorRGB: function () { return "51,68,85"; },
+        getInitials: function (s) { return String(s).slice(0, 2).toUpperCase(); },
+      };
       if (name === "@/components/SpotlightOverlay") return window.__mods.SpotlightOverlay;
       if (name === "@/components/conference/roomLayout") return window.__mods.roomLayout;
       if (name === "@/components/conference/phoneStatusSlot") return window.__mods.phoneStatusSlot;
@@ -119,6 +140,8 @@ async function load(page: Page): Promise<string[]> {
         useParticipants: function () { return window.__participants; },
         useLocalParticipant: function () { return { localParticipant: { identity: "me#1" } }; },
         useRoomContext: function () { return window.__room; },
+        useIsSpeaking: function () { return false; },
+        VideoTrack: function () { return null; },
       };
       window.__hidden = { useHiddenVideos: function () { return {
         isHiddenLocally: function () { return false; },
@@ -135,6 +158,7 @@ async function load(page: Page): Promise<string[]> {
   await page.addScriptTag({ content: moduleScript("src/components/MeetingTimer.tsx", "MeetingTimer") });
   await page.addScriptTag({ content: moduleScript("src/components/SpotlightOverlay.tsx", "SpotlightOverlay") });
   await page.addScriptTag({ content: moduleScript("src/components/HostTileMenu.tsx", "HostTileMenu") });
+  await page.addScriptTag({ content: moduleScript("src/components/conference/MobileParticipantTile.tsx", "MobileParticipantTile") });
   await page.addScriptTag({ content: moduleScript("src/components/HostMenuOverlay.tsx", "HostMenuOverlay") });
   await page.addScriptTag({ content: moduleScript("src/components/HiddenVideoOverlay.tsx", "HiddenVideoOverlay") });
   await page.addScriptTag({ content: moduleScript("src/components/TileRoleBadges.tsx", "TileRoleBadges") });
@@ -261,7 +285,7 @@ test("a viewer who is not a host gets the menu with what they may do; a host get
   await expect(page.getByText("Hide video for everyone")).toBeVisible();
 });
 
-test("an open menu follows its tile, and closes when the tile goes", async ({ page }) => {
+test("an open menu follows its tile, and closes when the person leaves", async ({ page }) => {
   const errors = await load(page);
   await page.setViewportSize({ width: 1000, height: 700 });
   await tiles(page, [
@@ -289,8 +313,123 @@ test("an open menu follows its tile, and closes when the tile goes", async ({ pa
   expect(after!.y + after!.height).toBeLessThanOrEqual(700);
 
   // Grace leaves: her tile goes, and so does the menu.
-  await page.evaluate(() => document.getElementById("user_g#1:camera")!.remove());
+  await page.evaluate(() => {
+    (window as unknown as Win).__participants = (window as unknown as Win).__participants.filter((p) => p.identity !== "user_g#1");
+    document.getElementById("user_g#1:camera")!.remove();
+  });
   await expect(menu).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+/**
+ * What the page asks /api/livekit/moderate to do. The test page has no
+ * address of its own, so its relative fetches are answered here.
+ */
+async function recordModeration(page: Page): Promise<() => Promise<unknown[]>> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __moderated: unknown[] };
+    w.__moderated = [];
+    window.fetch = (async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/api/livekit/moderate")) w.__moderated.push(JSON.parse(String(init?.body)));
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+  });
+  return () => page.evaluate(() => (window as unknown as { __moderated: unknown[] }).__moderated);
+}
+
+/** Replace a tile with a new element, as LiveKit does when it rebuilds one. */
+const rebuild = (page: Page, id: string) =>
+  page.evaluate((id) => {
+    const old = document.getElementById(id)!;
+    const fresh = document.createElement("div");
+    fresh.className = old.className;
+    fresh.style.cssText = old.style.cssText;
+    for (const a of ["data-neo-identity", "data-neo-source", "id"]) fresh.setAttribute(a, old.getAttribute(a)!);
+    fresh.appendChild(old.querySelector("[data-lk-participant-name]")!.cloneNode(true));
+    old.replaceWith(fresh);
+  }, id);
+
+test("a host's menu stays open while the person's tile is rebuilt or off the page, and Mute microphone still mutes them", async ({ page }) => {
+  const errors = await load(page);
+  const sent = await recordModeration(page);
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await tiles(page, [
+    { id: ada.identity, name: "Ada", source: "camera" },
+    { id: grace1.identity, name: "Grace", source: "camera" },
+  ]);
+  await renderOverlay(page, [me, ada, grace1], true);
+  await page.getByRole("button", { name: "Options for Grace" }).click();
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
+
+  // Grace turns her camera on: LiveKit builds her a new tile.
+  await rebuild(page, "user_g#1:camera");
+  await expect(page.locator('#user_g\\#1\\:camera [data-neo-menu-for="user_g#1"]')).toHaveCount(1);
+  await expect(menu).toBeVisible();
+  await expect(page.getByRole("button", { name: "Options for Grace" })).toHaveAttribute("aria-expanded", "true");
+
+  // A new speaker takes her place on the page: no tile for a moment.
+  await page.evaluate(() => document.getElementById("user_g#1:camera")!.remove());
+  await page.waitForTimeout(300);
+  await expect(menu).toBeVisible();
+
+  await menu.getByRole("menuitem", { name: "Mute microphone" }).click();
+  await expect.poll(sent).toEqual([{ slug: "weekly", action: "muteAudio", participantIdentity: "user_g#1" }]);
+  await expect(menu).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("one menu at a time: opening another person's closes the first; a click outside closes it", async ({ page }) => {
+  await load(page);
+  await tiles(page, [
+    { id: ada.identity, name: "Ada", source: "camera" },
+    { id: grace1.identity, name: "Grace", source: "camera" },
+  ]);
+  await renderOverlay(page, [me, ada, grace1], true);
+  await page.getByRole("button", { name: "Options for Grace" }).click();
+  await expect(page.getByRole("menu")).toContainText("Grace");
+  await page.getByRole("button", { name: "Options for Ada" }).click();
+  await expect(page.getByRole("menu")).toHaveCount(1);
+  await expect(page.getByRole("menu")).toContainText("Ada");
+  await page.getByRole("button", { name: "Options for Ada" }).click();
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await page.getByRole("button", { name: "Options for Ada" }).click();
+  await page.mouse.click(5, 690);
+  await expect(page.getByRole("menu")).toHaveCount(0);
+});
+
+test("on a phone, tapping an item in a tile's menu sheet does it", async ({ page }) => {
+  const errors = await load(page);
+  const sent = await recordModeration(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => {
+    const w = window as unknown as Win & { __grace: unknown };
+    w.__grace = {
+      identity: "user_g#1",
+      name: "Grace",
+      isLocal: false,
+      isCameraEnabled: false,
+      isMicrophoneEnabled: true,
+      metadata: "",
+      on() { return this; },
+      off() { return this; },
+      getTrackPublication() { return undefined; },
+    };
+    const Tile = w.__mods.MobileParticipantTile.MobileParticipantTile as (p: Record<string, unknown>) => null;
+    w.ReactDOM.createRoot(document.getElementById("app")!).render(
+      w.React.createElement("div", { style: { width: 180 } }, w.React.createElement(Tile, { participant: w.__grace, localIsHost: true, localIsHostRank: true, participantIsHost: false, slug: "weekly" })),
+    );
+  });
+  await page.getByRole("button", { name: "Options for Grace" }).click();
+  const sheet = page.getByRole("menu", { name: "Options for Grace" });
+  await expect(sheet).toBeVisible();
+  await sheet.getByRole("button", { name: /Mute mic/ }).click();
+  await expect.poll(sent).toEqual([{ slug: "weekly", action: "muteAudio", participantIdentity: "user_g#1" }]);
+  // A tap on the dimmed backdrop still closes it.
+  await page.getByRole("button", { name: "Options for Grace" }).click();
+  await expect(sheet).toBeVisible();
+  await page.mouse.click(195, 30);
+  await expect(sheet).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

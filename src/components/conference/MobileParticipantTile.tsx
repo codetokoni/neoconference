@@ -215,6 +215,9 @@ function MobileParticipantTileInner({
   /* ---------- host menu (long press) ---------- */
   const spotlit = useSpotlit();
   const [menuOpen, setMenuOpen] = useState(false);
+  // The sheet is portaled out of the tile, so "outside the tile" is not
+  // "outside the menu": it must be checked against both.
+  const sheetRef = useRef<HTMLDivElement>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [menuError, setMenuError] = useState<string | null>(null);
 
@@ -404,7 +407,13 @@ function MobileParticipantTileInner({
       if (e.key === 'Escape') setMenuOpen(false);
     };
     const onClick = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+      const t = e.target as Node;
+      // A tap in the sheet is not outside. Since the sheet moved out of the
+      // tile (#639) this closed it on the finger going down, before the
+      // item's click, so "Mute microphone" and every other item did
+      // nothing (2026-11-13). Taps on the dimmed backdrop close it there.
+      if (sheetRef.current?.contains(t)) return;
+      if (rootRef.current && !rootRef.current.contains(t)) {
         setMenuOpen(false);
       }
     };
@@ -646,6 +655,7 @@ function MobileParticipantTileInner({
           sections: My view · For everyone · Role · Danger. */}
       {menuOpen && canOpenMenu && typeof document !== 'undefined' && createPortal(
         <div
+          ref={sheetRef}
           className="fixed inset-0"
           role="presentation"
           style={{
