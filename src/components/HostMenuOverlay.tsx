@@ -3,15 +3,27 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParticipants, useLocalParticipant } from '@livekit/components-react';
-import { HostTileMenu } from './HostTileMenu';
+import { HostTileMenu, HostTileMenuPanel, closeTileMenu, useOpenTileMenu } from './HostTileMenu';
 import { useIsMobile } from '@/hooks/useIsMobile';
 
 /**
  * HostMenuOverlay
  *
- * For host/cohost only. Iterates remote LiveKit participants and portals
- * a <HostTileMenu /> into each one's tile DOM (.lk-participant-tile).
- * Tiles are matched to participants via data-lk-participant-name.
+ * Portals a <HostTileMenu /> into each remote participant's tile
+ * (.lk-participant-tile) on a computer or tablet. Every viewer gets it, as
+ * HostTileMenu intends ("Hide on my screen" is for anyone); the host and
+ * moderator actions inside it stay gated on the viewer's role, and the
+ * server checks the role again on each one.
+ *
+ * Tiles are matched by identity (`data-neo-identity`, set by
+ * NeoVideoConference), preferring the camera tile over a screen share.
+ * They used to be matched by display name, so two people with one name, or
+ * one person on two devices, shared a single menu on the first such tile,
+ * and a person's menu could land on their screen share instead.
+ *
+ * Only the ⋮ button lives in the tile. The open menu is drawn here, outside
+ * every tile, so it stays open while LiveKit rebuilds or pages that tile,
+ * and closes when the person leaves.
  */
 export default function HostMenuOverlay({
   isHost,
@@ -30,10 +42,17 @@ export default function HostMenuOverlay({
   // desktop kebab-menu portal on mobile to avoid double UI.
   const isMobile = useIsMobile();
   const [tick, setTick] = useState(0);
+  const openFor = useOpenTileMenu();
+  const openPerson = openFor ? participants.find((p) => p.identity === openFor) : undefined;
+
+  // Their menu goes when they leave the room, and only then.
+  useEffect(() => {
+    if (openFor && !openPerson) closeTileMenu();
+  }, [openFor, openPerson]);
 
   // Re-scan tiles whenever the DOM mutates (tiles get added/removed/paginated).
   useEffect(() => {
-    if (!isHost || isMobile) return;
+    if (isMobile) return;
     let raf = 0;
     const obs = new MutationObserver(() => {
       cancelAnimationFrame(raf);
@@ -41,11 +60,32 @@ export default function HostMenuOverlay({
     });
     obs.observe(document.body, { childList: true, subtree: true });
     return () => { obs.disconnect(); cancelAnimationFrame(raf); };
-  }, [isHost, isMobile]);
+  }, [isMobile]);
 
-  if (!isHost || isMobile) return null;
+  if (isMobile) return null;
 
   const localIdentity = localParticipant?.identity || '';
+  const roleOf = (metadata: string | undefined): string | null => {
+    // The target's wire-format role from LiveKit metadata, so role items
+    // (e.g. Demote) show only when the target actually holds one.
+    if (!metadata) return null;
+    try {
+      const j = JSON.parse(metadata) as { role?: unknown };
+      return typeof j?.role === 'string' ? j.role : null;
+    } catch {
+      return null;
+    }
+  };
+  // The token marks the meeting's owner `owner`; nobody can change the
+  // owner's role, so the panel hides its Role items for them.
+  const isOwnerMeta = (metadata: string | undefined): boolean => {
+    if (!metadata) return false;
+    try {
+      return (JSON.parse(metadata) as { owner?: unknown })?.owner === true;
+    } catch {
+      return false;
+    }
+  };
   // Snapshot tiles (read at render time; tick triggers re-render).
   void tick;
   const tiles = typeof document !== 'undefined'
@@ -57,48 +97,30 @@ export default function HostMenuOverlay({
       {participants.map((p) => {
         if (!p || p.identity === localIdentity) return null;
         const displayName = (p.name || p.identity || '').trim();
-        // Find the FIRST tile in DOM whose name matches AND isn't already mounted.
-        // Multiple tiles may share the same name in test setups; that's fine -- we mount per identity.
-        const tile = tiles.find((el) => {
-          const nameEl = el.querySelector('[data-lk-participant-name]') as HTMLElement | null;
-          const tileName = nameEl?.getAttribute('data-lk-participant-name')?.trim() || '';
-          if (tileName !== displayName) return false;
-          const isLocalTile = el.querySelector('[data-lk-local-participant="true"]') !== null;
-          return !isLocalTile;
-        });
+        const own = tiles.filter((el) => el.getAttribute('data-neo-identity') === p.identity);
+        const tile = own.find((el) => el.getAttribute('data-neo-source') === 'camera') ?? own[0];
         if (!tile) return null;
         if (getComputedStyle(tile).position === 'static') {
           tile.style.position = 'relative';
         }
-        // Read target's wire-format role from LiveKit metadata so we
-        // can gate role-management items (e.g. Demote is only shown
-        // when the target actually holds an elevated role).
-        let targetRole: string | null = null;
-        let targetIsOwner = false;
-        if (p.metadata) {
-          try {
-            const j = JSON.parse(p.metadata) as { role?: unknown; owner?: unknown };
-            if (typeof j?.role === 'string') targetRole = j.role;
-            targetIsOwner = j?.owner === true;
-          } catch {
-            // ignore
-          }
-        }
         return createPortal(
-          <HostTileMenu
-            key={p.identity}
-            participantIdentity={p.identity}
-            participantName={displayName}
-            isHost={true}
-            roomRole={roomRole}
-            targetRole={targetRole}
-            targetIsOwner={targetIsOwner}
-            slug={slug}
-          />,
+          <HostTileMenu key={p.identity} participantIdentity={p.identity} participantName={displayName} />,
           tile,
           'host-tile-menu-' + p.identity,
         );
       })}
+      {openPerson && openPerson.identity !== localIdentity && (
+        <HostTileMenuPanel
+          key={openPerson.identity}
+          participantIdentity={openPerson.identity}
+          participantName={(openPerson.name || openPerson.identity || '').trim()}
+          isHost={isHost}
+          roomRole={roomRole}
+          targetRole={roleOf(openPerson.metadata)}
+          targetIsOwner={isOwnerMeta(openPerson.metadata)}
+          slug={slug}
+        />
+      )}
     </>
   );
 }

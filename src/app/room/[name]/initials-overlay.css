@@ -128,35 +128,78 @@
 }
 
 
-/* Single horizontal toolbar that auto-hides until cursor enters the room shell */
+/* The single horizontal toolbar, at the top of the room, always shown.
+   It used to hide until the pointer entered the room and then appear over
+   the first row of tiles, covering their names, menus and enlarge
+   buttons. It now has its own band: the page measures it and the grid
+   starts below (--room-toolbar-space, next rule). Phones still fold it
+   into the bottom More menu (the max-width: 640px block below), where it
+   measures nothing and the grid takes the space back. */
 .room-toolbar {
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.25s ease;
-}
-[data-lk-theme]:hover .room-toolbar,
-.room-toolbar:hover,
-.room-toolbar:focus-within {
   opacity: 1;
   pointer-events: auto;
+  transition: opacity 0.25s ease;
 }
-/* Override the generic :fullscreen [data-room-chrome] rule for the toolbar, so it can still appear on hover in fullscreen */
-:fullscreen .room-toolbar[data-room-chrome="true"] {
-  display: flex !important;
-  opacity: 0;
-  pointer-events: none;
-}
+/* Shown in fullscreen too, over the generic :fullscreen [data-room-chrome]
+   rule: it keeps its band there, so it covers nothing. */
+:fullscreen .room-toolbar[data-room-chrome="true"],
 :-webkit-full-screen .room-toolbar[data-room-chrome="true"] {
   display: flex !important;
-  opacity: 0;
-  pointer-events: none;
 }
-:fullscreen:hover .room-toolbar,
-:fullscreen .room-toolbar:hover,
-:-webkit-full-screen:hover .room-toolbar,
-:-webkit-full-screen .room-toolbar:hover {
-  opacity: 1 !important;
-  pointer-events: auto !important;
+
+/* The grid starts below the toolbar's band and grows into it when the
+   toolbar folds away. */
+.room-shell .lk-video-conference {
+  box-sizing: border-box;
+  padding-top: var(--room-toolbar-space, 0px);
+  transition: padding-top 0.2s ease;
+}
+
+/* An enlarged tile (LiveKit's focus view): the bar above it says what is
+   enlarged, on this screen only, and goes back to the gallery. In the
+   layout, not over the tiles. */
+.neo-focus-wrapper {
+  flex-direction: column;
+}
+.neo-focus-wrapper > .lk-focus-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.neo-focus-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 12px 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+}
+.neo-focus-bar-label strong {
+  color: #fff;
+  font-weight: 600;
+}
+.neo-focus-bar-back {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--lk-accent-bg, #22d3ee);
+  color: var(--lk-accent-fg, #04111c);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.neo-focus-bar-back:hover {
+  filter: brightness(1.08);
+}
+.neo-focus-bar-back:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+/* The enlarged tile's own shrink button stays shown, not only on hover:
+   there is no hover on a touch screen. */
+.lk-focus-layout > .lk-participant-tile .lk-focus-toggle-button {
+  opacity: 1;
 }
 
 /* A tablet wide enough for the desktop toolbar has no pointer to hover

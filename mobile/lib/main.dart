@@ -9,6 +9,7 @@ import 'package:logging/logging.dart';
 import 'src/auth/auth_controller.dart';
 import 'src/auth/sign_in_screen.dart';
 import 'src/core/api_client.dart';
+import 'src/core/app_update.dart' show AppUpdateGate;
 import 'src/core/client_info.dart';
 import 'src/events/event.dart';
 import 'src/design/brand.dart';
@@ -247,9 +248,12 @@ class _Root extends ConsumerWidget {
     }
     // A meeting link waits through sign-in and opens once someone is in.
     // Signed out, the first launch shows what the app is before sign-in.
-    return auth.signedIn
-        ? MeetingLinkOpener(child: IncomingCallWatcher(child: AppShell(tabs: _tabs)))
-        : const SignedOutEntry(signIn: SignInScreen());
+    // A newer app on the store is said over either (AppUpdateGate).
+    return AppUpdateGate(
+      child: auth.signedIn
+          ? MeetingLinkOpener(child: IncomingCallWatcher(child: AppShell(tabs: _tabs)))
+          : const SignedOutEntry(signIn: SignInScreen()),
+    );
   }
 
   /// Five destinations: Dashboard is the web's /dashboard, in brief, and

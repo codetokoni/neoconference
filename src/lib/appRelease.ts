@@ -19,10 +19,16 @@
 // the minimum on a date, after a week of nudges.
 
 import { BRAND } from "@/lib/brand";
-// 1.2.9 live on the LoveWorld AppStore, 2026-11-03 (says why it was signed
-// out, Device sessions; 1.2.8 earlier that day, invites carry the app
-// download link; 1.2.7 2026-10-20; 1.2.6, the NeoLinguaMeet rename, 2026-10-19).
-export const LATEST_APP_VERSION = "1.2.9";
+// 1.2.12 live on the LoveWorld AppStore, 2026-11-06 (meeting layout: the bars
+// have their own space, tiles a menu button, a tap always brings the
+// controls back). 1.2.11 earlier that day (asks to update on every
+// screen, signed out too, and requires it below the minimum). 1.2.10 earlier
+// that day (hosts make hosts; a meeting says "You were signed out" rather
+// than "A host took you out").
+// 1.2.9 2026-11-03 (says why it was signed out, Device sessions; 1.2.8
+// earlier that day, invites carry the app download link; 1.2.7 2026-10-20;
+// 1.2.6, the NeoLinguaMeet rename, 2026-10-19).
+export const LATEST_APP_VERSION = "1.2.12";
 export const MIN_APP_VERSION = "1.2.4";
 
 /**

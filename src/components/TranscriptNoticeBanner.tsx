@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRoomContext } from '@livekit/components-react';
 import { RoomEvent } from 'livekit-client';
+import { createPortal } from 'react-dom';
+import { usePhoneStatusSlot } from '@/components/conference/phoneStatusSlot';
 
 /**
  * TranscriptNoticeBanner
@@ -22,6 +24,8 @@ import { RoomEvent } from 'livekit-client';
  * Ambient — no user interaction, no permissions. Mount inside <LiveKitRoom>.
  */
 export default function TranscriptNoticeBanner() {
+  // On a phone, in the status strip (it sat over the room name there).
+  const phoneSlot = usePhoneStatusSlot();
   const room = useRoomContext();
   const [visible, setVisible] = useState(false);
   const wasEnabledRef = useRef(false);
@@ -59,17 +63,15 @@ export default function TranscriptNoticeBanner() {
 
   if (!visible) return null;
 
-  return (
+  const notice = (
     <div
       role="status"
       aria-live="polite"
       data-room-chrome="true"
       style={{
-        position: 'fixed',
-        top: 68,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 60,
+        ...(phoneSlot
+          ? { position: 'relative' as const }
+          : { position: 'fixed' as const, top: 68, left: '50%', transform: 'translateX(-50%)', zIndex: 60 }),
         padding: '8px 16px',
         borderRadius: 999,
         background: 'rgba(17,17,24,0.9)',
@@ -100,4 +102,5 @@ export default function TranscriptNoticeBanner() {
       This meeting is being transcribed
     </div>
   );
+  return phoneSlot ? createPortal(notice, phoneSlot) : notice;
 }

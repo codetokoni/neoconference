@@ -11,6 +11,7 @@ import type { AccountRow, AnalyticsReport, Figure } from "@/lib/admin/analytics"
 import { fmtDay, fmtMoney, fmtNumber, fmtTime, useAdmin } from "../AdminApi";
 import { Badge, Empty, LoadState, Notice, PageHeader, Pager, Panel, SortTh, StatTile, btn, field, useClientTable, type SortDir } from "../ui";
 import { DailyBars, HBars } from "./charts";
+import { LATEST_APP_VERSION } from "@/lib/appRelease";
 import { PeriodBar, usePeriod } from "./period";
 
 type Report = AnalyticsReport & { ok: boolean };
@@ -442,6 +443,18 @@ export default function AnalyticsClient() {
                 )}
               </Panel>
             </div>
+
+            <Panel>
+              <h2 className="mb-1 text-base font-semibold text-white">App versions</h2>
+              <p className="mb-2 text-xs text-zinc-400">
+                People who asked to join a meeting from each version of the Android app, refused or not (UTC days). The website is not counted. Raise the minimum app version once the old ones have gone. Counted from 6 November 2026.
+              </p>
+              {d.appVersions.length === 0 ? (
+                <Empty>No app joins counted in this period.</Empty>
+              ) : (
+                <HBars rows={d.appVersions.map((x) => ({ label: x.version === LATEST_APP_VERSION ? `${x.version} (newest)` : x.version, value: x.people }))} unit="people" />
+              )}
+            </Panel>
 
             <Panel>
               <div id="accounts" className="mb-2 flex scroll-mt-4 flex-wrap items-center justify-between gap-2">

@@ -6,6 +6,51 @@ import '../design/brand.dart';
 import '../meetings/room_view.dart';
 import 'room_controller.dart';
 
+/// A person's sheet that follows them while it is open: rebuilt from the
+/// room by identity on every change (a new role shows at once), and closed
+/// when they leave, so nothing is offered for someone who is gone or for
+/// whoever took their place in the grid.
+class LivePersonSheet extends ConsumerStatefulWidget {
+  const LivePersonSheet({
+    super.key,
+    required this.slug,
+    required this.id,
+    required this.lookup,
+    required this.builder,
+  });
+
+  final String slug;
+  final String id;
+  final PersonView? Function(String id, RoomState state) lookup;
+  final Widget Function(PersonView person) builder;
+
+  @override
+  ConsumerState<LivePersonSheet> createState() => _LivePersonSheetState();
+}
+
+class _LivePersonSheetState extends ConsumerState<LivePersonSheet> {
+  PersonView? _last;
+  bool _closing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(roomControllerProvider(widget.slug));
+    final fresh = widget.lookup(widget.id, state);
+    if (fresh == null) {
+      if (!_closing) {
+        _closing = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) Navigator.maybePop(context);
+        });
+      }
+      final last = _last;
+      return last == null ? const SizedBox.shrink() : IgnorePointer(child: widget.builder(last));
+    }
+    _last = fresh;
+    return widget.builder(fresh);
+  }
+}
+
 /// What can be done to one person, opened by holding their tile.
 ///
 /// Pin, for everyone. Then the web's tile menu, item for item and with its

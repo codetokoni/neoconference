@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
+import { requestSpotlight, useSpotlit } from '@/components/SpotlightOverlay';
 
 /**
  * HostTileMenu
@@ -25,7 +26,93 @@ import { useHiddenVideos } from '@/components/HiddenVideosProvider';
  * The actual tile content is rendered separately; this component is positioned
  * absolutely over the tile.
  */
-export function HostTileMenu({
+// Whose menu is open: one at a time, and owned by the person, not by their
+// tile. LiveKit builds a new tile element when someone's camera goes on or
+// off or reconnects, when the grid pages a new speaker onto the screen and
+// when a screen share changes the layout; a menu living in the tile closed
+// with it, often before the host reached "Mute microphone" (2026-11-13).
+// The button stays in the tile; HostMenuOverlay draws the open menu.
+let openFor: string | null = null;
+const watchers = new Set<() => void>();
+function setOpenFor(id: string | null) {
+  if (id === openFor) return;
+  openFor = id;
+  watchers.forEach((w) => w());
+}
+export function useOpenTileMenu(): string | null {
+  return useSyncExternalStore(
+    (w) => {
+      watchers.add(w);
+      return () => watchers.delete(w);
+    },
+    () => openFor,
+    () => null,
+  );
+}
+export function closeTileMenu(): void {
+  setOpenFor(null);
+}
+
+const menuButtonFor = (identity: string) =>
+  document.querySelector<HTMLButtonElement>(`[data-neo-menu-for="${CSS.escape(identity)}"] button`);
+
+/** The ⋮ button on a person's tile. */
+export function HostTileMenu({ participantIdentity, participantName }: { participantIdentity: string; participantName: string }) {
+  const { localParticipant } = useLocalParticipant();
+  const open = useOpenTileMenu() === participantIdentity;
+  if (localParticipant?.identity === participantIdentity) return null;
+  return (
+    <div
+      data-neo-tile-menu="true"
+      data-neo-menu-for={participantIdentity}
+      style={{
+        position: 'absolute',
+        top: 6,
+        // Left of LiveKit's enlarge / shrink button (top right, about
+        // 32px): the menu sat right on top of it, and the shrink button
+        // was the only way back from an enlarged tile.
+        right: 44,
+        zIndex: 10,
+        pointerEvents: 'auto',
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        aria-label={`Options for ${participantName}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={`Options for ${participantName}`}
+        onClick={() => setOpenFor(open ? null : participantIdentity)}
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: '50%',
+          background: 'rgba(0,0,0,0.55)',
+          color: '#fff',
+          border: '1px solid rgba(255,255,255,0.25)',
+          fontSize: 16,
+          lineHeight: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          padding: 0,
+        }}
+      >
+        {String.fromCharCode(8942)}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The open menu, drawn by HostMenuOverlay outside every tile, so it stays
+ * open while the person's tile is rebuilt or paged off screen. It sits by
+ * their ⋮ button while there is one, keeps its place while there is none,
+ * and HostMenuOverlay closes it when they leave.
+ */
+export function HostTileMenuPanel({
   participantIdentity,
   participantName,
   isHost,
@@ -54,7 +141,11 @@ export function HostTileMenu({
   // useRoomContext call kept for hook stability (must be called before early return)
   useRoomContext();
   const hiddenVideos = useHiddenVideos();
-  const [open, setOpen] = useState(false);
+  const spotlit = useSpotlit();
+  const open = true;
+  const setOpen = (v: boolean) => {
+    if (!v) setOpenFor(null);
+  };
   const [confirmKick, setConfirmKick] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -167,7 +258,6 @@ export function HostTileMenu({
   // Kebab menu is available to any viewer on any remote tile — the local
   // hide option is unconditional. Host/moderator actions are added below
   // conditionally.
-  const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState<{
     top: number;
@@ -198,7 +288,8 @@ export function HostTileMenu({
     const MARGIN = 8;
     const ROUGH_MENU_HEIGHT = 400; // enough for every host + role option
     const place = () => {
-      const b = buttonRef.current;
+      // No button (the tile is being rebuilt or is on another page): stay put.
+      const b = menuButtonFor(participantIdentity);
       if (!b) return;
       const r = b.getBoundingClientRect();
       const width = 200;
@@ -242,17 +333,43 @@ export function HostTileMenu({
       setMenuPos({ top, left, maxHeight: Math.max(120, maxHeight) });
     };
     place();
-    // Second pass on the next paint: menu is mounted, we can measure it
-    // and correct if the rough estimate over- or under-shot.
-    const raf = requestAnimationFrame(place);
-    window.addEventListener('scroll', place, true);
-    window.addEventListener('resize', place);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener('scroll', place, true);
-      window.removeEventListener('resize', place);
+    // Then every frame while it is open: the menu follows its button when
+    // the tiles move (a new speaker reorders the grid, a tile is enlarged,
+    // a panel opens and the grid narrows), which scroll and resize alone
+    // never told it. While the tile is being rebuilt it keeps its place;
+    // HostMenuOverlay closes it if the person leaves.
+    let raf = 0;
+    let last = '';
+    const follow = () => {
+      const b = menuButtonFor(participantIdentity);
+      if (!b) {
+        raf = requestAnimationFrame(follow);
+        return;
+      }
+      const r = b.getBoundingClientRect();
+      const key = `${r.top}|${r.left}|${r.width}|${window.innerWidth}|${window.innerHeight}|${menuRef.current?.offsetHeight ?? 0}`;
+      if (key !== last) {
+        last = key;
+        place();
+      }
+      raf = requestAnimationFrame(follow);
     };
-  }, [open]);
+    raf = requestAnimationFrame(follow);
+    return () => cancelAnimationFrame(raf);
+  }, [open, participantIdentity]);
+
+  // Esc closes the menu (and is not then taken as "back to gallery").
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setOpen(false);
+      menuButtonFor(participantIdentity)?.focus();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [open, participantIdentity]);
 
   // Outside-click close: the menu is portaled to <body>, so it isn't in the
   // subtree of the wrapper's stopPropagation. Watch document clicks and
@@ -263,52 +380,19 @@ export function HostTileMenu({
       const t = e.target as Node | null;
       if (!t) return;
       if (menuRef.current?.contains(t)) return;
-      if (buttonRef.current?.contains(t)) return;
+      // This person's own ⋮ (whichever tile it is on now) toggles it instead.
+      if (t instanceof Element && t.closest(`[data-neo-menu-for="${CSS.escape(participantIdentity)}"]`)) return;
       setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
+  }, [open, participantIdentity]);
 
   if (isSelf || !slug) return null;
   const showHostActions = isHost;
 
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: 6,
-        right: 6,
-        zIndex: 10,
-        pointerEvents: 'auto',
-      }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-label={`Host actions for ${participantName}`}
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: '50%',
-          background: 'rgba(0,0,0,0.55)',
-          color: '#fff',
-          border: '1px solid rgba(255,255,255,0.25)',
-          fontSize: 16,
-          lineHeight: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          padding: 0,
-        }}
-      >
-        {String.fromCharCode(8942)}
-      </button>
-
-      {open && mounted && menuPos && createPortal(
+  if (!mounted || !menuPos) return null;
+  return createPortal(
         <div
           ref={menuRef}
           role="menu"
@@ -364,6 +448,20 @@ export function HostTileMenu({
               disabled={pending !== null}
               onClick={toggleHideGlobal}
               pending={pending === 'hideGlobal'}
+            />
+          )}
+
+          {/* Meeting-wide, so a menu item and not a double-click: on a
+              computer a double-click enlarges the tile on your own screen. */}
+          {showHostActions && (
+            <MenuItem
+              label={spotlit === participantIdentity ? 'Remove spotlight' : 'Spotlight for everyone'}
+              icon="✦"
+              disabled={pending !== null}
+              onClick={() => {
+                requestSpotlight(participantIdentity);
+                setOpen(false);
+              }}
             />
           )}
 
@@ -518,9 +616,9 @@ export function HostTileMenu({
             </div>
           )}
         </div>,
-        document.body,
-      )}
-    </div>
+        // Inside the fullscreen element when there is one: anything outside
+        // it is not drawn while the room (or a tile) is fullscreen.
+        document.fullscreenElement ?? document.body,
   );
 }
 

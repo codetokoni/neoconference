@@ -43,6 +43,7 @@ import {
   type Period,
 } from "@/lib/activityReports";
 import { eventStore } from "@/lib/eventStore";
+import { appVersionsOver, type AppVersionCount } from "@/lib/appVersionCounts";
 import type { Table } from "@/lib/admin/exportReport";
 import { readPlanFromMetadata } from "@/lib/planLimits";
 import { isOwnerEmailList, type ClerkEmailish } from "@/lib/admin/owner";
@@ -114,6 +115,8 @@ export interface AnalyticsReport {
   accounts: AccountRow[];
   plans: Array<{ plan: string; owners: number; meetings: number }>;
   liveNow: number;
+  /** People who asked to join from each Android app version (src/lib/appVersionCounts.ts). */
+  appVersions: AppVersionCount[];
 }
 
 const ms = (iso: string | undefined) => {
@@ -421,6 +424,8 @@ export async function buildAnalytics(p: Period, opts: { now?: number } = {}): Pr
     accounts,
     plans,
     liveNow,
+    // The period's UTC days: the counts are kept per UTC day.
+    appVersions: await appVersionsOver(utcDaysBetween(p.startMs, p.endMs)).catch(() => []),
   };
 }
 

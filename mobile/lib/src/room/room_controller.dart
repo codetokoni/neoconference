@@ -9,6 +9,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper;
 import 'package:livekit_client/livekit_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../auth/auth_controller.dart' show authProvider;
 import '../core/api_client.dart';
 import '../core/client_info.dart';
 import '../core/load_error.dart';
@@ -630,7 +631,7 @@ class MediaRequest {
 /// grants a permission locally — a viewer's microphone button is absent
 /// because LiveKit refuses the publish, not because the app hid it.
 class RoomController extends StateNotifier<RoomState> {
-  RoomController({required this.api, required this.slug})
+  RoomController({required this.api, required this.slug, this.signedOutReason})
       : super(const RoomState()) {
     // Lifecycle tracing (debug only). A meeting that keeps restarting looks
     // identical from outside whether this app is throwing the connection
@@ -678,6 +679,12 @@ class RoomController extends StateNotifier<RoomState> {
 
   final ApiClient api;
   final String slug;
+
+  /// Why this phone was signed out, if it was (AuthController
+  /// .signedOutReason). Asked when the server removes this person: a
+  /// signed-out device is taken out of its meetings too, and LiveKit calls
+  /// that "participant removed", the same as a host doing it.
+  final Future<String?> Function()? signedOutReason;
 
   static Room _newRoom() => Room(
         roomOptions: const RoomOptions(
@@ -1207,33 +1214,7 @@ class RoomController extends StateNotifier<RoomState> {
         // history is the only way back to a correct chat.
         unawaited(_loadChatHistory(merge: true));
       })
-      ..on<RoomDisconnectedEvent>((e) {
-        if (_disposed) return;
-        _reconnectWatchdog.settled();
-        debugPrint('[neo-room] disconnected: ${e.reason}');
-        // Out of the meeting, however it happened. The controller lives on
-        // behind "The meeting has ended" (or a rejoin), and its heartbeat
-        // went on telling the server this phone was in the meeting — so
-        // other group calls skipped it as busy. A rejoin starts it again.
-        MeetingHeartbeat.instance.stop(slug);
-        // The host who ended it gets no "The meeting has ended" screen:
-        // they are leaving, and the screen closes behind them.
-        final drop = _endingForAll ? null : describeDrop(e.reason);
-        if (drop != null && (_wasIn || _autoRejoin.active)) {
-          return _onDropped(drop);
-        }
-        if (drop != null) {
-          // Never got in. join() reports the failure on its own screen,
-          // "Could not join" with Try again, which is the true story.
-          state = state.copyWith(phase: JoinPhase.failed, link: RoomLink.lost);
-          return;
-        }
-        // Left on purpose. No message: the meeting screen has already
-        // closed by now, so one would pop up over the home screen telling
-        // the person something they just did — seen on a real phone as
-        // "Disconnected from the meeting." after pressing Leave.
-        state = state.copyWith(phase: JoinPhase.failed, link: RoomLink.lost);
-      })
+      ..on<RoomDisconnectedEvent>(_onDisconnected)
       // Mute events arrive for everyone, not just this device. Syncing our
       // own buttons is enough to redraw someone else's microphone icon too:
       // every state write is a new object, and StateNotifier notifies on
@@ -1278,7 +1259,11 @@ class RoomController extends StateNotifier<RoomState> {
       ..on<ParticipantDisconnectedEvent>((e) {
         final hands = Map<String, String>.from(state.raisedHands)
           ..remove(e.participant.identity);
-        state = state.copyWith(raisedHands: hands);
+        // Someone pinned who leaves takes the pin with them: it used to
+        // linger and snap back when they rejoined (their own reconnect
+        // included), holding this screen on them again.
+        final pinLeft = state.pinnedId == e.participant.identity;
+        state = state.copyWith(raisedHands: hands, clearPin: pinLeft);
       })
       ..on<TrackSubscribedEvent>((_) {
         // Someone who starts speaking after a language was chosen is kept
@@ -1317,6 +1302,57 @@ class RoomController extends StateNotifier<RoomState> {
         '${_reconnectWatchdog.timeout.inSeconds}s');
     _onDropped(describeDrop(DisconnectReason.reconnectAttemptsExceeded)!);
     unawaited(room.disconnect());
+  }
+
+  void _onDisconnected(RoomDisconnectedEvent e) {
+    if (_disposed) return;
+    _reconnectWatchdog.settled();
+    debugPrint('[neo-room] disconnected: ${e.reason}');
+    // Out of the meeting, however it happened. The controller lives on
+    // behind "The meeting has ended" (or a rejoin), and its heartbeat
+    // went on telling the server this phone was in the meeting — so
+    // other group calls skipped it as busy. A rejoin starts it again.
+    MeetingHeartbeat.instance.stop(slug);
+    // The host who ended it gets no "The meeting has ended" screen:
+    // they are leaving, and the screen closes behind them.
+    final drop = _endingForAll ? null : describeDrop(e.reason);
+    if (drop != null && (_wasIn || _autoRejoin.active)) {
+      if (e.reason == DisconnectReason.participantRemoved && signedOutReason != null) {
+        return unawaited(_removedOrSignedOut(drop));
+      }
+      return _onDropped(drop);
+    }
+    if (drop != null) {
+      // Never got in. join() reports the failure on its own screen,
+      // "Could not join" with Try again, which is the true story.
+      state = state.copyWith(phase: JoinPhase.failed, link: RoomLink.lost);
+      return;
+    }
+    // Left on purpose. No message: the meeting screen has already
+    // closed by now, so one would pop up over the home screen telling
+    // the person something they just did — seen on a real phone as
+    // "Disconnected from the meeting." after pressing Leave.
+    state = state.copyWith(phase: JoinPhase.failed, link: RoomLink.lost);
+  }
+
+  /// A disconnect as LiveKit would deliver it, in a meeting this phone had
+  /// joined.
+  @visibleForTesting
+  void receiveDisconnect(RoomDisconnectedEvent event) {
+    _wasIn = true;
+    _onDisconnected(event);
+  }
+
+  /// Removed from the meeting: by a host, or because this phone was signed
+  /// out. Ask which before saying. Until the answer the person sees the
+  /// meeting as it was; no answer means a host did it.
+  Future<void> _removedOrSignedOut(MeetingDrop removed) async {
+    String? message;
+    try {
+      message = await signedOutReason!();
+    } catch (_) {}
+    if (_disposed) return;
+    _onDropped(message == null ? removed : signedOutDrop(message));
   }
 
   /// The meeting ended under this person.
@@ -2521,7 +2557,11 @@ class RoomController extends StateNotifier<RoomState> {
 final roomControllerProvider =
     StateNotifierProvider.family.autoDispose<RoomController, RoomState, String>(
   (ref, slug) {
-    final controller = RoomController(api: ref.watch(apiProvider), slug: slug);
+    final controller = RoomController(
+      api: ref.watch(apiProvider),
+      slug: slug,
+      signedOutReason: () => ref.read(authProvider.notifier).signedOutReason(),
+    );
     unawaited(controller.join());
     return controller;
   },

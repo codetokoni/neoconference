@@ -1,7 +1,8 @@
 // src/app/api/cron/partner-totals/route.ts
 //
-// Nightly (vercel.json): stores each partner's finished days of prayer
-// totals (src/lib/partners/orgTotals.ts), so the organisation report reads a
+// Daily at 06:20 UTC (vercel.json), just after a UTC yesterday passes
+// GRACE_MS (6 h): stores each partner's finished days of prayer totals
+// (src/lib/partners/orgTotals.ts), so the organisation report reads a
 // month as thirty small records instead of every session in it. Fills any
 // day of the last 35 not stored yet; a day already stored is left alone, so
 // running it again does nothing more. Auth as the other crons.

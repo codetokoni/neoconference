@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { MicOff } from 'lucide-react';
 import { ParticipantEvent, Track, type Participant } from 'livekit-client';
@@ -16,6 +17,7 @@ import {
   getInitials,
 } from '@/lib/avatarColor';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
+import { requestSpotlight, useSpotlit } from '@/components/SpotlightOverlay';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -220,18 +222,18 @@ function MobileParticipantTileInner({
   }, [hasCam, trackSid]);
 
   /* ---------- host menu (long press) ---------- */
+  const spotlit = useSpotlit();
   const [menuOpen, setMenuOpen] = useState(false);
+  // The sheet is portaled out of the tile, so "outside the tile" is not
+  // "outside the menu": it must be checked against both.
+  const sheetRef = useRef<HTMLDivElement>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [menuError, setMenuError] = useState<string | null>(null);
 
-  // Spotlight is host-level. Fire the same dblclick that
-  // SpotlightOverlay listens for at the document level (see
-  // src/components/SpotlightOverlay.tsx) so this menu item is exactly
-  // equivalent to the double-tap gesture we already ship — no duplicate
-  // data-channel wiring, no drift.
+  // Spotlight is host-level: SpotlightOverlay does it (and broadcasts it),
+  // exactly as for the double tap below.
   const spotlightTarget = useCallback(() => {
-    if (!rootRef.current) return;
-    rootRef.current.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    requestSpotlight(participant.identity);
     onSpotlight?.(participant.identity);
     setMenuOpen(false);
   }, [onSpotlight, participant.identity]);
@@ -354,8 +356,8 @@ function MobileParticipantTileInner({
     const now = Date.now();
     if (now - lastTap.current < 300) {
       // double-tap — spotlight is a host-level action, so owner counts too.
-      if ((localIsHost || localIsOwner) && rootRef.current) {
-        rootRef.current.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      if (localIsHost || localIsOwner) {
+        requestSpotlight(participant.identity);
         onSpotlight?.(participant.identity);
       }
       lastTap.current = 0;
@@ -414,7 +416,13 @@ function MobileParticipantTileInner({
       if (e.key === 'Escape') setMenuOpen(false);
     };
     const onClick = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+      const t = e.target as Node;
+      // A tap in the sheet is not outside. Since the sheet moved out of the
+      // tile (#639) this closed it on the finger going down, before the
+      // item's click, so "Mute microphone" and every other item did
+      // nothing (2026-11-13). Taps on the dimmed backdrop close it there.
+      if (sheetRef.current?.contains(t)) return;
+      if (rootRef.current && !rootRef.current.contains(t)) {
         setMenuOpen(false);
       }
     };
@@ -619,32 +627,85 @@ function MobileParticipantTileInner({
         </span>
       </div>
 
-      {/* Long-press action menu. Full moderation surface so the host
-          never needs to leave the grid to promote, demote, or discipline
-          a participant. Grouped into sections: My view · For everyone ·
-          Role · Danger. Scrolls inside the tile when the tile is too
-          short to fit the full list. */}
-      {menuOpen && canOpenMenu && (
-        <div
-          className="absolute inset-0 z-20"
+      {/* The tile's menu button: holding the tile does the same, but
+          nobody finds a long press they were never told about. Its pointer
+          events stop here so they don't start the hold or the double tap. */}
+      {canOpenMenu && (
+        <button
+          type="button"
+          aria-label={`Options for ${displayName}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          className="absolute top-1 right-1 z-10 flex items-center justify-center rounded-full text-white"
           style={{
-            background: 'rgba(0,0,0,0.85)',
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)',
-            transition: 'opacity 150ms ease-out',
-            overflowY: 'auto',
-            paddingBlock: 8,
+            width: 28,
+            height: 28,
+            background: 'rgba(0,0,0,0.55)',
+            border: '0.5px solid rgba(255,255,255,0.2)',
+            fontSize: 16,
+            lineHeight: 1,
           }}
-          // Tap anywhere on the backdrop closes the menu — matches the
-          // native bottom-sheet gesture. Individual buttons stopPropagation
-          // via their own click handler (button clicks don't bubble to us
-          // because of the inner content wrapper's stopPropagation below).
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen(true);
+          }}
+        >
+          {String.fromCharCode(8942)}
+        </button>
+      )}
+
+      {/* The action menu: a sheet from the bottom of the screen, above
+          every tile, bar and panel. It used to open inside the tile,
+          clipped to it (a third of the screen wide in a 3-column grid) and
+          scrolling there. Portaled out, into the fullscreen element when
+          there is one (nothing outside it is drawn then). Grouped into
+          sections: My view · For everyone · Role · Danger. */}
+      {menuOpen && canOpenMenu && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={sheetRef}
+          className="fixed inset-0"
+          role="presentation"
+          style={{
+            zIndex: 1000,
+            background: 'rgba(0,0,0,0.55)',
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+          }}
+          // Tap outside the sheet closes it, as a native bottom sheet does.
           onClick={() => setMenuOpen(false)}
+          // React events from a portal still bubble to the tile: without
+          // these, taps in the sheet ran the tile's hold and double-tap
+          // (spotlight) handlers.
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onPointerMove={(e) => e.stopPropagation()}
+          onPointerCancel={(e) => e.stopPropagation()}
         >
           <div
-            className="flex flex-col items-center gap-1 px-2"
+            role="menu"
+            aria-label={`Options for ${displayName}`}
+            className="flex flex-col items-center gap-1 px-2 w-full"
+            style={{
+              maxWidth: 480,
+              maxHeight: '75dvh',
+              overflowY: 'auto',
+              background: 'rgba(17,17,24,0.97)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              borderTopLeftRadius: 18,
+              borderTopRightRadius: 18,
+              border: '0.5px solid rgba(255,255,255,0.08)',
+              paddingTop: 12,
+              paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
+            }}
             onClick={(e) => e.stopPropagation()}
           >
+            <span className="text-white font-medium truncate max-w-full px-2" style={{ fontSize: 14 }}>
+              {displayName}
+            </span>
             <MenuSection label="My view" />
             <MenuBtn
               label={isHiddenLocally ? 'Show on my screen' : 'Hide on my screen'}
@@ -656,7 +717,7 @@ function MobileParticipantTileInner({
               <>
                 <MenuSection label="For everyone" />
                 <MenuBtn
-                  label="Spotlight"
+                  label={spotlit === participant.identity ? "Remove spotlight" : "Spotlight for everyone"}
                   disabled={pending !== null}
                   onClick={spotlightTarget}
                 />
@@ -760,7 +821,8 @@ function MobileParticipantTileInner({
               Cancel
             </button>
           </div>
-        </div>
+        </div>,
+        document.fullscreenElement ?? document.body,
       )}
     </motion.div>
   );
@@ -775,10 +837,10 @@ function MenuSection({ label }: { label: string }) {
     <div
       style={{
         width: '100%',
-        maxWidth: 220,
-        marginTop: 6,
+        maxWidth: 360,
+        marginTop: 8,
         paddingLeft: 4,
-        fontSize: 9,
+        fontSize: 10,
         letterSpacing: '0.1em',
         textTransform: 'uppercase',
         color: 'rgba(255,255,255,0.42)',
@@ -812,9 +874,14 @@ function MenuBtn({
       onClick={onClick}
       disabled={disabled}
       className="rounded-lg font-medium"
+      // Sized for a finger now that the menu is a sheet, not the inside of
+      // a tile.
       style={{
-        padding: '6px 20px',
-        fontSize: 12,
+        width: '100%',
+        maxWidth: 360,
+        minHeight: 44,
+        padding: '10px 16px',
+        fontSize: 14,
         color: danger ? '#fca5a5' : '#fff',
         background: danger ? 'rgba(220,38,38,0.2)' : 'rgba(255,255,255,0.1)',
         border: `0.5px solid ${danger ? 'rgba(220,38,38,0.4)' : 'rgba(255,255,255,0.15)'}`,

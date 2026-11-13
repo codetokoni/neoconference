@@ -21,7 +21,7 @@ import { purgeAuditMonths } from "@/lib/admin/audit";
 import { listTickets, purgeTicketsClosedBefore } from "@/lib/support/tickets";
 import { purgeCommsLogBefore } from "@/lib/comms/forget";
 import { purgeRawActivityBefore } from "@/lib/activity";
-import { deleteBackup, getBackup, listBackups } from "@/lib/ops/backup";
+import { deleteBackup, getBackup, listBackups, newestRestorable } from "@/lib/ops/backup";
 
 export type PurgeCategory = Exclude<RetentionCategory, "accounts"> | "exports";
 
@@ -249,8 +249,11 @@ export const PURGES: PurgeDef[] = [
     find: async (days, now) => {
       const cutoff = cutoffFor(days, now);
       if (cutoff == null) return [];
-      return (await listBackups())
-        .filter((b) => b.createdAt < cutoff)
+      const all = await listBackups();
+      // However old, the newest complete snapshot stays: without it there is nothing to restore from.
+      const keep = newestRestorable(all)?.id;
+      return all
+        .filter((b) => b.createdAt < cutoff && b.id !== keep)
         .map((b) => ({ id: b.id, fingerprint: `${b.createdAt}:${b.sha256}`, bytes: b.bytes, view: { kind: b.kind, createdAt: b.createdAt, keys: b.keyCount, size: b.bytes } }));
     },
     remove: async (records) => {
@@ -258,7 +261,10 @@ export const PURGES: PurgeDef[] = [
       // then the index entry. A file that would not delete keeps its entry, so the next purge retries it.
       let removed = 0;
       let bytes = 0;
+      // Checked again at apply: the snapshots that were newer than it may have gone since the preview.
+      const keep = newestRestorable(await listBackups())?.id;
       for (const r of records) {
+        if (r.id === keep) continue;
         const b = await getBackup(r.id);
         if (!b) continue;
         try {

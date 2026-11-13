@@ -52,11 +52,11 @@ export const JOBS: JobDef[] = [
   routeJob({
     name: "ops-health",
     label: "Service health checks",
-    description: "Probes every dependency, keeps the history, evaluates alert rules and starts or ends scheduled maintenance windows.",
+    description: "Probes every dependency, keeps the history, evaluates alert rules and starts or ends scheduled maintenance windows. Until it is done, it also moves older data onto the November 2026 retention periods, a little each run.",
     schedule: "*/5 * * * *",
     scheduleText: "Every 5 minutes",
     retrySafe: true,
-    retryNote: "Read-only probes; alerts de-duplicate, so running it again only refreshes the figures.",
+    retryNote: "Read-only probes; alerts de-duplicate, and the retention sweep only shortens what is still on an old period, so running it again only refreshes the figures.",
     route: "/api/cron/ops-health",
     load: () => import("@/app/api/cron/ops-health/route") as Promise<RouteModule>,
   }),
@@ -97,8 +97,10 @@ export const JOBS: JobDef[] = [
     name: "partner-totals",
     label: "Partner prayer totals",
     description: "Stores each partner website's finished days of prayer totals, which the organisation report adds up. Fills any missing day of the last 35.",
-    schedule: "20 1 * * *",
-    scheduleText: "Daily at 01:20 UTC",
+    // After 06:00 UTC: a UTC day is stored GRACE_MS (6 h) after it ends, so
+    // at 01:20 yesterday was not ready yet and waited a whole day more.
+    schedule: "20 6 * * *",
+    scheduleText: "Daily at 06:20 UTC",
     retrySafe: true,
     retryNote: "A day already stored is left alone, so a second run only stores days still missing.",
     route: "/api/cron/partner-totals",

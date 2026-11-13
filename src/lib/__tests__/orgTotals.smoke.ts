@@ -66,6 +66,7 @@ async function main() {
   const A = await import("../partners/attendance");
   const Rp = await import("../partners/reports");
   const O = await import("../partners/orgTotals");
+  const { kv } = await import("../kv");
   const { participantIdentity } = await import("../partners/join");
   const orgRoute = await import("../../app/api/partner/v1/reports/org/route");
   const cron = await import("../../app/api/cron/partner-totals/route");
@@ -251,6 +252,42 @@ async function main() {
     for (const p of [Rp.resolvePeriod({ period: "week" }, TZ, clock), Rp.resolvePeriod({ period: "month" }, TZ, clock)]) {
       assert.deepEqual(await O.orgReport(await integ(), await S.listZones(pc.id), p, clock), await reference(p, clock), `${p.kind} after the job`);
     }
+  });
+
+  await t("session detail is kept 90 days: a zone report reaching past it says so; stored day totals still count, an old missing day is never stored as zeros", async () => {
+    assert.equal(A.DETAIL_DAYS, 90);
+    const was = clock;
+    const oct = Rp.resolvePeriod({ period: "custom", from: "2026-10-19", to: "2026-10-21" }, TZ, clock);
+    const orgThen = await O.orgReport(await integ(), await S.listZones(pc.id), oct, clock);
+    assert.equal(orgThen.incomplete, undefined);
+
+    // 25 January 2027: more than 90 days after those sessions.
+    clock = iso("2027-01-25T12:00:00Z");
+    const zoneOld = await Rp.buildReport({ integration: await integ(), zones: [falf], period: oct, now: clock });
+    assert.equal(zoneOld.incomplete?.keptFrom, new RealDate(clock - 90 * 24 * 60 * MIN).toISOString());
+    assert.match(zoneOld.incomplete!.reason, /kept for 90 days/);
+    const recent = await Rp.buildReport({ integration: await integ(), zones: [falf], period: Rp.resolvePeriod({ period: "month" }, TZ, clock), now: clock });
+    assert.equal(recent.incomplete, undefined, "this month is all there");
+
+    // The organisation report reads October's stored day totals, unchanged.
+    const orgNow = await O.orgReport(await integ(), await S.listZones(pc.id), oct, clock);
+    assert.deepEqual(orgNow.summary, orgThen.summary);
+    assert.equal(orgNow.incomplete, undefined);
+    // September had no totals stored and its sessions would be gone: not counted, not stored.
+    const sept = Rp.resolvePeriod({ period: "custom", from: "2026-09-01", to: "2026-09-03" }, TZ, clock);
+    const before = dayKeys().length;
+    const orgSept = await O.orgReport(await integ(), await S.listZones(pc.id), sept, clock);
+    assert.equal(orgSept.incomplete?.unavailableDays, 3);
+    assert.equal(dayKeys().length, before, "no zeros stored for days that can no longer be worked out");
+
+    // A session closing now drops index entries for sessions past the kept detail.
+    const byEnd = A.AK.byEnd(pc.id, falf.zoneId);
+    assert.ok(((await kv.zrange(byEnd, 0, -1)) as string[]).length > 1);
+    await attend(falf, "jan1", clock - 20 * MIN, clock - 10 * MIN);
+    await close(falf, clock - 9 * MIN);
+    const left = (await kv.zrange(byEnd, 0, -1, { withScores: true })) as unknown[];
+    for (let i = 1; i < left.length; i += 2) assert.ok(Number(left[i]) >= clock - 90 * 24 * 60 * MIN - 10 * MIN, "only recent sessions indexed");
+    clock = was;
   });
 
   finished = true;

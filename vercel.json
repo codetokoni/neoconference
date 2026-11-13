@@ -30,7 +30,7 @@
     },
     {
       "path": "/api/cron/partner-totals",
-      "schedule": "20 1 * * *"
+      "schedule": "20 6 * * *"
     }
   ]
 }

@@ -14,6 +14,7 @@ import { createPortal } from 'react-dom';
 import { useRoomContext, useParticipants } from '@livekit/components-react';
 import { RoomEvent, type RemoteParticipant, type DataPacket_Kind } from "livekit-client";
 import { useIsMobile } from '@/hooks/useIsMobile';
+import { tileIdentityOf } from '@/components/conference/roomLayout';
 
 const TOPIC = 'neo-hand';
 const EXIT_MS = 260;
@@ -124,6 +125,13 @@ export default function RaiseHandButton({ isHost = false }: Props) {
 
   const resolveTile = (identity: string): HTMLElement | null => {
     if (typeof document === 'undefined') return null;
+    // The raised hand goes on that person's camera tile, found by identity.
+    // By name it went on the first tile of that name: when two people
+    // shared one, the hand could show on the one who had not raised it.
+    const own = Array.from(document.querySelectorAll<HTMLElement>('.lk-participant-tile')).filter(
+      (t) => tileIdentityOf(t) === identity,
+    );
+    if (own.length) return own.find((t) => t.getAttribute('data-neo-source') !== 'screen_share') ?? own[0];
     const p = participants.find((pp) => pp.identity === identity);
     const displayName = (p?.name && p.name.length > 0 ? p.name : p?.identity) || '';
     if (!displayName) return null;

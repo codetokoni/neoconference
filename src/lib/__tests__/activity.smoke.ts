@@ -317,8 +317,13 @@ async function main() {
     assert.equal(rec.body.ok, true, JSON.stringify(rec.body));
     await webhook({ event: "egress_ended", egressInfo: { egressId, roomName: slug, fileResults: [{ filename: `recordings/user_pro/${slug}/2026-10-09-10-00-00.mp4`, duration: "90000000000" }] } });
     tick(5 * 60_000);
-    const fin = await webhook({ event: "room_finished", room: { name: slug }, createdAt: String(BigInt(Math.floor(Date.now() / 1000))) });
+    // Delivered 30 s after LiveKit stamped it: the meeting ended then, not
+    // when the webhook arrived (createdAt is a bigint once parsed; it was
+    // read as invalid and replaced with the arrival time until 2026-11-06).
+    const finishedAt = Math.floor(Date.now() / 1000) - 30;
+    const fin = await webhook({ event: "room_finished", room: { name: slug }, createdAt: String(finishedAt) });
     assert.equal(fin.body.transitioned, true, JSON.stringify(fin.body));
+    assert.equal((await eventStore.bySlug(slug))!.endedAt, new Date(finishedAt * 1000).toISOString(), "LiveKit's time, not the arrival time");
 
     const free = await act.listUserActivity("user_free");
     assert.equal(free[0].type, "meeting.joined");

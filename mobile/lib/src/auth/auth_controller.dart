@@ -173,23 +173,45 @@ class AuthController extends StateNotifier<AuthState> with WidgetsBindingObserve
   Future<void> _ended(String sessionId) async {
     if (state.sessionId != sessionId || _ending == sessionId) return;
     _ending = sessionId;
-    String? message;
-    try {
-      final res = await _site
-          .get(Uri.parse('${Config.site}/api/auth/signed-out-reason')
-              .replace(queryParameters: {'session': sessionId}))
-          .timeout(const Duration(seconds: 8));
-      final body = jsonDecode(res.body);
-      if (body is Map && body['message'] is String) message = body['message'] as String;
-    } catch (_) {
-      // Signed out regardless.
-    }
+    // Without an answer: signed out regardless.
+    final message = await _reasonFor(sessionId);
     if (state.sessionId != sessionId) return;
+    _endedReason = message;
     await _forget();
     state = message == null
         ? state.copyWith(clearSession: true, busy: false)
         : state.copyWith(clearSession: true, busy: false, error: message);
   }
+
+  /// The site's words for why [sessionId] was signed out ("…signed in on
+  /// another device"), or null: still signed in, or no answer in time.
+  Future<String?> _reasonFor(String sessionId, {Duration wait = const Duration(seconds: 8)}) async {
+    try {
+      final res = await _site
+          .get(Uri.parse('${Config.site}/api/auth/signed-out-reason')
+              .replace(queryParameters: {'session': sessionId}))
+          .timeout(wait);
+      final body = jsonDecode(res.body);
+      if (body is Map && body['message'] is String) return body['message'] as String;
+    } catch (_) {}
+    return null;
+  }
+
+  /// Why this phone's session was signed out, if it was. A meeting asks
+  /// when it is removed: the server takes a signed-out device out of its
+  /// meetings (#624), and LiveKit reports that exactly as a host removing
+  /// the person, so the meeting said "A host took you out" to someone
+  /// whose account had signed in on another phone. Short wait: the person
+  /// is looking at the screen this decides.
+  Future<String?> signedOutReason() async {
+    final sessionId = state.sessionId;
+    // Already noticed here (coming back to the app can get there first).
+    if (sessionId == null) return _endedReason;
+    return _reasonFor(sessionId, wait: const Duration(seconds: 4));
+  }
+
+  /// What [_ended] was told, for a meeting that asks after it.
+  String? _endedReason;
 
   void _listenForCallback() {
     _linkSub = _links.uriLinkStream.listen((uri) {
@@ -375,6 +397,7 @@ class AuthController extends StateNotifier<AuthState> with WidgetsBindingObserve
     } catch (_) {
       // Signed in for this run even if the phone refuses to remember it.
     }
+    _endedReason = null;
     state = state.copyWith(
       sessionId: sessionId,
       displayName: name,

@@ -54,6 +54,10 @@ const base = {
   // As Redis: how many were actually there to remove.
   async srem(k, ...m) { const s = store.get(k) ?? sets(); let n = 0; m.forEach((x) => { if (s.delete(x)) n++; }); store.set(k, s); return n; },
   async smembers(k) { return [...(store.get(k) ?? [])].map(de); },
+  // HyperLogLog, exactly: a set of what was added. As Redis: 1 when the
+  // count changed; PFCOUNT over several keys counts their union.
+  async pfadd(k, ...m) { alive(k); const s = store.get(k) ?? sets(); const before = s.size; m.forEach((x) => s.add(String(x))); store.set(k, s); return s.size !== before ? 1 : 0; },
+  async pfcount(...ks) { const u = new Set(); for (const k of ks) if (alive(k)) for (const x of store.get(k)) u.add(x); return u.size; },
   async sismember(k, m) { return (store.get(k) ?? sets()).has(m) ? 1 : 0; },
   async incr(k) { const n = Number(store.get(k) ?? 0) + 1; store.set(k, n); return n; },
   async incrby(k, by) { const n = Number(store.get(k) ?? 0) + Number(by); store.set(k, n); return n; },
@@ -86,6 +90,7 @@ const base = {
   // the subscription indexes (src/lib/billing/subscriptions.ts).
   async zadd(k, ...entries) { const z = store.get(k) ?? new Map(); for (const e of entries) z.set(String(e.member), Number(e.score)); store.set(k, z); return entries.length; },
   async zrem(k, ...members) { const z = store.get(k) ?? new Map(); let n = 0; for (const m of members) if (z.delete(String(m))) n++; store.set(k, z); return n; },
+  async zremrangebyscore(k, min, max) { const z = store.get(k); if (!(z instanceof Map)) return 0; let n = 0; for (const [m, s] of [...z]) if (s >= Number(min) && s <= Number(max)) { z.delete(m); n++; } return n; },
   async zscore(k, m) { const z = store.get(k); return z?.has(String(m)) ? z.get(String(m)) : null; },
   async zcard(k) { return (store.get(k) ?? new Map()).size; },
   async zrange(k, a, b, opts = {}) {
@@ -133,6 +138,28 @@ const base = {
       hashes.delete(k);
       expires.delete(k);
       return 1;
+    }
+    if (name.startsWith("-- shorten-ttl:")) {
+      // src/lib/ops/retentionSweep.ts: keys with more than ARGV[1] ms left lose ARGV[2] ms, or go.
+      const to = Number(args[0]);
+      const delta = Number(args[1]);
+      let shortened = 0;
+      let removed = 0;
+      for (const k of keys) {
+        if (!alive(k) || !expires.has(k)) continue;
+        const left = expires.get(k) - Date.now();
+        if (left <= to) continue;
+        if (left - delta <= 0) {
+          store.delete(k);
+          expires.delete(k);
+          hashes.delete(k);
+          removed++;
+        } else {
+          expires.set(k, Date.now() + left - delta);
+          shortened++;
+        }
+      }
+      return [shortened, removed];
     }
     throw new Error(`kv stub: no EVAL for ${name}`);
   },

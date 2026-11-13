@@ -121,12 +121,17 @@ class NeoPill extends StatelessWidget {
             ),
             const SizedBox(width: NeoSpace.xs + 2),
           ],
-          Text(
-            label,
-            style: Theme.of(context)
-                .textTheme
-                .labelSmall
-                ?.copyWith(color: color, letterSpacing: 0.2),
+          // Shortened rather than overflowing on a narrow tile.
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context)
+                  .textTheme
+                  .labelSmall
+                  ?.copyWith(color: color, letterSpacing: 0.2),
+            ),
           ),
         ],
       ),

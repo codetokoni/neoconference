@@ -2,20 +2,23 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { VideoConference, useRoomContext } from '@livekit/components-react';
+import { useRoomContext } from '@livekit/components-react';
+import NeoVideoConference from './conference/NeoVideoConference';
 import MobileParticipantGrid from './conference/MobileParticipantGrid';
 import MobileControlBar from './conference/MobileControlBar';
 import RoomHeaderPill from './conference/RoomHeaderPill';
 import ReactionsRail from './conference/ReactionsRail';
+import { PHONE_STATUS_SLOT_ID } from './conference/phoneStatusSlot';
 
 /**
  * MobileVideoConference
  *
  * Phone (<= 640px): 3-column participant grid with header pill,
  * reactions rail, and glass control bar.
- * Desktop: stock <VideoConference /> unchanged.
+ * Desktop: LiveKit's <VideoConference /> layout, as NeoVideoConference
+ * (tiles that say whose they are, and a way back from an enlarged tile).
  */
-export default function MobileVideoConference() {
+export default function MobileVideoConference({ hideSelf = false }: { hideSelf?: boolean }) {
   const [isMobile, setIsMobile] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -29,7 +32,7 @@ export default function MobileVideoConference() {
   }, []);
 
   if (!mounted || !isMobile) {
-    return <VideoConference />;
+    return <NeoVideoConference hideSelf={hideSelf} />;
   }
 
   return <MobileLayout />;
@@ -54,6 +57,14 @@ function MobileLayout() {
   return (
     <div className="lk-video-conference nc-mobile-vc flex flex-col h-full">
       <RoomHeaderPill roomName={slug} />
+      {/* The status strip: the timer, CC, the transcript notice and the
+          spotlight put themselves here on a phone (phoneStatusSlot.ts),
+          in the layout instead of over the tiles. Empty, it takes no room. */}
+      <div
+        id={PHONE_STATUS_SLOT_ID}
+        className="flex flex-wrap items-center justify-center gap-2 px-3 empty:hidden"
+        style={{ paddingBottom: 6 }}
+      />
       <div className="flex-1 relative overflow-hidden">
         <MobileParticipantGrid slug={slug} />
         <ReactionsRail />

@@ -475,9 +475,22 @@ class _InMeetingState extends State<_InMeeting> {
               builder: (_) => CameraSheet(slug: widget.slug),
             ),
             // Everyone can pin; the sheet adds the host actions for a host.
+            // The sheet reads the person afresh from the room by identity,
+            // so a role changed while it is open shows, and it closes if
+            // they leave rather than offering actions for someone gone.
             openPersonMenu: (person) => neoSheet(
               context,
-              builder: (_) => PersonActionsSheet(slug: widget.slug, person: person),
+              builder: (_) => LivePersonSheet(
+                slug: widget.slug,
+                id: person.id,
+                lookup: (id, roomState) {
+                  for (final other in controller.room.remoteParticipants.values) {
+                    if (other.identity == id) return _person(other, roomState);
+                  }
+                  return null;
+                },
+                builder: (fresh) => PersonActionsSheet(slug: widget.slug, person: fresh),
+              ),
             ),
             unpin: () => controller.togglePin(null),
             audioOutputLabel: switch (AudioRoutes.instance.selectedOutput) {
@@ -610,7 +623,9 @@ class _InMeetingState extends State<_InMeeting> {
       id: participant.identity,
       name: name,
       video: track is VideoTrack
-          ? VideoTrackRenderer(track, fit: VideoViewFit.contain)
+          // Keyed by the track: a renderer never switches to someone
+          // else's track when tiles move, it moves with its own.
+          ? VideoTrackRenderer(track, key: ObjectKey(track), fit: VideoViewFit.contain)
           : null,
       muted: participant.isMuted,
       speaking: participant.isSpeaking,

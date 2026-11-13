@@ -38,6 +38,7 @@ export async function GET(req: NextRequest, { params }: { params: { zone: string
           return p;
         }),
         generatedAt: r.generatedAt,
+        ...(r.incomplete ? { incomplete: r.incomplete } : {}),
       };
     });
   } catch (e) {

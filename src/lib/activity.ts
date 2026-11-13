@@ -11,7 +11,7 @@
 //
 // Keys (days are UTC, YYYY-MM-DD):
 //
-//   neo:act:log:<day>    list    raw events, newest first        TTL retention (default 90 d)
+//   neo:act:log:<day>    list    raw events, newest first        TTL retention (default 30 d)
 //   neo:act:u:<uid>      list    one person's newest 500 events  TTL retention
 //   neo:act:hr:<day>     hash    "<type>|<HH>" -> count, "<type>|<HH>|sum" -> amount,
 //                                "<type>#<value>|<HH>" -> count split by one prop   TTL 400 d
@@ -33,6 +33,7 @@
 // abandoned rather than waited for.
 
 import { kv } from "@/lib/kv";
+import { scanKeys } from "@/lib/ops/util";
 import { ACTIVITY_TYPES } from "@/lib/activityTypes";
 
 export { ACTIVITY_TYPES, type AccountMetric } from "@/lib/activityTypes";
@@ -68,10 +69,15 @@ export const K = {
   since: "neo:act:since",
 };
 
-/** Raw-event retention in days: ACTIVITY_RETENTION_DAYS, 1–400, default 90. */
+/**
+ * Raw-event retention in days: ACTIVITY_RETENTION_DAYS, 1–400, default 30
+ * (90 until November 2026: about 10 MB a day of raw events by then). The
+ * daily counts behind the analytics charts are kept 400 days regardless.
+ */
+export const DEFAULT_RETENTION_DAYS = 30;
 export function retentionDays(): number {
   const n = Number(process.env.ACTIVITY_RETENTION_DAYS);
-  return Number.isFinite(n) && n >= 1 ? Math.min(400, Math.floor(n)) : 90;
+  return Number.isFinite(n) && n >= 1 ? Math.min(400, Math.floor(n)) : DEFAULT_RETENTION_DAYS;
 }
 
 export function utcDay(ts: number): string {
@@ -357,8 +363,8 @@ export async function listUserActivity(userId: string, opts: { limit?: number; b
 
 /**
  * Account deletion: the person's own list, their first-sight mark, and every
- * raw log line about them (as the user or the account charged) within
- * retention. Counters and the per-day active / sign-up sets keep the bare id
+ * raw log line about them (as the user or the account charged) in any
+ * day log still kept. Counters and the per-day active / sign-up sets keep the bare id
  * until their 400-day TTL — counts, not records of what anyone did.
  */
 export async function forgetUserActivity(userId: string): Promise<{ removed: number }> {
@@ -367,12 +373,14 @@ export async function forgetUserActivity(userId: string): Promise<{ removed: num
   const own = ((await kv.lrange(K.user(userId), 0, -1)) ?? []) as unknown[];
   removed += own.length;
   await Promise.all([kv.del(K.user(userId)), kv.srem(K.users, userId), kv.srem(K.listed, userId)]);
-  const now = Date.now();
-  for (const day of utcDaysBetween(now - retentionDays() * DAY_MS, now)) {
-    const lines = ((await kv.lrange(K.log(day), 0, -1)) ?? []) as unknown[];
+  // Every day log still there, not just those inside retention: a log's
+  // expiry starts at its first write on each server instance, so the day
+  // just past retention can still be there, and erasure must not miss it.
+  for (const key of (await scanKeys(K.log("*"), 1000)).keys) {
+    const lines = ((await kv.lrange(key, 0, -1)) ?? []) as unknown[];
     // Lines were written with JSON.stringify(event); LREM needs that exact string back.
     const mine = lines.map(parse).filter((e): e is ActivityEvent => !!e && (e.userId === userId || e.account === userId));
-    for (const e of mine) removed += Number(await kv.lrem(K.log(day), 0, JSON.stringify(e))) || 0;
+    for (const e of mine) removed += Number(await kv.lrem(key, 0, JSON.stringify(e))) || 0;
   }
   return { removed };
 }
