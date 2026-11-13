@@ -178,6 +178,15 @@ function MobileParticipantTileInner({
     }
   })();
   const targetIsElevated = targetRole === 'host' || targetRole === 'cohost';
+  // The owner's role is not anyone's to change; the token marks them `owner`.
+  const targetIsOwner = (() => {
+    if (!participant?.metadata) return false;
+    try {
+      return (JSON.parse(participant.metadata) as { owner?: unknown })?.owner === true;
+    } catch {
+      return false;
+    }
+  })();
 
   const camPub = participant.getTrackPublication(Track.Source.Camera);
   // FRS §5.x display-only hide. When the tile is either locally or
@@ -755,30 +764,34 @@ function MobileParticipantTileInner({
                     same way. */}
                 {(localIsHostRank || localIsOwner) && (
                   <>
-                    <MenuSection label="Role" />
-                    {/* The owner and hosts both appoint hosts (since
-                        2026-11-05); removing a host stays the owner's. */}
-                    <MenuBtn
-                      label="Make Host"
-                      disabled={pending !== null}
-                      loading={pending === 'role:host'}
-                      onClick={() => assignRole('host')}
-                    />
-                    <MenuBtn
-                      label="Make Moderator"
-                      disabled={pending !== null}
-                      loading={pending === 'role:moderator'}
-                      onClick={() => assignRole('moderator')}
-                    />
-                    {/* Only surfaces when the target actually holds an elevated
-                        role right now — otherwise there's nothing to demote. */}
-                    {targetIsElevated && (
-                      <MenuBtn
-                        label="Demote to Participant"
-                        disabled={pending !== null}
-                        loading={pending === 'role:participant'}
-                        onClick={() => assignRole('participant')}
-                      />
+                    {!targetIsOwner && (
+                      <>
+                        <MenuSection label="Role" />
+                        {/* The owner and hosts both appoint hosts (since
+                            2026-11-05); removing a host stays the owner's. */}
+                        <MenuBtn
+                          label="Make Host"
+                          disabled={pending !== null}
+                          loading={pending === 'role:host'}
+                          onClick={() => assignRole('host')}
+                        />
+                        <MenuBtn
+                          label="Make Moderator"
+                          disabled={pending !== null}
+                          loading={pending === 'role:moderator'}
+                          onClick={() => assignRole('moderator')}
+                        />
+                        {/* Only surfaces when the target actually holds an elevated
+                            role right now — otherwise there's nothing to demote. */}
+                        {targetIsElevated && (
+                          <MenuBtn
+                            label="Demote to Participant"
+                            disabled={pending !== null}
+                            loading={pending === 'role:participant'}
+                            onClick={() => assignRole('participant')}
+                          />
+                        )}
+                      </>
                     )}
 
                     <MenuSection label="Danger" />

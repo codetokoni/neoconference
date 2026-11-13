@@ -76,6 +76,16 @@ export default function HostMenuOverlay({
       return null;
     }
   };
+  // The token marks the meeting's owner `owner`; nobody can change the
+  // owner's role, so the panel hides its Role items for them.
+  const isOwnerMeta = (metadata: string | undefined): boolean => {
+    if (!metadata) return false;
+    try {
+      return (JSON.parse(metadata) as { owner?: unknown })?.owner === true;
+    } catch {
+      return false;
+    }
+  };
   // Snapshot tiles (read at render time; tick triggers re-render).
   void tick;
   const tiles = typeof document !== 'undefined'
@@ -107,6 +117,7 @@ export default function HostMenuOverlay({
           isHost={isHost}
           roomRole={roomRole}
           targetRole={roleOf(openPerson.metadata)}
+          targetIsOwner={isOwnerMeta(openPerson.metadata)}
           slug={slug}
         />
       )}

@@ -460,7 +460,8 @@ export default function ParticipantsPanel({
                     </button>
                   ))}
 
-                {canRemoveOrPromote && (
+                {/* The owner's role is not anyone's to change. */}
+                {canRemoveOrPromote && roleOf(p) !== 'owner' && (
                   <>
                     {canMakeHost && (
                       <button
