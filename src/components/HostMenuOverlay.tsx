@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParticipants, useLocalParticipant } from '@livekit/components-react';
-import { HostTileMenu } from './HostTileMenu';
+import { HostTileMenu, HostTileMenuPanel, closeTileMenu, useOpenTileMenu } from './HostTileMenu';
 import { useIsMobile } from '@/hooks/useIsMobile';
 
 /**
@@ -20,6 +20,10 @@ import { useIsMobile } from '@/hooks/useIsMobile';
  * They used to be matched by display name, so two people with one name, or
  * one person on two devices, shared a single menu on the first such tile,
  * and a person's menu could land on their screen share instead.
+ *
+ * Only the ⋮ button lives in the tile. The open menu is drawn here, outside
+ * every tile, so it stays open while LiveKit rebuilds or pages that tile,
+ * and closes when the person leaves.
  */
 export default function HostMenuOverlay({
   isHost,
@@ -38,6 +42,13 @@ export default function HostMenuOverlay({
   // desktop kebab-menu portal on mobile to avoid double UI.
   const isMobile = useIsMobile();
   const [tick, setTick] = useState(0);
+  const openFor = useOpenTileMenu();
+  const openPerson = openFor ? participants.find((p) => p.identity === openFor) : undefined;
+
+  // Their menu goes when they leave the room, and only then.
+  useEffect(() => {
+    if (openFor && !openPerson) closeTileMenu();
+  }, [openFor, openPerson]);
 
   // Re-scan tiles whenever the DOM mutates (tiles get added/removed/paginated).
   useEffect(() => {
@@ -54,6 +65,17 @@ export default function HostMenuOverlay({
   if (isMobile) return null;
 
   const localIdentity = localParticipant?.identity || '';
+  const roleOf = (metadata: string | undefined): string | null => {
+    // The target's wire-format role from LiveKit metadata, so role items
+    // (e.g. Demote) show only when the target actually holds one.
+    if (!metadata) return null;
+    try {
+      const j = JSON.parse(metadata) as { role?: unknown };
+      return typeof j?.role === 'string' ? j.role : null;
+    } catch {
+      return null;
+    }
+  };
   // Snapshot tiles (read at render time; tick triggers re-render).
   void tick;
   const tiles = typeof document !== 'undefined'
@@ -71,32 +93,23 @@ export default function HostMenuOverlay({
         if (getComputedStyle(tile).position === 'static') {
           tile.style.position = 'relative';
         }
-        // Read target's wire-format role from LiveKit metadata so we
-        // can gate role-management items (e.g. Demote is only shown
-        // when the target actually holds an elevated role).
-        let targetRole: string | null = null;
-        if (p.metadata) {
-          try {
-            const j = JSON.parse(p.metadata) as { role?: unknown };
-            if (typeof j?.role === 'string') targetRole = j.role;
-          } catch {
-            // ignore
-          }
-        }
         return createPortal(
-          <HostTileMenu
-            key={p.identity}
-            participantIdentity={p.identity}
-            participantName={displayName}
-            isHost={isHost}
-            roomRole={roomRole}
-            targetRole={targetRole}
-            slug={slug}
-          />,
+          <HostTileMenu key={p.identity} participantIdentity={p.identity} participantName={displayName} />,
           tile,
           'host-tile-menu-' + p.identity,
         );
       })}
+      {openPerson && openPerson.identity !== localIdentity && (
+        <HostTileMenuPanel
+          key={openPerson.identity}
+          participantIdentity={openPerson.identity}
+          participantName={(openPerson.name || openPerson.identity || '').trim()}
+          isHost={isHost}
+          roomRole={roomRole}
+          targetRole={roleOf(openPerson.metadata)}
+          slug={slug}
+        />
+      )}
     </>
   );
 }
