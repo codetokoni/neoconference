@@ -23,6 +23,7 @@ export default function GroupActions({
   meId,
   capabilities,
   onChanged,
+  openCall = false,
 }: {
   groupId: string;
   groupName: string;
@@ -31,9 +32,11 @@ export default function GroupActions({
   capabilities: GroupCapabilities;
   /** A meeting was created or changed, with a line to show about it. */
   onChanged: (message: string) => void;
+  /** Open with the call picker showing (the dashboard's Call button). */
+  openCall?: boolean;
 }) {
   const [scheduling, setScheduling] = useState(false);
-  const [calling, setCalling] = useState(false);
+  const [calling, setCalling] = useState(openCall && capabilities.call);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<"start" | "call" | null>(null);
   const [err, setErr] = useState<string | null>(null);

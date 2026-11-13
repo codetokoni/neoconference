@@ -18,8 +18,13 @@ import PersonalRoomCard from './PersonalRoomCard';
 import RecurringRolesCard from './RecurringRolesCard';
 import UpcomingGroupMeetings from './UpcomingGroupMeetings';
 import DashboardTabs from '@/components/groups/DashboardTabs';
-import { listGroupsForUser } from '@/lib/groupStore';
+import { groupActor, groupCapabilities, listGroupsForUser, type GroupMember, type GroupSummary } from '@/lib/groupStore';
 import { upcomingForUser } from '@/lib/groupMeetings';
+import { getIdentity } from '@/lib/authz';
+import DashboardGroups, { type DashboardGroup } from './DashboardGroups';
+
+/** Partner zone meetings shown on the dashboard; the rest are counted. */
+const ZONES_SHOWN = 24;
 
 export const dynamic = 'force-dynamic';
 
@@ -35,21 +40,39 @@ export default async function DashboardPage() {
   // someone opened the phone.
   await maybeSweepMeetings();
 
-  const [user, events, upcoming] = await Promise.all([
+  // A KV blip in groups should cost the groups, not the dashboard.
+  const groupsP: Promise<GroupSummary[]> = listGroupsForUser(userId!).catch((err) => {
+    console.warn('[dashboard] groups failed', err);
+    return [];
+  });
+  const [user, events, groups, identity] = await Promise.all([
     currentUser(),
     eventStore.listReachableByOwner(userId!),
-    // Group meetings this person is invited to. A KV blip here should cost
-    // the list, not the dashboard.
-    listGroupsForUser(userId!)
-      .then((groups) => upcomingForUser(groups.map((g) => ({ id: g.group.id, name: g.group.name })), userId!, 8))
-      .catch((err) => {
-        console.warn('[dashboard] upcoming group meetings failed', err);
-        return [];
-      }),
+    groupsP,
+    getIdentity().catch(() => null),
   ]);
+  // Group meetings this person is invited to.
+  const upcoming = await upcomingForUser(groups.map((g) => ({ id: g.group.id, name: g.group.name })), userId!, 8).catch((err) => {
+    console.warn('[dashboard] upcoming group meetings failed', err);
+    return [];
+  });
+  const myGroups: DashboardGroup[] = groups.map((g) => {
+    const caps = groupCapabilities(
+      groupActor(
+        { userId: userId!, emails: identity?.emails ?? [], isPlatformAdmin: identity?.isPlatformAdmin ?? false },
+        { role: g.role } as GroupMember,
+      ),
+    );
+    return { id: g.group.id, name: g.group.name, memberCount: g.memberCount, canStart: caps.start, canCall: caps.call };
+  });
 
-  // Sort: most recently updated first.
-  const sorted = [...events].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+  // Sort: most recently updated first. A partner website's zone meetings
+  // (PrayerClouds makes one per zone, thousands, each open all the time)
+  // go in their own folded section: in "Your events" they buried the
+  // owner's own meetings (2026-11-13).
+  const all = [...events].sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+  const sorted = all.filter((e) => !e.partner);
+  const zones = all.filter((e) => e.partner);
 
   const totals = {
     events: sorted.length,
@@ -124,6 +147,7 @@ export default async function DashboardPage() {
               groupName: m.groupName,
             }))}
           />
+          <DashboardGroups groups={myGroups} />
           <PersonalRoomCard />
           <RecurringRolesCard />
         </div>
@@ -151,6 +175,25 @@ export default async function DashboardPage() {
             <EventsGrid events={sorted.map(toCardData)} />
           )}
         </div>
+
+        {zones.length > 0 ? (
+          <details className="mt-10 group/zones rounded-3xl border border-white/10 bg-white/[0.02] p-4 sm:p-5">
+            <summary className="cursor-pointer list-none flex items-baseline justify-between gap-3">
+              <span className="text-base font-semibold">
+                Partner zone meetings <span className="text-white/45 font-normal tabular-nums">({zones.length.toLocaleString('en')})</span>
+              </span>
+              <span className="text-xs text-white/50 group-open/zones:hidden">Show</span>
+              <span className="text-xs text-white/50 hidden group-open/zones:inline">Hide</span>
+            </summary>
+            <p className="mt-2 text-xs text-white/50">
+              One meeting per zone of your partner website, always open for its visitors. Not counted in the figures above.
+              {zones.length > ZONES_SHOWN ? ` Showing the ${ZONES_SHOWN} most recently active.` : ''}
+            </p>
+            <div className="mt-4">
+              <EventsGrid events={zones.slice(0, ZONES_SHOWN).map(toCardData)} />
+            </div>
+          </details>
+        ) : null}
       </div>
     </main>
   );

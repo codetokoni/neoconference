@@ -11,6 +11,7 @@
 // dashboard is a single tree and the selection is genuinely local.
 
 import Link from 'next/link';
+import EnterMeetingButton from '@/components/EnterMeetingButton';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { NeoEvent } from '@/types/event';
@@ -349,15 +350,17 @@ function EventCard({
           >
             Replay
           </Link>
-          <Link
-            href={'/' + ev.slug}
+          <EnterMeetingButton
+            eventId={ev.id}
+            slug={ev.slug}
+            livekitRoom={ev.livekitRoom}
+            state={ev.state}
+            label="Enter →"
             className={
-              'flex-1 text-center rounded-lg border border-cyan-300/25 bg-cyan-300/[0.08] text-cyan-100 px-3 py-2 hover:bg-cyan-300/[0.14] transition ' +
+              'flex-1 text-center rounded-lg border border-cyan-300/25 bg-cyan-300/[0.08] text-cyan-100 px-3 py-2 hover:bg-cyan-300/[0.14] transition disabled:opacity-60 ' +
               (selectMode ? 'opacity-60' : '')
             }
-          >
-            Open room →
-          </Link>
+          />
         </div>
       </div>
     </div>

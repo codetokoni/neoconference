@@ -152,6 +152,7 @@ export default function GroupView({
   chatUnread,
   initialTab,
   nextMeeting,
+  openCall = false,
 }: {
   group: Group;
   members: GroupMember[];
@@ -166,6 +167,8 @@ export default function GroupView({
   initialTab?: string;
   /** The soonest meeting this person is invited to, or the one on now. */
   nextMeeting: { slug: string; title: string; start: string; state: string } | null;
+  /** ?call=1 (the dashboard's Call): open with the call picker showing. */
+  openCall?: boolean;
 }) {
   const showSettings = capabilities.editSettings || capabilities.deleteGroup || capabilities.transferOwnership;
   // Members land in the chat; those who run the group, on its members.
@@ -227,6 +230,7 @@ export default function GroupView({
               meId={me.userId}
               capabilities={capabilities}
               onChanged={meetingsChanged}
+              openCall={openCall}
             />
             <CallAlertsButton compact />
           </div>
