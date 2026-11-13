@@ -3,7 +3,17 @@
 // Ringing people into group meetings, and the reminders before them.
 //
 // Storage (Vercel KV, in-memory fallback as elsewhere)
-//   neo:event:<eid>:calls   hash   userId -> { status, attempts, lastAttemptAt, ringId, kcSent }
+//   neo:event:<eid>:calls     hash   userId -> { status, attempts, lastAttemptAt, ringId, kcSent }
+//   neo:event:<eid>:ringinto  JSON   RingInto: people rung into a meeting
+//                                    that is not a group meeting (below)
+//
+// Ringing into any meeting (2026-11-13): a host can ring members of one of
+// their groups into a meeting that is on — their permanent room, a meeting
+// from their list — instead of starting a new group meeting. The meeting
+// stays what it was (no groupId, no groupMeeting: who may join is
+// unchanged); RingInto says which group the call comes from, who is calling
+// and whom. Everything below reads it wherever a group meeting would give
+// the group, the caller and the invitees.
 //
 // A ring round goes to everyone invited (the group as it is now, plus extras
 // and anyone added) except people who have joined, answered or declined, who
@@ -152,6 +162,43 @@ async function setCall(eid: string, uid: string, c: CallRecord): Promise<void> {
 
 const blank = (): CallRecord => ({ status: "missed", attempts: 0, lastAttemptAt: 0, ringId: "", kcSent: false });
 
+/** People rung into a meeting that is not a group meeting. */
+export interface RingInto {
+  /** The group the call comes from: its name and ring settings. */
+  groupId: string;
+  /** Who is calling (the latest to ring people in). */
+  callerId: string;
+  /** Everyone rung in so far, in the order they were added. */
+  userIds: string[];
+  updatedAt: number;
+}
+
+const ringIntoKey = (eid: string) => `neo:event:${eid}:ringinto`;
+/** As long as the call records that go with it are any use. */
+const RING_INTO_TTL_S = 2 * 24 * 60 * 60;
+const memRingInto = new Map<string, RingInto>();
+
+export async function getRingInto(eid: string): Promise<RingInto | null> {
+  if (!isKvConfigured()) return memRingInto.get(eid) ?? null;
+  const raw = await kv.get(ringIntoKey(eid));
+  const o = (typeof raw === "string" ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : raw) as Partial<RingInto> | null;
+  if (!o || typeof o.groupId !== "string" || typeof o.callerId !== "string" || !Array.isArray(o.userIds)) return null;
+  return { groupId: o.groupId, callerId: o.callerId, userIds: o.userIds.map(String), updatedAt: Number(o.updatedAt) || 0 };
+}
+
+async function setRingInto(eid: string, r: RingInto): Promise<void> {
+  if (!isKvConfigured()) {
+    memRingInto.set(eid, r);
+    return;
+  }
+  await kv.set(ringIntoKey(eid), JSON.stringify(r), { ex: RING_INTO_TTL_S });
+}
+
+/** Was this person rung into this (non-group) meeting? For their answer or decline. */
+export async function wasRungInto(eid: string, uid: string): Promise<boolean> {
+  return Boolean((await getRingInto(eid))?.userIds.includes(uid));
+}
+
 /* -------------------------------------------------------------------------- */
 /*  KingsChat (replaceable in tests)                                           */
 /* -------------------------------------------------------------------------- */
@@ -187,15 +234,27 @@ export function isOver(ev: NeoEvent): boolean {
  * made it — the call comes from them, and they have had the reminders.
  */
 async function ringable(ev: NeoEvent): Promise<string[]> {
-  const creator = ev.groupMeeting?.createdBy;
+  if (!ev.groupMeeting) {
+    // Rung into a meeting that is not a group meeting: exactly those people.
+    const r = await getRingInto(ev.id);
+    return r ? r.userIds.filter((u) => u !== r.callerId) : [];
+  }
+  const creator = ev.groupMeeting.createdBy;
   return (await inviteesOf(ev))
     .map((r) => r.userId)
     .filter((u): u is string => Boolean(u) && u !== creator);
 }
 
 async function meetingContext(ev: NeoEvent) {
+  if (!ev.groupMeeting) {
+    const r = await getRingInto(ev.id);
+    const group = r ? await getGroup(r.groupId) : null;
+    if (!r || !group) return null;
+    const caller = await getMember(group.id, r.callerId);
+    return { group, callerId: r.callerId, callerName: caller?.name || ev.ownerName || group.name };
+  }
   const group = ev.groupId ? await getGroup(ev.groupId) : null;
-  if (!group || !ev.groupMeeting) return null;
+  if (!group) return null;
   const creator = await getMember(group.id, ev.groupMeeting.createdBy);
   return {
     group,
@@ -394,6 +453,25 @@ export async function ringAgain(eid: string, userIds: string[], now: number = Da
     await setCall(eid, uid, { ...c, status: "missed", attempts: 0, joinedAt: undefined });
   }
   return ringAttempt(eid, { only: userIds, now, round: 1 });
+}
+
+/**
+ * Ring members of a group into a meeting that is on and is not a group
+ * meeting. They are added to whoever was rung in before (from this group or
+ * another; the latest caller and group name the call), and start over as
+ * Ring again does, so ringing someone a second time rings them now. The
+ * route checks who may (src/app/api/events/[id]/ring-in/route.ts).
+ */
+export async function ringIntoMeeting(
+  eid: string,
+  opts: { groupId: string; callerId: string; userIds: string[]; now?: number },
+): Promise<RingRound> {
+  const now = opts.now ?? Date.now();
+  const before = await getRingInto(eid);
+  const userIds = Array.from(new Set([...(before?.userIds ?? []), ...opts.userIds]));
+  await setRingInto(eid, { groupId: opts.groupId, callerId: opts.callerId, userIds, updatedAt: now });
+  // Ring again starts over anyone rung before and rings the rest for the first time.
+  return ringAgain(eid, opts.userIds, now);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -5,9 +5,11 @@
 // joined, declined, missed it or are busy in another meeting, how many rings
 // they have had, and "Ring again". Refreshes every 5 s, only while open.
 //
-// Renders nothing outside a group meeting or for anyone who may not see it.
+// Renders nothing outside a group meeting (or a meeting people were rung
+// into, RingIntoMeeting) or for anyone who may not see it.
 
 import { useCallback, useEffect, useState } from "react";
+import { CALLS_CHANGED } from "@/components/groups/RingIntoMeeting";
 
 type Status = "not_called" | "ringing" | "answered" | "joined" | "left" | "declined" | "missed" | "busy";
 
@@ -55,9 +57,17 @@ export default function GroupCallingPanel({ slug }: { slug: string }) {
     }
   }, [slug]);
 
-  // Learn once whether this panel applies here at all.
+  // Learn once whether this panel applies here at all, and again when people
+  // are rung into a meeting that is not a group meeting (RingIntoMeeting):
+  // until then it had no one to show.
   useEffect(() => {
     void load();
+    const again = () => {
+      void load();
+      setOpen(true);
+    };
+    window.addEventListener(CALLS_CHANGED, again);
+    return () => window.removeEventListener(CALLS_CHANGED, again);
   }, [load]);
 
   useEffect(() => {

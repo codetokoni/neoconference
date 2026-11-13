@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParticipants, useLocalParticipant } from '@livekit/components-react';
 import AddGroupParticipants from '@/components/groups/AddGroupParticipants';
 import GroupCallingPanel from '@/components/groups/GroupCallingPanel';
+import RingIntoMeeting from '@/components/groups/RingIntoMeeting';
 import AddRoomPeopleToGroup from '@/components/groups/AddRoomPeopleToGroup';
 import RoomAddToGroup from '@/components/groups/RoomAddToGroup';
 import { userIdOfIdentity } from '@/lib/roomPeople';
@@ -311,6 +312,8 @@ export default function ParticipantsPanel({
 
       {/* Group meetings only; it asks the server and shows nothing otherwise. */}
       {isHost && slug ? <AddGroupParticipants slug={slug} /> : null}
+      {/* Any other meeting: ring members of one of your groups into it. */}
+      {isHost && slug ? <RingIntoMeeting slug={slug} /> : null}
       {isHost && slug ? <GroupCallingPanel slug={slug} /> : null}
       {isHost && slug ? (
         <AddRoomPeopleToGroup

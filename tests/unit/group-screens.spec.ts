@@ -258,6 +258,17 @@ const API = {
   "/api/me/notifications": notifications,
   "/api/me/meetings": myReports,
   "/api/groups/g1/meetings": { slug: "neo-group-meeting" },
+  // GET and POST share the stub: the room asks what it may do, then rings.
+  "/api/events/neomeeting/ring-in": {
+    open: true,
+    groups: [
+      { id: "g1", name: "neomeeting", members: [{ userId: "user_a", name: "Ada" }, { userId: "user_b", name: longName }] },
+      { id: "g2", name: "hsmanagers", members: Array.from({ length: 30 }, (_, i) => ({ userId: `user_h${i}`, name: `Manager ${i + 1}` })) },
+    ],
+    rung: ["user_h0", "user_h1"],
+    busy: ["user_h2"],
+  },
+  "/api/events/ended-room/ring-in": { open: false, groups: [] },
 };
 
 /* -------------------------------------------------------------------------- */
@@ -281,6 +292,7 @@ const ENTRIES = [
   "src/app/dashboard/reports/page.tsx",
   "src/app/dashboard/DashboardGroups.tsx",
   "src/components/EnterMeetingButton.tsx",
+  "src/components/groups/RingIntoMeeting.tsx",
 ];
 let modules = "";
 
@@ -588,4 +600,29 @@ test("Enter meeting: an ended meeting is reopened and entered in one click", asy
   await expect(page.getByRole("link")).toHaveCount(0);
   await page.getByRole("button", { name: "Enter meeting →" }).click();
   await expect.poll(async () => (await callsOf(page)).map((c) => `${c.method} ${c.url}`)).toEqual(["POST /api/events/e1/start"]);
+});
+
+for (const width of [360, 1280]) {
+  test(`in the room, Call people in rings members of a chosen group into this meeting, at ${width}px`, async ({ page }) => {
+    const { errors } = await setup(page, width);
+    await render(page, "src/components/groups/RingIntoMeeting.tsx", { slug: "neomeeting" });
+    await page.getByRole("button", { name: "Call people in" }).click();
+    await page.getByLabel("From group").selectOption("g2");
+    await page.getByRole("button", { name: "Everyone in hsmanagers" }).click();
+    await expect(page.getByRole("button", { name: "Call 30 people" })).toBeVisible();
+    await expectNoSideScroll(page, `call people in @${width}`);
+    await expectLabelledButtons(page, `call people in @${width}`);
+    await page.screenshot({ path: `test-results/group-screens/ring-into-${width}.png`, fullPage: true });
+    await page.getByRole("button", { name: "Call 30 people" }).click();
+    await expect(page.getByRole("status")).toHaveText("Ringing 2 people. 1 is in another meeting and got a message instead.");
+    const post = (await callsOf(page)).find((c) => c.url === "/api/events/neomeeting/ring-in" && c.method === "POST")!;
+    expect(JSON.parse(post.body)).toEqual({ groupId: "g2", userIds: Array.from({ length: 30 }, (_, i) => `user_h${i}`) });
+    expect(errors).toEqual([]);
+  });
+}
+
+test("Call people in is not shown once the meeting is over", async ({ page }) => {
+  await setup(page, 1280);
+  await render(page, "src/components/groups/RingIntoMeeting.tsx", { slug: "ended-room" });
+  await expect(page.getByRole("button", { name: "Call people in" })).toHaveCount(0);
 });
