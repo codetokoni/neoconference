@@ -26,10 +26,10 @@ export default async function GroupPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; call?: string }>;
 }) {
   const { id } = await params;
-  const { tab } = await searchParams;
+  const { tab, call } = await searchParams;
   const { userId } = await auth();
   if (!userId) redirect(`/sign-in?redirect_url=${encodeURIComponent(`/dashboard/groups/${id}`)}`);
 
@@ -61,6 +61,7 @@ export default async function GroupPage({
       chatUnread={chatUnread}
       nextMeeting={next ? { slug: next.slug, title: next.title, start: next.start, state: next.state } : null}
       {...(tab ? { initialTab: tab } : {})}
+      openCall={call === "1"}
     />
   );
 }

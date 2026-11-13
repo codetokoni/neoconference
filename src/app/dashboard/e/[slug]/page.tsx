@@ -12,7 +12,7 @@ import { hasMeetingAdminPower } from "@/lib/roles";
 import { lastKnocks, stillWaiting } from "@/lib/waitingRoom";
 import { getMeetingParticipants } from "@/lib/meeting-roles";
 import EndEventButton from "./EndEventButton";
-import StartEventButton from "@/components/StartEventButton";
+import EnterMeetingButton from "@/components/EnterMeetingButton";
 import DeleteEventButton from "./DeleteEventButton";
 import RemoveRoleButton from "./RemoveRoleButton";
 import InviteSpeakers from "./InviteSpeakers";
@@ -98,7 +98,6 @@ export default async function EventAdminPage({
     (p) => p.role !== "owner"
   ).length;
   const videos = recordings.filter((r) => r.kind !== "transcript");
-  const liveOrWaiting = ev.state === "live" || ev.state === "waiting";
   // An always-open room is never over. It showed "Ended 24/9" beside LIVE —
   // a date left by the webhook before canEnd existed — and offered End
   // event, which for this room only disconnects everyone.
@@ -140,9 +139,15 @@ export default async function EventAdminPage({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link href={"/room/" + ev.livekitRoom + "?event=" + ev.slug} className="px-4 py-2 rounded-full bg-cyan-500 text-slate-950 font-medium hover:bg-cyan-400 transition">
-              {liveOrWaiting ? "Open room →" : "Start room →"}
-        </Link>
+            {/* One way in. An ended meeting is reopened and entered in the
+                same click; it was "Start room" beside "Restart event". */}
+            <EnterMeetingButton
+              eventId={ev.id}
+              slug={ev.slug}
+              livekitRoom={ev.livekitRoom}
+              state={ev.state}
+              className="px-4 py-2 rounded-full bg-cyan-500 text-slate-950 font-medium hover:bg-cyan-400 transition disabled:opacity-60"
+            />
             <Link href={"/e/" + ev.slug} className="px-4 py-2 rounded-full border border-slate-700 hover:border-cyan-400 hover:text-cyan-200 transition text-sm">
               Public page
             </Link>
@@ -153,18 +158,6 @@ export default async function EventAdminPage({
                 pinRequired={endNeedsPin(ev, {
                   isPlatformAdmin: await hasMeetingAdminPower(userId, user?.emailAddresses),
                 })}
-              />
-            ) : null}
-            {/* Restart flow — POST /start now accepts state=ended and flips
-                it back to live, so the owner can re-open an event they
-                wrapped up too early without creating a whole new one. */}
-            {ev.state === "ended" ? (
-              <StartEventButton
-                eventId={ev.id}
-                slug={ev.slug}
-                livekitRoom={ev.livekitRoom}
-                label="Restart event"
-                busyLabel="Restarting…"
               />
             ) : null}
           </div>

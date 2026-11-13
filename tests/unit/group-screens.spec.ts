@@ -257,6 +257,7 @@ const API = {
   "/api/groups/g1/messages": chat,
   "/api/me/notifications": notifications,
   "/api/me/meetings": myReports,
+  "/api/groups/g1/meetings": { slug: "neo-group-meeting" },
 };
 
 /* -------------------------------------------------------------------------- */
@@ -278,6 +279,8 @@ const ENTRIES = [
   "src/components/HeaderNav.tsx",
   "src/app/dashboard/groups/[id]/reports/[eid]/MeetingReportView.tsx",
   "src/app/dashboard/reports/page.tsx",
+  "src/app/dashboard/DashboardGroups.tsx",
+  "src/components/EnterMeetingButton.tsx",
 ];
 let modules = "";
 
@@ -521,4 +524,68 @@ test("the ring overlay is announced, Answer has focus, and Escape declines", asy
   const calls = await page.evaluate(() => (window as unknown as { __calls: Array<{ url: string; body: string }> }).__calls);
   const decline = calls.find((c) => c.url === "/api/events/meeting-1/call-response");
   expect(decline && JSON.parse(decline.body)).toEqual({ action: "decline", ringId: "r1" });
+});
+
+const callsOf = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __calls: Array<{ url: string; method: string; body: string }> }).__calls);
+
+test("the dashboard's Call opens a group with its call picker already showing", async ({ page }) => {
+  const { errors } = await setup(page, 1280);
+  await render(page, "src/app/dashboard/groups/[id]/GroupView.tsx", { ...groupProps, openCall: true });
+  await expect(page.getByRole("dialog", { name: "Private call" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("without it the group page opens as before, picker closed", async ({ page }) => {
+  await setup(page, 1280);
+  await render(page, "src/app/dashboard/groups/[id]/GroupView.tsx", groupProps);
+  await expect(page.getByRole("dialog", { name: "Private call" })).toHaveCount(0);
+});
+
+const dashGroups = [
+  { id: "g1", name: "neomeeting", memberCount: 12, canStart: true, canCall: true },
+  { id: "g2", name: "A group whose name goes on for rather a long time indeed", memberCount: 111, canStart: true, canCall: true },
+  { id: "g3", name: "Connect", memberCount: 3, canStart: false, canCall: false },
+];
+
+for (const width of WIDTHS) {
+  test(`"Your groups" on the dashboard at ${width}px: every group, its buttons, nothing off the side`, async ({ page }) => {
+    const { errors } = await setup(page, width);
+    await render(page, "src/app/dashboard/DashboardGroups.tsx", { groups: dashGroups });
+    await expect(page.getByRole("heading", { name: "Your groups" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start a meeting for neomeeting" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Call people in neomeeting" })).toHaveAttribute("href", "/dashboard/groups/g1?call=1");
+    // A member who may not start or call sees the group, not the buttons.
+    await expect(page.getByRole("link", { name: /^Connect/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start a meeting for Connect" })).toHaveCount(0);
+    await expectNoSideScroll(page, `your groups @${width}`);
+    await expectLabelledButtons(page, `your groups @${width}`);
+    await page.screenshot({ path: `test-results/group-screens/dashboard-groups-${width}.png` });
+    expect(errors).toEqual([]);
+  });
+}
+
+test("Start meeting on the dashboard starts the group's meeting now, as the group page's button does", async ({ page }) => {
+  await setup(page, 1280);
+  await render(page, "src/app/dashboard/DashboardGroups.tsx", { groups: dashGroups });
+  await page.getByRole("button", { name: "Start a meeting for neomeeting" }).click();
+  await expect.poll(async () => (await callsOf(page)).filter((c) => c.url === "/api/groups/g1/meetings").length).toBe(1);
+  const call = (await callsOf(page)).find((c) => c.url === "/api/groups/g1/meetings")!;
+  expect(call.method).toBe("POST");
+  expect(JSON.parse(call.body)).toMatchObject({ mode: "now", title: "neomeeting meeting" });
+});
+
+test("Enter meeting: a meeting that is on is a link into its room", async ({ page }) => {
+  await setup(page, 1280);
+  await render(page, "src/components/EnterMeetingButton.tsx", { eventId: "e1", slug: "neomeeting", livekitRoom: "neomeeting", state: "live", className: "x" });
+  await expect(page.getByRole("link", { name: "Enter meeting →" })).toHaveAttribute("href", "/room/neomeeting?event=neomeeting");
+  expect(await callsOf(page)).toEqual([]);
+});
+
+test("Enter meeting: an ended meeting is reopened and entered in one click", async ({ page }) => {
+  await setup(page, 1280);
+  await render(page, "src/components/EnterMeetingButton.tsx", { eventId: "e1", slug: "neomeeting", livekitRoom: "neomeeting", state: "ended", className: "x" });
+  await expect(page.getByRole("link")).toHaveCount(0);
+  await page.getByRole("button", { name: "Enter meeting →" }).click();
+  await expect.poll(async () => (await callsOf(page)).map((c) => `${c.method} ${c.url}`)).toEqual(["POST /api/events/e1/start"]);
 });
