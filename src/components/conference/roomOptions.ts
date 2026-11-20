@@ -18,11 +18,21 @@
 // Video keeps flowing while the tab is in the background
 // (pauseVideoInBackground: false), so the floating video window (MeetingPiP)
 // never freezes when you switch away to another tab or app.
+//
+// Each tile's video is asked for at the tile's size on the page
+// (pixelDensity: 1), not at the screen's extra sharpness. LiveKit's default
+// doubles it on screens denser than 2x, which are phones: a phone's 3-column
+// tiles then asked for a bigger layer than they show. Measured on 2026-11-20
+// (a local LiveKit, 50 cameras, a 390-px-wide phone at 3x): before #654 the
+// phone received 65 Mbps; with adaptiveStream 11.5 Mbps; with this as well
+// about 5.6 Mbps, for small tiles a little softer. Computers (2x or less)
+// already asked at 1, so nothing changes there; screen shares are sent in one
+// quality, so slides stay sharp.
 
 import type { RoomOptions } from "livekit-client";
 
 export const ROOM_OPTIONS: RoomOptions = {
-  adaptiveStream: { pauseVideoInBackground: false },
+  adaptiveStream: { pauseVideoInBackground: false, pixelDensity: 1 },
   dynacast: true,
 };
 

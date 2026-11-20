@@ -18,8 +18,10 @@ const t = (name: string, fn: () => void) => {
   console.log("  ok  " + name);
 };
 
-t("both are on, and video does not pause in the background (the floating window)", () => {
-  assert.deepEqual(ROOM_OPTIONS.adaptiveStream, { pauseVideoInBackground: false });
+t("both are on, video does not pause in the background (the floating window), and tiles are asked for at their size", () => {
+  // pixelDensity 1: a phone's tiles at the size shown, not doubled for its
+  // dense screen (half the video in the 2026-11-20 bench test).
+  assert.deepEqual(ROOM_OPTIONS.adaptiveStream, { pauseVideoInBackground: false, pixelDensity: 1 });
   assert.equal(ROOM_OPTIONS.dynacast, true);
 });
 
