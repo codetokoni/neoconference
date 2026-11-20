@@ -54,6 +54,7 @@ const STUBS: Record<string, string> = {
       useUser: function () { return { isLoaded: true, isSignedIn: true, user: { id: "user_me" } }; },
       // The sign-in form's Clerk: window.__signIn is the resource, calls recorded in window.__clerkCalls.
       useSignIn: function () { return { isLoaded: true, signIn: window.__signIn, setActive: function (a) { window.__clerkCalls.push(["setActive", a]); return Promise.resolve(); } }; },
+      useSignUp: function () { return { isLoaded: true, signUp: window.__signUp, setActive: function (a) { window.__clerkCalls.push(["setActive", a]); return Promise.resolve(); } }; },
     };`,
   "lucide-react": `
     var R = window.React;
@@ -296,6 +297,7 @@ const ENTRIES = [
   "src/components/EnterMeetingButton.tsx",
   "src/components/groups/RingIntoMeeting.tsx",
   "src/app/sign-in/[[...sign-in]]/EmailPasswordSignIn.tsx",
+  "src/app/sign-up/[[...sign-up]]/EmailPasswordSignUp.tsx",
 ];
 let modules = "";
 
@@ -709,4 +711,67 @@ test("sign-in: a plain sign-in goes straight in", async ({ page }) => {
   await signInWith(page, "complete");
   await expect.poll(() => navs(page)).toEqual(["/"]);
   expect(await clerkCalls(page)).toContainEqual(["setActive", { session: "sess_1" }]);
+});
+
+/** The sign-up form against a stand-in for Clerk's sign-up, answering as `outcome` says. */
+async function signUpWith(page: Page, outcome: "email_taken" | "code" | "missing") {
+  await page.evaluate((outcome) => {
+    const w = window as unknown as { __clerkCalls: unknown[][]; __signUp: unknown };
+    w.__clerkCalls = [];
+    const clerkError = (code: string, message: string) => Object.assign(new Error(message), { errors: [{ code, message, longMessage: message }] });
+    const rec = (name: string, a?: unknown) => w.__clerkCalls.push([name, a]);
+    w.__signUp = {
+      create: async (a: unknown) => {
+        rec("create", a);
+        if (outcome === "email_taken") throw clerkError("form_identifier_exists", "That email address is taken. Please try another.");
+        return {};
+      },
+      prepareEmailAddressVerification: async (a: unknown) => rec("prepare", a),
+      attemptEmailAddressVerification: async (a: { code: string }) => {
+        rec("attempt", a);
+        if (a.code !== "654321") throw clerkError("form_code_incorrect", "Incorrect code");
+        if (outcome === "missing") return { status: "missing_requirements", missingFields: ["username"] };
+        return { status: "complete", createdSessionId: "sess_new" };
+      },
+    };
+  }, outcome);
+  await render(page, "src/app/sign-up/[[...sign-up]]/EmailPasswordSignUp.tsx", {});
+  await page.getByLabel("Email address").fill("ada@example.com");
+  await page.getByPlaceholder("At least 8 characters").fill("secret-123");
+  await page.getByPlaceholder("Re-enter your password").fill("secret-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+}
+
+test("sign-up: an email that already has an account is told to sign in instead, KingsChat included", async ({ page }) => {
+  await setup(page, 360);
+  await signUpWith(page, "email_taken");
+  await expect(page.getByRole("alert")).toContainText("This email already has an account. Sign in instead");
+  await expect(page.getByRole("alert")).toContainText("Continue with KingsChat");
+});
+
+test("sign-up: the email code can be sent again; a wrong one is refused; the right one signs you in", async ({ page }) => {
+  const { errors } = await setup(page, 360);
+  await signUpWith(page, "code");
+  await expect(page.getByRole("heading", { name: "Verify your email" })).toBeVisible();
+  await page.getByLabel("Verification code").fill("111111");
+  await page.getByRole("button", { name: "Verify and continue" }).click();
+  await expect(page.getByRole("alert")).toContainText("That code isn’t right");
+  await page.getByRole("button", { name: "Send a new code" }).click();
+  await expect(page.getByRole("status")).toContainText("A new code is on its way");
+  await expectNoSideScroll(page, "sign-up code @360");
+  await page.getByLabel("Verification code").fill("654321");
+  await page.getByRole("button", { name: "Verify and continue" }).click();
+  await expect.poll(() => navs(page)).toEqual(["/"]);
+  const calls = await clerkCalls(page);
+  expect(calls.filter((c) => c[0] === "prepare").length).toBe(2);
+  expect(calls).toContainEqual(["setActive", { session: "sess_new" }]);
+  expect(errors).toEqual([]);
+});
+
+test("sign-up: if the account still needs something after the code, it says what, not just 'incomplete'", async ({ page }) => {
+  await setup(page, 360);
+  await signUpWith(page, "missing");
+  await page.getByLabel("Verification code").fill("654321");
+  await page.getByRole("button", { name: "Verify and continue" }).click();
+  await expect(page.getByRole("alert")).toContainText("the account also needs a username");
 });
