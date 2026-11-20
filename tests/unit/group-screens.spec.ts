@@ -52,6 +52,8 @@ const STUBS: Record<string, string> = {
     module.exports = {
       useAuth: function () { return { isLoaded: true, isSignedIn: true, userId: "user_me" }; },
       useUser: function () { return { isLoaded: true, isSignedIn: true, user: { id: "user_me" } }; },
+      // The sign-in form's Clerk: window.__signIn is the resource, calls recorded in window.__clerkCalls.
+      useSignIn: function () { return { isLoaded: true, signIn: window.__signIn, setActive: function (a) { window.__clerkCalls.push(["setActive", a]); return Promise.resolve(); } }; },
     };`,
   "lucide-react": `
     var R = window.React;
@@ -293,6 +295,7 @@ const ENTRIES = [
   "src/app/dashboard/DashboardGroups.tsx",
   "src/components/EnterMeetingButton.tsx",
   "src/components/groups/RingIntoMeeting.tsx",
+  "src/app/sign-in/[[...sign-in]]/EmailPasswordSignIn.tsx",
 ];
 let modules = "";
 
@@ -625,4 +628,85 @@ test("Call people in is not shown once the meeting is over", async ({ page }) =>
   await setup(page, 1280);
   await render(page, "src/components/groups/RingIntoMeeting.tsx", { slug: "ended-room" });
   await expect(page.getByRole("button", { name: "Call people in" })).toHaveCount(0);
+});
+
+/**
+ * The email-and-password sign-in against a stand-in for Clerk's sign-in:
+ * `create` answers as `outcome` says. Calls land in window.__clerkCalls.
+ */
+async function signInWith(page: Page, outcome: "wrong_password" | "no_password" | "needs_code" | "complete") {
+  await page.evaluate((outcome) => {
+    const w = window as unknown as { __clerkCalls: unknown[][]; __signIn: unknown };
+    w.__clerkCalls = [];
+    const clerkError = (code: string, message: string) => Object.assign(new Error(message), { errors: [{ code, message, longMessage: message }] });
+    const rec = (name: string, a?: unknown) => w.__clerkCalls.push([name, a]);
+    w.__signIn = {
+      create: async (a: unknown) => {
+        rec("create", a);
+        if (outcome === "wrong_password") throw clerkError("form_password_incorrect", "Password is incorrect. Try again, or use another method.");
+        if (outcome === "no_password") throw clerkError("strategy_for_user_invalid", "Verification strategy is not valid for this account.");
+        if (outcome === "needs_code")
+          return { status: "needs_second_factor", supportedSecondFactors: [{ strategy: "email_code", emailAddressId: "idn_1", safeIdentifier: "ada@example.com" }] };
+        return { status: "complete", createdSessionId: "sess_1" };
+      },
+      prepareSecondFactor: async (a: unknown) => rec("prepareSecondFactor", a),
+      attemptSecondFactor: async (a: { code: string }) => {
+        rec("attemptSecondFactor", a);
+        if (a.code !== "123456") throw clerkError("form_code_incorrect", "Incorrect code");
+        return { status: "complete", createdSessionId: "sess_2" };
+      },
+    };
+  }, outcome);
+  await render(page, "src/app/sign-in/[[...sign-in]]/EmailPasswordSignIn.tsx", {});
+  await page.getByLabel("Email address").fill("ada@example.com");
+  await page.getByPlaceholder("Enter your password").fill("secret-1");
+  await page.getByRole("button", { name: "Sign in" }).click();
+}
+const clerkCalls = (page: Page) => page.evaluate(() => (window as unknown as { __clerkCalls: unknown[][] }).__clerkCalls);
+const navs = (page: Page) => page.evaluate(() => (window as unknown as { __nav: string[] }).__nav);
+
+test("sign-in: a wrong password says what to do, KingsChat included, not Clerk's words", async ({ page }) => {
+  await setup(page, 360);
+  await signInWith(page, "wrong_password");
+  await expect(page.getByRole("alert")).toContainText("That password isn’t right");
+  await expect(page.getByRole("alert")).toContainText("Forgot password?");
+  await expect(page.getByRole("alert")).toContainText("Continue with KingsChat");
+});
+
+test("sign-in: an account with no password (made with KingsChat) is told to use KingsChat", async ({ page }) => {
+  await setup(page, 360);
+  await signInWith(page, "no_password");
+  await expect(page.getByRole("alert")).toHaveText("This account doesn’t use a password: sign in with “Continue with KingsChat” above (or Neoemail).");
+});
+
+test("sign-in: when Clerk asks for a code, it is sent, typed in and the person is signed in", async ({ page }) => {
+  const { errors } = await setup(page, 360);
+  await signInWith(page, "needs_code");
+  await expect(page.getByRole("heading", { name: "Enter your sign-in code" })).toBeVisible();
+  await expect(page.getByText("We sent a code to a••@example.com.")).toBeVisible();
+  expect(await clerkCalls(page)).toContainEqual(["prepareSecondFactor", { strategy: "email_code", emailAddressId: "idn_1" }]);
+  await expectNoSideScroll(page, "sign-in code @360");
+
+  // A wrong code says so; a new code can be asked for.
+  await page.getByLabel("Code").fill("000000");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("alert")).toContainText("That code isn’t right");
+  await page.getByRole("button", { name: "Send a new code" }).click();
+  await expect(page.getByRole("status")).toHaveText("A new code is on its way.");
+
+  await page.getByLabel("Code").fill("123456");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect.poll(() => navs(page)).toEqual(["/"]);
+  const calls = await clerkCalls(page);
+  expect(calls).toContainEqual(["attemptSecondFactor", { strategy: "email_code", code: "123456" }]);
+  expect(calls).toContainEqual(["setActive", { session: "sess_2" }]);
+  expect(calls.filter((c) => c[0] === "prepareSecondFactor").length).toBe(2);
+  expect(errors).toEqual([]);
+});
+
+test("sign-in: a plain sign-in goes straight in", async ({ page }) => {
+  await setup(page, 1280);
+  await signInWith(page, "complete");
+  await expect.poll(() => navs(page)).toEqual(["/"]);
+  expect(await clerkCalls(page)).toContainEqual(["setActive", { session: "sess_1" }]);
 });
