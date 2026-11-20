@@ -82,6 +82,31 @@ const PAID = {
     assert.equal(g.__users.user_email.metadata?.meetingsCreated, 3);
   });
 
+  await t("a new person with a three-letter KingsChat handle gets an account (Clerk wants 4 to 64 characters)", async () => {
+    // Production, 2026-11-20: "Username must be between 4 and 64 characters
+    // long." twice in ten seconds, and the person could not sign in at all.
+    g.__users = {};
+    profile = { id: "5150", username: "ade" };
+    const res = await signIn();
+    assert.equal(res.ok, true, JSON.stringify(res));
+    const [made] = Object.values(g.__users) as Array<StubUser & { username?: string }>;
+    assert.equal(made.username, "ade_kc");
+    assert.equal(made.externalId, "kc:5150");
+    assert.equal((made.metadata?.kingschat as { username?: string })?.username, "ade", "the real handle is kept");
+  });
+
+  await t("usernames: a handle as it is, a short one lengthened, none at all from the KC id", async () => {
+    const { clerkUsernameFor } = await import("../kc-signin");
+    assert.equal(clerkUsernameFor("pastor.matt", "42"), "pastormatt");
+    assert.equal(clerkUsernameFor("abcd", "42"), "abcd");
+    assert.equal(clerkUsernameFor("ab", "42"), "ab_kc");
+    assert.equal(clerkUsernameFor("a", "42"), "a_kc");
+    assert.equal(clerkUsernameFor("Ọlá", "42"), "l_kc", "letters Clerk refuses are dropped first");
+    assert.equal(clerkUsernameFor("", "5150"), "kc5150");
+    assert.equal(clerkUsernameFor(null, "7"), "kc70");
+    assert.equal(clerkUsernameFor("x".repeat(80), "42").length, 32);
+  });
+
   console.log(`\n${n} passed`);
 })().catch((err) => {
   console.error(err);

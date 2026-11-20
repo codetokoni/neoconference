@@ -50,7 +50,7 @@ function toUser(id) {
     id,
     firstName: u.first ?? null,
     lastName: u.last ?? null,
-    username: null,
+    username: u.username ?? null,
     imageUrl: "",
     publicMetadata,
     createdAt: u.createdAt ?? 0,
@@ -153,6 +153,24 @@ export async function clerkClient() {
         const u = toUser(id);
         if (!u) throw notFound();
         return u;
+      },
+      // As Clerk: a username must be 4 to 64 characters (a KingsChat handle
+      // of three was refused in production, 2026-11-20).
+      async createUser(params = {}) {
+        const name = params.username;
+        if (name != null && (name.length < 4 || name.length > 64)) {
+          const msg = "Username must be between 4 and 64 characters long.";
+          throw Object.assign(new Error("Unprocessable Entity"), {
+            status: 422,
+            clerkError: true,
+            errors: [{ code: "form_username_invalid_length", message: msg, longMessage: msg }],
+          });
+        }
+        const id = "user_" + Math.random().toString(36).slice(2, 10);
+        const u = { emails: params.emailAddress ?? [], externalId: params.externalId, first: params.firstName, last: params.lastName, username: name };
+        setPublicMetadata(u, params.publicMetadata);
+        users()[id] = u;
+        return toUser(id);
       },
       async getUserList(params = {}) {
         if (globalThis.__clerkListFails) throw new Error("clerk: unavailable (test)");

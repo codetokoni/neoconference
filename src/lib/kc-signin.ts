@@ -42,6 +42,20 @@ export function pick(flat: Record<string, string>, keys: string[]): string {
   return '';
 }
 
+/**
+ * The Clerk username for a new KingsChat account: the KC handle, kept to the
+ * characters Clerk allows. Clerk wants 4 to 64 characters, and a three-letter
+ * handle was refused outright ("Username must be between 4 and 64 characters
+ * long.", 2026-11-20), so the person could not sign in at all. A short one
+ * gets "_kc" added; none at all, "kc" and the KC id, at least four long.
+ */
+export function clerkUsernameFor(kcUsername: string | null | undefined, safeKcId: string): string {
+  const handle = (kcUsername ?? '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+  if (handle.length >= 4) return handle;
+  if (handle) return handle + '_kc';
+  return ('kc' + safeKcId).padEnd(4, '0');
+}
+
 export async function signInWithKcTokens(tokens: {
   accessToken: string;
   refreshToken?: string;
@@ -165,7 +179,7 @@ export async function signInWithKcTokens(tokens: {
     // If KC did give us a real email we of course use that; the
     // synthesis is fallback-only.
     const safeKcId = String(kcId).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24);
-    const usernameFallback = (kcUsername && kcUsername.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32)) || ('kc' + safeKcId);
+    const usernameFallback = clerkUsernameFor(kcUsername, safeKcId);
     // On a real domain we own. The first placeholder used kingschat.local,
     // and .local is a reserved name rather than an internet domain, so
     // Clerk refused it outright ("Email address must be a valid email
