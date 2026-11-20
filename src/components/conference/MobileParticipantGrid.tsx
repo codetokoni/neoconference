@@ -11,6 +11,7 @@ import {
 import { Track, type Participant, type TrackPublication } from 'livekit-client';
 import { MobileParticipantTile } from './MobileParticipantTile';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
+import { keepOrder, useKeptPlace } from './keptPlace';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -88,7 +89,13 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
   // so a room of 3 with 1 hidden looks exactly like a room of 2. Restoring
   // is done from the top-of-room "N hidden" chip.
   const { isHidden } = useHiddenVideos();
-  const participants = allParticipants.filter((p) => !isHidden(p.identity));
+  // In the order people were first seen, and the list keeps the reader's
+  // place: a connection restart drops everyone and adds them back, which
+  // used to throw a host taking the register back to the top (keptPlace.ts).
+  const seen = useRef(new Map<string, number>());
+  const participants = keepOrder(seen.current, allParticipants.filter((p) => !isHidden(p.identity)));
+  const { cols, aspect } = densityFor(participants.length);
+  const kept = useKeptPlace(cols + '|' + participants.map((p) => p.identity).join(','));
 
   // Screen-share subscription. useTracks lets us treat screen shares as a
   // separate source without polling participants for their track publications
@@ -176,10 +183,10 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
     );
   }
 
-  const { cols, aspect } = densityFor(participants.length);
-
   return (
     <div
+      ref={kept.ref}
+      {...kept.handlers}
       className="absolute inset-0 overflow-y-auto"
       style={{
         background: 'radial-gradient(ellipse at top, #0a1a24 0%, #000 60%)',
@@ -216,7 +223,7 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
       <LayoutGroup>
         <div className={`grid ${cols} gap-2 px-3 pb-4`}>
           {participants.map((p) => (
-            <div key={p.identity} ref={refCallback(p.identity)}>
+            <div key={p.identity} ref={refCallback(p.identity)} data-place={p.identity}>
               <MobileParticipantTile
                 participant={p}
                 localIsHost={localIsHost}
