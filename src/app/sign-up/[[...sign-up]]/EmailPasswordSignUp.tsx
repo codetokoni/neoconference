@@ -6,6 +6,7 @@ import { useSignUp } from '@clerk/nextjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import Link from 'next/link';
+import PasswordField from '@/components/PasswordField';
 import { BRAND } from "@/lib/brand";
 
 export default function EmailPasswordSignUp() {
@@ -19,8 +20,6 @@ export default function EmailPasswordSignUp() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [code, setCode] = useState('');
   const [pendingVerification, setPendingVerification] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -201,54 +200,25 @@ export default function EmailPasswordSignUp() {
         />
       </label>
 
-      <label className='flex flex-col gap-1 text-sm'>
-        <span className='font-medium'>Password</span>
-        <div className='relative'>
-          <input
-            type={showPassword ? 'text' : 'password'}
-            required
-            minLength={8}
-            autoComplete='new-password'
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className='w-full border rounded px-3 py-2 pr-16 focus:outline-none focus:ring-2 focus:ring-blue-500'
-            placeholder='At least 8 characters'
-          />
-          <button
-            type='button'
-            onClick={() => setShowPassword((s) => !s)}
-            className='absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:underline'
-          >
-            {showPassword ? 'Hide' : 'Show'}
-          </button>
-        </div>
-      </label>
+      <PasswordField
+        label='Password'
+        value={password}
+        onChange={setPassword}
+        autoComplete='new-password'
+        minLength={8}
+        placeholder='At least 8 characters'
+      />
 
-      <label className='flex flex-col gap-1 text-sm'>
-        <span className='font-medium'>Confirm password</span>
-        <div className='relative'>
-          <input
-            type={showConfirmPassword ? 'text' : 'password'}
-            required
-            minLength={8}
-            autoComplete='new-password'
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            className={'w-full border rounded px-3 py-2 pr-16 focus:outline-none focus:ring-2 ' + (confirmPassword && password !== confirmPassword ? 'border-red-400 focus:ring-red-500' : 'focus:ring-blue-500')}
-            placeholder='Re-enter your password'
-          />
-          <button
-            type='button'
-            onClick={() => setShowConfirmPassword((s) => !s)}
-            className='absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:underline'
-          >
-            {showConfirmPassword ? 'Hide' : 'Show'}
-          </button>
-        </div>
-        {confirmPassword && password !== confirmPassword && (
-          <span className='text-xs text-red-600'>Passwords do not match.</span>
-        )}
-      </label>
+      <PasswordField
+        label='Confirm password'
+        value={confirmPassword}
+        onChange={setConfirmPassword}
+        autoComplete='new-password'
+        minLength={8}
+        placeholder='Re-enter your password'
+        invalid={!!confirmPassword && password !== confirmPassword}
+        hint={confirmPassword && password !== confirmPassword ? 'Passwords do not match.' : null}
+      />
 
       {error && (
         <div role='alert' className='bg-red-100 text-red-800 text-sm px-3 py-2 rounded'>{error}</div>

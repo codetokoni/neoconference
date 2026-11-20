@@ -661,7 +661,7 @@ async function signInWith(page: Page, outcome: "wrong_password" | "no_password" 
   }, outcome);
   await render(page, "src/app/sign-in/[[...sign-in]]/EmailPasswordSignIn.tsx", {});
   await page.getByLabel("Email address").fill("ada@example.com");
-  await page.getByPlaceholder("Enter your password").fill("secret-1");
+  await page.getByLabel("Password", { exact: true }).fill("secret-1");
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 const clerkCalls = (page: Page) => page.evaluate(() => (window as unknown as { __clerkCalls: unknown[][] }).__clerkCalls);
@@ -737,8 +737,8 @@ async function signUpWith(page: Page, outcome: "email_taken" | "code" | "missing
   }, outcome);
   await render(page, "src/app/sign-up/[[...sign-up]]/EmailPasswordSignUp.tsx", {});
   await page.getByLabel("Email address").fill("ada@example.com");
-  await page.getByPlaceholder("At least 8 characters").fill("secret-123");
-  await page.getByPlaceholder("Re-enter your password").fill("secret-123");
+  await page.getByLabel("Password", { exact: true }).fill("secret-123");
+  await page.getByLabel("Confirm password", { exact: true }).fill("secret-123");
   await page.getByRole("button", { name: "Create account" }).click();
 }
 
@@ -774,4 +774,29 @@ test("sign-up: if the account still needs something after the code, it says what
   await page.getByLabel("Verification code").fill("654321");
   await page.getByRole("button", { name: "Verify and continue" }).click();
   await expect(page.getByRole("alert")).toContainText("the account also needs a username");
+});
+
+test("password boxes are named for what they are, and Show says what it shows and whether it is on", async ({ page }) => {
+  await setup(page, 360);
+  await page.evaluate(() => {
+    (window as unknown as { __signUp: unknown; __clerkCalls: unknown[] }).__signUp = {};
+    (window as unknown as { __clerkCalls: unknown[] }).__clerkCalls = [];
+  });
+  await render(page, "src/app/sign-up/[[...sign-up]]/EmailPasswordSignUp.tsx", {});
+  // Not "Password Show", as it was when the Show button sat inside the label.
+  const pw = page.getByRole("textbox", { name: "Password", exact: true });
+  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("type", "password");
+  const show = page.getByRole("button", { name: "Show password" });
+  await expect(show).toHaveAttribute("aria-pressed", "false");
+  await show.click();
+  await expect(page.getByRole("button", { name: "Hide password" })).toHaveAttribute("aria-pressed", "true");
+  await expect(pw).toHaveAttribute("type", "text");
+  await expect(page.getByRole("button", { name: "Show confirm password" })).toBeVisible();
+
+  // A mismatch is announced on the box itself.
+  await page.getByLabel("Password", { exact: true }).fill("secret-123");
+  await page.getByLabel("Confirm password", { exact: true }).fill("secret-12");
+  const confirm = page.getByLabel("Confirm password", { exact: true });
+  await expect(confirm).toHaveAttribute("aria-invalid", "true");
+  await expect(confirm).toHaveAccessibleDescription("Passwords do not match.");
 });
