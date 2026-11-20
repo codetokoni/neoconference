@@ -37,7 +37,15 @@ function stripChecksumMiddlewares(s3: S3Client): void {
   }
 }
 
+// One client for the process. A new one per call read the SDK's
+// configuration again (os.homedir, where the nightly backup's "too many open
+// files" surfaced) and kept its own pool of connections open (2026-11-20).
+let client: S3Client | null = null;
+let clientFor = '';
+
 export function r2Client(): S3Client {
+  const key = [process.env.S3_ENDPOINT, process.env.S3_ACCESS_KEY, process.env.S3_REGION].join('|');
+  if (client && clientFor === key) return client;
   // Cast to allow the newer config flags on older type defs.
   const config: ConstructorParameters<typeof S3Client>[0] & {
     requestChecksumCalculation?: 'WHEN_REQUIRED' | 'WHEN_SUPPORTED';
@@ -55,6 +63,8 @@ export function r2Client(): S3Client {
   };
   const s3 = new S3Client(config);
   stripChecksumMiddlewares(s3);
+  client = s3;
+  clientFor = key;
   return s3;
 }
 

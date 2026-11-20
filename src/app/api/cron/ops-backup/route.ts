@@ -7,6 +7,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { cronRoute, isCronRequest } from "@/lib/ops/cron";
 import { applyRetention, createSnapshot } from "@/lib/ops/backup";
+import { openFilesText, step } from "@/lib/ops/openFiles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,12 +17,16 @@ async function handle(req: NextRequest) {
   if (!isCronRequest(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const by = req.headers.get("x-neo-job-actor") || "vercel-cron";
   const manual = (req.headers.get("x-neo-job-trigger") || "schedule") !== "schedule";
+  const filesAtStart = openFilesText();
   const snap = await createSnapshot({ kind: manual ? "manual" : "scheduled", by });
-  const removed = await applyRetention();
+  const removed = await step("removing old snapshots", () => applyRetention());
   const ok = !!snap.verify?.ok && !snap.truncated;
   return NextResponse.json(
     {
       ok,
+      // First: the run's summary keeps 300 characters. What the process had
+      // open, for the "too many open files" nights.
+      files: `${filesAtStart} at the start; ${openFilesText()} at the end`,
       id: snap.id,
       keys: snap.keyCount,
       bytes: snap.bytes,

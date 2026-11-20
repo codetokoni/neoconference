@@ -23,6 +23,11 @@ export async function putObject(key, body, contentType) {
   wrote("put", key);
   if (globalThis.__r2Down) throw new Error("R2 unavailable");
   if (globalThis.__r2PutFails) throw new Error("stub put failed");
+  // Out of file slots, as the nightly backup was (openFiles.ts): N times.
+  if (globalThis.__r2PutEmfile > 0) {
+    globalThis.__r2PutEmfile--;
+    throw Object.assign(new Error("A system error occurred: uv_os_homedir returned EMFILE (too many open files)"), { code: "ERR_SYSTEM_ERROR" });
+  }
   bytes().set(key, new Uint8Array(body));
   const list = objects().filter((o) => o.key !== key);
   list.push({ key, size: body.length, lastModified: new Date(Date.now()).toISOString(), body: Buffer.from(body), contentType, etag: '"' + (globalThis.__md5?.(body) ?? "x") + '"' });

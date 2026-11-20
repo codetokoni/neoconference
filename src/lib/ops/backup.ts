@@ -41,6 +41,7 @@ import { kv, kvRaw } from "@/lib/kv";
 import { deleteObject, getObjectBytes, isR2Configured, putObject } from "@/lib/r2";
 import { newId, parseJson, readHash, scanKeys } from "@/lib/ops/util";
 import { erasedUserIds } from "@/lib/dataGov/requests";
+import { retryOnTooManyOpenFiles, step } from "@/lib/ops/openFiles";
 
 export const SNAPSHOT_EXCLUDE = [
   "ratelimit:",
@@ -272,7 +273,8 @@ export async function createSnapshot(opts: {
   const createdAt = Date.now();
   const id = newId(opts.kind === "pre-restore" ? "pre" : "snap");
   const prefixes = opts.prefixes?.length ? opts.prefixes : null;
-  const scanned = await keysFor(prefixes, maxKeys);
+  // Each step says so if it fails, with what was open then (openFiles.ts).
+  const scanned = await step("listing the store's keys", () => keysFor(prefixes, maxKeys));
   let truncatedReason = scanned.truncated ? `more than ${maxKeys.toLocaleString("en")} keys` : undefined;
   const keys = scanned.keys.filter((k) => !isExcluded(k)).sort().slice(0, maxKeys);
   const header: SnapshotHeader = { format: "neo-kv-snapshot/1", id, createdAt, prefixes, excluded: SNAPSHOT_EXCLUDE };
@@ -285,7 +287,8 @@ export async function createSnapshot(opts: {
       truncatedReason = `took longer than ${Math.round(budgetMs / 1000)} s to read`;
       break;
     }
-    for (const e of await dumpKeys(keys.slice(i, i + 1000))) {
+    const part = await step(`reading keys ${i + 1}-${Math.min(i + 1000, keys.length)}`, () => dumpKeys(keys.slice(i, i + 1000)));
+    for (const e of part) {
       const line = (keyCount ? ",\n" : "\n") + JSON.stringify(e);
       if (out.rawBytes + Buffer.byteLength(line, "utf8") > maxRawBytes) {
         truncatedReason = `more than ${sizeText(maxRawBytes)} of data`;
@@ -314,7 +317,7 @@ export async function createSnapshot(opts: {
     prefixes,
     ...(opts.restoreOf ? { restoreOf: opts.restoreOf } : {}),
   };
-  await putObject(meta.r2Key, gz, "application/gzip");
+  await step("writing it to R2", () => retryOnTooManyOpenFiles(() => putObject(meta.r2Key, gz, "application/gzip")));
   await saveMeta(meta);
   return (await verifySnapshot(id)) ?? meta;
 }
@@ -364,7 +367,7 @@ async function readSnapshot(
 ): Promise<{ ok: true; file: SnapshotFile } | { ok: false; detail: string }> {
   let bytes: Uint8Array;
   try {
-    bytes = await getObjectBytes(meta.r2Key);
+    bytes = await retryOnTooManyOpenFiles(() => getObjectBytes(meta.r2Key));
   } catch (e) {
     return { ok: false, detail: `could not read from R2: ${e instanceof Error ? e.message : String(e)}` };
   }
