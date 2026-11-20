@@ -795,6 +795,20 @@ async function main() {
     assert.equal(refused.body.error, "snapshot_incomplete");
   });
 
+  await t("out of file slots once while writing to R2: retried, and the snapshot is stored; for good: the error says where", async () => {
+    const g3 = g as Stubbed & { __r2PutEmfile?: number };
+    g3.__r2PutEmfile = 1;
+    const once = await backup.createSnapshot({ kind: "manual", by: "test", prefixes: ["neo:event:"] });
+    assert.equal(once.verify?.ok, true);
+    assert.equal(g3.__r2PutEmfile, 0, "the retry used it up");
+    g3.__r2PutEmfile = 2;
+    await assert.rejects(backup.createSnapshot({ kind: "manual", by: "test", prefixes: ["neo:event:"] }), (e: Error) => {
+      assert.match(e.message, /^writing it to R2: .*EMFILE \(too many open files\) \(.+\)$/);
+      return true;
+    });
+    g3.__r2PutEmfile = 0;
+  });
+
   await t("a snapshot written on one line (before November 2026) still verifies and restores", async () => {
     const b = await backup.createSnapshot({ kind: "manual", by: "test", prefixes: ["neo:event:"] });
     const { gunzipSync, gzipSync } = await import("node:zlib");
