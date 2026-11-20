@@ -558,6 +558,20 @@ async function main() {
     assert.equal((await ruleCall("user_owner", R.run.POST, id)).body.detail.counts.already, 1);
   });
 
+  await t("KV memory alerts above 500 MB, not at 200 MB (the store levels off near 400 MB, owner 2026-11-20)", async () => {
+    const kv = (usedMemoryBytes: number) => ({
+      id: "kv", label: "KV", group: "data", status: "up" as const, latencyMs: 5, checkedAt: Date.now(),
+      detail: "", metrics: { keys: 1000, usedMemoryBytes }, lastFailureAt: null, lastFailure: null,
+    });
+    const kvOpen = async () => (await alerts.listAlerts({ status: "active" })).filter((a) => a.subject === "kv" && /KV memory/.test(a.title));
+    await alerts.evaluateAlerts([kv(420_000_000)], Date.now());
+    assert.equal((await kvOpen()).length, 0, "420 MB, where it is expected to settle, is not an alert");
+    await alerts.evaluateAlerts([kv(520_000_000)], Date.now());
+    const open = await kvOpen();
+    assert.equal(open.length, 1);
+    assert.match(open[0].message, /limit 500/);
+  });
+
   console.log("step-up and audit");
   await t("a rule that would reach more than the threshold asks for a fresh code to create, resume or run", async () => {
     for (let i = 0; i < 520; i++) g.__users[`user_bulk${i}`] = { emails: [`bulk${i}@example.com`] };

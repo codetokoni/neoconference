@@ -100,7 +100,11 @@ export const DEFAULT_RULES: AlertRule[] = [
   { id: "default_degraded", kind: "service_degraded", target: "*", threshold: 30, cooldownMinutes: 180, enabled: true, email: false, inApp: true },
   { id: "default_jobs", kind: "job_failures", target: "*", threshold: 2, cooldownMinutes: 360, enabled: true, email: true, inApp: true },
   { id: "default_payments", kind: "payment_failures", target: "*", threshold: 3, cooldownMinutes: 360, enabled: true, email: true, inApp: true },
-  { id: "default_kv_bytes", kind: "kv_bytes", target: "*", threshold: 200_000_000, cooldownMinutes: 1440, enabled: true, email: true, inApp: true },
+  // 500 MB (owner, 2026-11-20): with the retention trims (#648) the store was
+  // 170 MB in mid-November and levels off around 350–400 MB once partner
+  // session detail starts expiring in mid-January. 200 MB would have fired
+  // within weeks with nothing wrong; 500 MB still catches runaway growth.
+  { id: "default_kv_bytes", kind: "kv_bytes", target: "*", threshold: 500_000_000, cooldownMinutes: 1440, enabled: true, email: true, inApp: true },
   // 50 GB (owner, 2026-10-18): the 8 GB warning fired at 8.57 GB. Past R2's
   // free 10 GB storage costs ~$0.015/GB-month, so keep recordings and warn
   // only when it is worth a look. Admin → Ops alerts can still override it.
