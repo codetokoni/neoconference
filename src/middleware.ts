@@ -78,6 +78,11 @@ const isPublicRoute = createRouteMatcher([
   // Report a replay or shared recording, signed in or not. The route
   // rate limits per address and account (src/lib/content/reports.ts).
   '/api/content/reports',
+  // Feedback on a meeting (src/lib/meetingFeedback.ts), signed in or not:
+  // most people at a big meeting join as guests, and "I could not get in"
+  // comes from someone who never did. Bot check and rate limits in the route.
+  '/feedback/(.*)',
+  '/api/events/(.*)/feedback',
   '/replay/(.*)',
   '/api/qr/(.*)',
   '/api/livekit/token(.*)',

@@ -31,7 +31,9 @@ export type PushType =
   | "missed"
   | "mention"
   /** An administrator's announcement or service notice (src/lib/comms/sends.ts). */
-  | "announcement";
+  | "announcement"
+  /** Someone sent feedback on a meeting you own (src/lib/meetingFeedback.ts). */
+  | "feedback";
 
 /** What the service worker receives (public/sw.js). */
 export interface PushPayload {

@@ -48,6 +48,7 @@ import LiveTranslation from "@/components/LiveTranslation";
 import ReactionsBar from "@/components/ReactionsBar";
 import ChatPanel from "@/components/ChatPanel";
 import MeetingPiP from "@/components/MeetingPiP";
+import FeedbackButton from "@/components/feedback/FeedbackButton";
 import BackgroundContinuity from "@/components/BackgroundContinuity";
 import { HiddenVideosProvider } from "@/components/HiddenVideosProvider";
 import HiddenVideoOverlay from "@/components/HiddenVideoOverlay";
@@ -371,7 +372,9 @@ export default function RoomPage({ params }: { params: { name: string } }) {
       roomName={roomName}
       eventSlug={eventSlug}
       choices={choices}
-      onLeave={() => router.push("/")}
+      // Leaving (or being disconnected) asks how it went: a tap of the stars,
+      // and words if something did not work (src/lib/meetingFeedback.ts).
+      onLeave={() => router.push(eventSlug ? `/feedback/${encodeURIComponent(eventSlug)}?after=1` : "/")}
     />
   );
 }
@@ -1113,6 +1116,7 @@ function RoomContainer({
             <LinkIcon size={16} aria-hidden />
             {copied ? "Invite copied!" : "Invite"}
           </button>
+          <FeedbackButton eventSlug={eventSlug} className={TOOLBAR_BTN_CLASS} />
           <button
             type="button"
             data-room-chrome="true"

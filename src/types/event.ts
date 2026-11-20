@@ -255,6 +255,13 @@ export interface NeoEvent {
   waitForHost?: boolean;
 
   /**
+   * Where this meeting's feedback is sent besides the owner's notifications
+   * and support (src/lib/meetingFeedback.ts): a KingsChat handle and/or an
+   * email. Paid plans only; set on the manage page. Never sent to attendees.
+   */
+  feedbackContact?: { kcHandle?: string; email?: string };
+
+  /**
    * When true, an Android phone opening this meeting's link stays in the
    * browser: no "Get the NeoConference app" screen (components/
    * AndroidAppGate.tsx). For rooms people watch from a link on any phone.

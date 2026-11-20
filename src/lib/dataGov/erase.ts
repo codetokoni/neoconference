@@ -123,6 +123,10 @@ function eventSubkeys(id: string, slug: string): string[] {
     `neo:timer:${id}`,
     `neo:breakouts:${slug}`,
     `neo:invites:${id}`,
+    `neo:event:${id}:ringinto`,
+    `neo:event:${id}:feedback`,
+    `neo:event:${id}:feedback:told`,
+    `neo:event:${id}:feedback:since`,
   ];
 }
 
@@ -297,6 +301,25 @@ export const ERASE_STEPS: EraseStep[] = [
         });
         n += changed;
         if (changed && !dry) await rewriteList(k, next);
+      }
+      return n;
+    },
+  },
+  {
+    id: "meetingFeedback",
+    label: "Feedback the person sent on others' meetings",
+    covers: ["kv.meetingFeedback"],
+    run: async (p, dry) => {
+      let n = 0;
+      for (const k of await scanKeys("neo:event:*:feedback")) {
+        const raw = ((await kv.lrange(k, 0, -1)) ?? []) as unknown[];
+        const keep = raw.filter((r) => {
+          const e = parseJson<Record<string, unknown>>(r);
+          return !(e && (e.userId === p.uid || matchesId(p, e.email)));
+        });
+        const removed = raw.length - keep.length;
+        n += removed;
+        if (removed && !dry) await rewriteList(k, keep);
       }
       return n;
     },

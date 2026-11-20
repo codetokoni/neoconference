@@ -253,6 +253,14 @@ const myReports = {
   ],
 };
 
+const feedbackKinds = [
+  { key: "sound", label: "Sound" },
+  { key: "video", label: "Video" },
+  { key: "joining", label: "Getting in" },
+  { key: "dropping", label: "Keeps dropping out" },
+  { key: "other", label: "Something else" },
+];
+
 const API = {
   "/api/groups/g1/meetings?scope=upcoming": { items: [meetingItem(1, "live", NOW - 600_000), meetingItem(0, "scheduled", NOW + 600_000), meetingItem(2, "scheduled", NOW + 86_400_000)], nextCursor: null },
   "/api/groups/g1/meetings?scope=past": { items: [meetingItem(3, "ended", NOW - 86_400_000), meetingItem(4, "ended", NOW - 2 * 86_400_000)], nextCursor: 5 },
@@ -272,6 +280,38 @@ const API = {
     busy: ["user_h2"],
   },
   "/api/events/ended-room/ring-in": { open: false, groups: [] },
+  // Meeting feedback (src/lib/meetingFeedback.ts). The panel's GET first:
+  // "/api/events/ev_fb" would also match it by prefix.
+  "/api/events/sa/feedback": { meeting: { name: "SA Regional Meeting", slug: "sa" }, kinds: feedbackKinds, token: "1700000000000.sig", signedIn: false, ok: true, ticket: 1042 },
+  "/api/events/ev_fb/feedback": {
+    meeting: { name: "SA Regional Meeting", slug: "sa" },
+    kinds: feedbackKinds,
+    token: null,
+    signedIn: true,
+    manage: {
+      feedback: [
+        { id: "f1", ts: NOW - 60_000, where: "room", kind: "sound", message: "The sound keeps cutting out " + "and coming back ".repeat(12), name: longName, email: "oluwaseun.adebayo-williamson.the.third@averyveryverylongdomainname.example.com", device: "Chrome on Android" },
+        { id: "f2", ts: NOW - 120_000, where: "after", rating: 2, message: "", name: "Ada", device: "Safari on iPhone" },
+        { id: "f3", ts: NOW - 180_000, where: "link", kind: "joining", message: "The link would not open", name: "", device: "unknown device" },
+      ],
+      tally: { stars: [0, 1, 0, 0, 0], rated: 1, average: 2, kinds: { sound: 1, joining: 1 }, written: 2 },
+      contact: null,
+      contactAllowed: true,
+      reach: { kcHandleKnown: null, ownerKcLinked: null },
+    },
+  },
+  "/api/events/ev_free/feedback": {
+    meeting: { name: "Free meeting", slug: "free" },
+    kinds: feedbackKinds,
+    token: null,
+    signedIn: true,
+    manage: { feedback: [], tally: { stars: [0, 0, 0, 0, 0], rated: 0, average: null, kinds: {}, written: 0 }, contact: null, contactAllowed: false, reach: { kcHandleKnown: null, ownerKcLinked: null } },
+  },
+  "/api/events/ev_fb": {
+    ok: true,
+    event: { id: "ev_fb", feedbackContact: { kcHandle: "pastormatt", email: "help@church.org" } },
+    feedbackReach: { kcHandleKnown: false, ownerKcLinked: true },
+  },
 };
 
 /* -------------------------------------------------------------------------- */
@@ -298,6 +338,9 @@ const ENTRIES = [
   "src/components/groups/RingIntoMeeting.tsx",
   "src/app/sign-in/[[...sign-in]]/EmailPasswordSignIn.tsx",
   "src/app/sign-up/[[...sign-up]]/EmailPasswordSignUp.tsx",
+  "src/components/feedback/FeedbackForm.tsx",
+  "src/components/feedback/FeedbackButton.tsx",
+  "src/app/dashboard/e/[slug]/FeedbackPanel.tsx",
 ];
 let modules = "";
 
@@ -799,4 +842,120 @@ test("password boxes are named for what they are, and Show says what it shows an
   const confirm = page.getByLabel("Confirm password", { exact: true });
   await expect(confirm).toHaveAttribute("aria-invalid", "true");
   await expect(confirm).toHaveAccessibleDescription("Passwords do not match.");
+});
+
+/* -------------------------------------------------------------------------- */
+/*  Meeting feedback                                                           */
+/* -------------------------------------------------------------------------- */
+
+const feedbackPosts = (page: Page) =>
+  page.evaluate(() =>
+    (window as unknown as { __calls: Array<{ url: string; method: string; body: string }> }).__calls
+      .filter((c) => c.method === "POST" && c.url.includes("/feedback"))
+      .map((c) => JSON.parse(c.body)),
+  );
+
+for (const width of WIDTHS) {
+  test(`feedback link: a guest says what went wrong, with a name and email for a reply, at ${width}px`, async ({ page }) => {
+    const { errors } = await setup(page, width);
+    await render(page, "src/components/feedback/FeedbackForm.tsx", { slug: "sa", where: "link" });
+    await expectNoSideScroll(page, `feedback form @${width}`);
+    await expectLabelledButtons(page, `feedback form @${width}`);
+    // Nothing is sent without words.
+    await page.getByRole("button", { name: "Send feedback" }).click();
+    await expect(page.getByRole("alert")).toHaveText("Write what happened first.");
+    expect(await feedbackPosts(page)).toEqual([]);
+
+    // The chip is the label; its radio is for screen readers and keys.
+    await page.getByText("Sound", { exact: true }).click();
+    await expect(page.getByRole("radio", { name: "Sound" })).toBeChecked();
+    await page.getByLabel("What happened?").fill("No sound after I signed in again");
+    await page.getByLabel("Your name (optional)").fill("Pastor Matthew");
+    await page.getByLabel("Email (optional, for a reply)").fill("pm@example.com");
+    await page.screenshot({ path: `test-results/group-screens/feedback-link-${width}.png`, fullPage: true });
+    await page.getByRole("button", { name: "Send feedback" }).click();
+    await expect(page.getByRole("status")).toContainText("Your feedback was sent");
+    await expect(page.getByRole("status")).toContainText("They can reply to the email you gave.");
+    expect(await feedbackPosts(page)).toEqual([
+      { message: "No sound after I signed in again", kind: "sound", where: "link", token: "1700000000000.sig", website: "", name: "Pastor Matthew", email: "pm@example.com" },
+    ]);
+    expect(errors).toEqual([]);
+  });
+}
+
+test("after leaving: one tap of the stars sends the rating; words can follow, without counting it again", async ({ page }) => {
+  await setup(page, 360);
+  await render(page, "src/components/feedback/FeedbackForm.tsx", { slug: "sa", where: "after" });
+  await expect(page.getByText("How was SA Regional Meeting?")).toBeVisible();
+  await page.getByRole("radio", { name: "4 stars" }).click();
+  await expect(page.getByRole("status")).toContainText("Thanks, 4 stars sent.");
+  await expect(page.getByRole("radio", { name: "4 stars" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radio", { name: "5 stars" })).toBeDisabled();
+  await page.getByLabel("Tell the organiser more").fill("Video froze twice");
+  await page.getByRole("button", { name: "Send feedback" }).click();
+  await expect(page.getByText("Your feedback was sent")).toBeVisible();
+  const posts = await feedbackPosts(page);
+  expect(posts.map((p) => [p.rating, p.message, p.where])).toEqual([
+    [4, undefined, "after"],
+    [undefined, "Video froze twice", "after"],
+  ]);
+});
+
+test("in the meeting: Send feedback opens a dialog over everything, focus inside, and Escape closes it", async ({ page }) => {
+  await setup(page, 360);
+  await page.evaluate(() => {
+    // The toolbar is transformed: a fixed dialog inside it would be trapped.
+    document.getElementById("app")!.style.transform = "translateZ(0)";
+  });
+  await render(page, "src/components/feedback/FeedbackButton.tsx", { eventSlug: "sa", className: "px-2" });
+  const open = page.getByRole("button", { name: "Send feedback" });
+  await expect(open).toHaveAttribute("data-in-more", "true");
+  await open.click();
+  const dialog = page.getByRole("dialog", { name: "Send feedback" });
+  await expect(dialog).toBeVisible();
+  expect(await dialog.evaluate((d) => d.parentElement === document.body), "portalled to <body>").toBe(true);
+  await expect(page.getByLabel("What happened?")).toBeFocused();
+  await expectLabelledButtons(page, "feedback dialog");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+});
+
+for (const width of WIDTHS) {
+  test(`the owner's feedback panel: the link, where it goes, ratings and messages, at ${width}px`, async ({ page }) => {
+    const { errors } = await setup(page, width);
+    await render(page, "src/app/dashboard/e/[slug]/FeedbackPanel.tsx", { eventId: "ev_fb", slug: "sa" });
+    await expect(page.getByText(/\/feedback\/sa$/)).toBeVisible();
+    await expect(page.getByText("2.0 from 1 rating")).toBeVisible();
+    await expect(page.getByText("2 written messages")).toBeVisible();
+    await expect(page.getByText("Getting in: 1")).toBeVisible();
+    await expect(page.getByText("The link would not open")).toBeVisible();
+    await expect(page.getByLabel("2 of 5 stars")).toBeVisible();
+    await expectNoSideScroll(page, `feedback panel @${width}`);
+    await expectLabelledButtons(page, `feedback panel @${width}`);
+
+    await page.getByLabel("KingsChat handle").fill("@PastorMatt");
+    await page.getByLabel("Email").fill("Help@Church.org");
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByRole("status")).toHaveText("Saved. New feedback will be sent there too.");
+    // What the server kept, and why KingsChat cannot reach it yet.
+    await expect(page.getByLabel("KingsChat handle")).toHaveValue("@pastormatt");
+    await expect(page.getByText("Nobody has signed in here with @pastormatt yet", { exact: false })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Remove" })).toBeVisible();
+    const patch = await page.evaluate(() =>
+      (window as unknown as { __calls: Array<{ url: string; method: string; body: string }> }).__calls.filter((c) => c.method === "PATCH"),
+    );
+    expect(patch.map((c) => [c.url, JSON.parse(c.body)])).toEqual([["/api/events/ev_fb", { feedbackContact: { kcHandle: "@PastorMatt", email: "Help@Church.org" } }]]);
+    await page.screenshot({ path: `test-results/group-screens/feedback-panel-${width}.png`, fullPage: true });
+    expect(errors).toEqual([]);
+  });
+}
+
+test("the owner's feedback panel on the free plan: no contact boxes, a word about plans", async ({ page }) => {
+  await setup(page, 360);
+  await render(page, "src/app/dashboard/e/[slug]/FeedbackPanel.tsx", { eventId: "ev_free", slug: "free" });
+  await expect(page.getByText("On a paid plan, feedback can also go straight to a KingsChat handle or an email.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "See plans" })).toHaveAttribute("href", "/pricing");
+  await expect(page.getByLabel("KingsChat handle")).toHaveCount(0);
+  await expect(page.getByText("No ratings yet")).toBeVisible();
+  await expect(page.getByText("No feedback yet.")).toBeVisible();
 });
