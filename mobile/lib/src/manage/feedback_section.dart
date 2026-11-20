@@ -217,10 +217,22 @@ class _FeedbackSectionState extends ConsumerState<FeedbackSection> {
                   spacing: NeoSpace.lg,
                   runSpacing: NeoSpace.xs,
                   children: [
-                    Text(
-                      d.average == null ? 'No ratings yet' : '★ ${d.average!.toStringAsFixed(1)} from ${d.rated} rating${d.rated == 1 ? '' : 's'}',
-                      style: TextStyle(color: p.text),
-                    ),
+                    // Stars are icons, not the ★ character: a phone's font
+                    // may not have it.
+                    if (d.average == null)
+                      Text('No ratings yet', style: TextStyle(color: p.text))
+                    else
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.star_rounded, size: 18, color: Colors.amber),
+                          const SizedBox(width: NeoSpace.xs),
+                          Text(
+                            '${d.average!.toStringAsFixed(1)} from ${d.rated} rating${d.rated == 1 ? '' : 's'}',
+                            style: TextStyle(color: p.text),
+                          ),
+                        ],
+                      ),
                     Text('${d.written} written message${d.written == 1 ? '' : 's'}', style: TextStyle(color: p.textMuted)),
                     for (final e in d.kindCounts.entries) Text('${d.kindLabel(e.key)}: ${e.value}', style: TextStyle(color: p.textMuted)),
                   ],
@@ -265,7 +277,13 @@ class _EntryTile extends StatelessWidget {
                 Semantics(
                   label: '${e.rating} of 5 stars',
                   excludeSemantics: true,
-                  child: Text('★' * e.rating!, style: const TextStyle(color: Colors.amber)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 1; i <= 5; i++)
+                        Icon(i <= e.rating! ? Icons.star_rounded : Icons.star_outline_rounded, size: 16, color: Colors.amber),
+                    ],
+                  ),
                 ),
               Text(e.whereLabel, style: TextStyle(color: p.textMuted, fontSize: 12)),
               Text(at, style: TextStyle(color: p.textMuted, fontSize: 12)),

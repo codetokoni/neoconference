@@ -317,7 +317,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('/feedback/sa'), findsOneWidget);
-      expect(find.text('★ 2.0 from 1 rating'), findsOneWidget);
+      expect(find.text('2.0 from 1 rating'), findsOneWidget);
       expect(find.text('1 written message'), findsOneWidget);
       expect(find.text('The sound keeps cutting out'), findsOneWidget);
       expect(find.text('Ada · ada@example.com · NeoLinguaMeet app, android 1.2.14+5228'), findsOneWidget);
