@@ -21,7 +21,7 @@ import MobileVideoConference from "@/components/MobileVideoConference";
 import HostMenuOverlay from "@/components/HostMenuOverlay";
 import MediaRequestPrompt from "@/components/MediaRequestPrompt";
 import { RoomEvent, type Participant } from "livekit-client";
-import { ROOM_OPTIONS } from "@/components/conference/roomOptions";
+import { joinMedia, ROOM_OPTIONS } from "@/components/conference/roomOptions";
 import "@livekit/components-styles";
 import "./initials-overlay.css";
 import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
@@ -947,8 +947,9 @@ function RoomContainer({
         // Only the videos on screen, at the size shown: a 700-person meeting
         // overwhelmed phones without it (roomOptions.ts).
         options={ROOM_OPTIONS}
-        audio={choices.audioDeviceId ? { deviceId: { ideal: choices.audioDeviceId } } : true}
-        video={choices.videoDeviceId ? { deviceId: { ideal: choices.videoDeviceId } } : true}
+        // What was chosen on the join screen, and nothing more (roomOptions.ts).
+        audio={joinMedia(choices.audioEnabled, choices.audioDeviceId)}
+        video={joinMedia(choices.videoEnabled, choices.videoDeviceId)}
         onDisconnected={onLeave}
       >
         {/* Inside LiveKitRoom so a UI failure remounts the UI, not the call. */}

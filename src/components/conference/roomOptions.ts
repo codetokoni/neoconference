@@ -25,3 +25,19 @@ export const ROOM_OPTIONS: RoomOptions = {
   adaptiveStream: { pauseVideoInBackground: false },
   dynacast: true,
 };
+
+/**
+ * What to publish on joining: what was chosen on the join screen. The room
+ * used to publish camera and microphone for everyone and turn them off a
+ * moment later (ApplyPrejoinChoices), so each arrival in a meeting of
+ * hundreds sent a burst of video to everyone first. The in-room buttons
+ * start a camera or microphone that was never published
+ * (setCameraEnabled / setMicrophoneEnabled create the track).
+ */
+export function joinMedia(
+  enabled: boolean | undefined,
+  deviceId: string | undefined,
+): boolean | { deviceId: { ideal: string } } {
+  if (enabled === false) return false;
+  return deviceId ? { deviceId: { ideal: deviceId } } : true;
+}

@@ -7,14 +7,12 @@ import { RoomEvent } from "livekit-client";
 /**
  * Applies prejoin mute choices once the local participant is connected.
  *
- * We pass audio={true} video={true} to LiveKitRoom so tracks are created
- * at connect time (permissions captured, publishers wired up). Then we
- * apply the user's prejoin choice here, retrying on RoomEvent.Connected
- * and on track publication so we win any race against LiveKit's own
- * auto-publish lifecycle.
- *
- * Fixes: muting on prejoin meant tracks never existed, so the in-room
- * toolbar buttons couldn't toggle them.
+ * The room now publishes only what was chosen on the join screen
+ * (joinMedia, src/components/conference/roomOptions.ts): a camera or
+ * microphone switched off there is never published, and the in-room
+ * buttons start it when wanted. This stays as a safety net: if a track is
+ * published anyway (an embed that publishes both), the choice still wins,
+ * retried on RoomEvent.Connected and on track publication.
  */
 export default function ApplyPrejoinChoices({
   choices,

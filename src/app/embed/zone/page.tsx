@@ -12,6 +12,7 @@
 // this page is set per approved origin by the middleware (frame-ancestors).
 
 import { Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { ROOM_OPTIONS } from "@/components/conference/roomOptions";
 import { useSearchParams } from "next/navigation";
 import {
   LiveKitRoom,
@@ -492,6 +493,8 @@ function ZoneEmbed() {
           serverUrl={phase.live.wsUrl}
           token={phase.live.token}
           connect
+          // Only the videos on screen, at the size shown (roomOptions.ts).
+          options={ROOM_OPTIONS}
           audio={choices ? (choices.audioEnabled ? (choices.audioDeviceId ? { deviceId: { ideal: choices.audioDeviceId } } : true) : false) : true}
           video={choices ? (choices.videoEnabled ? (choices.videoDeviceId ? { deviceId: { ideal: choices.videoDeviceId } } : true) : false) : true}
           onConnected={() => {

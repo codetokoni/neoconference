@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ROOM_OPTIONS } from "@/components/conference/roomOptions";
 import { useSearchParams } from "next/navigation";
 import {
   LiveKitRoom,
@@ -91,6 +92,8 @@ export default function MeetingEmbedPage() {
         token={token}
         serverUrl={serverUrl}
         connect={true}
+        // Only the videos on screen, at the size shown (roomOptions.ts).
+        options={ROOM_OPTIONS}
         video={true}
         audio={true}
         style={{ height: "100%" }}
