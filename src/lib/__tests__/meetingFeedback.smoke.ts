@@ -92,6 +92,7 @@ async function main() {
       ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
     });
     const res = await handler(req, { params: Promise.resolve({ id }) });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return { status: res.status, body: (await res.json()) as Record<string, any> };
   };
   const oldToken = () => issueFormToken(Date.now() - 10_000);
