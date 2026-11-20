@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParticipants, useLocalParticipant } from '@livekit/components-react';
 import AddGroupParticipants from '@/components/groups/AddGroupParticipants';
 import GroupCallingPanel from '@/components/groups/GroupCallingPanel';
@@ -8,6 +8,7 @@ import RingIntoMeeting from '@/components/groups/RingIntoMeeting';
 import AddRoomPeopleToGroup from '@/components/groups/AddRoomPeopleToGroup';
 import RoomAddToGroup from '@/components/groups/RoomAddToGroup';
 import { userIdOfIdentity } from '@/lib/roomPeople';
+import { keepOrder, useKeptPlace } from '@/components/conference/keptPlace';
 
 /**
  * ParticipantsPanel
@@ -76,7 +77,11 @@ export default function ParticipantsPanel({
   /** Called after a successful toggle so the room page can sync its copy. */
   onLockChanged?: (locked: boolean) => void;
 }) {
-  const participants = useParticipants();
+  // First-seen order, and the list keeps the reader's place through a
+  // connection restart (which drops everyone and adds them back): a host
+  // scrolling through to take the register stays where they were.
+  const seen = useRef(new Map<string, number>());
+  const participants = keepOrder(seen.current, useParticipants());
   const { localParticipant } = useLocalParticipant();
   const [pending, setPending] = useState<string | null>(null);
   const [confirmKick, setConfirmKick] = useState<string | null>(null);
@@ -251,6 +256,7 @@ export default function ParticipantsPanel({
         flexDirection: "column",
       };
 
+  const kept = useKeptPlace(`${open}|${filter}|` + participants.map((p) => p.identity).join(','));
   if (!open) return null;
 
   const localIdentity = localParticipant?.identity || '';
@@ -389,7 +395,7 @@ export default function ParticipantsPanel({
         </div>
       )}
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '6px 0' }}>
+      <div ref={kept.ref} {...kept.handlers} style={{ flex: 1, overflowY: 'auto', padding: '6px 0' }}>
         <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -409,7 +415,7 @@ export default function ParticipantsPanel({
           const display = (p.name || id || '').trim() || id;
           const busy = (a: string) => pending === id + ':' + a;
           return (
-            <div key={id} style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+            <div key={id} data-place={id} style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isHost ? 8 : 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, minWidth: 0 }}>
                   {display}<RoleBadge role={roleOf(p)} />

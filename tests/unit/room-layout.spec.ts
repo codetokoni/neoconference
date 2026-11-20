@@ -63,6 +63,8 @@ function moduleScript(file: string, name: string): string {
       if (name === "@/components/HiddenVideosProvider") return window.__hidden;
       if (name === "@/hooks/useIsMobile") return { useIsMobile: function () { return false; } };
       if (name === "./HostTileMenu") return window.__mods.HostTileMenu;
+      if (name === "./MobileParticipantTile") return window.__mods.MobileParticipantTile;
+      if (name === "./keptPlace") return window.__mods.keptPlace;
       if (name === "livekit-client") return {
         RoomEvent: { DataReceived: "dataReceived", ParticipantConnected: "participantConnected", ParticipantDisconnected: "participantDisconnected" },
         ParticipantEvent: new Proxy({}, { get: function (_t, k) { return String(k); } }),
@@ -141,6 +143,7 @@ async function load(page: Page): Promise<string[]> {
         useLocalParticipant: function () { return { localParticipant: { identity: "me#1" } }; },
         useRoomContext: function () { return window.__room; },
         useIsSpeaking: function () { return false; },
+        useTracks: function () { return []; },
         VideoTrack: function () { return null; },
       };
       window.__hidden = { useHiddenVideos: function () { return {
@@ -789,4 +792,120 @@ test("on a computer the host's spotlight hint is still shown", async ({ page }) 
   await page.setViewportSize({ width: 1280, height: 800 });
   await renderComponent(page, "SpotlightOverlay", { isHost: true });
   await expect(page.getByText("Spotlight someone for everyone")).toBeVisible();
+});
+
+/** A remote person as the phone tile reads them. */
+function phonePerson(i: number) {
+  return { identity: `user_${i}#1`, name: `Person ${i}` };
+}
+
+async function renderPhoneGrid(page: Page) {
+  await page.setViewportSize({ width: 390, height: 700 });
+  // The few utility classes the grid's layout rests on (no Tailwind here).
+  await page.addStyleTag({
+    content: `.absolute{position:absolute}.relative{position:relative}.inset-0{inset:0}.overflow-y-auto{overflow-y:auto}
+      .overflow-hidden{overflow:hidden}.grid{display:grid}.grid-cols-1{grid-template-columns:1fr}.grid-cols-2{grid-template-columns:repeat(2,1fr)}
+      .grid-cols-3{grid-template-columns:repeat(3,1fr)}.gap-2{gap:8px}.px-3{padding-left:12px;padding-right:12px}.pb-4{padding-bottom:16px}
+      .aspect-square{aspect-ratio:1/1}.aspect-video{aspect-ratio:16/9}`,
+  });
+  await page.addScriptTag({ content: moduleScript("src/components/conference/keptPlace.ts", "keptPlace") });
+  await page.addScriptTag({ content: moduleScript("src/components/conference/MobileParticipantGrid.tsx", "MobileParticipantGrid") });
+  await page.evaluate(() => {
+    const w = window as unknown as Win & { __render: (people: Person[]) => void; __tick: number };
+    const toParticipant = (p: Person) => ({
+      ...p,
+      isLocal: p.identity === "me#1",
+      isCameraEnabled: false,
+      isMicrophoneEnabled: false,
+      metadata: "",
+      on() { return this; },
+      off() { return this; },
+      getTrackPublication() { return undefined; },
+    });
+    const host = document.getElementById("app")!;
+    host.style.cssText = "position:relative;height:700px";
+    const root = w.ReactDOM.createRoot(host);
+    const Grid = w.__mods.MobileParticipantGrid.default as (p: Record<string, unknown>) => null;
+    w.__tick = 0;
+    w.__render = (people) => {
+      w.__participants = people.map(toParticipant);
+      root.render(w.React.createElement(Grid, { slug: "saregionalmeeting", tick: ++w.__tick }));
+    };
+  });
+}
+
+const gridOrder = (page: Page) =>
+  page.evaluate(() => Array.from(document.querySelectorAll("[data-place]")).map((e) => e.getAttribute("data-place")));
+
+/** Who is at the top of the grid's view. */
+const topPerson = (page: Page) =>
+  page.evaluate(() => {
+    const scroller = document.querySelector("[data-place]")!.closest(".overflow-y-auto") as HTMLElement;
+    const top = scroller.getBoundingClientRect().top;
+    return Array.from(scroller.querySelectorAll("[data-place]")).find((e) => e.getBoundingClientRect().bottom > top + 1)?.getAttribute("data-place");
+  });
+
+const render = (page: Page, people: Person[]) =>
+  page.evaluate((people) => (window as unknown as { __render: (p: Person[]) => void }).__render(people), people);
+
+const frames = (page: Page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+test("on a phone, a connection restart keeps the grid where the reader was, in the same order", async ({ page }) => {
+  // SA region, 2026-11-20: a host taking the register by scrolling the
+  // tiles was thrown back to the top every time the connection restarted
+  // (LiveKit drops everyone and adds them back), and people came back in a
+  // new order.
+  const errors = await load(page);
+  await renderPhoneGrid(page);
+  const people = [me, ...Array.from({ length: 90 }, (_, i) => phonePerson(i))];
+  await render(page, people);
+  await expect(page.locator("[data-place]")).toHaveCount(91);
+
+  // The reader scrolls well down the list.
+  await page.mouse.move(195, 350);
+  await page.mouse.wheel(0, 1500);
+  await expect.poll(() => topPerson(page)).not.toBe("me#1");
+  await frames(page);
+  const reading = await topPerson(page);
+
+  // The restart, while they are still reading: only they are left, then
+  // everyone comes back, in a different order.
+  await render(page, [me]);
+  await frames(page);
+  await render(page, [me, ...people.slice(1).reverse()]);
+  await frames(page);
+  expect(await topPerson(page)).toBe(reading);
+  expect(await gridOrder(page)).toEqual(people.map((p) => p.identity));
+
+  // And again a few seconds after their last touch, with the gap a real
+  // restart has (here also while the grid shows nobody but "Connecting…").
+  await page.waitForTimeout(2700);
+  await render(page, []);
+  await frames(page);
+  await render(page, [me]);
+  await frames(page);
+  await render(page, people.slice().reverse());
+  await frames(page);
+  expect(await topPerson(page)).toBe(reading);
+  expect(await gridOrder(page)).toEqual(people.map((p) => p.identity));
+
+  // Someone new joins at the end, not on top of the reader's place.
+  await render(page, [...people, phonePerson(500)]);
+  await frames(page);
+  expect(await topPerson(page)).toBe(reading);
+  expect((await gridOrder(page)).at(-1)).toBe("user_500#1");
+  expect(errors).toEqual([]);
+});
+
+test("on a phone, a reader at the top stays at the top as people join and the room restarts", async ({ page }) => {
+  const errors = await load(page);
+  await renderPhoneGrid(page);
+  const people = [me, ...Array.from({ length: 40 }, (_, i) => phonePerson(i))];
+  await render(page, people);
+  await render(page, [me]);
+  await frames(page);
+  await render(page, people);
+  await frames(page);
+  expect(await topPerson(page)).toBe("me#1");
+  expect(errors).toEqual([]);
 });
