@@ -6,6 +6,7 @@ import { useSignIn } from '@clerk/nextjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import PasswordField from '@/components/PasswordField';
 import { BRAND } from "@/lib/brand";
 
 type SignInResource = NonNullable<ReturnType<typeof useSignIn>['signIn']>;
@@ -59,7 +60,6 @@ export default function EmailPasswordSignIn() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -265,27 +265,13 @@ export default function EmailPasswordSignIn() {
         />
       </label>
 
-      <label className='flex flex-col gap-1 text-sm'>
-        <span className='font-medium'>Password</span>
-        <div className='relative'>
-          <input
-            type={showPassword ? 'text' : 'password'}
-            required
-            autoComplete='current-password'
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className='w-full border rounded px-3 py-2 pr-16 focus:outline-none focus:ring-2 focus:ring-blue-500'
-            placeholder='Enter your password'
-          />
-          <button
-            type='button'
-            onClick={() => setShowPassword((s) => !s)}
-            className='absolute right-2 top-1/2 -translate-y-1/2 text-xs text-blue-600 hover:underline'
-          >
-            {showPassword ? 'Hide' : 'Show'}
-          </button>
-        </div>
-      </label>
+      <PasswordField
+        label='Password'
+        value={password}
+        onChange={setPassword}
+        autoComplete='current-password'
+        placeholder='Enter your password'
+      />
 
       {error && (
         <div role='alert' className='bg-red-100 text-red-800 text-sm px-3 py-2 rounded'>{error}</div>
