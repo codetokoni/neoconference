@@ -15,6 +15,7 @@ import '../meetings/meeting_links.dart';
 import '../meetings/meeting_share.dart';
 import '../meetings/meeting_view.dart';
 import '../screens/prejoin_screen.dart';
+import 'feedback_section.dart';
 import 'manage_api.dart';
 import '../core/config.dart';
 
@@ -178,6 +179,7 @@ class _ManageMeetingScreenState extends ConsumerState<ManageMeetingScreen> {
                   _people(m),
                   _recordingsSection(),
                   _summarySection(m),
+                  FeedbackSection(eventId: m.id, slug: m.slug),
                   _danger(m),
                 ],
               ),

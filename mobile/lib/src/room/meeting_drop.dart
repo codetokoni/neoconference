@@ -14,6 +14,7 @@ class MeetingDrop {
     required this.message,
     required this.canRejoin,
     this.retryAutomatically = false,
+    this.signedOut = false,
   });
 
   final String headline;
@@ -28,6 +29,9 @@ class MeetingDrop {
   /// retrying after "joined on another device" would fight that device
   /// for the seat.
   final bool retryAutomatically;
+
+  /// This phone was signed out, not the meeting over: no "How was it?".
+  final bool signedOut;
 }
 
 /// This phone was signed out (the account signed in on another device) and
@@ -37,6 +41,7 @@ MeetingDrop signedOutDrop(String message) => MeetingDrop(
       headline: 'You were signed out',
       message: message,
       canRejoin: false,
+      signedOut: true,
     );
 
 /// Null when the person left on purpose — there is nothing to explain.

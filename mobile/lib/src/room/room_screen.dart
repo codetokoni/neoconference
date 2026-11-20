@@ -15,6 +15,7 @@ import '../meetings/meeting_share.dart';
 import '../screens/meeting_stage.dart';
 import 'audio_routes.dart';
 import 'audio_sheets.dart';
+import 'meeting_feedback.dart';
 import 'meeting_sheets.dart';
 import 'meeting_presence.dart';
 import 'meeting_timer.dart';
@@ -81,8 +82,10 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
             onPopInvokedWithResult: (didPop, _) async {
               if (didPop) return;
               if (!state.inRoom) {
+                // The meeting ended under them (not a sign-out): ask how it went.
+                final ended = state.drop != null && !state.drop!.signedOut;
                 await controller.leave();
-                if (context.mounted) Navigator.of(context).pop();
+                if (context.mounted) _closeAndAsk(context, ask: ended);
                 return;
               }
               final choice = await _confirmLeave(context, state);
@@ -108,7 +111,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                     return;
                   }
               }
-              if (context.mounted) Navigator.of(context).pop();
+              if (context.mounted) _closeAndAsk(context, ask: true);
             },
             child: Scaffold(
               backgroundColor: p.bg,
@@ -181,6 +184,19 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
     if (next != null && now.inRoom) {
       await _askForMedia(context, p, next, controller);
     }
+  }
+
+  /// Closes the meeting and, when [ask], asks how it went over the screen
+  /// underneath (the web's `/feedback/<slug>?after=1`): a tap of the stars,
+  /// and words if something did not work. Shown from the navigator, so it
+  /// takes the app's own theme rather than the meeting's.
+  void _closeAndAsk(BuildContext context, {required bool ask}) {
+    final nav = Navigator.of(context);
+    nav.pop();
+    if (!ask) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (nav.mounted) unawaited(openMeetingFeedback(nav.context, slug: widget.slug, where: 'after'));
+    });
   }
 
   /// Leaving, and for a host, ending it for everyone — offered in the same
@@ -524,6 +540,7 @@ class _InMeetingState extends State<_InMeeting> {
               ),
             ),
             invite: () => shareMeeting(widget.title, widget.slug),
+            openFeedback: () => openMeetingFeedback(context, slug: widget.slug, where: 'room'),
             openChat: () => _openChat(context, controller, state),
             openParticipants: () => _openParticipants(context, controller),
             openHostControls: state.canManage

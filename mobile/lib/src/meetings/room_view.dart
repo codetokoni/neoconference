@@ -208,6 +208,7 @@ class RoomActions {
     this.captionsOn = false,
     this.openDetails,
     this.invite,
+    this.openFeedback,
     this.dismissCallEnded,
     this.openChat,
     this.openParticipants,
@@ -263,6 +264,9 @@ class RoomActions {
 
   /// Share the meeting's link through the phone's share menu.
   final VoidCallback? invite;
+
+  /// Tell the organiser about a problem ("Send feedback").
+  final VoidCallback? openFeedback;
 
   /// Put away the call-ended reminder.
   final VoidCallback? dismissCallEnded;
