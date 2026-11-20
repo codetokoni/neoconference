@@ -34,3 +34,34 @@ export function maskEmail(email: string): string {
   if (!domain) return email;
   return `${user.slice(0, 1)}${"•".repeat(Math.max(1, Math.min(3, user.length - 1)))}@${domain}`;
 }
+
+const SIGN_UP: Record<string, string> = {
+  form_identifier_exists: `This email already has an account. Sign in instead (tap “Sign in” below); if you joined with KingsChat, use “Continue with KingsChat” on the sign-in page.`,
+  form_password_length_too_short: "Use a password of at least 8 characters.",
+  form_password_not_strong_enough: "Choose a stronger password: longer, with letters and numbers.",
+  form_password_pwned: "This password has appeared in a data leak elsewhere, so it can’t be used. Choose another one.",
+  form_password_size_in_bytes_exceeded: "That password is too long. Choose a shorter one.",
+  captcha_invalid: "The security check didn’t work. Refresh the page and try again.",
+  captcha_unavailable: "The security check didn’t load. Refresh the page and try again.",
+};
+
+/** The words for a failed sign-up: its own cases, then those it shares with sign-in (codes, too many tries). */
+export function signUpErrorText(err: { code?: string; message?: string; longMessage?: string } | undefined): string {
+  return SIGN_UP[err?.code ?? ""] ?? signInErrorText(err);
+}
+
+/** What a sign-up still needs after the email code, in words (Clerk's missing_requirements). */
+export function missingFieldsText(fields: string[] | undefined): string {
+  const words: Record<string, string> = {
+    first_name: "your first name",
+    last_name: "your last name",
+    username: "a username",
+    phone_number: "a phone number",
+    password: "a password",
+    legal_accepted: "accepting the terms",
+  };
+  const list = (fields ?? []).map((f) => words[f] ?? f.replace(/_/g, " "));
+  return list.length
+    ? `Your email is confirmed, but the account also needs ${list.join(", ")}, which this page can’t ask for. Use “Continue with KingsChat” on the sign-in page, or contact support.`
+    : "Your email is confirmed, but the account isn’t finished. Try again, or use “Continue with KingsChat” on the sign-in page.";
+}

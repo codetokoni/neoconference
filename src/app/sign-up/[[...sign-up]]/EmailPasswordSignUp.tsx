@@ -1,6 +1,7 @@
 'use client';
 
 import { firstClerkError } from "@/lib/errorMessage";
+import { missingFieldsText, signUpErrorText } from "@/lib/signInMessages";
 import { useSignUp } from '@clerk/nextjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
@@ -23,6 +24,7 @@ export default function EmailPasswordSignUp() {
   const [code, setCode] = useState('');
   const [pendingVerification, setPendingVerification] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSignUp(e: React.FormEvent) {
@@ -38,19 +40,18 @@ export default function EmailPasswordSignUp() {
     setLoading(true);
     try {
       await signUp.create({
-        emailAddress: email,
+        emailAddress: email.trim(),
         password,
         firstName: firstName || undefined,
         lastName: lastName || undefined,
       });
       await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      setCode('');
       setPendingVerification(true);
     } catch (err) {
-      setError(
-        firstClerkError(err)?.longMessage ||
-          firstClerkError(err)?.message ||
-          'Sign-up failed. Please try again.'
-      );
+      // Clerk's own words said "That email address is taken. Please try
+      // another." to people who already had an account (2026-11-20).
+      setError(signUpErrorText(firstClerkError(err)));
     } finally {
       setLoading(false);
     }
@@ -60,23 +61,33 @@ export default function EmailPasswordSignUp() {
     e.preventDefault();
     if (!isLoaded || !signUp) return;
     setError(null);
+    setNotice(null);
     setLoading(true);
     try {
-      const result = await signUp.attemptEmailAddressVerification({ code });
+      const result = await signUp.attemptEmailAddressVerification({ code: code.trim() });
       if (result.status === 'complete') {
         await setActive({ session: result.createdSessionId });
         router.push(redirectUrl);
       } else {
-        setError('Verification incomplete. Please try again.');
+        // It used to say "Verification incomplete. Please try again." and
+        // nothing more: say what the account still needs.
+        setError(missingFieldsText(result.missingFields as string[] | undefined));
       }
     } catch (err) {
-      setError(
-        firstClerkError(err)?.longMessage ||
-          firstClerkError(err)?.message ||
-          'Invalid code. Please check your email.'
-      );
+      setError(signUpErrorText(firstClerkError(err)));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function resend() {
+    if (!isLoaded || !signUp) return;
+    setError(null);
+    try {
+      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      setNotice('A new code is on its way. It can take a minute; check spam too.');
+    } catch (err) {
+      setError(signUpErrorText(firstClerkError(err)));
     }
   }
 
@@ -89,7 +100,7 @@ export default function EmailPasswordSignUp() {
         <div className='text-center'>
           <h1 className='text-xl font-semibold'>Verify your email</h1>
           <p className='text-sm text-gray-500'>
-            We sent a 6-digit code to <strong>{email}</strong>.
+            We sent a 6-digit code to <strong>{email}</strong>. It can take a minute; check spam too.
           </p>
         </div>
 
@@ -108,7 +119,10 @@ export default function EmailPasswordSignUp() {
         </label>
 
         {error && (
-          <div className='bg-red-100 text-red-800 text-sm px-3 py-2 rounded'>{error}</div>
+          <div role='alert' className='bg-red-100 text-red-800 text-sm px-3 py-2 rounded'>{error}</div>
+        )}
+        {notice && (
+          <div role='status' className='bg-green-100 text-green-800 text-sm px-3 py-2 rounded'>{notice}</div>
         )}
 
         <button
@@ -119,13 +133,22 @@ export default function EmailPasswordSignUp() {
           {loading ? 'Verifying…' : 'Verify and continue'}
         </button>
 
-        <button
-          type='button'
-          onClick={() => setPendingVerification(false)}
-          className='text-sm text-blue-600 hover:underline'
-        >
-          ← Use a different email
-        </button>
+        <div className='flex justify-between text-sm'>
+          <button type='button' onClick={resend} className='text-blue-600 hover:underline'>
+            Send a new code
+          </button>
+          <button
+            type='button'
+            onClick={() => {
+              setPendingVerification(false);
+              setError(null);
+              setNotice(null);
+            }}
+            className='text-blue-600 hover:underline'
+          >
+            ← Use a different email
+          </button>
+        </div>
       </form>
     );
   }
@@ -228,7 +251,7 @@ export default function EmailPasswordSignUp() {
       </label>
 
       {error && (
-        <div className='bg-red-100 text-red-800 text-sm px-3 py-2 rounded'>{error}</div>
+        <div role='alert' className='bg-red-100 text-red-800 text-sm px-3 py-2 rounded'>{error}</div>
       )}
 
       <div id='clerk-captcha' />
