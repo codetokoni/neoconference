@@ -1,12 +1,15 @@
 // src/app/api/events/[id]/route.ts
 // Owner-only PATCH for editable event metadata.
-// Whitelisted fields only: name, description, scheduledAt, visibility, password, waitingRoomEnabled.
+// Whitelisted fields only: name, description, scheduledAt, visibility, password, waitingRoomEnabled,
+// feedbackContact (paid plans).
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { assertOwnerOrAdmin } from "@/lib/roles";
 import { hashMeetingPassword } from "@/lib/eventPassword";
+import { cleanContact, contactAllowed, contactReach } from "@/lib/meetingFeedback";
+import { getPlanForUserId } from "@/lib/plan";
 import type { EventVisibility, NeoEvent } from "@/types/event";
 
 export const runtime = "nodejs";
@@ -51,6 +54,7 @@ export async function GET(
       browserOnPhones: Boolean(ev.browserOnPhones),
       endPinSet: Boolean(ev.endPin),
       hasPassword: Boolean(ev.password),
+      feedbackContact: ev.feedbackContact ?? null,
     },
   });
 }
@@ -126,6 +130,17 @@ export async function PATCH(
     patch.inactivity = Object.keys(next).length > 0 ? next : undefined;
   }
 
+  // Where feedback on this meeting is sent (src/lib/meetingFeedback.ts):
+  // a KingsChat handle and/or an email, on a paid plan; null clears it.
+  if ("feedbackContact" in body) {
+    const contact = cleanContact(body.feedbackContact);
+    if (contact === "invalid") return NextResponse.json({ error: "invalid_feedback_contact" }, { status: 400 });
+    if (contact && !contactAllowed(await getPlanForUserId(ev.ownerUserId))) {
+      return NextResponse.json({ error: "plan_required" }, { status: 402 });
+    }
+    patch.feedbackContact = contact ?? undefined;
+  }
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "no_fields" }, { status: 400 });
   }
@@ -135,5 +150,7 @@ export async function PATCH(
     ...patch,
     updatedAt: new Date().toISOString(),
   }));
-  return NextResponse.json({ ok: true, event: next });
+  // Saving a feedback contact says whether a KingsChat message can reach it.
+  const reach = "feedbackContact" in patch ? { feedbackReach: await contactReach(ev.ownerUserId, patch.feedbackContact ?? null) } : {};
+  return NextResponse.json({ ok: true, event: next, ...reach });
 }

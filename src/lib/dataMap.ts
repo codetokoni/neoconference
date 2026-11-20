@@ -190,6 +190,18 @@ export const DATA_MAP: DataLocation[] = [
     erasedBy: "fieldsInOthers",
   },
   {
+    id: "kv.meetingFeedback",
+    store: "kv",
+    pattern: "neo:event:<id>:feedback (list) entries with userId = <uid> or the person's email",
+    holds: "Feedback the person sent on a meeting (the feedback link, in the meeting, after leaving)",
+    personal: "User id, name, email, device, message",
+    exported: false,
+    onDelete: "delete",
+    why: "Removed from others' meetings; their own meetings' feedback goes with the meeting. A copy of written feedback is a message in support's daily ticket for that meeting, which stays as support history like other ticket text (src/lib/meetingFeedback.ts).",
+    ttl: "180 days after the last feedback on that meeting",
+    erasedBy: "meetingFeedback",
+  },
+  {
     id: "kv.userMeetings",
     store: "kv",
     pattern: "neo:user:<uid>:meetings (zset)",

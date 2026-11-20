@@ -28,6 +28,7 @@ import SummaryPanel from "./SummaryPanel";
 import AttendancePanel from "./AttendancePanel";
 import MeetingReportPanel from "./MeetingReportPanel";
 import TranscriptsPanel from "./TranscriptsPanel";
+import FeedbackPanel from "./FeedbackPanel";
 import { hasAttendance } from "@/lib/groupAttendees";
 
 export const dynamic = "force-dynamic";
@@ -330,6 +331,12 @@ export default async function EventAdminPage({
         <section className="space-y-3">
           <h2 className="text-sm uppercase tracking-widest text-slate-400">Waiting room</h2>
           <WaitingRoomPanel eventId={ev.id} initial={queue} />
+        </section>
+
+        {/* Feedback (src/lib/meetingFeedback.ts); notifications link to #feedback. */}
+        <section id="feedback" className="space-y-3 scroll-mt-24">
+          <h2 className="text-sm uppercase tracking-widest text-slate-400">Feedback</h2>
+          <FeedbackPanel eventId={ev.id} slug={ev.slug} />
         </section>
 
         {/* Chapter markers */}
