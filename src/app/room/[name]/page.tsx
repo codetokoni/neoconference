@@ -21,6 +21,7 @@ import MobileVideoConference from "@/components/MobileVideoConference";
 import HostMenuOverlay from "@/components/HostMenuOverlay";
 import MediaRequestPrompt from "@/components/MediaRequestPrompt";
 import { RoomEvent, type Participant } from "livekit-client";
+import { ROOM_OPTIONS } from "@/components/conference/roomOptions";
 import "@livekit/components-styles";
 import "./initials-overlay.css";
 import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
@@ -943,6 +944,9 @@ function RoomContainer({
         serverUrl={wsUrl}
         token={token}
         connect={true}
+        // Only the videos on screen, at the size shown: a 700-person meeting
+        // overwhelmed phones without it (roomOptions.ts).
+        options={ROOM_OPTIONS}
         audio={choices.audioDeviceId ? { deviceId: { ideal: choices.audioDeviceId } } : true}
         video={choices.videoDeviceId ? { deviceId: { ideal: choices.videoDeviceId } } : true}
         onDisconnected={onLeave}
