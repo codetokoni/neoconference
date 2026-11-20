@@ -336,6 +336,16 @@ class _MeetingStageState extends State<MeetingStage> {
                   actions.openDetails!();
                 },
               ),
+            if (actions.openFeedback != null)
+              ListTile(
+                leading: const Icon(Icons.feedback_outlined),
+                title: const Text('Send feedback'),
+                subtitle: const Text('Sound, video, dropping out? Tell the organiser'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  actions.openFeedback!();
+                },
+              ),
             if (actions.enterPip != null)
               ListTile(
                 leading: const Icon(Icons.picture_in_picture_alt_rounded),

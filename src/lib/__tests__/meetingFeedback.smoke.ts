@@ -164,12 +164,17 @@ async function main() {
   });
 
   await t("more words the same day: the same ticket; the owner not told again within 10 minutes", async () => {
-    const r = await call("user_ada", R.feedback.POST, "sa", { method: "POST", body: { message: "I keep dropping out", kind: "dropping", where: "room" } });
+    // From the app (1.2.14): its user agent, and its own description in the body.
+    const r = await call("user_ada", R.feedback.POST, "sa", {
+      method: "POST",
+      ua: "NeoLinguaMeet (android)",
+      body: { message: "I keep dropping out", kind: "dropping", where: "room", client: "android 1.2.14+5228 OPPO CPH2365 / Android 14" },
+    });
     assert.equal(r.body.ticket, ticketNumber);
     const tk = (await listTickets()).find((x) => x.number === ticketNumber)!;
     const msgs = await listMessages(tk.id);
     assert.equal(msgs.length, 2);
-    assert.match(msgs[1].body, /Ada · ada@example\.com, in the meeting/);
+    assert.match(msgs[1].body, /Ada · ada@example\.com, in the meeting, NeoLinguaMeet app, android 1\.2\.14\+5228 OPPO CPH2365 \/ Android 14,/);
     assert.equal((await notices("user_owner")).length, 1);
     const e = (await fb.listFeedback(sa.id))[0];
     assert.equal(e.userId, "user_ada");
@@ -297,6 +302,11 @@ async function main() {
     assert.equal(fb.deviceFrom("Mozilla/5.0 (Windows NT 10.0) AppleWebKit Chrome/131 Safari/537 Edg/131"), "Edge on Windows");
     assert.equal(fb.deviceFrom("NeoLinguaMeet/1.2.13 (Android)"), "NeoLinguaMeet app 1.2.13");
     assert.equal(fb.deviceFrom(null), "unknown device");
+    // The app: its user agent, and the description it sends with the feedback.
+    assert.equal(fb.deviceFrom("NeoLinguaMeet (android)"), "NeoLinguaMeet app on Android");
+    assert.equal(fb.deviceFrom("NeoLinguaMeet (android)", "android 1.2.14+5228 OPPO CPH2365 / Android 14\n"), "NeoLinguaMeet app, android 1.2.14+5228 OPPO CPH2365 / Android 14");
+    // Only the app's own description counts as one.
+    assert.equal(fb.deviceFrom("Mozilla/5.0 (Windows NT 10.0) Chrome/131 Safari/537", "fake app"), "Chrome on Windows");
   });
 
   finished = true;

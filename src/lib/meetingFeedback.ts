@@ -81,9 +81,16 @@ export const isFeedbackKind = (v: unknown): v is FeedbackKind =>
 export const kindLabel = (k?: string) => FEEDBACK_KINDS.find((x) => x.key === k)?.label ?? "Feedback";
 const whereText = (w: FeedbackWhere) => (w === "room" ? "in the meeting" : w === "after" ? "after leaving" : "the feedback link");
 
-/** "Chrome on Android" from a user agent; the app says so itself. */
-export function deviceFrom(ua: string | null | undefined): string {
+/**
+ * "Chrome on Android" from a user agent. The app sends "NeoLinguaMeet
+ * (android)" and, in the body, its own description (version, build and
+ * phone: "android 1.2.14+5228 OPPO CPH2365 / Android 14"), which says more.
+ */
+export function deviceFrom(ua: string | null | undefined, client?: string | null): string {
   const s = ua ?? "";
+  const described = (client ?? "").replace(/[\r\n\t]+/g, " ").trim().slice(0, 120);
+  const fromApp = /NeoLinguaMeet \((\w+)\)/.exec(s);
+  if (fromApp) return described ? `NeoLinguaMeet app, ${described}` : `NeoLinguaMeet app on ${fromApp[1][0].toUpperCase()}${fromApp[1].slice(1)}`;
   const app = /NeoLinguaMeet\/([\d.]+)/.exec(s);
   if (app) return `NeoLinguaMeet app ${app[1]}`;
   const os = /Android/.test(s) ? "Android" : /iPhone|iPad|iOS/.test(s) ? "iPhone" : /Windows/.test(s) ? "Windows" : /Mac OS X/.test(s) ? "Mac" : /Linux/.test(s) ? "Linux" : "";

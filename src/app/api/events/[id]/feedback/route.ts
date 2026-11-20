@@ -138,7 +138,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     name,
     ...(email ? { email } : {}),
     ...(who ? { userId: who.userId } : {}),
-    device: deviceFrom(req.headers.get("user-agent")),
+    device: deviceFrom(req.headers.get("user-agent"), typeof body.client === "string" ? body.client : null),
   });
   return NextResponse.json({ ok: true, ticket: r.ticketNumber }, { headers: NO_STORE });
 }
