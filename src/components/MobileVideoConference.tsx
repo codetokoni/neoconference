@@ -9,6 +9,7 @@ import MobileControlBar from './conference/MobileControlBar';
 import RoomHeaderPill from './conference/RoomHeaderPill';
 import ReactionsRail from './conference/ReactionsRail';
 import { PHONE_STATUS_SLOT_ID } from './conference/phoneStatusSlot';
+import { leaveMeeting } from './conference/leaveMeeting';
 
 /**
  * MobileVideoConference
@@ -49,10 +50,9 @@ function MobileLayout() {
   const roomName = decodeURIComponent(params.name as string);
   const slug = searchParams?.get('event') || roomName;
 
-  const handleLeave = useCallback(() => {
-    try { room?.disconnect(); } catch {}
-    if (typeof window !== 'undefined') window.location.href = '/';
-  }, [room]);
+  // To "How was the meeting?", as the room's own onLeave does: this full
+  // page load used to go to "/" and won over it (leaveMeeting.ts).
+  const handleLeave = useCallback(() => leaveMeeting(room, slug), [room, slug]);
 
   return (
     <div className="lk-video-conference nc-mobile-vc flex flex-col h-full">

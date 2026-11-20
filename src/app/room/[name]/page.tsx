@@ -22,6 +22,7 @@ import HostMenuOverlay from "@/components/HostMenuOverlay";
 import MediaRequestPrompt from "@/components/MediaRequestPrompt";
 import { RoomEvent, type Participant } from "livekit-client";
 import { joinMedia, ROOM_OPTIONS } from "@/components/conference/roomOptions";
+import { afterLeaveUrl } from "@/components/conference/leaveMeeting";
 import "@livekit/components-styles";
 import "./initials-overlay.css";
 import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
@@ -374,7 +375,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
       choices={choices}
       // Leaving (or being disconnected) asks how it went: a tap of the stars,
       // and words if something did not work (src/lib/meetingFeedback.ts).
-      onLeave={() => router.push(eventSlug ? `/feedback/${encodeURIComponent(eventSlug)}?after=1` : "/")}
+      onLeave={() => router.push(afterLeaveUrl(eventSlug))}
     />
   );
 }
