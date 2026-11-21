@@ -161,7 +161,7 @@ In the meeting, "Your Prayer Time" shows `HH:MM:SS` under the toolbar on phones,
 - **When it starts:** only once LiveKit confirms the visitor's connection, not when the page or the camera preview opens.
 - **What it counts:** connected meeting attendance, labelled prayer time. It cannot tell whether anyone is praying.
 - **Where the number comes from:** the server works it out from LiveKit's timestamps (`src/lib/partners/attendance.ts`). The page only adds the seconds since the server's last answer, and redraws from the clock rather than counting ticks, so a slowed-down background tab can't make it wrong.
-- **When it is re-read:** every 20 s (the page's heartbeat) and on returning to the tab.
+- **When it is re-read:** every 60 s while the page is on screen, every 3 minutes while it is hidden (the page's heartbeat), and on returning to the tab. Until November 2026 it was every 20 s; each beat is a server call, and the slower beat does not change what is counted.
 - **Refresh and rejoin:** a reload or a rejoin in the same session resumes the total. A new session starts from 00:00:00.
 - **Leaving:** the left screen shows the session's total.
 - **Mirroring it:** the widget's `prayer-time` event carries the same value to the partner's page.
@@ -175,9 +175,9 @@ All of these live in `src/lib/partners/attendanceMath.ts`.
   - by its join event; or
   - by LiveKit's own join time, if the page's heartbeat arrives first.
 
-  It ends with LiveKit's leave event. If that never comes (a closed lid, a lost network), it ends at the page's last heartbeat once 150 s pass without one.
+  It ends with LiveKit's leave event. If that never comes (a closed lid, a lost network), it ends at the page's last heartbeat once 6 minutes pass without one (longer than a hidden tab's 3-minute beat). So a lost leave event costs at most the time since that last heartbeat: under a minute on screen, a few minutes in a hidden tab. It never adds time.
 
-  A heartbeat for a connection the server hasn't seen, or hasn't heard from for 30 s, is checked with LiveKit first. A browser can keep a connection alive; it can't invent one.
+  A heartbeat for a connection the server hasn't seen, or hasn't heard from for 90 s, is checked with LiveKit first. A browser can keep a connection alive; it can't invent one.
 - **Reconnect grace.** A gap of up to **60 seconds** between a person's connections counts as connected, so a blip doesn't break the timer. A longer gap is not counted, and the timer resumes from the earlier total. A gap at the end (they left) is never counted.
 - **No double counting.** All of a person's connections are merged before summing. Several tabs or devices, or two zones at once in an organisation report, count once.
 - **A person** is the integration plus the partner's stable user id. People are never merged by display name.

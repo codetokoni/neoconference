@@ -7,7 +7,9 @@
 //     before that event) until LiveKit reports it gone.
 //   - If LiveKit's leave never arrives (a closed lid, a lost network),
 //     the connection ends at the page's last heartbeat once no heartbeat
-//     has come for HEARTBEAT_EXPIRY_MS.
+//     has come for HEARTBEAT_EXPIRY_MS. So a lost leave costs at most the
+//     time since that beat: under PAGE_BEAT_MS on screen, under
+//     HIDDEN_PAGE_BEAT_MS (plus browser timer slack) in a hidden tab.
 //   - A person's connections are merged (tabs, devices, reconnects never
 //     count twice), and a gap of up to RECONNECT_GRACE_MS between two of
 //     their connections counts as connected. A longer gap is not counted.
@@ -15,8 +17,21 @@
 //   - A closed session caps every connection at its end.
 
 export const RECONNECT_GRACE_MS = 60_000;
-/** Pages beat every 20 s; browsers may slow a hidden page's timers to once a minute. */
-export const HEARTBEAT_EXPIRY_MS = 150_000;
+/** How often the embed page beats while it is on screen (20 s until November 2026). */
+export const PAGE_BEAT_MS = 60_000;
+/**
+ * How often it beats while hidden (a background tab, a locked phone still
+ * playing the meeting). Not zero: without beats a hidden listener would be
+ * counted as gone after HEARTBEAT_EXPIRY_MS, and a room everyone listens to
+ * from a locked phone would close as idle after STALE_SESSION_MS.
+ */
+export const HIDDEN_PAGE_BEAT_MS = 180_000;
+/**
+ * No heartbeat for this long and no leave from LiveKit: the connection ended
+ * at its last heartbeat. Longer than the hidden beat plus the minute a
+ * browser may hold back a hidden page's timer, so a hidden tab never lapses.
+ */
+export const HEARTBEAT_EXPIRY_MS = 360_000;
 
 export type Interval = { start: number; end: number };
 

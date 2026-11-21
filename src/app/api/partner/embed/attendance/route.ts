@@ -4,7 +4,9 @@
 //   { session, sid? }  →  { sessionId, sessionStartedAt, seconds, connected, serverNow, beat }
 //
 // `sid` is the page's LiveKit connection: while it is in the meeting the
-// page sends it every 20 seconds. Without it, this only reads the timer
+// page sends it every 60 seconds, every 3 minutes while its tab is hidden,
+// and on returning to the tab (PAGE_BEAT_MS / HIDDEN_PAGE_BEAT_MS in
+// attendanceMath.ts). Without it, this only reads the timer
 // (after leaving, say). The timer is the visitor's counted time in the
 // zone's current prayer session, worked out on the server from LiveKit's
 // timestamps (src/lib/partners/attendance.ts); the page only adds the time

@@ -288,9 +288,9 @@ async function main() {
   });
 
   await t("the current-session report: the open session only, with whoever is connected", async () => {
-    // Their page beats every 20 s; LiveKit confirms them when asked.
-    for (let i = 0; i < 15; i++) {
-      clock += 20_000;
+    // Their page beats every 60 s; LiveKit confirms them when asked.
+    for (let i = 0; i < 5; i++) {
+      clock += 60_000;
       await A.heartbeat(room(falf), id("u12"), u12sid, who("u12", "New"), async () => clock - 6 * MIN);
     }
     const r = await get(R.zone.GET, "/api/partner/v1/reports/zones/FALF?period=current", { viewer: "u1", params: { zone: "FALF" } });

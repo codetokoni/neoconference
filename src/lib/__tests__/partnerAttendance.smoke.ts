@@ -200,8 +200,11 @@ async function main() {
   });
 
   await t("a tab closed with no goodbye ends at its last heartbeat once heartbeats stop", async () => {
-    // No leave from LiveKit, no more heartbeats after 900.
-    at(1100);
+    // No leave from LiveKit, no more heartbeats after 900. Until 6 minutes pass it may
+    // just be a hidden tab (3-minute beat, held back up to a minute by the browser).
+    at(900 + 360);
+    assert.equal((await beat(grace)).body.connected, true, "a hidden tab's 3-minute beat is still on time");
+    at(1400);
     const r = await beat(grace);
     assert.equal(r.body.connected, false);
     assert.equal(r.body.seconds, 710);
@@ -213,26 +216,26 @@ async function main() {
 
   await t("when the room closes the session ends; the next opening is a new session with a new timer", async () => {
     const first = (await beat(grace)).body.sessionId;
-    at(1200);
+    at(1450);
     await webhook({ event: "room_finished", room: { name: grace.room } });
     const s = await A.getSession(first);
     assert.ok(s?.endedAt, "closed");
     assert.equal(s!.startedAt, BASE + 10_000);
     assert.equal((await beat(grace)).body.sessionId, null);
-    at(1500);
+    at(1800);
     await connect(grace, "PA_g5", "Grace");
-    at(1530);
+    at(1830);
     const r = await beat(grace, "PA_g5");
     assert.notEqual(r.body.sessionId, first);
     assert.equal(r.body.seconds, 30);
   });
 
   await t("zones keep their own sessions and time", async () => {
-    at(1540);
+    at(1840);
     const lagos = await visitor("LAGOS-1", "pc_grace", "Grace");
     assert.notEqual(lagos.room, grace.room);
     await connect(lagos, "PA_l1", "Grace");
-    at(1600);
+    at(1900);
     const l = await beat(lagos, "PA_l1");
     assert.equal(l.body.seconds, 60);
     const f = await beat(grace, "PA_g5");
@@ -241,12 +244,12 @@ async function main() {
   });
 
   await t("the host and others in the room keep the session's clock without prayer time of their own", async () => {
-    at(1610);
+    at(1910);
     await webhook({ event: "participant_joined", room: { name: grace.room }, participant: { sid: "PA_host", identity: "user_owner#web", name: "Host" } });
     const s = await A.currentSession(pc.id, "FALF");
     assert.ok(s);
     assert.equal((await A.getPerson(s!.id, "user_owner")), null);
-    assert.ok(s!.lastActivity >= BASE + 1_610_000);
+    assert.ok(s!.lastActivity >= BASE + 1_910_000);
   });
 
   await t("two first connections at once start one session", async () => {
@@ -273,6 +276,43 @@ async function main() {
     assert.equal((await beat(grace)).body.error.code, "zone_disabled");
     await S.setZoneStatus(pc.id, "FALF", "active");
     assert.equal((await beat(grace)).status, 200);
+  });
+
+  await t("the beat and the server agree: hidden tabs never lapse, sessions never go idle, on-time beats skip LiveKit", async () => {
+    const browserSlack = 60_000;
+    assert.ok(M.HEARTBEAT_EXPIRY_MS > M.PAGE_BEAT_MS + M.HIDDEN_PAGE_BEAT_MS + browserSlack, "a tab hidden just before its next beat");
+    assert.ok(A.STALE_SESSION_MS > M.HEARTBEAT_EXPIRY_MS);
+    assert.ok(A.VERIFY_AFTER_MS > M.PAGE_BEAT_MS && A.VERIFY_AFTER_MS < M.HIDDEN_PAGE_BEAT_MS);
+  });
+
+  await t("a page beating every 60 s is believed; a hidden one beating every 3 min is checked with LiveKit and keeps counting", async () => {
+    at(3000);
+    const z = { integrationId: pc.id, zoneId: "BEATS", eventId: "ev_b", room: "room-b" };
+    const who = { integrationId: pc.id, zoneId: "BEATS", ext: "user:b", name: "B", verified: true };
+    const joined = Date.now();
+    let asked = 0;
+    const verify = async () => (asked++, joined);
+    assert.equal(await A.heartbeat(z, "pz-b", "PA_beats", who, verify), "ok");
+    assert.equal(asked, 1, "a connection never seen is confirmed first");
+    for (let i = 1; i <= 10; i++) {
+      at(3000 + 60 * i);
+      assert.equal(await A.heartbeat(z, "pz-b", "PA_beats", who, verify), "ok");
+    }
+    assert.equal(asked, 1, "on-screen beats do not call LiveKit");
+    // Hidden (a locked phone still playing the meeting) for 30 minutes.
+    for (let i = 1; i <= 10; i++) {
+      at(3600 + 180 * i);
+      assert.equal(await A.heartbeat(z, "pz-b", "PA_beats", who, verify), "ok");
+    }
+    assert.equal(asked, 11, "each hidden beat is checked");
+    const t1 = await A.timerSummary(pc.id, "BEATS", "pz-b");
+    assert.equal(t1.connected, true);
+    assert.equal(t1.seconds, 3600 + 1800 - 3000, "the whole time, hidden part included");
+    // The leave never arrives: counted time stops at the last beat, never later.
+    at(5400 + 400);
+    const t2 = await A.timerSummary(pc.id, "BEATS", "pz-b");
+    assert.equal(t2.connected, false);
+    assert.equal(t2.seconds, 2400);
   });
 
   await t("the counting rules: grace joins short gaps only, never a trailing one; clipping after merging", async () => {
