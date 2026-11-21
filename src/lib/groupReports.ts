@@ -184,12 +184,27 @@ async function readCache(eid: string): Promise<MeetingReport | null> {
   }
 }
 
+/**
+ * The report as saved: without each person's join and leave intervals, which
+ * only building it uses (the meeting's own spreadsheet builds its rows from
+ * the journal). A 700-person meeting's intervals were most of 2.3 MB.
+ */
+export function forCache(r: MeetingReport): MeetingReport {
+  return { ...r, participants: r.participants.map((p) => (p.row ? { ...p, row: { ...p.row, intervals: [] } } : p)) };
+}
+
+/** Save a report. A failed save only means it is built again next time. */
 async function writeCache(r: MeetingReport): Promise<void> {
+  const slim = forCache(r);
   if (!isKvConfigured()) {
-    mem.set(r.eventId, r);
+    mem.set(r.eventId, slim);
     return;
   }
-  await kv.set(reportKey(r.eventId), JSON.stringify(r), { ex: CACHE_SECONDS });
+  try {
+    await kv.set(reportKey(r.eventId), JSON.stringify(slim), { ex: CACHE_SECONDS });
+  } catch (err) {
+    console.warn("[reports] could not save the report", r.eventId, err);
+  }
 }
 
 /** Drop a cached report (when something about the meeting changes). */
@@ -458,9 +473,27 @@ export function searchParticipants(report: MeetingReport, q: string | null | und
   return { ...report, participants: report.participants.filter((p) => matchesAttendee(p, q)) };
 }
 
-/** A meeting's report: the cached one for a finished meeting, else built now. */
+/**
+ * Whether a saved report still describes the meeting: it is finished, and it
+ * has not started or ended again since the report was built. A meeting used
+ * again kept the report of its first use: saregionalmeeting's showed its one
+ * person from a trial on 3 November after 700 people came on 20 November.
+ */
+export function cacheStillFits(cached: Pick<MeetingReport, "builtAt">, ev: Pick<NeoEvent, "state" | "startedAt" | "endedAt">): boolean {
+  if (!isEnded(ev)) return false;
+  const after = (iso: string | undefined) => Boolean(iso) && Date.parse(iso!) > cached.builtAt;
+  return !after(ev.startedAt) && !after(ev.endedAt);
+}
+
+/** A meeting's report: the saved one for a finished meeting, while it fits, else built now. */
 export async function getMeetingReport(eid: string, now: number = Date.now()): Promise<MeetingReport | null> {
-  return (await readCache(eid)) ?? buildMeetingReport(eid, now);
+  const cached = await readCache(eid);
+  if (cached) {
+    const ev = await eventStore.byId(eid);
+    if (!ev) return null;
+    if (cacheStillFits(cached, ev)) return cached;
+  }
+  return buildMeetingReport(eid, now);
 }
 
 /** One person's line in a meeting's report, or null if they had no part in it. */
