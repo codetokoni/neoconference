@@ -23,6 +23,7 @@ import { isAudioKey, slugFromRecordingKey } from '@/lib/eventRecordings';
 import { publicOrigin } from '@/lib/publicOrigin';
 import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
+import { nameForJoin } from '@/lib/attendanceName';
 import { enforceMicLockFor, type LkParticipant } from '@/lib/micLock';
 import { partnerParticipantEvent, partnerRoomClosed } from '@/lib/partners/attendanceHooks';
 import { disconnectReasonName } from '@/lib/disconnectReason';
@@ -142,6 +143,9 @@ export async function POST(req: Request) {
       const ts = Date.parse(isoFromWebhookCreatedAt(event.createdAt));
       const baseIdentity = participant.identity.split('#')[0];
       const left = event.event === 'participant_left';
+      // The "Full name for attendance" they confirmed before joining
+      // (src/lib/attendanceName.ts), recorded on this join's entry.
+      const attendanceName = !left && baseIdentity.startsWith('user_') ? await nameForJoin(baseIdentity) : '';
       await recordAttendance(ev.id, {
         ts: Number.isFinite(ts) ? ts : Date.now(),
         action: left ? 'leave' : 'join',
@@ -154,6 +158,7 @@ export async function POST(req: Request) {
         // Leave or everyone's link dropped.
         ...(left ? { reason: disconnectReasonName(participant.disconnectReason) } : {}),
         ...(client ? { client } : {}),
+        ...(attendanceName ? { attendanceName } : {}),
       });
       // A partner zone's room: prayer sessions and each visitor's prayer time.
       if (ev.partner) {

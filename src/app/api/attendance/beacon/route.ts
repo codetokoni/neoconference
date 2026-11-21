@@ -18,7 +18,8 @@ import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { recordAttendance } from "@/lib/attendance";
-import { accountFullName } from "@/lib/attendeeName";
+import { displayNameFor } from "@/lib/attendeeName";
+import { nameForJoin } from "@/lib/attendanceName";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,12 +60,10 @@ export async function POST(req: Request) {
       ?.emailAddress ||
       u?.emailAddresses?.[0]?.emailAddress ||
       "").toLowerCase();
-  // The same name the meeting room shows (src/lib/attendeeName.ts).
-  const name =
-    accountFullName(u) ||
-    u?.username ||
-    primaryEmail ||
-    userId;
+  // The same name the meeting room shows (src/lib/attendeeName.ts), and on
+  // a join the attendance name they confirmed before joining.
+  const name = displayNameFor(u, primaryEmail || userId);
+  const attendanceName = rawAction === "join" ? await nameForJoin(userId) : "";
 
   await recordAttendance(event.id, {
     action: rawAction,
@@ -72,6 +71,7 @@ export async function POST(req: Request) {
     name,
     email: primaryEmail || undefined,
     source: "beacon",
+    ...(attendanceName ? { attendanceName } : {}),
   });
 
   return NextResponse.json({ ok: true });

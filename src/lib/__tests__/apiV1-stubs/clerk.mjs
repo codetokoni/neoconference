@@ -53,6 +53,7 @@ function toUser(id) {
     username: u.username ?? null,
     imageUrl: "",
     publicMetadata,
+    privateMetadata: { ...(u.privateMetadata ?? {}) },
     createdAt: u.createdAt ?? 0,
     emailAddresses: list,
     primaryEmailAddress: primary,
@@ -195,10 +196,11 @@ export async function clerkClient() {
         const offset = params.offset ?? 0;
         return { data: all.slice(offset, offset + (params.limit ?? 10)), totalCount: all.length };
       },
-      async updateUserMetadata(id, { publicMetadata }) {
+      async updateUserMetadata(id, { publicMetadata, privateMetadata }) {
         const u = users()[id];
         if (!u) throw notFound();
-        setPublicMetadata(u, mergeMetadata(toUser(id).publicMetadata, publicMetadata));
+        if (publicMetadata !== undefined) setPublicMetadata(u, mergeMetadata(toUser(id).publicMetadata, publicMetadata));
+        if (privateMetadata !== undefined) u.privateMetadata = mergeMetadata(u.privateMetadata ?? {}, privateMetadata);
         return toUser(id);
       },
       async updateUser(id, params = {}) {

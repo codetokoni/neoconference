@@ -54,6 +54,10 @@ enum RoomLink { live, reconnecting, lost }
 
 /// Why the app is not in the room yet.
 enum JoinPhase {
+  /// The "Full name for attendance" step (attendance_name.dart): shown before
+  /// the first join of this meeting, and again if the server asks for it.
+  confirmName,
+
   connecting,
 
   /// The host has not arrived. The room exists; nobody may publish into an
@@ -805,8 +809,22 @@ class RoomController extends StateNotifier<RoomState> {
     state = state.copyWith(weakLink: weak);
   });
 
+  /// The attendance name was confirmed for this meeting. Automatic rejoins
+  /// after a drop keep it; only opening the meeting again asks again.
+  bool _nameConfirmed = false;
+
+  /// The join step accepted a name (the server has it): join now.
+  Future<void> nameConfirmed() {
+    _nameConfirmed = true;
+    return join();
+  }
+
   Future<void> join() async {
     debugPrint('[neo-room] join() called for $slug');
+    if (!_nameConfirmed) {
+      state = state.copyWith(phase: JoinPhase.confirmName);
+      return;
+    }
     // An automatic rejoin is the same meeting carrying on; anything else
     // is a fresh ask, and has to get in before it can be dropped.
     if (!_autoRejoin.active) _wasIn = false;
@@ -931,6 +949,8 @@ class RoomController extends StateNotifier<RoomState> {
       'event': slug,
       'nonce': ?nonce,
       'client': ?client,
+      // This app asks for the attendance name, so the server requires it.
+      'attendance': '1',
     });
     if (body is! Map || body['token'] is! String || body['wsUrl'] is! String) {
       throw const ApiException(
@@ -943,6 +963,12 @@ class RoomController extends StateNotifier<RoomState> {
 
   void _handleJoinRefusal(ApiException e) {
     switch (e.code) {
+      case 'attendance_name_required':
+        _nameConfirmed = false;
+        state = state.copyWith(
+          phase: JoinPhase.confirmName,
+          message: e.message.isNotEmpty ? e.message : 'Enter your full name for attendance',
+        );
       case 'waiting_room':
         _beginKnocking(e.body['status'] as String?);
       case 'wait_for_host':

@@ -1,25 +1,18 @@
 // src/lib/attendeeName.ts
 //
-// A meeting attendee's full name, by one set of rules for sign-in, the
-// meeting room, the attendance report on screen and every attendance export.
+// How meetings name the people in them. Two names, kept apart:
 //
-// Administrators saw only usernames and email addresses for people who came
-// with KingsChat: KingsChat's profile gives one `name` (not first and last),
-// sign-in looked only for first and last names, so the account had none and
-// everything fell back to the handle.
+//   the display name      what the meeting's tiles and people list show:
+//                         a KingsChat account's username, otherwise the
+//                         account's own name, username or email (displayNameFor)
+//   the attendance name   "Full name for attendance", typed or confirmed by
+//                         the person before every meeting they join, and only
+//                         ever shown in attendance reports and exports
 //
-// The rules:
-//   1. the full name KingsChat gave at the person's latest sign-in
-//      (publicMetadata.kingschat.name);
-//   2. otherwise the name saved on the account (Clerk first + last name),
-//      which is where a name the person types in is kept;
-//   3. otherwise none: the report says "Name unavailable" and an export
-//      leaves the cell blank.
-// Blank or whitespace-only values count as missing.
+// KingsChat's profile gives one `name` (not first and last); it is the first
+// suggestion for the attendance name, never its username or email.
 //
 // Pure: no Clerk, no network. Safe in the browser and on the server.
-
-export const NAME_UNAVAILABLE = "Name unavailable";
 
 /** Longest full name kept (Clerk's own name fields take far more). */
 export const FULL_NAME_MAX = 100;
@@ -102,38 +95,100 @@ export function localFullName(u: NamedAccount): string {
   return cleanFullName([u.firstName ?? "", u.lastName ?? ""].join(" "));
 }
 
-/** The attendee's full name by the rules above; "" when there is none. */
-export function accountFullName(u: NamedAccount | null | undefined): string {
-  if (!u) return "";
-  const kc = kingschatOf(u);
-  return cleanFullName(kc?.name) || localFullName(u);
-}
+/* ------------------------- the attendance name ------------------------- */
+//
+// Everyone confirms a "Full name for attendance" before joining a meeting
+// (the join screen on the web, the app's join step). It is saved on their
+// account, private to them (privateMetadata.attendanceName), so the next
+// meeting offers it again to review, and it is recorded on the attendance
+// entry of each meeting they join (src/lib/attendanceName.ts) — so changing
+// it later never changes who a past meeting says came.
 
-/**
- * Whether to ask for a full name before joining: a KingsChat account with no
- * name from KingsChat and none saved. Asked once: the answer is saved on the
- * account and found by accountFullName from then on. Other accounts are never
- * asked; their sign-up is unchanged.
- */
-export function needsFullName(u: NamedAccount | null | undefined): boolean {
-  return isKcAccount(u) && !accountFullName(u);
-}
+/** What a report and an export say for someone whose attendance name was never captured. */
+export const NAME_NOT_CAPTURED = "Name not captured";
+export const ATTENDANCE_NAME_REQUIRED = "Enter your full name for attendance";
 
-/** Why a typed full name cannot be saved, or "" when it can. */
-export function fullNameProblem(v: unknown): string {
-  const name = cleanFullName(v);
-  if (!name) return "Enter your full name.";
+/** Letters (any script, with accents), spaces, apostrophes, hyphens, full stops. */
+const ATTENDANCE_NAME_CHARS = /^\p{L}[\p{L}\p{M} .'’‘-]*$/u;
+
+/** Why a typed attendance name cannot be used, or "" when it can. */
+export function attendanceNameProblem(v: unknown): string {
   if (typeof v === "string" && v.replace(/\s+/g, " ").trim().length > FULL_NAME_MAX) {
     return `Keep it under ${FULL_NAME_MAX} characters.`;
   }
-  if (!/\p{L}/u.test(name)) return "Enter your name in letters.";
-  if (name.length < 2) return "Enter your full name.";
+  const name = cleanFullName(v);
+  if (!name) return ATTENDANCE_NAME_REQUIRED;
+  if (name.includes("@")) return "Enter your name, not an email address.";
+  if (!ATTENDANCE_NAME_CHARS.test(name)) return "Use letters only, with spaces, apostrophes or hyphens between them.";
+  if (name.replace(/[^\p{L}]/gu, "").length < 2) return ATTENDANCE_NAME_REQUIRED;
   return "";
 }
 
-/** A full name as the on-screen report shows it. */
-export function reportName(fullName: string | null | undefined): string {
-  return cleanFullName(fullName) || NAME_UNAVAILABLE;
+/** The parts of an account the attendance-name rules read. */
+export interface AttendanceAccount extends NamedAccount {
+  username?: string | null;
+  privateMetadata?: unknown;
+  emailAddresses?: { emailAddress: string }[];
+  primaryEmailAddress?: { emailAddress?: string } | null;
+}
+
+/** The attendance name the person last confirmed, saved on their account; "" when none. */
+export function savedAttendanceName(u: AttendanceAccount | null | undefined): string {
+  const pm = u?.privateMetadata;
+  return isObj(pm) ? cleanFullName(pm.attendanceName) : "";
+}
+
+function kcUsername(u: AttendanceAccount): string {
+  return cleanFullName(kingschatOf(u)?.username) || cleanFullName(u.username);
+}
+
+/** Texts that are an account's handle or address, never a name to suggest. */
+function handlesOf(u: AttendanceAccount): Set<string> {
+  const out = new Set<string>();
+  const add = (v: unknown) => {
+    const s = cleanFullName(v).toLowerCase();
+    if (s) out.add(s);
+  };
+  add(u.username);
+  add(kingschatOf(u)?.username);
+  for (const e of [u.primaryEmailAddress?.emailAddress, ...(u.emailAddresses ?? []).map((x) => x.emailAddress)]) {
+    add(e);
+    add(typeof e === "string" ? e.split("@")[0] : "");
+  }
+  return out;
+}
+
+/**
+ * What the attendance field starts with: the name they confirmed last time;
+ * on first use, the full name KingsChat gave (its own `name`, never the
+ * handle), else a first and last name saved on the account; otherwise blank.
+ * Never a username or an email address, even when one was saved as a name.
+ */
+export function attendanceNamePrefill(u: AttendanceAccount | null | undefined): string {
+  if (!u) return "";
+  const saved = savedAttendanceName(u);
+  if (saved) return saved;
+  const handles = handlesOf(u);
+  for (const candidate of [cleanFullName(kingschatOf(u)?.name), localFullName(u)]) {
+    if (candidate && !handles.has(candidate.toLowerCase()) && !attendanceNameProblem(candidate)) return candidate;
+  }
+  return "";
+}
+
+/**
+ * The name the meeting's tiles and people list show: a KingsChat account's
+ * KingsChat username; otherwise the account's name, username or email.
+ * Never the attendance name.
+ */
+export function displayNameFor(u: AttendanceAccount | null | undefined, fallback = ""): string {
+  if (!u) return fallback;
+  if (isKcAccount(u)) return kcUsername(u) || fallback;
+  return (
+    localFullName(u) ||
+    cleanFullName(u.username) ||
+    cleanFullName(u.primaryEmailAddress?.emailAddress) ||
+    fallback
+  );
 }
 
 /** Search across an attendee's full name, username and email (case and spacing ignored). */

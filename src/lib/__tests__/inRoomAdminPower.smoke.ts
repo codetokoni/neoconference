@@ -120,6 +120,8 @@ async function main() {
     process.env.LIVEKIT_API_KEY = "devkey";
     process.env.LIVEKIT_API_SECRET = "devsecret-devsecret-devsecret-devsecret";
     process.env.NEXT_PUBLIC_LIVEKIT_URL = "wss://livekit.example.com";
+    // The join screen confirms a full name for attendance first (src/lib/attendanceName.ts).
+    await (await import("../attendanceName")).rememberConfirmation(who, "Test Attendee");
     try {
       const r = await json(
         await R.token.GET(new NextRequest(`https://www.neoconference.app/api/livekit/token?room=${slug}&event=${slug}`)),

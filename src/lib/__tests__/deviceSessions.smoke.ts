@@ -315,6 +315,8 @@ async function main() {
   /** This device asks for a meeting token, as the website and the app do, and is then in the room. */
   const join = async (userId: string, sid: string, nonce: string) => {
     as(userId, sid);
+    // The join screen confirms a full name for attendance first (src/lib/attendanceName.ts).
+    await (await import("../attendanceName")).rememberConfirmation(userId, "Test Attendee");
     const res = await tokenRoute.GET(new NextRequest(`https://neolinguameet.com/api/livekit/token?room=${ROOM}&event=${ROOM}&nonce=${nonce}`));
     assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
     const identity = `${userId}#${nonce}`;

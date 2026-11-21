@@ -43,9 +43,11 @@ export async function eventAttendees(event: NeoEvent): Promise<{ attendees: Atte
     if (r.username && CLERK_USER_ID.test(r.username)) {
       if (seen.has(r.username)) continue;
       seen.add(r.username);
-      attendees.push({ userId: r.username, name: r.fullName || "Member", email: r.email || "" });
-    } else if (r.fullName) {
-      guests.add(r.fullName);
+      // The name the meeting showed them by: a group's other members see it,
+      // so never the private attendance name (src/lib/attendeeName.ts).
+      attendees.push({ userId: r.username, name: r.displayName || "Member", email: r.email || "" });
+    } else if (r.displayName || r.fullName) {
+      guests.add(r.displayName || r.fullName);
     }
   }
   return { attendees, guests: Array.from(guests) };

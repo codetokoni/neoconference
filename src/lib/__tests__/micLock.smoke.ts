@@ -114,6 +114,8 @@ async function main() {
   }
   async function tokenSources(who: string) {
     g.__who = who;
+    // The join screen confirms a full name for attendance first (src/lib/attendanceName.ts).
+    await (await import("../attendanceName")).rememberConfirmation(who, "Test Attendee");
     const res = await R.token.GET(new NextRequest(`https://www.neoconference.app/api/livekit/token?room=room1&event=room1&nonce=z9`));
     const body = (await res.json()) as { token?: string };
     assert.equal(res.status, 200, JSON.stringify(body));
