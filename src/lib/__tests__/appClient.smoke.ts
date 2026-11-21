@@ -179,18 +179,32 @@ async function main() {
   const beforeCutOff = SCHEDULED_MIN.from - 86_400_000;
   const afterCutOff = SCHEDULED_MIN.from + 60_000;
   const v124 = "android 1.2.4+5218 OPPO CPH2599 / Android 16";
+  const v1216 = "android 1.2.16+5230 OPPO CPH2599 / Android 16";
+  /**
+   * The minimum is the newest app (1.2.16) since 2026-11-21, so nothing is
+   * nudged at it. The nudge runs again when APP_MIN_VERSION in Vercel lowers
+   * the minimum, so its checks run with it lowered to 1.2.4.
+   */
+  const lowered = async (fn: () => Promise<void>) => {
+    process.env.APP_MIN_VERSION = "1.2.4";
+    try {
+      await fn();
+    } finally {
+      delete process.env.APP_MIN_VERSION;
+    }
+  };
   const v125 = "android 1.2.5+5219 OPPO CPH2599 / Android 16";
 
-  await t("an app older than the minimum is told too; 1.2.4 and newer join", async () => {
+  await t("with the minimum lowered: an app older than it is told too; 1.2.4 and newer join", async () => lowered(async () => {
     await atTime(beforeCutOff, async () => {
       await kv.set(nudgeKey("user_app"), 1); // already nudged today
       assert.equal((await join({ app: true, client: "android 1.2.3+5216 OPPO CPH2599 / Android 16" })).status, 426);
       assert.equal((await join({ app: true, client: v124 })).status, 200);
       assert.equal((await join({ app: true, client: "android 1.2.10+5300 Tecno X / Android 14" })).status, 200);
     });
-  });
+  }));
 
-  await t("1.2.4 is told the newest app is ready once a day, and Try again goes straight in", async () => {
+  await t("with the minimum lowered: 1.2.4 is told the newest app is ready once a day, and Try again goes straight in", async () => lowered(async () => {
     await atTime(beforeCutOff, async () => {
       await kv.del(nudgeKey("user_app"));
       const first = await join({ app: true, client: v124 });
@@ -212,9 +226,9 @@ async function main() {
       assert.equal((await join({ app: true, client: v124, who: "user_other" })).body.error, "app_update_available");
       assert.equal((await join({ app: true, client: v124, who: "user_other" })).status, 200);
     });
-  });
+  }));
 
-  await t("1.2.5 and 1.2.6 are told too: the 25 October minimum (1.2.7) shuts them out, and their pop-up never says so", async () => {
+  await t("with the minimum lowered: 1.2.5 and 1.2.6 are told too (the 25 October date shuts them out), as their pop-up never says so", async () => lowered(async () => {
     await atTime(beforeCutOff, async () => {
       for (const v of [v125, "android 1.2.6+5220 OPPO CPH2599 / Android 16"]) {
         await kv.del(nudgeKey("user_app"));
@@ -224,29 +238,32 @@ async function main() {
         assert.equal((await join({ app: true, client: v })).status, 200, v);
       }
     });
-  });
+  }));
 
   await t("the newest app and the website are never nudged", async () => {
     await atTime(beforeCutOff, async () => {
       await kv.del(nudgeKey("user_app"));
-      assert.equal((await join({ app: true, client: "android 1.2.7+5221 OPPO CPH2599 / Android 16" })).status, 200);
+      assert.equal((await join({ app: true, client: v1216 })).status, 200);
       assert.equal((await join({ app: false })).status, 200);
       assert.equal(await kv.get(nudgeKey("user_app")), null);
     });
   });
 
-  await t("from 25 October 1.2.7 is the minimum: 1.2.4 to 1.2.6 must update, 1.2.7 joins", async () => {
-    await atTime(afterCutOff, async () => {
-      await kv.set(nudgeKey("user_app"), 1);
-      for (const v of [v124, v125, "android 1.2.6+5220 OPPO CPH2599 / Android 16"]) {
-        const old = await join({ app: true, client: v });
-        assert.equal(old.status, 426, v);
-        assert.equal(old.body.error, "app_update_required", v);
-      }
-      assert.equal((await join({ app: true, client: "android 1.2.7+5221 OPPO CPH2599 / Android 16" })).status, 200);
-      const latest = await import("../../app/api/app/latest/route");
-      assert.equal(((await (await latest.GET()).json()) as Record<string, string>).minVersion, "1.2.7");
-    });
+  await t("1.2.16 is the minimum, before and after the 25 October date: every older app must update, 1.2.16 joins", async () => {
+    for (const at of [beforeCutOff, afterCutOff, realNow()]) {
+      await atTime(at, async () => {
+        await kv.del(nudgeKey("user_app"));
+        for (const v of [v124, v125, "android 1.2.7+5221 OPPO CPH2599 / Android 16", "android 1.2.15+5229 OPPO CPH2599 / Android 16"]) {
+          const old = await join({ app: true, client: v });
+          assert.equal(old.status, 426, v);
+          assert.equal(old.body.error, "app_update_required", v);
+        }
+        assert.equal((await join({ app: true, client: v1216 })).status, 200);
+        assert.equal((await join({ app: true, client: "android 1.2.17+5231 OPPO CPH2599 / Android 16" })).status, 200);
+        const latest = await import("../../app/api/app/latest/route");
+        assert.equal(((await (await latest.GET()).json()) as Record<string, string>).minVersion, "1.2.16");
+      });
+    }
   });
 
   await t("APP_MIN_VERSION still overrides the scheduled minimum, and the nudge drops the passed date", async () => {
@@ -285,7 +302,7 @@ async function main() {
     });
     assert.deepEqual(body, {
       latestVersion: "1.2.16",
-      minVersion: "1.2.4",
+      minVersion: "1.2.16",
       storeUrl: "https://web.lwappstore.com/share/lW-APP-Y26-XG9328",
       updateUrl: "https://www.neoconference.app/download",
       site: "https://www.neoconference.app",
