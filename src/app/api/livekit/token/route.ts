@@ -459,6 +459,20 @@ export async function GET(req: NextRequest) {
       console.error("[livekit/token] lock check error:", lockErr);
     }
 
+    // The whole LiveKit account full (src/lib/livekitCapacity.ts): say so,
+    // rather than hand out a token LiveKit would refuse with a vague error.
+    // Hosts, Moderators and platform admins may use the places kept back.
+    {
+      const { capacityRefusal, connectedNow } = await import("@/lib/livekitCapacity");
+      const connected = await connectedNow(new RoomServiceClient(wsUrl, apiKey, apiSecret));
+      const elevated = isAdminJoiner || participantRole === "host" || participantRole === "cohost";
+      const refusal = capacityRefusal(connected, elevated);
+      if (refusal) {
+        console.warn("[livekit/token] service_full", JSON.stringify({ room, connected: refusal.connected, limit: refusal.limit }));
+        return NextResponse.json(refusal, { status: 403 });
+      }
+    }
+
     // Locked microphones (src/lib/micLock.ts): someone who joins, or rejoins,
     // while their microphone is locked may publish everything but it. Owners,
     // Hosts and Moderators never are. A failed read locks nobody.
