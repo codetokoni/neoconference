@@ -17,6 +17,7 @@ import { authorize } from "@/lib/authz";
 import { eventStore } from "@/lib/eventStore";
 import { ATTENDANCE_COLUMNS, attendanceRowCells, fetchAttendanceReport } from "@/lib/attendance";
 import { BRAND } from "@/lib/brand";
+import { withFullNames } from "@/lib/attendeeNames";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +30,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   const gate = await authorize(event, "transcript:read");
   if (!gate.ok) return gate.response;
 
-  const rows = await fetchAttendanceReport(event);
+  // Full Name by the attendee rules (src/lib/attendeeName.ts): looked up
+  // from each record's account, blank when there is none.
+  const rows = await withFullNames(await fetchAttendanceReport(event));
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = `${BRAND.name}`;

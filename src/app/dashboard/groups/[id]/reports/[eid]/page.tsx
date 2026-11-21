@@ -8,7 +8,7 @@ import { getIdentity } from "@/lib/authz";
 import { can } from "@/lib/permissions";
 import { getGroup, getMember, groupActor } from "@/lib/groupStore";
 import { eventStore } from "@/lib/eventStore";
-import { getMeetingReport, reportVisible } from "@/lib/groupReports";
+import { getMeetingReport, reportVisible, withAttendeeNames } from "@/lib/groupReports";
 import MeetingReportView from "./MeetingReportView";
 
 export const dynamic = "force-dynamic";
@@ -23,8 +23,9 @@ export default async function MeetingReportPage({ params }: { params: Promise<{ 
   const actor = groupActor({ ...(await getIdentity()), userId }, member);
   if (!can(actor, "group:reports:view")) notFound();
   if (!(await reportVisible(await eventStore.byId(eid), id, userId))) notFound();
-  const report = await getMeetingReport(eid);
-  if (!report) notFound();
+  const cached = await getMeetingReport(eid);
+  if (!cached) notFound();
+  const report = await withAttendeeNames(cached);
 
   return <MeetingReportView report={report} groupId={id} canExport={can(actor, "group:reports:export")} />;
 }

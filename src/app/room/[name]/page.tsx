@@ -29,6 +29,8 @@ import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
 import MobileMoreMenu from "@/components/MobileMoreMenu";
 import ConferenceErrorBoundary from "@/components/ConferenceErrorBoundary";
 import { RoomNameEntry, getLastChoices, getSavedDisplayName } from "@/components/RoomNameEntry";
+import FullNamePrompt from "@/components/FullNamePrompt";
+import { needsFullName } from "@/lib/attendeeName";
 import PresenceHeartbeat from "@/components/groups/PresenceHeartbeat";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import RoomIdleController from "@/components/RoomIdleController";
@@ -119,6 +121,11 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   const [error, setError] = useState<string | null>(null); const [waitingState, setWaitingState] = useState<"pending" | "denied" | null>(null); const [waitForHost, setWaitForHost] = useState<boolean>(false);
   const [choices, setChoices] = useState<LocalUserChoices | null>(null);
   const [copied, setCopied] = useState(false);
+  // A KingsChat account with no name anywhere is asked for one first, once
+  // (FullNamePrompt). Nothing joins, and no attendance is written, until it
+  // is saved: the token is only asked for after.
+  const [nameSaved, setNameSaved] = useState(false);
+  const nameNeeded = Boolean(isLoaded && isSignedIn && user && !nameSaved && needsFullName(user));
 
   const roomName = decodeURIComponent(params.name);
   const searchParams = useSearchParams();
@@ -135,7 +142,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   // someone not invited lands in the waiting room as usual.
   const directJoin = searchParams?.get("join") === "1";
   useEffect(() => {
-    if (!directJoin || !isLoaded || !isSignedIn || choices) return;
+    if (!directJoin || !isLoaded || !isSignedIn || choices || nameNeeded) return;
     const username =
       getSavedDisplayName() ||
       user?.fullName ||
@@ -143,7 +150,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
       user?.primaryEmailAddress?.emailAddress ||
       "Guest";
     setChoices({ username, ...getLastChoices() } as LocalUserChoices);
-  }, [directJoin, isLoaded, isSignedIn, choices, user]);
+  }, [directJoin, isLoaded, isSignedIn, choices, user, nameNeeded]);
   // Per-tab LiveKit identity suffix so the same Clerk user can join from
   // multiple tabs/browsers without being kicked for duplicate identity.
   // Stable across refresh in the same tab via sessionStorage; unique per tab.
@@ -161,7 +168,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   }, []);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !choices) return;
+    if (!isLoaded || !isSignedIn || !choices || nameNeeded) return;
     let cancelled = false;
     (async () => {
       try {
@@ -215,7 +222,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, roomName, choices, eventSlug, waitingState, waitForHost, tabNonce]);
+  }, [isLoaded, isSignedIn, roomName, choices, eventSlug, waitingState, waitForHost, tabNonce, nameNeeded]);
 
   // While waiting in the queue, re-knock every 4s. When the host admits us
   // the response flips to "admitted" and we clear waitingState which causes
@@ -312,6 +319,20 @@ export default function RoomPage({ params }: { params: { name: string } }) {
           ← Back to home
         </a>
       </div>
+    );
+  }
+
+  if (nameNeeded) {
+    return (
+      <FullNamePrompt
+        roomName={roomName}
+        onSaved={async () => {
+          // The account's name is the join screen's default name and the
+          // meeting's; reload it before going on.
+          await user?.reload().catch(() => {});
+          setNameSaved(true);
+        }}
+      />
     );
   }
 

@@ -14,6 +14,7 @@
 
 import { errorMessage, firstClerkError } from '@/lib/errorMessage';
 import { clerkClient } from '@clerk/nextjs/server';
+import { cleanFullName, kcProfileName, localFullName, splitFullName } from '@/lib/attendeeName';
 
 const PROFILE_URL = 'https://connect.kingsch.at/developer/api/profile';
 
@@ -54,6 +55,12 @@ export function clerkUsernameFor(kcUsername: string | null | undefined, safeKcId
   if (handle.length >= 4) return handle;
   if (handle) return handle + '_kc';
   return ('kc' + safeKcId).padEnd(4, '0');
+}
+
+/** The KingsChat name an account already has saved, if any. */
+function savedKcName(publicMetadata: unknown): string {
+  const kc = (publicMetadata as { kingschat?: { name?: unknown } } | null | undefined)?.kingschat;
+  return cleanFullName(kc?.name);
 }
 
 export async function signInWithKcTokens(tokens: {
@@ -100,6 +107,15 @@ export async function signInWithKcTokens(tokens: {
   const firstName = pick(flatProfile, ['firstname', 'first_name', 'givenname', 'given_name']);
   const lastName  = pick(flatProfile, ['lastname', 'last_name', 'familyname', 'family_name', 'surname']);
   const email     = pick(flatProfile, ['email', 'emailaddress', 'email_address', 'mail']);
+  // The person's full name. KingsChat gives one `name`, not first and last,
+  // so accounts were made with no name and attendance reports showed only
+  // the handle (src/lib/attendeeName.ts). Kept on the account as
+  // kingschat.name at every sign-in; the account's own first and last name
+  // are filled from it only while they are empty, never overwritten.
+  const kcName = kcProfileName(profile);
+  const nameParts = cleanFullName(firstName) || cleanFullName(lastName)
+    ? { firstName: cleanFullName(firstName), lastName: cleanFullName(lastName) }
+    : splitFullName(kcName);
 
   if (!kcId) {
     const debug = 'profile-keys=' + Object.keys(flatProfile).slice(0, 20).join(',');
@@ -109,11 +125,14 @@ export async function signInWithKcTokens(tokens: {
   const externalId = 'kc:' + kcId;
   const cc = await clerkClient();
 
-  let user = null as null | { id: string };
+  let user = null as null | { id: string; firstName?: string | null; lastName?: string | null; publicMetadata?: unknown };
   try {
     const list = await cc.users.getUserList({ externalId: [externalId], limit: 1 });
     if (list.data && list.data.length > 0) user = list.data[0];
   } catch {}
+  // First and last name for an account that has none yet.
+  const namesFor = (u: { firstName?: string | null; lastName?: string | null }) =>
+    kcName && !localFullName(u) ? { firstName: nameParts.firstName, lastName: nameParts.lastName } : {};
 
   // Surface Clerk's full error shape (code + message + param) so a
   // future auth failure names itself instead of "missing data". Clerk
@@ -147,9 +166,10 @@ export async function signInWithKcTokens(tokens: {
         try {
           await cc.users.updateUser(existing.id, {
             externalId,
+            ...namesFor(existing),
             publicMetadata: {
               ...(existing.publicMetadata || {}),
-              kingschat: { id: kcId, username: kcUsername, linkedAt: new Date().toISOString() },
+              kingschat: { id: kcId, username: kcUsername, linkedAt: new Date().toISOString(), ...(kcName ? { name: kcName } : {}) },
             },
           });
           user = { id: existing.id };
@@ -192,14 +212,15 @@ export async function signInWithKcTokens(tokens: {
       cc.users.createUser({
         externalId,
         emailAddress: [address],
-        firstName: firstName || undefined,
-        lastName: lastName || undefined,
+        firstName: nameParts.firstName || undefined,
+        lastName: nameParts.lastName || undefined,
         username: usernameFallback,
         skipPasswordRequirement: true,
         publicMetadata: {
           kingschat: {
             id: kcId,
             username: kcUsername,
+            ...(kcName ? { name: kcName } : {}),
             // Marks that the primary email is a placeholder AND
             // preserves the fact that KC never gave us a real one,
             // so a moderator can see it in the Clerk dashboard.
@@ -254,9 +275,26 @@ export async function signInWithKcTokens(tokens: {
     // account on every KingsChat sign-in.
     try {
       await cc.users.updateUserMetadata(user.id, {
-        publicMetadata: { kingschat: { id: kcId, username: kcUsername } },
+        // name: null drops a name KingsChat no longer gives, so the one saved
+        // on the account is used instead (merge: a null key is removed). Sent
+        // only when there is one to drop.
+        publicMetadata: {
+          kingschat: {
+            id: kcId,
+            username: kcUsername,
+            ...(kcName ? { name: kcName } : savedKcName(user.publicMetadata) ? { name: null } : {}),
+          },
+        },
       });
     } catch {}
+    const fill = namesFor(user);
+    if (Object.keys(fill).length) {
+      try {
+        await cc.users.updateUser(user.id, fill);
+      } catch (e) {
+        console.warn('[kc-signin] could not save the KingsChat name on the account', e);
+      }
+    }
   }
 
   // Persist the KC OAuth tokens so we can push messages to this user

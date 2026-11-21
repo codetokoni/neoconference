@@ -67,9 +67,9 @@ export const DATA_MAP: DataLocation[] = [
   {
     id: "clerk.publicMetadata",
     store: "clerk",
-    pattern: "publicMetadata: plan, planExpiresAt, role, meetingsCreated, kingschat {id, username}, neoemail {sub, email}, neoEventId/neoEventSlug/neoRole (invitations)",
+    pattern: "publicMetadata: plan, planExpiresAt, role, meetingsCreated, kingschat {id, username, name}, neoemail {sub, email}, neoEventId/neoEventSlug/neoRole (invitations)",
     holds: "Plan, app role, linked accounts",
-    personal: "KingsChat username, NeoEmail address",
+    personal: "KingsChat username and full name, NeoEmail address",
     exported: true,
     onDelete: "delete",
     why: "Part of the Clerk user; goes with it. privateMetadata and unsafeMetadata are not written by the app.",

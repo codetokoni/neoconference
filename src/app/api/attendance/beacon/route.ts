@@ -18,6 +18,7 @@ import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { eventStore } from "@/lib/eventStore";
 import { recordAttendance } from "@/lib/attendance";
+import { accountFullName } from "@/lib/attendeeName";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,8 +59,9 @@ export async function POST(req: Request) {
       ?.emailAddress ||
       u?.emailAddresses?.[0]?.emailAddress ||
       "").toLowerCase();
+  // The same name the meeting room shows (src/lib/attendeeName.ts).
   const name =
-    [u?.firstName, u?.lastName].filter(Boolean).join(" ") ||
+    accountFullName(u) ||
     u?.username ||
     primaryEmail ||
     userId;

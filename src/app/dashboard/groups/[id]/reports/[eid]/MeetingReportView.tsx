@@ -8,6 +8,8 @@ import Link from "next/link";
 import type { MeetingReport, ReportParticipant } from "@/lib/groupReports";
 import { minutesText as minutes } from "@/lib/durationText";
 import { reportTime } from "@/lib/reportTime";
+import { matchesAttendee } from "@/lib/attendeeName";
+import { AttendeeCells, AttendeeSearch } from "@/components/AttendeeColumns";
 
 type SortKey = "name" | "join" | "duration" | "status";
 
@@ -34,7 +36,11 @@ function Card({ label, value }: { label: string; value: string | number }) {
 
 function StatusCell({ p }: { p: ReportParticipant }) {
   if (p.status === "present") {
-    return <span className="text-emerald-300"><span aria-hidden>✓ </span>Present</span>;
+    return (
+      <span className="text-emerald-300">
+        <span aria-hidden>✓ </span>Present{!p.invited ? <span className="text-slate-500"> · not invited</span> : null}
+      </span>
+    );
   }
   return (
     <span className="text-amber-300">
@@ -54,18 +60,21 @@ export default function MeetingReportView({
 }) {
   const [sort, setSort] = useState<SortKey>("status");
   const [desc, setDesc] = useState(false);
+  const [query, setQuery] = useState("");
   const s = report.summary;
 
   const rows = useMemo(() => {
+    // By full name; someone with none sorts by the name shown for them.
+    const nameOf = (p: ReportParticipant) => p.fullName || p.name;
     const cmp: Record<SortKey, (a: ReportParticipant, b: ReportParticipant) => number> = {
-      name: (a, b) => a.name.localeCompare(b.name),
+      name: (a, b) => nameOf(a).localeCompare(nameOf(b)),
       join: (a, b) => (a.joinedAt ?? Infinity) - (b.joinedAt ?? Infinity),
       duration: (a, b) => a.attendedMs - b.attendedMs,
       status: (a, b) => (a.status === b.status ? 0 : a.status === "present" ? -1 : 1) || a.name.localeCompare(b.name),
     };
-    const sorted = [...report.participants].sort(cmp[sort]);
+    const sorted = report.participants.filter((p) => matchesAttendee(p, query)).sort(cmp[sort]);
     return desc ? sorted.reverse() : sorted;
-  }, [report.participants, sort, desc]);
+  }, [report.participants, sort, desc, query]);
 
   function sortBy(k: SortKey) {
     if (k === sort) setDesc((d) => !d);
@@ -150,11 +159,14 @@ export default function MeetingReportView({
 
         <section aria-labelledby="attendance-heading" className="space-y-2">
           <h2 id="attendance-heading" className="text-xs uppercase tracking-widest text-slate-400">Attendance</h2>
+          <AttendeeSearch value={query} onChange={setQuery} shown={rows.length} total={report.participants.length} />
           <div className="overflow-x-auto rounded-2xl border border-slate-800">
-            <table className="w-full min-w-[720px] text-sm">
+            <table className="w-full min-w-[960px] text-sm">
               <thead className="bg-slate-900/70 text-left text-xs text-slate-400">
                 <tr>
-                  <Th k="name">Name</Th>
+                  <Th k="name">Full Name</Th>
+                  <th scope="col" className="px-4 py-3 font-medium uppercase tracking-wider">Username</th>
+                  <th scope="col" className="px-4 py-3 font-medium uppercase tracking-wider">Email</th>
                   <Th k="join">Joined</Th>
                   <th scope="col" className="px-4 py-3 font-medium uppercase tracking-wider">Left</th>
                   <Th k="duration">Time attended</Th>
@@ -164,13 +176,16 @@ export default function MeetingReportView({
                 </tr>
               </thead>
               <tbody>
+                {rows.length === 0 ? (
+                  <tr className="border-t border-slate-800">
+                    <td colSpan={9} className="px-4 py-4 text-center text-slate-400">
+                      {query.trim() ? "No one in this meeting matches that." : "No one yet."}
+                    </td>
+                  </tr>
+                ) : null}
                 {rows.map((p) => (
                   <tr key={p.key} className="border-t border-slate-800">
-                    <td className="px-4 py-3">
-                      <div className="text-slate-100">{p.name}</div>
-                      {p.email ? <div className="max-w-[16rem] text-xs text-slate-400 [overflow-wrap:anywhere]">{p.email}</div> : null}
-                      {!p.invited ? <div className="text-xs text-slate-500">not invited</div> : null}
-                    </td>
+                    <AttendeeCells p={p} tdClass="px-4 py-3" />
                     <td className="px-4 py-3 whitespace-nowrap text-slate-300">{reportTime(p.joinedAt, report.actualStart)}</td>
                     <td className="px-4 py-3 whitespace-nowrap text-slate-300">{reportTime(p.leftAt, report.actualStart)}</td>
                     <td className="px-4 py-3 whitespace-nowrap text-slate-300">{span(p.attendedMs)}</td>

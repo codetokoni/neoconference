@@ -15,12 +15,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { authorize } from "@/lib/authz";
 import { eventStore } from "@/lib/eventStore";
 import { hasAttendance } from "@/lib/groupAttendees";
-import { getMeetingReport } from "@/lib/groupReports";
+import { getMeetingReport, searchParticipants, withAttendeeNames } from "@/lib/groupReports";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const event = (await eventStore.byId(id)) ?? (await eventStore.bySlug(id));
   if (!event) return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -32,8 +32,11 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: "not_started" }, { status: 409 });
   }
 
-  const report = await getMeetingReport(event.id);
-  if (!report) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const cached = await getMeetingReport(event.id);
+  if (!cached) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  // Full names from each attendee's account (src/lib/attendeeNames.ts); ?q=
+  // searches full name, username and email on the server.
+  const report = searchParticipants(await withAttendeeNames(cached), req.nextUrl.searchParams.get("q"));
 
   return NextResponse.json(
     {

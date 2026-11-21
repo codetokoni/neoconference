@@ -26,7 +26,8 @@ export function participantCells(report: MeetingReport, p: ReportParticipant): R
   const base = p.row
     ? attendanceRowCells(p.row)
     : {
-        fullName: p.name,
+        // By the attendee rules (withAttendeeNames): blank when there is none.
+        fullName: p.fullName ?? "",
         username: p.userId ?? "",
         email: p.email,
         meetingTitle: report.title,
