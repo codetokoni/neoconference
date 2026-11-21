@@ -148,9 +148,9 @@ class PersonActionsSheet extends ConsumerWidget {
             // lock them again. Owners, Hosts and Moderators are never locked.
             if (state.micLockOn && !person.elevated)
               state.micAllowed.contains(person.id.split('#').first)
-                  ? item(Icons.lock_rounded, 'Lock microphone again',
+                  ? item(Icons.lock_rounded, 'Lock mic and camera again',
                       () => run(() => controller.lockMicrophoneAgain(person.id)))
-                  : item(Icons.lock_open_rounded, 'Allow to unmute',
+                  : item(Icons.lock_open_rounded, 'Allow mic and camera',
                       () => run(() => controller.allowToUnmute(person.id))),
             item(Icons.videocam_off_rounded, 'Turn off camera',
                 () => run(() => controller.moderate(person.id, 'muteVideo'))),

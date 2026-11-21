@@ -312,7 +312,8 @@ class RoomActions {
     this.unpin,
     this.openCameraPicker,
     this.openMicPicker,
-    this.toggleEveryoneMuted,
+    this.muteAll,
+    this.toggleMicLock,
   });
 
   final Future<void> Function() toggleMic;
@@ -320,9 +321,12 @@ class RoomActions {
   final Future<void> Function() toggleHand;
   final Future<void> Function() leave;
 
-  /// "Mute everyone" / "Unmute everyone". Null for anyone but the Owner, a
-  /// Host or a Moderator (the server checks again).
-  final Future<void> Function()? toggleEveryoneMuted;
+  /// "Mute all": mutes everyone but the Owner, Hosts and Moderators once;
+  /// they can unmute themselves. "Lock mics" / "Unlock mics": keeps them
+  /// muted until unlocked. Null for anyone but the Owner, a Host or a
+  /// Moderator (the server checks again).
+  final Future<void> Function()? muteAll;
+  final Future<void> Function()? toggleMicLock;
 
   /// Null where the action is not available, which is how the screen knows
   /// to leave the control out rather than show one that does nothing.

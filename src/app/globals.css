@@ -297,14 +297,15 @@ body.neo-room-idle .lk-control-bar {
   box-shadow: 0 8px 22px rgba(244,63,94,0.45);
 }
 
-/* "Mute everyone" (src/components/conference/MuteEveryone.tsx): lit while
+/* "Lock mics" (src/components/conference/MuteEveryone.tsx): lit while
    participant microphones are locked. */
-.lk-control-bar .neo-mute-everyone[data-locked="true"] {
+.lk-control-bar .neo-lock-mics[data-locked="true"] {
   background: rgba(251,191,36,0.16) !important;
   border-color: rgba(251,191,36,0.45) !important;
   color: #fde68a !important;
 }
-.lk-control-bar .neo-mute-everyone[disabled] { opacity: 0.6; cursor: progress; }
+.lk-control-bar .neo-mute-all[disabled],
+.lk-control-bar .neo-lock-mics[disabled] { opacity: 0.6; cursor: progress; }
 
 /* Chat / sidebar panel */
 .lk-chat,

@@ -34,7 +34,7 @@ import {
   MeetingRoleError,
 } from "@/lib/meeting-roles";
 import { isMeetingRole, RANK, toLegacyRole, type MeetingRole } from "@/lib/permissions";
-import { getMicLock, isPerson, micAllowedFor, permitsMicrophone, withMicrophone, type LkParticipant } from "@/lib/micLock";
+import { getMicLock, isPerson, micAllowedFor, permissionIsAsWanted, withPublishing, type LkParticipant } from "@/lib/micLock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -206,8 +206,8 @@ async function broadcastRoleToLiveKit(
         const metadata = JSON.stringify(md);
         const perm = p.permission as unknown as LkParticipant["permission"];
         const want = micState ? micAllowedFor(micState, { role: wireRole, userId: p.identity }) : null;
-        if (want !== null && perm && isPerson(p as unknown as LkParticipant) && permitsMicrophone(perm) !== want) {
-          await svc.updateParticipant(roomName, p.identity, { metadata, permission: withMicrophone(perm, want) as never });
+        if (want !== null && perm && isPerson(p as unknown as LkParticipant) && !permissionIsAsWanted(perm, want)) {
+          await svc.updateParticipant(roomName, p.identity, { metadata, permission: withPublishing(perm, want) as never });
         } else {
           await svc.updateParticipant(roomName, p.identity, metadata);
         }

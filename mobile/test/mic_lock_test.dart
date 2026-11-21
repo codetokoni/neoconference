@@ -57,15 +57,17 @@ void main() {
   });
 
   group('the rule', () {
-    test('locked when LiveKit allows publishing, but not the microphone', () {
+    test('locked when LiveKit allows no publishing in the meeting (or, as before, not the microphone)', () {
       expect(micLockedBy(_locked), isTrue);
+      // The lock now: nothing may be published (microphone, camera, screen).
+      expect(micLockedBy(const ParticipantPermissions(canPublishData: true, canSubscribe: true)), isTrue);
       expect(micLockedBy(_open), isFalse);
       expect(
         micLockedBy(const ParticipantPermissions(canPublish: true, canPublishSources: [lk.TrackSource.MICROPHONE, lk.TrackSource.CAMERA])),
         isFalse,
       );
       // Before joining LiveKit reports no publishing at all: not a lock.
-      expect(micLockedBy(const ParticipantPermissions()), isFalse);
+      expect(micLockedBy(const ParticipantPermissions(), joined: false), isFalse);
       expect(micLockedBy(null), isFalse);
     });
   });
@@ -75,10 +77,10 @@ void main() {
       await tester.runAsync(() async => room = _Room(const RoomState(role: 'attendee')));
       room.syncMicLock(_locked);
       expect(room.state.micLocked, isTrue);
-      expect(room.state.message, 'Your microphone is locked. An Owner, Host, or Moderator can allow you to unmute.');
+      expect(room.state.message, 'Your microphone and camera are locked. An Owner, Host, or Moderator can allow you to turn them on.');
       room.syncMicLock(_open);
       expect(room.state.micLocked, isFalse);
-      expect(room.state.message, 'You can now unmute.');
+      expect(room.state.message, 'You can now turn your microphone and camera on.');
       // Allowed is not unmuted: the microphone stays off until they choose.
       expect(room.state.micOn, isFalse);
     });
@@ -90,7 +92,7 @@ void main() {
       expect(room.state.message, kMicLockedMessage);
     });
 
-    testWidgets('the Mic button shows the lock', (tester) async {
+    testWidgets('the Mic and Video buttons show the lock', (tester) async {
       Widget stage(bool locked) => MaterialApp(
             home: Scaffold(
               body: MeetingStage(
@@ -112,11 +114,13 @@ void main() {
           );
       await tester.pumpWidget(stage(true));
       await tester.pump();
-      expect(find.text('Locked'), findsOneWidget);
-      expect(find.byIcon(Icons.lock_rounded), findsOneWidget);
+      // Microphone and camera both: the lock takes everything they could send.
+      expect(find.text('Locked'), findsNWidgets(2));
+      expect(find.byIcon(Icons.lock_rounded), findsNWidgets(2));
       await tester.pumpWidget(stage(false));
       await tester.pump();
       expect(find.text('Unmute'), findsOneWidget);
+      expect(find.text('Video'), findsOneWidget);
       expect(find.byIcon(Icons.lock_rounded), findsNothing);
     });
   });
@@ -157,8 +161,8 @@ void main() {
 
     testWidgets('allows someone locked to unmute', (tester) async {
       await openSheet(tester, const RoomState(role: 'cohost', micLockOn: true), grace);
-      expect(find.text('Lock microphone again'), findsNothing);
-      await tester.tap(find.text('Allow to unmute'));
+      expect(find.text('Lock mic and camera again'), findsNothing);
+      await tester.tap(find.text('Allow mic and camera'));
       await tester.pump();
       expect(room.calls, ['allow user_2#1']);
       await closeSheet(tester);
@@ -166,8 +170,8 @@ void main() {
 
     testWidgets('locks someone allowed again', (tester) async {
       await openSheet(tester, const RoomState(role: 'host', micLockOn: true, micAllowed: {'user_2'}), grace);
-      expect(find.text('Allow to unmute'), findsNothing);
-      await tester.tap(find.text('Lock microphone again'));
+      expect(find.text('Allow mic and camera'), findsNothing);
+      await tester.tap(find.text('Lock mic and camera again'));
       await tester.pump();
       expect(room.calls, ['relock user_2#1']);
       await closeSheet(tester);
@@ -175,11 +179,11 @@ void main() {
 
     testWidgets('is offered neither while microphones are not locked, or for a host or moderator', (tester) async {
       await openSheet(tester, const RoomState(role: 'host'), grace);
-      expect(find.text('Allow to unmute'), findsNothing);
-      expect(find.text('Lock microphone again'), findsNothing);
+      expect(find.text('Allow mic and camera'), findsNothing);
+      expect(find.text('Lock mic and camera again'), findsNothing);
       await closeSheet(tester);
       await openSheet(tester, const RoomState(role: 'host', micLockOn: true), const PersonView(id: 'user_3#1', name: 'Musa', role: 'cohost'));
-      expect(find.text('Allow to unmute'), findsNothing);
+      expect(find.text('Allow mic and camera'), findsNothing);
       await closeSheet(tester);
     });
   });

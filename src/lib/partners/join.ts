@@ -6,7 +6,7 @@
 // LiveKit token that can only ever make them a participant.
 
 import { createHash } from "node:crypto";
-import { AccessToken, RoomServiceClient, type VideoGrant } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { eventStore } from "@/lib/eventStore";
 import { getPlanLimits, getPlanLimitsForUserId, type Plan } from "@/lib/plan";
 import { featureDecisions } from "@/lib/platform/features";
@@ -15,7 +15,7 @@ import { gateStatus, noteKnock } from "@/lib/waitingRoom";
 import type { NeoEvent, WaitingRoomEntry } from "@/types/event";
 import { PartnerError, leadsZone, type JoinGrant } from "@/lib/partners/store";
 import { rememberIdentity } from "@/lib/partners/attendance";
-import { getMicLock, tokenSources } from "@/lib/micLock";
+import { getMicLock, lockedTokenGrant } from "@/lib/micLock";
 
 /**
  * The visitor's identity in the room: fixed per (integration, partner user),
@@ -145,8 +145,8 @@ export async function joinZone(grant: JoinGrant, now = Date.now()): Promise<Join
   // Participant microphones locked (src/lib/micLock.ts): no microphone from
   // the start, as for anyone joining the room; a zone leader keeps theirs.
   // Without this the webhook took it away a moment after they joined.
-  const sources = tokenSources(await getMicLock(ev.id), { role: moderator ? "cohost" : "attendee", userId: identity });
-  if (sources) at.addGrant({ canPublishSources: sources as unknown as VideoGrant["canPublishSources"] });
+  const lock = lockedTokenGrant(await getMicLock(ev.id), { role: moderator ? "cohost" : "attendee", userId: identity });
+  if (lock) at.addGrant(lock);
   const planLimits = { ...limits };
   try {
     const switches = ["recording", "breakouts", "livestream", "translation", "branding"] as const;

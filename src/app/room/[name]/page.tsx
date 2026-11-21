@@ -1241,7 +1241,7 @@ function RoomContainer({
         <RoomIdleController /><MobileVideoConference hideSelf={hideSelf} ownerUserId={ownerUserId} />
         <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} roomRole={roomRole} slug={eventSlug} />
         <MediaRequestPrompt />
-        {/* "Your microphone is locked…" / "You can now unmute." */}
+        {/* "Your microphone and camera are locked…" / "You can now turn…" */}
         <MicLockNotice />
         <RoomAudioRenderer />
         <BackgroundContinuity eventName={roomName} eventSlug={eventSlug} />

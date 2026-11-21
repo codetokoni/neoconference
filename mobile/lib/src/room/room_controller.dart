@@ -633,14 +633,16 @@ class RoomState {
 }
 
 /// What a locked microphone says, word for word as on the web.
-const kMicLockedMessage = 'Your microphone is locked. An Owner, Host, or Moderator can allow you to unmute.';
-const kMicAllowedMessage = 'You can now unmute.';
+const kMicLockedMessage = 'Your microphone and camera are locked. An Owner, Host, or Moderator can allow you to turn them on.';
+const kMicAllowedMessage = 'You can now turn your microphone and camera on.';
 
-/// Whether LiveKit's permission locks the microphone: publishing is allowed,
-/// but the microphone is not among the sources. Before joining, LiveKit
-/// reports no publishing at all; that is not a lock.
-bool micLockedBy(ParticipantPermissions? perms) {
-  if (perms == null || !perms.canPublish) return false;
+/// Whether LiveKit's permission locks this person: in the meeting, nothing
+/// may be published (the lock takes microphone, camera and screen), or the
+/// earlier lock's list without the microphone. Before joining, LiveKit
+/// reports no publishing at all; that is not a lock ([joined] false).
+bool micLockedBy(ParticipantPermissions? perms, {bool joined = true}) {
+  if (perms == null) return false;
+  if (!perms.canPublish) return joined;
   final sources = perms.canPublishSources;
   return sources.isNotEmpty && !sources.any((s) => s.value == 2); // 2 = MICROPHONE
 }
@@ -1932,7 +1934,13 @@ class RoomController extends StateNotifier<RoomState> {
   Future<void> toggleCamera() async {
     final me = room.localParticipant;
     if (me == null) return;
-    await me.setCameraEnabled(!me.isCameraEnabled());
+    final wantOn = !me.isCameraEnabled();
+    // Locked: the camera too. Say why instead of trying.
+    if (wantOn && (state.micLocked || micLockedBy(me.permissions))) {
+      state = state.copyWith(micLocked: true, message: kMicLockedMessage);
+      return;
+    }
+    await me.setCameraEnabled(wantOn);
     _syncLocalMedia();
   }
 
@@ -1992,6 +2000,11 @@ class RoomController extends StateNotifier<RoomState> {
     final me = room.localParticipant;
     if (me == null) return;
     final sharing = me.isScreenShareEnabled();
+    // Locked: no screen either. Say why instead of asking for the capture.
+    if (!sharing && (state.micLocked || micLockedBy(me.permissions))) {
+      state = state.copyWith(micLocked: true, message: kMicLockedMessage);
+      return;
+    }
     try {
       if (!sharing) {
         if (MeetingPresence.supported) {
@@ -2272,7 +2285,10 @@ class RoomController extends StateNotifier<RoomState> {
   /// permission, and what to tell the person when that changes.
   @visibleForTesting
   void syncMicLock([ParticipantPermissions? perms]) {
-    final locked = micLockedBy(perms ?? room.localParticipant?.permissions);
+    final locked = micLockedBy(
+      perms ?? room.localParticipant?.permissions,
+      joined: room.connectionState == ConnectionState.connected,
+    );
     if (locked == state.micLocked) return;
     state = state.copyWith(
       micLocked: locked,
@@ -2299,9 +2315,9 @@ class RoomController extends StateNotifier<RoomState> {
   /// microphones" (false), and "Allow to unmute" / "Lock microphone again"
   /// on one person. The server checks the caller's role every time.
   Future<void> setMicLock(bool locked) => _micLock(locked ? 'lock' : 'unlock',
-      done: locked ? 'Participant microphones locked.' : 'Participants can unmute again.');
-  Future<void> allowToUnmute(String identity) => _micLock('allow', identity: identity, done: 'They can unmute now.');
-  Future<void> lockMicrophoneAgain(String identity) => _micLock('relock', identity: identity, done: 'Microphone locked again.');
+      done: locked ? 'Microphones and cameras locked.' : 'Participants can turn their microphones and cameras on again.');
+  Future<void> allowToUnmute(String identity) => _micLock('allow', identity: identity, done: 'They can turn their mic and camera on now.');
+  Future<void> lockMicrophoneAgain(String identity) => _micLock('relock', identity: identity, done: 'Their mic and camera are locked again.');
 
   Future<void> _micLock(String action, {String? identity, required String done}) async {
     try {
@@ -2323,10 +2339,10 @@ class RoomController extends StateNotifier<RoomState> {
     }
   }
 
-  /// The toolbar's "Mute everyone" / "Unmute everyone": the host sheets'
-  /// lock, turned the other way from what the server last confirmed. The
-  /// label changes only when the server says it did.
-  Future<void> toggleEveryoneMuted() async {
+  /// The toolbar's "Lock mics" / "Unlock mics": the host sheets' lock,
+  /// turned the other way from what the server last confirmed. The label
+  /// changes only when the server says it did.
+  Future<void> toggleMicLock() async {
     if (state.micLockBusy) return;
     state = state.copyWith(micLockBusy: true);
     try {
@@ -2347,6 +2363,8 @@ class RoomController extends StateNotifier<RoomState> {
       state = state.copyWith(message: 'Everyone else muted.');
     } on ApiException catch (e) {
       state = state.copyWith(message: e.message);
+    } catch (e) {
+      state = state.copyWith(message: describeActionError(e));
     }
   }
 

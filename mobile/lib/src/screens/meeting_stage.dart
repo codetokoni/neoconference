@@ -185,7 +185,8 @@ class _MeetingStageState extends State<MeetingStage> {
                     onChat: widget.actions.openChat,
                     onMore: _openMore,
                     onLeave: widget.actions.leave,
-                    onEveryoneMuted: widget.actions.toggleEveryoneMuted,
+                    onMuteAll: widget.actions.muteAll,
+                    onMicLock: widget.actions.toggleMicLock,
                   ),
                 ],
               ),
@@ -969,7 +970,8 @@ class _Controls extends StatelessWidget {
     this.onChat,
     this.onMicMenu,
     this.onCameraMenu,
-    this.onEveryoneMuted,
+    this.onMuteAll,
+    this.onMicLock,
   });
 
   final RoomView room;
@@ -984,13 +986,16 @@ class _Controls extends StatelessWidget {
   final Future<void> Function() onLeave;
   final VoidCallback? onChat;
 
-  /// "Mute everyone" / "Unmute everyone", right of Leave. Null for anyone
-  /// who may not, and the button is not there.
-  final Future<void> Function()? onEveryoneMuted;
+  /// "Mute all" and "Lock mics" / "Unlock mics", right of Leave. Null for
+  /// anyone who may not, and the buttons are not there.
+  final Future<void> Function()? onMuteAll;
+  final Future<void> Function()? onMicLock;
 
   @override
   Widget build(BuildContext context) {
     final p = NeoTheme.of(context);
+    // A moderator's two more buttons make seven: every label may shrink to fit.
+    final tight = onMuteAll != null || onMicLock != null;
     final v = compact ? NeoSpace.xs : NeoSpace.lg;
 
     return Container(
@@ -1004,6 +1009,7 @@ class _Controls extends StatelessWidget {
         children: [
           Expanded(
             child: NeoControlButton(
+              shrinkLabel: tight,
               // Locked: a lock, and a tap says why (RoomController.toggleMic).
               icon: room.micLocked && !room.micOn
                   ? Icons.lock_rounded
@@ -1020,10 +1026,14 @@ class _Controls extends StatelessWidget {
           ),
           Expanded(
             child: NeoControlButton(
-              icon: room.cameraOn
-                  ? Icons.videocam_rounded
-                  : Icons.videocam_off_rounded,
-              label: room.cameraOn ? 'Stop' : 'Video',
+              shrinkLabel: tight,
+              // Locked: a lock, and a tap says why (RoomController.toggleCamera).
+              icon: room.micLocked && !room.cameraOn
+                  ? Icons.lock_rounded
+                  : room.cameraOn
+                      ? Icons.videocam_rounded
+                      : Icons.videocam_off_rounded,
+              label: room.micLocked && !room.cameraOn ? 'Locked' : room.cameraOn ? 'Stop' : 'Video',
               tint: p.spectrumAt(5),
               active: room.cameraOn,
               onPressed: onCamera,
@@ -1033,6 +1043,7 @@ class _Controls extends StatelessWidget {
           ),
           Expanded(
             child: NeoControlButton(
+              shrinkLabel: tight,
               icon: Icons.chat_bubble_rounded,
               label: 'Chat',
               tint: p.spectrumAt(6),
@@ -1043,6 +1054,7 @@ class _Controls extends StatelessWidget {
           ),
           Expanded(
             child: NeoControlButton(
+              shrinkLabel: tight,
               icon: Icons.more_horiz_rounded,
               label: 'More',
               tint: p.spectrumAt(2),
@@ -1052,25 +1064,38 @@ class _Controls extends StatelessWidget {
           ),
           Expanded(
             child: NeoControlButton(
+              shrinkLabel: tight,
               icon: Icons.call_end_rounded,
               label: 'Leave',
               danger: true,
               onPressed: onLeave,
             ),
           ),
-          if (onEveryoneMuted != null)
+          // Seven to a phone's width for a moderator: the words shrink to fit.
+          if (onMuteAll != null)
             Expanded(
               child: NeoControlButton(
-                // Off when it would mute, on when it would let people talk.
-                icon: room.micLockOn ? Icons.mic_rounded : Icons.mic_off_rounded,
-                // Six to a phone's width: the full words did not fit.
-                label: room.micLockOn ? 'Unmute all' : 'Mute all',
-                semanticLabel: room.micLockOn ? 'Unmute everyone' : 'Mute everyone',
+                // Once: people can unmute themselves.
+                icon: Icons.mic_off_rounded,
+                label: 'Mute all',
+                semanticLabel: 'Mute everyone',
                 shrinkLabel: true,
                 tint: p.spectrumAt(1),
+                onPressed: () => onMuteAll!(),
+              ),
+            ),
+          if (onMicLock != null)
+            Expanded(
+              child: NeoControlButton(
+                // Microphones and cameras kept off until unlocked; lit while on.
+                icon: room.micLockOn ? Icons.lock_open_rounded : Icons.lock_rounded,
+                label: room.micLockOn ? 'Unlock' : 'Lock',
+                semanticLabel: room.micLockOn ? 'Unlock microphones and cameras' : 'Lock microphones and cameras',
+                shrinkLabel: true,
+                tint: p.spectrumAt(4),
                 active: room.micLockOn,
                 enabled: !room.micLockBusy,
-                onPressed: () => onEveryoneMuted!(),
+                onPressed: () => onMicLock!(),
               ),
             ),
         ],

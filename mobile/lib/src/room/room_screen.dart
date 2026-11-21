@@ -469,7 +469,8 @@ class _InMeetingState extends State<_InMeeting> {
               : CaptionStrip(state: state),
           actions: RoomActions(
             toggleMic: controller.toggleMic,
-            toggleEveryoneMuted: state.canManage ? controller.toggleEveryoneMuted : null,
+            muteAll: state.canManage ? () => controller.muteEveryone() : null,
+            toggleMicLock: state.canManage ? controller.toggleMicLock : null,
             dismissCallEnded: controller.dismissCallEnded,
             toggleCamera: controller.toggleCamera,
             toggleHand: controller.toggleHand,
