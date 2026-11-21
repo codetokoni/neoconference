@@ -13,6 +13,8 @@ import '../events/languages.dart';
 import '../meetings/room_view.dart';
 import '../meetings/meeting_share.dart';
 import '../screens/meeting_stage.dart';
+import '../events/event.dart' show apiProvider;
+import 'attendance_name.dart';
 import 'audio_routes.dart';
 import 'audio_sheets.dart';
 import 'meeting_feedback.dart';
@@ -122,6 +124,13 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                         title: widget.title,
                         state: state,
                         controller: controller,
+                      )
+                    : state.phase == JoinPhase.confirmName
+                    ? AttendanceNameStep(
+                        api: ref.read(apiProvider),
+                        title: widget.title,
+                        error: state.message,
+                        onConfirmed: (_) => controller.nameConfirmed(),
                       )
                     : _Gate(
                         title: widget.title,

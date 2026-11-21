@@ -62,6 +62,26 @@ const STUBS: Record<string, string> = {
       if (name === "__esModule") return true;
       return function Icon(p) { return R.createElement("svg", { width: 16, height: 16, className: p.className, "aria-hidden": p["aria-hidden"] }); };
     } });`,
+  // Animations: the plain element, without its motion props.
+  "framer-motion": `
+    var R = window.React;
+    var MOTION = ["initial", "animate", "exit", "transition", "variants", "whileHover", "whileTap", "whileFocus", "whileInView", "layout", "layoutId", "drag"];
+    var cache = {};
+    function el(tag) {
+      if (!cache[tag]) cache[tag] = R.forwardRef(function (p, ref) {
+        var q = {};
+        for (var k in p) if (MOTION.indexOf(k) < 0) q[k] = p[k];
+        q.ref = ref;
+        return R.createElement(tag, q);
+      });
+      return cache[tag];
+    }
+    module.exports = {
+      __esModule: true,
+      AnimatePresence: function (p) { return R.createElement(R.Fragment, null, p.children); },
+      motion: new Proxy({}, { get: function (t, tag) { return el(String(tag)); } }),
+      useReducedMotion: function () { return true; },
+    };`,
 };
 
 function resolveLocal(from: string, spec: string): string {
@@ -322,7 +342,7 @@ const API = {
       summary: { invited: 1, attended: 3, absent: 1, chatMessages: 0, recordingUrl: null, recorded: false },
     },
   },
-  "/api/me/full-name": { ok: true, fullName: "Samuel Eto", needed: false },
+  "/api/me/full-name": { ok: true, fullName: "Samuel Eto", saved: true },
   "/api/events/ev_fb": {
     ok: true,
     event: { id: "ev_fb", feedbackContact: { kcHandle: "pastormatt", email: "help@church.org" } },
@@ -359,6 +379,7 @@ const ENTRIES = [
   "src/app/dashboard/e/[slug]/FeedbackPanel.tsx",
   "src/app/dashboard/e/[slug]/MeetingReportPanel.tsx",
   "src/components/FullNamePrompt.tsx",
+  "src/components/RoomNameEntry.tsx",
 ];
 let modules = "";
 
@@ -996,11 +1017,13 @@ for (const width of [360, 1280]) {
     await expect(page.getByRole("table")).toBeVisible();
     const head = await page.evaluate(() => Array.from(document.querySelectorAll("thead th")).slice(0, 3).map((th) => (th.textContent || "").trim()));
     expect(head).toEqual(["Full Name", "Username", "Email"]);
+    // Someone who came before names were captured says so; someone invited
+    // who never came has no attendance to name.
     expect(await identityCells(page)).toEqual([
       ["Grace Adebayo Okon", "gracey", "kc-501@kc.neoconference.app"],
-      ["Name unavailable", "quiet_kc", "kc-505@kc.neoconference.app"],
+      ["Name not captured", "quiet_kc", "kc-505@kc.neoconference.app"],
       ["Ada Lovelace", "adal", "ada@example.com"],
-      ["Name unavailable", "pastorma", "—"],
+      ["—", "pastorma", "—"],
     ]);
     const search = page.getByLabel("Search attendees");
     await search.fill("ADEBAYO okon");
@@ -1032,46 +1055,131 @@ test("the group meeting report shows and searches full names too", async ({ page
   await render(page, "src/app/dashboard/groups/[id]/reports/[eid]/MeetingReportView.tsx", { report: named, groupId: "g1", canExport: true });
   const head = await page.evaluate(() => Array.from(document.querySelectorAll("thead th")).slice(0, 3).map((th) => (th.textContent || "").replace(/[↕↑↓]/g, "").trim()));
   expect(head).toEqual(["Full Name", "Username", "Email"]);
-  expect((await identityCells(page)).map((r) => r[0]).sort()).toEqual(["Grace Adebayo Okon", "Name unavailable"]);
+  expect((await identityCells(page)).map((r) => r[0]).sort()).toEqual(["Grace Adebayo Okon", "Name not captured"]);
   await page.getByLabel("Search attendees").fill("gracey");
   expect(await identityCells(page)).toEqual([["Grace Adebayo Okon", "gracey", "kc-501@kc.neoconference.app"]]);
   expect(errors).toEqual([]);
 });
 
 for (const width of [360, 1280]) {
-  test(`the one-time name prompt refuses a blank name, then saves the name and goes on, at ${width}px`, async ({ page }) => {
+  test(`a join link's name step: starts with the saved name, refuses a blank one, then confirms and joins, at ${width}px`, async ({ page }) => {
     const { errors } = await setup(page, width);
     await page.evaluate(() => {
       const w = window as unknown as {
         __require: (id: string) => { default: unknown };
         React: typeof import("react");
         ReactDOM: { createRoot: (el: Element) => { render: (n: unknown) => void } };
-        __saved: string[];
+        __confirmed: string[];
       };
-      w.__saved = [];
+      w.__confirmed = [];
       const C = w.__require("src/components/FullNamePrompt.tsx").default as Parameters<typeof w.React.createElement>[0];
       w.ReactDOM.createRoot(document.getElementById("app")!).render(
-        w.React.createElement(C, { roomName: "saregionalmeeting", onSaved: (n: string) => { w.__saved.push(n); } } as never),
+        w.React.createElement(C, {
+          roomName: "saregionalmeeting",
+          initial: "Samuel Eto",
+          loaded: true,
+          onConfirm: async (n: string) => {
+            w.__confirmed.push(n);
+            return null;
+          },
+        } as never),
       );
     });
-    const sent = () =>
-      page.evaluate(() =>
-        (window as unknown as { __calls: Array<{ url: string; method: string; body: string }> }).__calls.filter((c) => c.url === "/api/me/full-name"),
-      );
-    await expect(page.getByRole("heading", { name: "What is your full name?" })).toBeVisible();
-    const field = page.getByLabel("Full name", { exact: true });
+    const confirmed = () => page.evaluate(() => (window as unknown as { __confirmed: string[] }).__confirmed);
+    await expect(page.getByRole("heading", { name: "Confirm your name" })).toBeVisible();
+    const field = page.getByLabel(/Full name for attendance/);
+    await expect(field).toHaveValue("Samuel Eto");
     await field.fill("    ");
-    await page.getByRole("button", { name: "Continue" }).click();
-    await expect(page.getByRole("alert")).toHaveText("Enter your full name.");
+    await page.getByRole("button", { name: "Join" }).click();
+    await expect(page.getByRole("alert")).toHaveText("Enter your full name for attendance");
     await expect(field).toHaveAttribute("aria-invalid", "true");
-    expect(await sent()).toEqual([]);
-    await field.fill("Samuel   Eto");
+    await expect(field).toBeFocused();
+    expect(await confirmed()).toEqual([]);
+    await field.fill("  Samuel   Eto-Okafor ");
     await expect(page.getByRole("alert")).toHaveCount(0);
-    await page.getByRole("button", { name: "Continue" }).click();
-    await expect.poll(() => page.evaluate(() => (window as unknown as { __saved: string[] }).__saved)).toEqual(["Samuel Eto"]);
-    expect(await sent()).toEqual([{ url: "/api/me/full-name", method: "POST", body: JSON.stringify({ fullName: "Samuel   Eto" }) }]);
-    await expectNoSideScroll(page, `name prompt @${width}`);
-    await page.screenshot({ path: `test-results/group-screens/name-prompt-${width}.png`, fullPage: true });
+    await page.getByRole("button", { name: "Join" }).click();
+    await expect.poll(confirmed).toEqual(["Samuel Eto-Okafor"]);
+    await expectNoSideScroll(page, `name step @${width}`);
+    await page.screenshot({ path: `test-results/group-screens/name-step-${width}.png`, fullPage: true });
+    expect(errors).toEqual([]);
+  });
+}
+
+for (const width of [360, 768, 1280]) {
+  test(`the join card asks for the full name for attendance below the display name, at ${width}px`, async ({ page }) => {
+    const { errors } = await setup(page, width);
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __require: (id: string) => Record<string, unknown>;
+        React: typeof import("react");
+        ReactDOM: { createRoot: (el: Element) => { render: (n: unknown) => void } };
+        __confirmed: string[];
+        __joined: Array<Record<string, unknown>>;
+        __answer: string | null;
+      };
+      w.__confirmed = [];
+      w.__joined = [];
+      w.__answer = null;
+      const C = w.__require("src/components/RoomNameEntry.tsx").RoomNameEntry as Parameters<typeof w.React.createElement>[0];
+      w.ReactDOM.createRoot(document.getElementById("app")!).render(
+        w.React.createElement(C, {
+          roomName: "sunday-service",
+          defaultName: "grace_kc",
+          attendanceName: "",
+          attendanceLoaded: true,
+          copied: false,
+          onCopyLink: () => {},
+          onConfirmAttendance: async (n: string) => {
+            w.__confirmed.push(n);
+            return w.__answer;
+          },
+          onSubmit: (v: Record<string, unknown>) => {
+            w.__joined.push(v);
+          },
+        } as never),
+      );
+    });
+    const state = () =>
+      page.evaluate(() => {
+        const w = window as unknown as { __confirmed: string[]; __joined: Array<Record<string, unknown>> };
+        return { confirmed: w.__confirmed, joined: w.__joined.map((v) => [v.username, v.attendanceName]) };
+      });
+    const field = page.getByLabel(/Full name for attendance/);
+    await expect(field).toBeVisible();
+    await expect(page.getByPlaceholder("Enter your name")).toHaveValue("grace_kc");
+    // In order: Display name, then the attendance name, then the microphone.
+    const order = await page.evaluate(() => {
+      const byText = (text: string) => Array.from(document.querySelectorAll("label, span")).find((e) => (e.textContent || "").trim() === text);
+      const top = (e: Element | null | undefined) => (e ? e.getBoundingClientRect().top : -1);
+      return [top(byText("Display name")), top(document.getElementById("attendance-name")), top(byText("Mic input"))];
+    });
+    expect(order[0]).toBeGreaterThan(-1);
+    expect(order[0]).toBeLessThan(order[1]);
+    expect(order[1]).toBeLessThan(order[2]);
+    await field.scrollIntoViewIfNeeded();
+    await expect(field).toBeInViewport();
+    // Blank: the message under it, the focus on it, nothing saved or joined.
+    await page.getByRole("button", { name: /Join Room/ }).click();
+    await expect(page.locator("#attendance-name-problem")).toHaveText("Enter your full name for attendance");
+    await expect(field).toBeFocused();
+    expect((await state()).confirmed).toEqual([]);
+    // A refusal from the server shows the same way and does not join.
+    await page.evaluate(() => {
+      (window as unknown as { __answer: string | null }).__answer = "Enter your name, not an email address.";
+    });
+    await field.fill("Grace Adebayo");
+    await page.getByRole("button", { name: /Join Room/ }).click();
+    await expect(page.locator("#attendance-name-problem")).toHaveText("Enter your name, not an email address.");
+    expect((await state()).joined).toEqual([]);
+    // Accepted: joins with the display name unchanged and the tidied attendance name.
+    await page.evaluate(() => {
+      (window as unknown as { __answer: string | null }).__answer = null;
+    });
+    await field.fill("  Grace   Adebayo  ");
+    await page.getByRole("button", { name: /Join Room/ }).click();
+    await expect.poll(async () => (await state()).joined).toEqual([["grace_kc", "Grace Adebayo"]]);
+    await expectNoSideScroll(page, `join card @${width}`);
+    await page.screenshot({ path: `test-results/group-screens/join-card-${width}.png`, fullPage: true });
     expect(errors).toEqual([]);
   });
 }

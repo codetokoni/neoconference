@@ -10,7 +10,8 @@ import { gateStatus } from "@/lib/waitingRoom";
 import { needsAppUpdate, nudgeKey, nudgeMessage, NUDGE_TTL_SECONDS, shouldNudgeUpdate, UPDATE_MESSAGE } from "@/lib/appRelease";
 import { kv } from "@/lib/kv";
 import { recordAppJoin } from "@/lib/appVersionCounts";
-import { accountFullName } from "@/lib/attendeeName";
+import { ATTENDANCE_NAME_REQUIRED, displayNameFor } from "@/lib/attendeeName";
+import { hasFreshConfirmation } from "@/lib/attendanceName";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,6 +56,16 @@ export async function GET(req: NextRequest) {
     if (needsAppUpdate({ authorization: req.headers.get("authorization"), client })) {
       console.info("[token] app update required", JSON.stringify({ room, client: client || "(none: 1.2.3 or older)" }));
       return NextResponse.json({ error: "app_update_required", message: UPDATE_MESSAGE }, { status: 426 });
+    }
+    // A "Full name for attendance" confirmed on the join screen (or the
+    // app's join step) shortly before, which the join then records on the
+    // attendance entry (src/lib/attendanceName.ts). Asked of the web and of
+    // every app that has the step (it sends attendance=1); an older app has
+    // no way to ask, so it still joins and its attendance says "Name not
+    // captured" until it is updated.
+    const isApp = /^Bearer\s/i.test(req.headers.get("authorization") ?? "");
+    if ((!isApp || req.nextUrl.searchParams.get("attendance") === "1") && !(await hasFreshConfirmation(userId))) {
+      return NextResponse.json({ error: "attendance_name_required", message: ATTENDANCE_NAME_REQUIRED }, { status: 400 });
     }
     // Allowed but not the newest: told once a day, and Try again goes in.
     // Without KV nobody is held up.
@@ -216,14 +227,10 @@ export async function GET(req: NextRequest) {
     }
 
     const user = await currentUser();
-    // The attendee's full name by the shared rules (src/lib/attendeeName.ts):
-    // KingsChat's name, else the account's own. For accounts without a
-    // KingsChat name this is Clerk's fullName, as before.
-    const displayName =
-      accountFullName(user) ||
-      user?.username ||
-      user?.primaryEmailAddress?.emailAddress ||
-      userId;
+    // What the meeting's tiles and people list show (src/lib/attendeeName.ts):
+    // a KingsChat account's username, else the account's name, username or
+    // email. Never the attendance name, which only attendance reports show.
+    const displayName = displayNameFor(user, userId);
 
     // ---- Plan-based gates: determine the HOST's plan and enforce that
     //      plan's participant cap. If we can't identify a host we do NOT

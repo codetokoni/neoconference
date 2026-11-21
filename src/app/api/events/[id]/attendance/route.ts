@@ -17,7 +17,7 @@ import { authorize } from "@/lib/authz";
 import { eventStore } from "@/lib/eventStore";
 import { ATTENDANCE_COLUMNS, attendanceRowCells, fetchAttendanceReport } from "@/lib/attendance";
 import { BRAND } from "@/lib/brand";
-import { withFullNames } from "@/lib/attendeeNames";
+import { withUsernames } from "@/lib/attendeeNames";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,9 +30,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   const gate = await authorize(event, "transcript:read");
   if (!gate.ok) return gate.response;
 
-  // Full Name by the attendee rules (src/lib/attendeeName.ts): looked up
-  // from each record's account, blank when there is none.
-  const rows = await withFullNames(await fetchAttendanceReport(event));
+  // Full Name: the attendance name each person confirmed when they joined
+  // (src/lib/attendanceName.ts), "Name not captured" for joins from before it
+  // was asked. Username: the account's (a KingsChat handle), else its id.
+  const rows = await withUsernames(await fetchAttendanceReport(event));
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = `${BRAND.name}`;
@@ -65,7 +66,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       const durationMs = iv.leftAt ? Math.max(0, iv.leftAt - iv.joinedAt) : 0;
       const durationLabel = formatDurationCell(durationMs);
       sessions.addRow({
-        fullName: row.fullName,
+        fullName: attendanceRowCells(row).fullName,
         username: row.username,
         email: row.email,
         joinedAt: joinedIso,

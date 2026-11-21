@@ -1,7 +1,7 @@
 "use client";
 
 import { errorMessage } from "@/lib/errorMessage";
-import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { createPortal } from "react-dom";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -30,7 +30,7 @@ import MobileMoreMenu from "@/components/MobileMoreMenu";
 import ConferenceErrorBoundary from "@/components/ConferenceErrorBoundary";
 import { RoomNameEntry, getLastChoices, getSavedDisplayName } from "@/components/RoomNameEntry";
 import FullNamePrompt from "@/components/FullNamePrompt";
-import { needsFullName } from "@/lib/attendeeName";
+import { displayNameFor } from "@/lib/attendeeName";
 import PresenceHeartbeat from "@/components/groups/PresenceHeartbeat";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import RoomIdleController from "@/components/RoomIdleController";
@@ -121,11 +121,45 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   const [error, setError] = useState<string | null>(null); const [waitingState, setWaitingState] = useState<"pending" | "denied" | null>(null); const [waitForHost, setWaitForHost] = useState<boolean>(false);
   const [choices, setChoices] = useState<LocalUserChoices | null>(null);
   const [copied, setCopied] = useState(false);
-  // A KingsChat account with no name anywhere is asked for one first, once
-  // (FullNamePrompt). Nothing joins, and no attendance is written, until it
-  // is saved: the token is only asked for after.
-  const [nameSaved, setNameSaved] = useState(false);
-  const nameNeeded = Boolean(isLoaded && isSignedIn && user && !nameSaved && needsFullName(user));
+  // The "Full name for attendance" (src/lib/attendanceName.ts): required
+  // before joining, confirmed on the join screen (or, for a link that joins
+  // straight in, FullNamePrompt). It starts with the name they confirmed last
+  // time; the token is only asked for after it is confirmed, and the server
+  // turns a join back without one (attendance_name_required).
+  const [attendancePrefill, setAttendancePrefill] = useState("");
+  const [attendanceLoaded, setAttendanceLoaded] = useState(false);
+  const [attendanceError, setAttendanceError] = useState("");
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    let cancelled = false;
+    fetch("/api/me/full-name", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { fullName?: unknown } | null) => {
+        if (!cancelled && typeof j?.fullName === "string") setAttendancePrefill(j.fullName);
+      })
+      .catch(() => {})
+      .finally(() => {
+        // An empty field to fill in beats a screen that never lets them type.
+        if (!cancelled) setAttendanceLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, [isLoaded, isSignedIn]);
+  const confirmAttendance = useCallback(async (fullName: string): Promise<string | null> => {
+    try {
+      const res = await fetch("/api/me/full-name", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fullName }),
+      });
+      const body = (await res.json().catch(() => null)) as { fullName?: string; message?: string } | null;
+      if (!res.ok || !body?.fullName) return body?.message || "Your name could not be saved. Try again.";
+      setAttendancePrefill(body.fullName);
+      setAttendanceError("");
+      return null;
+    } catch {
+      return "Your name could not be saved. Check your connection and try again.";
+    }
+  }, []);
 
   const roomName = decodeURIComponent(params.name);
   const searchParams = useSearchParams();
@@ -136,21 +170,26 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   // trailing `|| undefined` could not happen and typed every consumer as
   // possibly-missing.
   const eventSlug: string = searchParams?.get("event") || roomName;const [pageRoomRole, setPageRoomRole] = useState<string>("guest"); useEffect(() => { if (!eventSlug) return; let cancelled = false; fetch("/api/events/role?slug=" + encodeURIComponent(eventSlug), { cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((j) => { if (!cancelled && j && typeof j.role === "string") setPageRoomRole(j.role); }).catch(() => {}); return () => { cancelled = true; }; }, [eventSlug]);
-  // ?join=1 — a "join now" notification: go straight in with this browser's
-  // last camera and microphone choices instead of stopping at the pre-join
-  // screen. Admission is unchanged: the token route still decides, so
-  // someone not invited lands in the waiting room as usual.
+  // ?join=1 — a "join now" link (a KingsChat message or a notification):
+  // go in with this browser's last camera and microphone choices instead of
+  // the join screen, after confirming the attendance name (FullNamePrompt).
+  // Admission is unchanged: the token route still decides, so someone not
+  // invited lands in the waiting room as usual.
   const directJoin = searchParams?.get("join") === "1";
-  useEffect(() => {
-    if (!directJoin || !isLoaded || !isSignedIn || choices || nameNeeded) return;
-    const username =
-      getSavedDisplayName() ||
-      user?.fullName ||
-      user?.username ||
-      user?.primaryEmailAddress?.emailAddress ||
-      "Guest";
-    setChoices({ username, ...getLastChoices() } as LocalUserChoices);
-  }, [directJoin, isLoaded, isSignedIn, choices, user, nameNeeded]);
+  // What the meeting shows them by: a KingsChat account's username, never
+  // the attendance name (src/lib/attendeeName.ts).
+  const accountDisplayName = displayNameFor(
+    user
+      ? {
+          firstName: user.firstName,
+          lastName: user.lastName,
+          username: user.username,
+          publicMetadata: user.publicMetadata,
+          primaryEmailAddress: user.primaryEmailAddress ? { emailAddress: user.primaryEmailAddress.emailAddress } : null,
+        }
+      : null,
+    "",
+  );
   // Per-tab LiveKit identity suffix so the same Clerk user can join from
   // multiple tabs/browsers without being kicked for duplicate identity.
   // Stable across refresh in the same tab via sessionStorage; unique per tab.
@@ -168,7 +207,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   }, []);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || !choices || nameNeeded) return;
+    if (!isLoaded || !isSignedIn || !choices) return;
     let cancelled = false;
     (async () => {
       try {
@@ -198,6 +237,14 @@ export default function RoomPage({ params }: { params: { name: string } }) {
             } catch { }
             return;
           }
+          if (res.status === 400 && body?.error === "attendance_name_required") {
+            // Back to the name: the join screen, or the link's own step.
+            if (!cancelled) {
+              setAttendanceError(body.message || "Enter your full name for attendance");
+              setChoices(null);
+            }
+            return;
+          }
           if (res.status === 403 && body?.error === "wait_for_host") {
             if (!cancelled) {
               setWaitForHost(true);
@@ -222,7 +269,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, roomName, choices, eventSlug, waitingState, waitForHost, tabNonce, nameNeeded]);
+  }, [isLoaded, isSignedIn, roomName, choices, eventSlug, waitingState, waitForHost, tabNonce]);
 
   // While waiting in the queue, re-knock every 4s. When the host admits us
   // the response flips to "admitted" and we clear waitingState which causes
@@ -322,33 +369,44 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     );
   }
 
-  if (nameNeeded) {
+  if (!choices && directJoin) {
     return (
       <FullNamePrompt
         roomName={roomName}
-        onSaved={async () => {
-          // The account's name is the join screen's default name and the
-          // meeting's; reload it before going on.
-          await user?.reload().catch(() => {});
-          setNameSaved(true);
+        initial={attendancePrefill}
+        loaded={attendanceLoaded}
+        error={attendanceError}
+        onConfirm={async (fullName) => {
+          const refused = await confirmAttendance(fullName);
+          if (refused) return refused;
+          setChoices({ username: getSavedDisplayName() || accountDisplayName || "Guest", attendanceName: fullName, ...getLastChoices() } as LocalUserChoices);
+          return null;
         }}
       />
     );
   }
 
   if (!choices) {
-    const defaultUsername =
-      user?.fullName ||
-      user?.username ||
-      user?.primaryEmailAddress?.emailAddress ||
-      "";
+    const defaultUsername = accountDisplayName;
 
     return (
       <div className="min-h-[calc(100vh-65px)] flex flex-col items-center justify-center p-4 gap-4">
         {/* The room's name and its Invite button are in RoomNameEntry;
             a second copy above it showed two "Invite people" buttons. */}
         <div data-lk-theme="default" className="w-full max-w-xl">
-          <RoomNameEntry roomName={roomName} defaultName={defaultUsername} onSubmit={(values) => setChoices(values as LocalUserChoices)} onCopyLink={copyLink} copied={copied} isHost={pageRoomRole === "host"} eventSlug={eventSlug} />
+          <RoomNameEntry
+            roomName={roomName}
+            defaultName={defaultUsername}
+            onSubmit={(values) => setChoices(values as LocalUserChoices)}
+            onCopyLink={copyLink}
+            copied={copied}
+            isHost={pageRoomRole === "host"}
+            eventSlug={eventSlug}
+            attendanceName={attendancePrefill}
+            attendanceLoaded={attendanceLoaded}
+            attendanceError={attendanceError}
+            onConfirmAttendance={confirmAttendance}
+          />
         </div>
       </div>
     );
