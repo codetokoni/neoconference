@@ -19,10 +19,20 @@ import {
   missedCallsOf, __setReportDeps,
 } from "@/lib/groupReports";
 import { meetingWorkbook, rangeWorkbook } from "@/lib/groupReportXlsx";
+import { __setNameLookup } from "@/lib/attendeeNames";
 
 delete process.env.KV_REST_API_URL;
 delete process.env.KV_REST_API_TOKEN;
 __setKingsChatSender(async () => "unavailable");
+// Full names in a report come from each person's account
+// (src/lib/attendeeNames.ts): these are the test accounts' names.
+const ACCOUNT_NAMES: Record<string, string> = {
+  user_own: "Olu", user_hst: "Hana", user_mod: "Musa", user_ada: "Ada", user_bo: "Bo", user_cy: "Cy",
+  user_late: "Late", user_sol: "Sol", user_mailer: "Mae", user_came: "Kemi", user_ben: "Ben",
+};
+__setNameLookup(async (ids) =>
+  new Map(ids.filter((id) => id in ACCOUNT_NAMES).map((id) => [id, { fullName: ACCOUNT_NAMES[id], username: "" }])),
+);
 __setReportDeps({ recording: async () => ({ recorded: true, url: "/replay/x" }) });
 
 const MIN = 60_000;

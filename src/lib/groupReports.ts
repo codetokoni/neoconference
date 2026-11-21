@@ -29,12 +29,22 @@ import { getMeetingParticipants } from "@/lib/meeting-roles";
 import { chatStore } from "@/lib/chatStore";
 import { canEnd } from "@/lib/meetingLifecycle";
 import type { NeoEvent } from "@/types/event";
+import { matchesAttendee } from "@/lib/attendeeName";
 
 export interface ReportParticipant {
   /** userId, a lowercased email, or "name:<name>" for someone with neither. */
   key: string;
   userId?: string;
+  /** A name to show anyone: the full name, or a username, email or "Guest". */
   name: string;
+  /**
+   * The full name by the attendee rules (src/lib/attendeeName.ts), filled in
+   * when the report is read (withAttendeeNames), never cached: "" when there
+   * is none ("Name unavailable" on screen, blank in a spreadsheet).
+   */
+  fullName?: string;
+  /** The account's username (a KingsChat handle), filled in with fullName. */
+  username?: string;
   email: string;
   invited: boolean;
   status: "present" | "absent";
@@ -418,6 +428,36 @@ export async function buildMeetingReport(eid: string, now: number = Date.now()):
   return report;
 }
 
+/**
+ * The report with each participant's full name and username, looked up from
+ * their account by its id (src/lib/attendeeNames.ts). For anything that shows
+ * or exports who came; a cached report gets them too, at reading time.
+ */
+export async function withAttendeeNames(report: MeetingReport): Promise<MeetingReport> {
+  const { accountNames, recordFullName } = await import("@/lib/attendeeNames");
+  const names = await accountNames(report.participants.map((p) => p.userId ?? ""));
+  return {
+    ...report,
+    participants: report.participants.map((p) => {
+      // Someone with no account keeps the name they came in with; someone
+      // invited who never came and has no account has none.
+      const fullName = recordFullName(p.userId, p.userId ? "" : p.row?.fullName, names);
+      const username = (p.userId && names.get(p.userId)?.username) || "";
+      return { ...p, fullName, username, ...(p.row ? { row: { ...p.row, fullName } } : {}) };
+    }),
+  };
+}
+
+/**
+ * The report's participants that match a search of full name, username or
+ * email (matchesAttendee), for the report routes' ?q=. The summary is the
+ * whole meeting's either way.
+ */
+export function searchParticipants(report: MeetingReport, q: string | null | undefined): MeetingReport {
+  if (!q || !q.trim()) return report;
+  return { ...report, participants: report.participants.filter((p) => matchesAttendee(p, q)) };
+}
+
 /** A meeting's report: the cached one for a finished meeting, else built now. */
 export async function getMeetingReport(eid: string, now: number = Date.now()): Promise<MeetingReport | null> {
   return (await readCache(eid)) ?? buildMeetingReport(eid, now);
@@ -513,7 +553,7 @@ export async function reportsInRange(
     const res = await listGroupReports(gid, viewerId, { cursor, from, now });
     for (const item of res.items) {
       const r = await getMeetingReport(item.eventId, now);
-      if (r) out.push(r);
+      if (r) out.push(await withAttendeeNames(r));
     }
     cursor = res.nextCursor ?? undefined;
   }

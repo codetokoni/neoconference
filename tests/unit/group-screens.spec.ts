@@ -307,6 +307,22 @@ const API = {
     signedIn: true,
     manage: { feedback: [], tally: { stars: [0, 0, 0, 0, 0], rated: 0, average: null, kinds: {}, written: 0 }, contact: null, contactAllowed: false, reach: { kcHandleKnown: null, ownerKcLinked: null } },
   },
+  // A meeting's report with full names (src/lib/attendeeName.ts): a
+  // KingsChat attendee with a name, one with none, and an email account.
+  "/api/events/ev_names/report": {
+    report: {
+      eventId: "ev_names", title: "Names meeting", slug: "names", hosts: ["Olu Owner"],
+      actualStart: iso(NOW - 3_600_000), actualEnd: iso(NOW - 600_000), durationMin: 50,
+      participants: [
+        { key: "user_g", userId: "user_g", name: "gracey", fullName: "Grace Adebayo Okon", username: "gracey", email: "kc-501@kc.neoconference.app", invited: false, status: "present", declined: false, joinedAt: NOW - 3_600_000, leftAt: NOW - 700_000, attendedMs: 2_900_000, entries: 2 },
+        { key: "user_q", userId: "user_q", name: "quiet_kc", fullName: "", username: "quiet_kc", email: "kc-505@kc.neoconference.app", invited: false, status: "present", declined: false, joinedAt: NOW - 3_500_000, leftAt: NOW - 1_900_000, attendedMs: 1_600_000, entries: 1 },
+        { key: "user_a", userId: "user_a", name: "Ada Lovelace", fullName: "Ada Lovelace", username: "adal", email: "ada@example.com", invited: false, status: "present", declined: false, joinedAt: NOW - 3_400_000, leftAt: NOW - 800_000, attendedMs: 2_600_000, entries: 1 },
+        { key: "kc:pastorma", name: "@pastorma", fullName: "", email: "", invited: true, status: "absent", declined: false, joinedAt: null, leftAt: null, attendedMs: 0, entries: 0 },
+      ],
+      summary: { invited: 1, attended: 3, absent: 1, chatMessages: 0, recordingUrl: null, recorded: false },
+    },
+  },
+  "/api/me/full-name": { ok: true, fullName: "Samuel Eto", needed: false },
   "/api/events/ev_fb": {
     ok: true,
     event: { id: "ev_fb", feedbackContact: { kcHandle: "pastormatt", email: "help@church.org" } },
@@ -341,6 +357,8 @@ const ENTRIES = [
   "src/components/feedback/FeedbackForm.tsx",
   "src/components/feedback/FeedbackButton.tsx",
   "src/app/dashboard/e/[slug]/FeedbackPanel.tsx",
+  "src/app/dashboard/e/[slug]/MeetingReportPanel.tsx",
+  "src/components/FullNamePrompt.tsx",
 ];
 let modules = "";
 
@@ -959,3 +977,101 @@ test("the owner's feedback panel on the free plan: no contact boxes, a word abou
   await expect(page.getByText("No ratings yet")).toBeVisible();
   await expect(page.getByText("No feedback yet.")).toBeVisible();
 });
+
+/* -------------------------------------------------------------------------- */
+/*  Full names in the attendance report, and the one-time name prompt          */
+/* -------------------------------------------------------------------------- */
+
+const identityCells = (page: Page) =>
+  page.evaluate(() =>
+    Array.from(document.querySelectorAll("tbody tr")).map((tr) =>
+      Array.from(tr.querySelectorAll("td")).slice(0, 3).map((td) => (td.textContent || "").trim()),
+    ),
+  );
+
+for (const width of [360, 1280]) {
+  test(`attendance report: Full Name before Username and Email, and a search across them, at ${width}px`, async ({ page }) => {
+    const { errors } = await setup(page, width);
+    await render(page, "src/app/dashboard/e/[slug]/MeetingReportPanel.tsx", { eventId: "ev_names", currentUserId: "user_me" });
+    await expect(page.getByRole("table")).toBeVisible();
+    const head = await page.evaluate(() => Array.from(document.querySelectorAll("thead th")).slice(0, 3).map((th) => (th.textContent || "").trim()));
+    expect(head).toEqual(["Full Name", "Username", "Email"]);
+    expect(await identityCells(page)).toEqual([
+      ["Grace Adebayo Okon", "gracey", "kc-501@kc.neoconference.app"],
+      ["Name unavailable", "quiet_kc", "kc-505@kc.neoconference.app"],
+      ["Ada Lovelace", "adal", "ada@example.com"],
+      ["Name unavailable", "pastorma", "—"],
+    ]);
+    const search = page.getByLabel("Search attendees");
+    await search.fill("ADEBAYO okon");
+    expect(await identityCells(page)).toEqual([["Grace Adebayo Okon", "gracey", "kc-501@kc.neoconference.app"]]);
+    await expect(page.getByRole("status").filter({ hasText: "1 of 4" })).toBeVisible();
+    await search.fill("quiet_kc");
+    expect((await identityCells(page)).map((r) => r[1])).toEqual(["quiet_kc"]);
+    await search.fill("ada@example");
+    expect((await identityCells(page)).map((r) => r[0])).toEqual(["Ada Lovelace"]);
+    await search.fill("no such person");
+    await expect(page.getByText("No one in this meeting matches that.")).toBeVisible();
+    await search.fill("");
+    expect((await identityCells(page)).length).toBe(4);
+    await expectNoSideScroll(page, `attendance report @${width}`);
+    await page.screenshot({ path: `test-results/group-screens/attendance-names-${width}.png`, fullPage: true });
+    expect(errors).toEqual([]);
+  });
+}
+
+test("the group meeting report shows and searches full names too", async ({ page }) => {
+  const { errors } = await setup(page, 1280);
+  const named = {
+    ...report,
+    participants: [
+      { ...report.participants[0], key: "user_g", userId: "user_g", name: "gracey", fullName: "Grace Adebayo Okon", username: "gracey", email: "kc-501@kc.neoconference.app" },
+      { ...report.participants[1], key: "user_q", userId: "user_q", name: "quiet_kc", fullName: "", username: "quiet_kc", email: "kc-505@kc.neoconference.app" },
+    ],
+  };
+  await render(page, "src/app/dashboard/groups/[id]/reports/[eid]/MeetingReportView.tsx", { report: named, groupId: "g1", canExport: true });
+  const head = await page.evaluate(() => Array.from(document.querySelectorAll("thead th")).slice(0, 3).map((th) => (th.textContent || "").replace(/[↕↑↓]/g, "").trim()));
+  expect(head).toEqual(["Full Name", "Username", "Email"]);
+  expect((await identityCells(page)).map((r) => r[0]).sort()).toEqual(["Grace Adebayo Okon", "Name unavailable"]);
+  await page.getByLabel("Search attendees").fill("gracey");
+  expect(await identityCells(page)).toEqual([["Grace Adebayo Okon", "gracey", "kc-501@kc.neoconference.app"]]);
+  expect(errors).toEqual([]);
+});
+
+for (const width of [360, 1280]) {
+  test(`the one-time name prompt refuses a blank name, then saves the name and goes on, at ${width}px`, async ({ page }) => {
+    const { errors } = await setup(page, width);
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __require: (id: string) => { default: unknown };
+        React: typeof import("react");
+        ReactDOM: { createRoot: (el: Element) => { render: (n: unknown) => void } };
+        __saved: string[];
+      };
+      w.__saved = [];
+      const C = w.__require("src/components/FullNamePrompt.tsx").default as Parameters<typeof w.React.createElement>[0];
+      w.ReactDOM.createRoot(document.getElementById("app")!).render(
+        w.React.createElement(C, { roomName: "saregionalmeeting", onSaved: (n: string) => { w.__saved.push(n); } } as never),
+      );
+    });
+    const sent = () =>
+      page.evaluate(() =>
+        (window as unknown as { __calls: Array<{ url: string; method: string; body: string }> }).__calls.filter((c) => c.url === "/api/me/full-name"),
+      );
+    await expect(page.getByRole("heading", { name: "What is your full name?" })).toBeVisible();
+    const field = page.getByLabel("Full name", { exact: true });
+    await field.fill("    ");
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByRole("alert")).toHaveText("Enter your full name.");
+    await expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(await sent()).toEqual([]);
+    await field.fill("Samuel   Eto");
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __saved: string[] }).__saved)).toEqual(["Samuel Eto"]);
+    expect(await sent()).toEqual([{ url: "/api/me/full-name", method: "POST", body: JSON.stringify({ fullName: "Samuel   Eto" }) }]);
+    await expectNoSideScroll(page, `name prompt @${width}`);
+    await page.screenshot({ path: `test-results/group-screens/name-prompt-${width}.png`, fullPage: true });
+    expect(errors).toEqual([]);
+  });
+}

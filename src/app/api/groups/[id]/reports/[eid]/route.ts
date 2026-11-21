@@ -8,7 +8,7 @@
 
 import { NextResponse } from "next/server";
 import { eventStore } from "@/lib/eventStore";
-import { getMeetingReport, reportVisible } from "@/lib/groupReports";
+import { getMeetingReport, reportVisible, searchParticipants, withAttendeeNames } from "@/lib/groupReports";
 import { fileSafe, meetingWorkbook } from "@/lib/groupReportXlsx";
 import { requireGroupPermission } from "@/lib/groupAuthz";
 
@@ -25,10 +25,16 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string; eid
   if (!(await reportVisible(ev, id, gate.member.userId))) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
-  const report = await getMeetingReport(eid);
-  if (!report) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const cached = await getMeetingReport(eid);
+  if (!cached) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  // Full names from each attendee's account (src/lib/attendeeNames.ts).
+  const report = await withAttendeeNames(cached);
 
-  if (!xlsx) return NextResponse.json({ report }, { headers: { "cache-control": "no-store" } });
+  if (!xlsx) {
+    // ?q= searches full name, username and email on the server.
+    const q = new URL(req.url).searchParams.get("q");
+    return NextResponse.json({ report: searchParticipants(report, q) }, { headers: { "cache-control": "no-store" } });
+  }
 
   const buffer = await meetingWorkbook(report);
   const day = (report.actualStart ?? report.scheduledStart ?? "").slice(0, 10);

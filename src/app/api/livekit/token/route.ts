@@ -10,6 +10,7 @@ import { gateStatus } from "@/lib/waitingRoom";
 import { needsAppUpdate, nudgeKey, nudgeMessage, NUDGE_TTL_SECONDS, shouldNudgeUpdate, UPDATE_MESSAGE } from "@/lib/appRelease";
 import { kv } from "@/lib/kv";
 import { recordAppJoin } from "@/lib/appVersionCounts";
+import { accountFullName } from "@/lib/attendeeName";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -215,8 +216,11 @@ export async function GET(req: NextRequest) {
     }
 
     const user = await currentUser();
+    // The attendee's full name by the shared rules (src/lib/attendeeName.ts):
+    // KingsChat's name, else the account's own. For accounts without a
+    // KingsChat name this is Clerk's fullName, as before.
     const displayName =
-      user?.fullName ||
+      accountFullName(user) ||
       user?.username ||
       user?.primaryEmailAddress?.emailAddress ||
       userId;

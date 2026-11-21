@@ -15,11 +15,16 @@ import { useRouter } from "next/navigation";
 import AddToGroupDialog, { type GroupCandidate } from "@/components/groups/AddToGroupDialog";
 import { groupErrorFrom, groupErrorMessage } from "@/lib/groupMessages";
 import { reportTime } from "@/lib/reportTime";
+import { matchesAttendee } from "@/lib/attendeeName";
+import { AttendeeCells, AttendeeHeaderCells, AttendeeSearch } from "@/components/AttendeeColumns";
 
 interface ReportPerson {
   key: string;
   userId?: string;
   name: string;
+  /** By the attendee rules; "" when there is none ("Name unavailable"). */
+  fullName?: string;
+  username?: string;
   email: string;
   invited: boolean;
   status: "present" | "absent";
@@ -72,6 +77,7 @@ export default function MeetingReportPanel({ eventId, currentUserId }: { eventId
   const [err, setErr] = useState<string | null>(null);
   const [dialog, setDialog] = useState<null | "new" | "existing">(null);
   const [done, setDone] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -114,7 +120,7 @@ export default function MeetingReportPanel({ eventId, currentUserId }: { eventId
     .map((p) => {
       const kc = kcHandleOf(p);
       return {
-        name: p.name || p.email,
+        name: p.fullName || p.name || p.email,
         detail:
           p.status === "present"
             ? `Came · ${minutes(p.attendedMs)}`
@@ -126,6 +132,8 @@ export default function MeetingReportPanel({ eventId, currentUserId }: { eventId
         selected: p.status === "present" && Boolean(p.userId),
       };
     });
+
+  const shown = report.participants.filter((p) => matchesAttendee(p, query));
 
   return (
     <section className="space-y-4">
@@ -189,11 +197,13 @@ export default function MeetingReportPanel({ eventId, currentUserId }: { eventId
         )}
       </p>
 
+      <AttendeeSearch value={query} onChange={setQuery} shown={shown.length} total={report.participants.length} />
+
       <div className="overflow-x-auto rounded-xl border border-slate-800">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[860px] text-sm">
           <thead className="bg-slate-900/60 text-xs uppercase tracking-widest text-slate-400">
             <tr>
-              <th className="text-left px-3 py-2 font-medium">Name</th>
+              <AttendeeHeaderCells thClass="text-left px-3 py-2 font-medium" />
               <th className="text-left px-3 py-2 font-medium">Status</th>
               <th className="text-left px-3 py-2 font-medium">Joined</th>
               <th className="text-left px-3 py-2 font-medium">Left</th>
@@ -202,12 +212,16 @@ export default function MeetingReportPanel({ eventId, currentUserId }: { eventId
             </tr>
           </thead>
           <tbody>
-            {report.participants.map((p) => (
-              <tr key={p.key} className="border-t border-slate-800">
-                <td className="px-3 py-2">
-                  <span className="block text-slate-100">{p.name || p.email}</span>
-                  {p.email && p.name ? <span className="block text-xs text-slate-500">{p.email}</span> : null}
+            {shown.length === 0 ? (
+              <tr className="border-t border-slate-800">
+                <td colSpan={8} className="px-3 py-4 text-center text-slate-400">
+                  {query.trim() ? "No one in this meeting matches that." : "No one yet."}
                 </td>
+              </tr>
+            ) : null}
+            {shown.map((p) => (
+              <tr key={p.key} className="border-t border-slate-800">
+                <AttendeeCells p={p} tdClass="px-3 py-2" />
                 <td className="px-3 py-2">
                   {p.status === "present" ? (
                     <span className="text-emerald-300">Present</span>
