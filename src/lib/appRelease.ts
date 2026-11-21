@@ -19,6 +19,10 @@
 // the minimum on a date, after a week of nudges.
 
 import { BRAND } from "@/lib/brand";
+// 1.2.16 live on the LoveWorld AppStore, 2026-11-21 (a "Full name for
+// attendance" before joining; the Owner, Hosts and Moderators pinned at the
+// top of the meeting; locked participant microphones; a failed address
+// lookup says it is the network's DNS). 1.2.15 was built but never published.
 // 1.2.14 live on the LoveWorld AppStore, 2026-11-20 (meeting feedback: Send
 // feedback in More, "How was the meeting?" after leaving, a Feedback section
 // on Manage). 1.2.13 earlier that day (Enter meeting first from History and
@@ -32,7 +36,7 @@ import { BRAND } from "@/lib/brand";
 // 1.2.9 2026-11-03 (says why it was signed out, Device sessions; 1.2.8
 // earlier that day, invites carry the app download link; 1.2.7 2026-10-20;
 // 1.2.6, the NeoLinguaMeet rename, 2026-10-19).
-export const LATEST_APP_VERSION = "1.2.14";
+export const LATEST_APP_VERSION = "1.2.16";
 export const MIN_APP_VERSION = "1.2.4";
 
 /**
