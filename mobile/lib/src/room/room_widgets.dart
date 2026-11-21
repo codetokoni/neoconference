@@ -540,6 +540,10 @@ class HostControlsSheet extends ConsumerWidget {
         child: Column(
           children: [
             const _SheetHandle('Host controls'),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: MicLockButton(state: state, controller: controller),
+            ),
             Row(
               children: [
                 Expanded(
@@ -851,6 +855,11 @@ class ParticipantsSheet extends ConsumerWidget {
                   ),
                 ),
               ),
+            if (state.canManage)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: MicLockButton(state: state, controller: controller, closeSheet: true),
+              ),
           ],
         ),
       ),
@@ -992,6 +1001,32 @@ class PipView extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+
+/// "Lock participant microphones" / "Unlock participant microphones", for an
+/// Owner, Host or Moderator (src/lib/micLock.ts on the server). Locking mutes
+/// everyone else and keeps them muted; unlocking lets them unmute themselves.
+class MicLockButton extends StatelessWidget {
+  const MicLockButton({super.key, required this.state, required this.controller, this.closeSheet = false});
+
+  final RoomState state;
+  final RoomController controller;
+  final bool closeSheet;
+
+  @override
+  Widget build(BuildContext context) {
+    final locked = state.micLockOn;
+    return OutlinedButton.icon(
+      onPressed: () {
+        if (closeSheet) Navigator.pop(context);
+        controller.setMicLock(!locked);
+      },
+      icon: Icon(locked ? Icons.lock_open_rounded : Icons.lock_rounded, size: 18),
+      label: Text(locked ? 'Unlock participant microphones' : 'Lock participant microphones'),
+      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
     );
   }
 }
