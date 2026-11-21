@@ -8,7 +8,7 @@
 // per call.
 
 import assert from "node:assert/strict";
-import { isTooManyOpenFiles, openFilesText, retryOnTooManyOpenFiles, step } from "../ops/openFiles";
+import { isTooManyOpenFiles, openFilesText, retryOnTooManyOpenFiles, step, TOO_MANY_OPEN_FILES_WAITS_MS } from "../ops/openFiles";
 
 let n = 0;
 const t = async (name: string, fn: () => Promise<void> | void) => {
@@ -58,6 +58,31 @@ const emfile = () => Object.assign(new Error("A system error occurred: uv_os_hom
     assert.equal(r2Client(), a);
     process.env.S3_ACCESS_KEY = "ak2";
     assert.notEqual(r2Client(), a);
+  });
+
+  await t("by default it waits 3, 10 and 30 s and tries again after each, then gives up", async () => {
+    assert.deepEqual(TOO_MANY_OPEN_FILES_WAITS_MS, [3000, 10_000, 30_000]);
+    let calls = 0;
+    const waits = [1, 1, 1];
+    assert.equal(await retryOnTooManyOpenFiles(async () => (++calls <= 3 ? Promise.reject(emfile()) : "stored"), waits), "stored");
+    assert.equal(calls, 4);
+    calls = 0;
+    await assert.rejects(retryOnTooManyOpenFiles(async () => { calls++; throw emfile(); }, waits), /EMFILE/);
+    assert.equal(calls, 4, "three retries, not forever");
+  });
+
+  await t("R2's library finds a home directory without asking the system (no file slot needed)", async () => {
+    const { ensureHome } = await import("../r2");
+    const { tmpdir } = await import("node:os");
+    const before = process.env.HOME;
+    delete process.env.HOME;
+    ensureHome();
+    assert.equal(process.env.HOME, tmpdir(), "unset: a temporary folder");
+    process.env.HOME = "/home/someone";
+    ensureHome();
+    assert.equal(process.env.HOME, "/home/someone", "set: left alone");
+    if (before === undefined) delete process.env.HOME;
+    else process.env.HOME = before;
   });
 
   console.log(`\n${n} checks passed`);

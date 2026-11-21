@@ -19,6 +19,11 @@ const objects = () => (globalThis.__objects ??= []);
 const bytes = () => (globalThis.__r2Bytes ??= new Map());
 // __r2Writes records put/delete/rename so a test can prove nothing touched the bucket.
 const wrote = (op, key) => (globalThis.__r2Writes = [...(globalThis.__r2Writes ?? []), { op, key }]);
+// The backup's first R2 call (warmR2 in r2.ts), recorded in globalThis.__r2Writes as "warm".
+export async function warmR2() {
+  wrote("warm", "");
+  if (globalThis.__r2Down) throw new Error("R2 unavailable");
+}
 export async function putObject(key, body, contentType) {
   wrote("put", key);
   if (globalThis.__r2Down) throw new Error("R2 unavailable");

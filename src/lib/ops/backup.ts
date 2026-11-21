@@ -38,10 +38,10 @@ import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { kv, kvRaw } from "@/lib/kv";
-import { deleteObject, getObjectBytes, isR2Configured, putObject } from "@/lib/r2";
+import { deleteObject, getObjectBytes, isR2Configured, putObject, warmR2 } from "@/lib/r2";
 import { newId, parseJson, readHash, scanKeys } from "@/lib/ops/util";
 import { erasedUserIds } from "@/lib/dataGov/requests";
-import { retryOnTooManyOpenFiles, step } from "@/lib/ops/openFiles";
+import { retryOnTooManyOpenFiles, step, TOO_MANY_OPEN_FILES_WAITS_MS } from "@/lib/ops/openFiles";
 
 export const SNAPSHOT_EXCLUDE = [
   "ratelimit:",
@@ -99,6 +99,8 @@ export interface SnapshotLimits {
   maxKeys?: number;
   maxRawBytes?: number;
   budgetMs?: number;
+  /** Waits before each retry when out of file slots (openFiles.ts). */
+  retryWaitsMs?: number[];
 }
 
 export type BackupKind = "scheduled" | "manual" | "pre-restore";
@@ -270,10 +272,14 @@ export async function createSnapshot(opts: {
   const maxKeys = opts.limits?.maxKeys ?? MAX_KEYS;
   const maxRawBytes = opts.limits?.maxRawBytes ?? MAX_RAW_BYTES;
   const budgetMs = opts.limits?.budgetMs ?? SNAPSHOT_BUDGET_MS;
+  const waits = opts.limits?.retryWaitsMs ?? TOO_MANY_OPEN_FILES_WAITS_MS;
   const createdAt = Date.now();
   const id = newId(opts.kind === "pre-restore" ? "pre" : "snap");
   const prefixes = opts.prefixes?.length ? opts.prefixes : null;
   // Each step says so if it fails, with what was open then (openFiles.ts).
+  // R2 first, while file slots are plentiful: the SDK reads its settings once
+  // and keeps them, so the write at the end needs only a connection.
+  await step("connecting to R2", () => retryOnTooManyOpenFiles(() => warmR2(), waits));
   const scanned = await step("listing the store's keys", () => keysFor(prefixes, maxKeys));
   let truncatedReason = scanned.truncated ? `more than ${maxKeys.toLocaleString("en")} keys` : undefined;
   const keys = scanned.keys.filter((k) => !isExcluded(k)).sort().slice(0, maxKeys);
@@ -317,7 +323,7 @@ export async function createSnapshot(opts: {
     prefixes,
     ...(opts.restoreOf ? { restoreOf: opts.restoreOf } : {}),
   };
-  await step("writing it to R2", () => retryOnTooManyOpenFiles(() => putObject(meta.r2Key, gz, "application/gzip")));
+  await step("writing it to R2", () => retryOnTooManyOpenFiles(() => putObject(meta.r2Key, gz, "application/gzip"), waits));
   await saveMeta(meta);
   return (await verifySnapshot(id)) ?? meta;
 }

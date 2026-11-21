@@ -1,5 +1,6 @@
 import { S3Client, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { tmpdir } from 'node:os';
 
 /**
  * Cloudflare R2 client + helpers.
@@ -43,9 +44,30 @@ function stripChecksumMiddlewares(s3: S3Client): void {
 let client: S3Client | null = null;
 let clientFor = '';
 
+/** HOME for libraries that look up the home directory; a temporary folder if unset. */
+export function ensureHome(): void {
+  if (!process.env.HOME) process.env.HOME = tmpdir();
+}
+
+/**
+ * Load the SDK's settings now, with one small request, while the process has
+ * file slots to spare: they are read once and kept. The backup calls this
+ * before reading the store, so writing the snapshot later needs only a
+ * connection.
+ */
+export async function warmR2(): Promise<void> {
+  const Bucket = requiredEnv('S3_BUCKET');
+  await r2Client().send(new ListObjectsV2Command({ Bucket, MaxKeys: 1 }));
+}
+
 export function r2Client(): S3Client {
   const key = [process.env.S3_ENDPOINT, process.env.S3_ACCESS_KEY, process.env.S3_REGION].join('|');
   if (client && clientFor === key) return client;
+  // The SDK looks up the home directory for its settings files. Without HOME
+  // (as on Vercel) Node asks the system's user database, which needs a file
+  // slot: the nightly backup failed there, "uv_os_homedir returned EMFILE",
+  // whenever the process was out of them. With HOME set it needs none.
+  ensureHome();
   // Cast to allow the newer config flags on older type defs.
   const config: ConstructorParameters<typeof S3Client>[0] & {
     requestChecksumCalculation?: 'WHEN_REQUIRED' | 'WHEN_SUPPORTED';

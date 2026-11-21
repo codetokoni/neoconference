@@ -795,14 +795,19 @@ async function main() {
     assert.equal(refused.body.error, "snapshot_incomplete");
   });
 
-  await t("out of file slots once while writing to R2: retried, and the snapshot is stored; for good: the error says where", async () => {
-    const g3 = g as Stubbed & { __r2PutEmfile?: number };
-    g3.__r2PutEmfile = 1;
-    const once = await backup.createSnapshot({ kind: "manual", by: "test", prefixes: ["neo:event:"] });
-    assert.equal(once.verify?.ok, true);
-    assert.equal(g3.__r2PutEmfile, 0, "the retry used it up");
-    g3.__r2PutEmfile = 2;
-    await assert.rejects(backup.createSnapshot({ kind: "manual", by: "test", prefixes: ["neo:event:"] }), (e: Error) => {
+  await t("out of file slots while writing to R2: retried three times, and the snapshot is stored; for good: the error says where", async () => {
+    const g3 = g as Stubbed & { __r2PutEmfile?: number; __r2Writes?: Array<{ op: string }> };
+    // The waits as in production are 3, 10 and 30 s; here a moment each.
+    const limits = { retryWaitsMs: [1, 1, 1] };
+    g3.__r2Writes = [];
+    g3.__r2PutEmfile = 3;
+    const thrice = await backup.createSnapshot({ kind: "manual", by: "test", prefixes: ["neo:event:"], limits });
+    assert.equal(thrice.verify?.ok, true);
+    assert.equal(g3.__r2PutEmfile, 0, "the retries used it up");
+    // R2 is reached first, before the store is read, while slots are free.
+    assert.equal(g3.__r2Writes![0].op, "warm");
+    g3.__r2PutEmfile = 4;
+    await assert.rejects(backup.createSnapshot({ kind: "manual", by: "test", prefixes: ["neo:event:"], limits }), (e: Error) => {
       assert.match(e.message, /^writing it to R2: .*EMFILE \(too many open files\) \(.+\)$/);
       return true;
     });

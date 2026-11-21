@@ -37,16 +37,27 @@ export const isTooManyOpenFiles = (e: unknown): boolean =>
   /EMFILE|too many open files/i.test(e instanceof Error ? `${(e as { code?: string }).code ?? ""} ${e.message}` : String(e));
 
 /**
- * Run `fn`; if the process had run out of file slots, wait for some to close
- * (sockets kept alive by finished requests time out) and try once more.
+ * How long to wait before each retry. The process shares its file slots with
+ * other requests served beside it, whose connections come and go: one retry
+ * after 3 s was not enough (21 Nov 2026: 546 sockets open while the backup's
+ * own reads used at most 3).
  */
-export async function retryOnTooManyOpenFiles<T>(fn: () => Promise<T>, waitMs = 3000): Promise<T> {
-  try {
-    return await fn();
-  } catch (e) {
-    if (!isTooManyOpenFiles(e)) throw e;
-    await new Promise((r) => setTimeout(r, waitMs));
-    return fn();
+export const TOO_MANY_OPEN_FILES_WAITS_MS = [3000, 10_000, 30_000];
+
+/**
+ * Run `fn`; if the process had run out of file slots, wait for some to close
+ * (sockets kept alive by finished requests time out) and try again, once per
+ * wait. Any other failure is not retried.
+ */
+export async function retryOnTooManyOpenFiles<T>(fn: () => Promise<T>, waits: number | number[] = TOO_MANY_OPEN_FILES_WAITS_MS): Promise<T> {
+  const list = Array.isArray(waits) ? waits : [waits];
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!isTooManyOpenFiles(e) || i >= list.length) throw e;
+      await new Promise((r) => setTimeout(r, list[i]));
+    }
   }
 }
 
