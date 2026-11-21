@@ -290,6 +290,7 @@ class RoomState {
     this.micLocked = false,
     this.micLockOn = false,
     this.micAllowed = const {},
+    this.micLockBusy = false,
   });
 
   final JoinPhase phase;
@@ -304,6 +305,9 @@ class RoomState {
   /// /api/livekit/mic-lock and the server's "mic_lock" message).
   final bool micLockOn;
   final Set<String> micAllowed;
+
+  /// The toolbar's "Mute everyone" is waiting for the server.
+  final bool micLockBusy;
 
   /// A host or moderator asking this person to unmute or turn their camera
   /// on, waiting for an answer. Null when nobody is asking.
@@ -551,6 +555,7 @@ class RoomState {
     bool? micLocked,
     bool? micLockOn,
     Set<String>? micAllowed,
+    bool? micLockBusy,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
@@ -623,6 +628,7 @@ class RoomState {
         micLocked: micLocked ?? this.micLocked,
         micLockOn: micLockOn ?? this.micLockOn,
         micAllowed: micAllowed ?? this.micAllowed,
+        micLockBusy: micLockBusy ?? this.micLockBusy,
       );
 }
 
@@ -2311,6 +2317,22 @@ class RoomController extends StateNotifier<RoomState> {
       state = state.copyWith(
         message: e.status == 403 ? 'Only an Owner, Host or Moderator can do that.' : e.message,
       );
+    } catch (e) {
+      // No answer at all: the lock is as it was, and the person is told.
+      state = state.copyWith(message: describeActionError(e));
+    }
+  }
+
+  /// The toolbar's "Mute everyone" / "Unmute everyone": the host sheets'
+  /// lock, turned the other way from what the server last confirmed. The
+  /// label changes only when the server says it did.
+  Future<void> toggleEveryoneMuted() async {
+    if (state.micLockBusy) return;
+    state = state.copyWith(micLockBusy: true);
+    try {
+      await setMicLock(!state.micLockOn);
+    } finally {
+      if (!_disposed) state = state.copyWith(micLockBusy: false);
     }
   }
 

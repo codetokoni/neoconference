@@ -13,6 +13,7 @@
 import { ControlBar } from '@livekit/components-react';
 import { Lock } from 'lucide-react';
 import { MIC_LOCKED_MESSAGE, noteMicLocked, useMicLocked } from './micLockClient';
+import { MuteEveryoneControlBarButton } from './MuteEveryone';
 
 export default function NeoControlBar() {
   const locked = useMicLocked();
@@ -32,6 +33,8 @@ export default function NeoControlBar() {
         </button>
       ) : null}
       <ControlBar controls={{ chat: true, settings: false }} style={{ display: 'contents' }} />
+      {/* Owner, Host and Moderator: "Mute everyone", right of Leave. */}
+      <MuteEveryoneControlBarButton />
     </div>
   );
 }

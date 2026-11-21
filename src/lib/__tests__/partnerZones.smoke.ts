@@ -328,6 +328,21 @@ async function main() {
     assert.equal(other?.headers.get("content-security-policy") ?? null, null);
   });
 
+  await t("a visitor joining while participant microphones are locked gets no microphone from the start", async () => {
+    const M = await import("../micLock");
+    const zone = (await S.getZone(pc.id, "FALF"))!;
+    await M.saveMicLock(zone.eventId, { locked: true, allowed: [] });
+    try {
+      const v = await visit(pcLive, "FALF", { id: "pc_locked", displayName: "Locked Lola" });
+      const video = claims(v.joined.token).video as { canPublishSources?: string[] };
+      assert.deepEqual(video.canPublishSources, ["camera", "screen_share", "screen_share_audio"]);
+    } finally {
+      await M.saveMicLock(zone.eventId, { locked: false, allowed: [] });
+    }
+    const after = await visit(pcLive, "FALF", { id: "pc_locked", displayName: "Locked Lola" });
+    assert.equal((claims(after.joined.token).video as { canPublishSources?: string[] }).canPublishSources, undefined);
+  });
+
   await t("an embedded visitor translates in their own meeting only, through the embed session", async () => {
     process.env.DEEPL_API_KEY = "deepl-test:fx";
     const realFetch = globalThis.fetch;

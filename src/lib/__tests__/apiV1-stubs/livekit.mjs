@@ -31,6 +31,8 @@ export class RoomServiceClient {
   // ({ room: [{ identity }] }); otherwise it throws, as it always did, so
   // routes that fail open on it behave as before.
   async listParticipants(room) {
+    // globalThis.__lkHang: LiveKit not answering at all (a call that never returns).
+    if (globalThis.__lkHang) return new Promise(() => {});
     const all = globalThis.__lkParticipants;
     if (!all) throw new Error("listParticipants: not stubbed");
     return all[room] ?? [];
