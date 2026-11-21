@@ -18,6 +18,7 @@ import {
 } from '@/lib/avatarColor';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 import { requestSpotlight, useSpotlit } from '@/components/SpotlightOverlay';
+import { PIN_ROLE_LABEL, type PinRole } from './rolePins';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -34,6 +35,9 @@ interface MobileParticipantTileProps {
    *  long-press menu's host items for an owner whose role has not arrived. */
   localIsOwner?: boolean;
   participantIsHost: boolean;
+  /** Their role, said on the tile (Owner, Host, Moderator). Without it a
+   *  host or moderator's tile says HOST, as it always has. */
+  roleBadge?: PinRole | null;
   slug: string;
   onSpotlight?: (participantId: string) => void;
   isVisible?: boolean;
@@ -100,6 +104,7 @@ function MobileParticipantTileInner({
   localIsHostRank = false,
   localIsOwner = false,
   participantIsHost,
+  roleBadge = null,
   slug,
   onSpotlight,
   isVisible = true,
@@ -597,7 +602,7 @@ function MobileParticipantTileInner({
         ) : null}
 
         {/* Host badge */}
-        {participantIsHost && (
+        {(roleBadge || participantIsHost) && (
           <span
             className="shrink-0 font-medium text-cyan-400"
             style={{
@@ -608,7 +613,7 @@ function MobileParticipantTileInner({
               padding: '1px 2px',
             }}
           >
-            HOST
+            {roleBadge ? PIN_ROLE_LABEL[roleBadge].toUpperCase() : 'HOST'}
           </span>
         )}
 
@@ -896,6 +901,7 @@ export const MobileParticipantTile = React.memo(
     prev.localIsHostRank === next.localIsHostRank &&
     prev.localIsOwner === next.localIsOwner &&
     prev.participantIsHost === next.participantIsHost &&
+    prev.roleBadge === next.roleBadge &&
     prev.slug === next.slug &&
     prev.isVisible === next.isVisible &&
     prev.aspect === next.aspect,

@@ -12,6 +12,7 @@ import { Track, type Participant, type TrackPublication } from 'livekit-client';
 import { MobileParticipantTile } from './MobileParticipantTile';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 import { keepOrder, useKeptPlace } from './keptPlace';
+import { pinRoleOf, rolePins, showPinnedRow } from './rolePins';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -19,6 +20,8 @@ import { keepOrder, useKeptPlace } from './keptPlace';
 
 interface MobileParticipantGridProps {
   slug: string;
+  /** The meeting's owner (a Clerk user id), for the pinned row's Owner. */
+  ownerUserId?: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -61,7 +64,7 @@ function densityFor(count: number): { cols: string; aspect: 'square' | 'video' }
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export default function MobileParticipantGrid({ slug }: MobileParticipantGridProps) {
+export default function MobileParticipantGrid({ slug, ownerUserId = null }: MobileParticipantGridProps) {
   const allParticipants = useParticipants();
   const { localParticipant } = useLocalParticipant();
   const localIsHost = isHostRole(localParticipant);
@@ -93,9 +96,7 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
   // place: a connection restart drops everyone and adds them back, which
   // used to throw a host taking the register back to the top (keptPlace.ts).
   const seen = useRef(new Map<string, number>());
-  const participants = keepOrder(seen.current, allParticipants.filter((p) => !isHidden(p.identity)));
-  const { cols, aspect } = densityFor(participants.length);
-  const kept = useKeptPlace(cols + '|' + participants.map((p) => p.identity).join(','));
+  const everyone = keepOrder(seen.current, allParticipants.filter((p) => !isHidden(p.identity)));
 
   // Screen-share subscription. useTracks lets us treat screen shares as a
   // separate source without polling participants for their track publications
@@ -109,6 +110,24 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
   const activeShare = screenShareTracks.find(
     (t) => t.publication && (t.publication as TrackPublication).isSubscribed,
   ) || screenShareTracks[0];
+
+  // The Owner, Hosts and Moderators, in a row above everything else that
+  // scrolls sideways when it is wider than the phone (rolePins.ts). A
+  // screen share stays the main view, under the row; the grid below has
+  // everyone else.
+  const pins = rolePins(everyone, ownerUserId);
+  const pinnedIds = new Set(pins.map((p) => p.person.identity));
+  const others = everyone.filter((p) => !pinnedIds.has(p.identity));
+  const rowShown = showPinnedRow({
+    pinned: pins.length,
+    rest: others.map((p) => ({ identity: p.identity, isLocal: p.isLocal })),
+    sharing: !!activeShare,
+  });
+  const participants = rowShown ? others : everyone;
+  const { cols, aspect } = densityFor(participants.length);
+  const kept = useKeptPlace(
+    cols + '|' + (rowShown ? pins.map((p) => p.person.identity).join(',') : '') + '|' + participants.map((p) => p.identity).join(','),
+  );
 
   /* ---------- IntersectionObserver visibility tracking ---------- */
   const [visibilityMap, setVisibilityMap] = useState<Map<string, boolean>>(new Map());
@@ -170,7 +189,7 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
   // min-height: 100% on a flow child of a flex item doesn't reliably resolve,
   // which left the gradient painted only behind the tiles. inset:0 anchors it
   // to the full middle area and lets the grid scroll inside it.
-  if (participants.length === 0) {
+  if (everyone.length === 0) {
     return (
       <div
         className="absolute inset-0 flex items-center justify-center text-white/40 text-sm"
@@ -192,6 +211,31 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
         background: 'radial-gradient(ellipse at top, #0a1a24 0%, #000 60%)',
       }}
     >
+      {rowShown && (
+        <div
+          className="flex gap-2 overflow-x-auto px-3 pt-3 pb-1"
+          data-neo-pinned-row="true"
+          role="group"
+          aria-label="Owner, hosts and moderators"
+          style={{ scrollbarWidth: 'none' }}
+        >
+          {pins.map(({ person, role }) => (
+            <div key={person.identity} ref={refCallback(person.identity)} className="shrink-0" style={{ width: 132 }}>
+              <MobileParticipantTile
+                participant={person}
+                localIsHost={localIsHost}
+                localIsHostRank={isHostRank(localParticipant)}
+                localIsOwner={isOwner}
+                participantIsHost
+                roleBadge={role}
+                slug={slug}
+                isVisible={visibilityMap.get(person.identity) ?? true}
+                aspect="video"
+              />
+            </div>
+          ))}
+        </div>
+      )}
       {activeShare && (
         <div className="px-3 pt-3 pb-2">
           <div
@@ -230,6 +274,7 @@ export default function MobileParticipantGrid({ slug }: MobileParticipantGridPro
                 localIsHostRank={isHostRank(localParticipant)}
                 localIsOwner={isOwner}
                 participantIsHost={isHostRole(p)}
+                roleBadge={pinRoleOf(p, ownerUserId)}
                 slug={slug}
                 isVisible={visibilityMap.get(p.identity) ?? true}
                 aspect={aspect}

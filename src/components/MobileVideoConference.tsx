@@ -19,7 +19,14 @@ import { leaveMeeting } from './conference/leaveMeeting';
  * Desktop: LiveKit's <VideoConference /> layout, as NeoVideoConference
  * (tiles that say whose they are, and a way back from an enlarged tile).
  */
-export default function MobileVideoConference({ hideSelf = false }: { hideSelf?: boolean }) {
+export default function MobileVideoConference({
+  hideSelf = false,
+  ownerUserId = null,
+}: {
+  hideSelf?: boolean;
+  /** The meeting's owner (a Clerk user id), for the pinned row's Owner. */
+  ownerUserId?: string | null;
+}) {
   const [isMobile, setIsMobile] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -33,17 +40,17 @@ export default function MobileVideoConference({ hideSelf = false }: { hideSelf?:
   }, []);
 
   if (!mounted || !isMobile) {
-    return <NeoVideoConference hideSelf={hideSelf} />;
+    return <NeoVideoConference hideSelf={hideSelf} ownerUserId={ownerUserId} />;
   }
 
-  return <MobileLayout />;
+  return <MobileLayout ownerUserId={ownerUserId} />;
 }
 
 /* ------------------------------------------------------------------ */
 /*  Mobile layout (rendered only on phones)                            */
 /* ------------------------------------------------------------------ */
 
-function MobileLayout() {
+function MobileLayout({ ownerUserId }: { ownerUserId: string | null }) {
   const room = useRoomContext();
   const params = useParams();
   const searchParams = useSearchParams();
@@ -66,7 +73,7 @@ function MobileLayout() {
         style={{ paddingBottom: 6 }}
       />
       <div className="flex-1 relative overflow-hidden">
-        <MobileParticipantGrid slug={slug} />
+        <MobileParticipantGrid slug={slug} ownerUserId={ownerUserId} />
         <ReactionsRail />
       </div>
       <MobileControlBar onLeave={handleLeave} />

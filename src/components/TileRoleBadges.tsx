@@ -5,8 +5,9 @@ import { createPortal } from 'react-dom';
 import { useParticipants } from '@livekit/components-react';
 import { useIsMobile } from '@/hooks/useIsMobile';
 import { tileIdentityOf } from '@/components/conference/roomLayout';
+import { pinRoleOf, type PinRole } from '@/components/conference/rolePins';
 
-type BadgeRole = 'owner' | 'host' | 'moderator';
+type BadgeRole = PinRole;
 
 const BADGE_STYLE: Record<BadgeRole, { bg: string; border: string; label: string }> = {
   owner: {
@@ -59,28 +60,18 @@ export default function TileRoleBadges({ ownerUserId }: { ownerUserId: string | 
   if (isMobile) return null;
 
   // Role by identity (and by name, for a tile that says no identity).
-  // Owner detection wins over metadata: if the participant IS the owner
-  // they get the Owner badge even if their token metadata says "host".
-  // By name alone, a Host badge went on every tile of that name: another
-  // person called Grace looked like the host.
+  // The same rule as the pinned row (rolePins.ts), so a tile's badge and its
+  // place in the row agree: the owner is the host whose token says owner,
+  // or whose identity is ownerUserId's. By name alone, a Host badge went on
+  // every tile of that name: another person called Grace looked like the
+  // host.
   const roleById = new Map<string, BadgeRole>();
   const roleByName = new Map<string, BadgeRole>();
   for (const p of participants) {
     if (!p) continue;
     const key = (p.name && p.name.length > 0 ? p.name : p.identity) || '';
     if (!key) continue;
-    let role: BadgeRole | null = null;
-    if (ownerUserId && p.identity && (p.identity === ownerUserId || p.identity.startsWith(ownerUserId + '#'))) {
-      role = 'owner';
-    } else if (p.metadata) {
-      try {
-        const j = JSON.parse(p.metadata);
-        if (j && j.role === 'host') role = 'host';
-        else if (j && j.role === 'cohost') role = 'moderator';
-      } catch {
-        // not JSON
-      }
-    }
+    const role: BadgeRole | null = p.identity ? pinRoleOf(p, ownerUserId) : null;
     if (role) {
       roleById.set(p.identity, role);
       roleByName.set(key, role);
@@ -96,7 +87,9 @@ export default function TileRoleBadges({ ownerUserId }: { ownerUserId: string | 
         // A person's badge goes on their camera tile, not their screen.
         if (tile.getAttribute('data-neo-source') === 'screen_share') return;
         const role = roleById.get(identity);
-        if (role) items.push({ key: identity, role, target: tile });
+        // By place as well: an enlarged host has two camera tiles (the
+        // pinned row's and the big one), and one key for both dropped a badge.
+        if (role) items.push({ key: identity + ':' + idx, role, target: tile });
         return;
       }
       const nameEl = tile.querySelector('.lk-participant-name, [data-lk-participant-name]');

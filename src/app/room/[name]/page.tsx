@@ -1179,7 +1179,7 @@ function RoomContainer({
         <SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
         <ChatTranscriptDownloader roomName={roomName} />
         <InitialsOverlay />
-        <RoomIdleController /><MobileVideoConference hideSelf={hideSelf} />
+        <RoomIdleController /><MobileVideoConference hideSelf={hideSelf} ownerUserId={ownerUserId} />
         <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} roomRole={roomRole} slug={eventSlug} />
         <MediaRequestPrompt />
         <RoomAudioRenderer />

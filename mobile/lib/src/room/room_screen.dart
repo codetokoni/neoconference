@@ -632,6 +632,11 @@ class _InMeetingState extends State<_InMeeting> {
         .firstOrNull;
     final publication = screen ?? published.firstOrNull;
     final track = publication?.track;
+    // Their face as well while the share has the big tile, for the pinned
+    // row (Owner, Hosts, Moderators), which shows the person, not the share.
+    final cameraTrack = screen == null
+        ? null
+        : published.where((p) => p.source == TrackSource.camera).firstOrNull?.track;
 
     final name = label ??
         (participant.name.isNotEmpty ? participant.name : participant.identity);
@@ -654,6 +659,9 @@ class _InMeetingState extends State<_InMeeting> {
       // LiveKit metadata, kept current by the server.
       role: isMe ? state.role : participantRole(participant.metadata),
       owner: isMe ? state.isOwner : participantIsOwner(participant.metadata),
+      camera: cameraTrack is VideoTrack
+          ? VideoTrackRenderer(cameraTrack, key: ObjectKey(cameraTrack), fit: VideoViewFit.cover)
+          : null,
     );
   }
 

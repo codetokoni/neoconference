@@ -196,6 +196,47 @@
   outline: 2px solid #fff;
   outline-offset: 2px;
 }
+/* The Owner, Hosts and Moderators, pinned in a row at the top of the
+   meeting for everyone (NeoVideoConference, rolePins.ts). The row takes
+   its own height; the gallery or the enlarged tile has the rest. More
+   people than fit: the row scrolls sideways. */
+.neo-pinned-stage {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: calc(100% - var(--lk-control-bar-height, 69px));
+  min-height: 0;
+}
+.neo-pinned-stage > .lk-grid-layout-wrapper,
+.neo-pinned-stage > .lk-focus-layout-wrapper {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+.neo-pinned-row {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  padding: 8px 8px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Centred while it fits; from the start once it scrolls. */
+  justify-content: safe center;
+  scrollbar-width: thin;
+}
+.neo-pinned-row > .lk-participant-tile {
+  flex: none;
+  height: clamp(96px, 18vh, 168px);
+  width: auto;
+  aspect-ratio: 16 / 9;
+}
+/* A smaller initials circle for a camera that is off, to fit the tile. */
+.neo-pinned-row > .lk-participant-tile[data-lk-video-muted="true"][data-initials][data-initials-ready="true"]:not([data-initials=""])::after {
+  width: 56px;
+  height: 56px;
+  font-size: 22px;
+}
+
 /* The enlarged tile's own shrink button stays shown, not only on hover:
    there is no hover on a touch screen. */
 .lk-focus-layout > .lk-participant-tile .lk-focus-toggle-button {
