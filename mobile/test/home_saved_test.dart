@@ -86,5 +86,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Could not load your meetings'), findsOneWidget);
+    // A lookup failure says it is the network's DNS (2026-11-21).
+    expect(find.textContaining("Your network couldn't find NeoLinguaMeet's servers"), findsOneWidget);
   });
 }

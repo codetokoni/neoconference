@@ -80,7 +80,7 @@ void main() {
 
   test('a SocketException on its own is recognised as a network failure', () {
     expect(
-      describeLoadError(const SocketException('Failed host lookup')),
+      describeLoadError(const SocketException('Connection refused')),
       "Couldn't reach NeoLinguaMeet. Check your connection and try again.",
     );
   });
