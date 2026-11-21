@@ -34,6 +34,12 @@ import { connectionEnd, countedIntervals, mergeIntervals, totalMs, type Connecti
 
 export const STALE_SESSION_MS = 10 * 60_000;
 /**
+ * A heartbeat this long after the connection's last one is checked with
+ * LiveKit first. 1.5 on-screen beats (PAGE_BEAT_MS): a page beating on time
+ * is believed without a LiveKit call; a late or hidden-tab beat is checked.
+ */
+export const VERIFY_AFTER_MS = 90_000;
+/**
  * How long sessions and who attended them are kept: 90 days (was 400 until
  * November 2026; at ~18 MB a week it would have grown the store past 1 GB).
  * Each zone's and the organisation's day totals are kept 400 days
@@ -333,7 +339,7 @@ export async function heartbeat(
     const s = await getSession(String(id));
     if (!s || s.endedAt != null) return "ended";
     const last = c.l ?? c.s;
-    if (now - last > 30_000) {
+    if (now - last > VERIFY_AFTER_MS) {
       // Quiet for a while: only LiveKit can say it is still connected.
       const joined = await verify();
       if (joined == null) {

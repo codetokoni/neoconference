@@ -5,13 +5,18 @@
 // the page only adds the seconds since the server's answer while the
 // server says the visitor is connected. A slowed-down background tab or a
 // reload cannot make it wrong: every tick recomputes from the clock, and
-// every heartbeat (20 s) or return to the tab re-reads it.
+// every heartbeat (60 s on screen, 3 min hidden) or return to the tab
+// re-reads it.
+//
+// Each heartbeat is a Vercel function call, and every connected visitor
+// sends them, so the beat is as slow as the counting rules allow
+// (src/lib/partners/attendanceMath.ts): 20 s until November 2026 made
+// ~100,000 calls a day.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useConnectionState, useRoomContext } from "@livekit/components-react";
 import { ConnectionState } from "livekit-client";
-
-const BEAT_MS = 20_000;
+import { startBeating } from "./beatSchedule";
 
 export type TimerReading = { sessionId: string | null; seconds: number; connected: boolean; serverNow: number };
 
@@ -68,19 +73,12 @@ export function PrayerTimer({ getSession, onTick }: { getSession: () => string |
     if (r) setReading({ ...r, receivedAt: Date.now() });
   }, [getSession, room]);
 
-  // Beat on connecting (and reconnecting), then every 20 s, and when the tab comes back.
+  // Beat on connecting (and reconnecting), then every 60 s on screen or every
+  // 3 min while hidden, and at once when the tab comes back.
+  // (beatSchedule.ts).
   useEffect(() => {
     if (!live) return;
-    void beat();
-    const id = window.setInterval(() => void beat(), BEAT_MS);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void beat();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      window.clearInterval(id);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
+    return startBeating(() => void beat());
   }, [live, beat]);
 
   // Redraw every second; the value itself comes from the clock, not from counting ticks.
