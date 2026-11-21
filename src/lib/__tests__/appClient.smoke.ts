@@ -71,6 +71,8 @@ async function main() {
     g.__who = who;
     const q = new URLSearchParams({ room: slug, event: slug, nonce: "n1" });
     if (client !== undefined) q.set("client", client);
+    // The join screen confirms a full name for attendance first (src/lib/attendanceName.ts).
+    await (await import("../attendanceName")).rememberConfirmation(who, "Test Attendee");
     const res = await R.token.GET(new NextRequest(`https://www.neoconference.app/api/livekit/token?${q}`));
     const body = (await res.json()) as { token?: string };
     assert.equal(res.status, 200, JSON.stringify(body));

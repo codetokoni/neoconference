@@ -24,14 +24,16 @@ import { __setNameLookup } from "@/lib/attendeeNames";
 delete process.env.KV_REST_API_URL;
 delete process.env.KV_REST_API_TOKEN;
 __setKingsChatSender(async () => "unavailable");
-// Full names in a report come from each person's account
-// (src/lib/attendeeNames.ts): these are the test accounts' names.
+// Usernames in a report come from each person's account
+// (src/lib/attendeeNames.ts): these are the test accounts' usernames. Full
+// names are the attendance names captured at each join, which these meetings'
+// fixtures do not record ("Name not captured").
 const ACCOUNT_NAMES: Record<string, string> = {
   user_own: "Olu", user_hst: "Hana", user_mod: "Musa", user_ada: "Ada", user_bo: "Bo", user_cy: "Cy",
   user_late: "Late", user_sol: "Sol", user_mailer: "Mae", user_came: "Kemi", user_ben: "Ben",
 };
 __setNameLookup(async (ids) =>
-  new Map(ids.filter((id) => id in ACCOUNT_NAMES).map((id) => [id, { fullName: ACCOUNT_NAMES[id], username: "" }])),
+  new Map(ids.filter((id) => id in ACCOUNT_NAMES).map((id) => [id, { username: ACCOUNT_NAMES[id] }])),
 );
 __setReportDeps({ recording: async () => ({ recorded: true, url: "/replay/x" }) });
 
@@ -207,9 +209,12 @@ const leave = (eid: string, userId: string, name: string, ts: number) =>
     sheet.eachRow((row, i) => {
       if (i === 1) return;
       const v = row.values as unknown[];
-      rows.push([String(v[5]), String(v[2]), String(v[17])]);   // meeting title, name, status
+      rows.push([String(v[5]), String(v[2] ?? ""), String(v[17])]);   // meeting title, full name, status
     });
-    const expected = reports.flatMap((r) => r.participants.map((p) => [r.title, p.name, p.status === "present" ? "Present" : "Absent"]));
+    // Someone who came without a captured name says so; someone who never came has no attendance cell.
+    const expected = reports.flatMap((r) =>
+      r.participants.map((p) => [r.title, p.row ? p.fullName || "Name not captured" : p.fullName ?? "", p.status === "present" ? "Present" : "Absent"]),
+    );
     assert.deepEqual(rows, expected);
   });
 

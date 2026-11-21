@@ -1,16 +1,19 @@
 "use client";
 
 // The attendee's identity in an attendance report, the same in every report
-// on screen: Full Name, then Username, then Email (the spreadsheets' order),
-// and a search across all three (src/lib/attendeeName.ts).
+// on screen: Full Name (the attendance name captured when they joined), then
+// Username, then Email (the spreadsheets' order), and a search across all
+// three (src/lib/attendeeName.ts).
 
-import { NAME_UNAVAILABLE, cleanFullName } from "@/lib/attendeeName";
+import { NAME_NOT_CAPTURED, cleanFullName } from "@/lib/attendeeName";
 
 export interface AttendeeIdentity {
   key: string;
   fullName?: string;
   username?: string;
   email: string;
+  /** "absent": invited and never came, so there was no join to capture a name at. */
+  status?: "present" | "absent";
 }
 
 /** The username to show: the account's, or the KingsChat handle someone was invited by. */
@@ -36,7 +39,13 @@ export function AttendeeCells({ p, tdClass }: { p: AttendeeIdentity; tdClass: st
       {/* The table scrolls sideways on a narrow screen: a name may wrap,
           a username or an email stays whole. */}
       <td className={`${tdClass} min-w-[10rem]`} data-col="full-name">
-        {full ? <span className="text-slate-100">{full}</span> : <span className="italic text-slate-500">{NAME_UNAVAILABLE}</span>}
+        {full ? (
+          <span className="text-slate-100">{full}</span>
+        ) : p.status === "absent" ? (
+          <span className="text-slate-500">—</span>
+        ) : (
+          <span className="italic text-slate-500">{NAME_NOT_CAPTURED}</span>
+        )}
       </td>
       <td className={`${tdClass} whitespace-nowrap text-slate-300`} data-col="username">{username || "—"}</td>
       <td className={`${tdClass} whitespace-nowrap text-slate-300`} data-col="email">{p.email || "—"}</td>

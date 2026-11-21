@@ -1,50 +1,64 @@
 "use client";
 
-// Asked once, before joining a meeting, of someone who signed in with
-// KingsChat and has no name anywhere: KingsChat gave none and the account has
-// none (needsFullName in src/lib/attendeeName.ts). The name is saved on their
-// account (/api/me/full-name), so the meeting's organisers see who came and
-// it is never asked again. Shown before anything joins the meeting, so it
-// writes no attendance of its own.
+// The "Full name for attendance" step for a link that joins straight in
+// (?join=1, from a KingsChat message or a notification), which skips the
+// join screen and its camera and microphone setup. The name is required there
+// too: it starts with the one they confirmed last time, they can change it,
+// and it is confirmed (/api/me/full-name) before the meeting is asked for a
+// token — so nothing joins, and no attendance is written, without one.
 
-import { useState, type FormEvent } from "react";
-import { fullNameProblem, FULL_NAME_MAX } from "@/lib/attendeeName";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { attendanceNameProblem, cleanFullName, FULL_NAME_MAX } from "@/lib/attendeeName";
 
 export default function FullNamePrompt({
   roomName,
-  onSaved,
+  initial,
+  loaded,
+  error = "",
+  onConfirm,
 }: {
   roomName: string;
-  onSaved: (fullName: string) => void | Promise<void>;
+  /** What the field starts with (the saved name, or a suggestion). */
+  initial: string;
+  /** False while that is still being fetched. */
+  loaded: boolean;
+  /** A refusal to show (the server turned the join back for want of a name). */
+  error?: string;
+  /** Saves it and goes on; resolves to a problem to show, or null. */
+  onConfirm: (fullName: string) => Promise<string | null>;
 }) {
-  const [value, setValue] = useState("");
-  const [problem, setProblem] = useState("");
+  const [value, setValue] = useState(initial);
+  const [touched, setTouched] = useState(false);
+  const [problem, setProblem] = useState(error);
   const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!touched) setValue(initial);
+  }, [initial, touched]);
+  useEffect(() => {
+    if (error) setProblem(error);
+  }, [error]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (busy) return;
-    const local = fullNameProblem(value);
+    if (busy || !loaded) return;
+    const local = attendanceNameProblem(value);
     if (local) {
       setProblem(local);
+      inputRef.current?.focus();
       return;
     }
+    const name = cleanFullName(value);
+    setValue(name);
     setBusy(true);
     setProblem("");
     try {
-      const res = await fetch("/api/me/full-name", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ fullName: value }),
-      });
-      const body = (await res.json().catch(() => null)) as { fullName?: string; message?: string } | null;
-      if (!res.ok || !body?.fullName) {
-        setProblem(body?.message || "Your name could not be saved. Try again.");
-        return;
+      const refused = await onConfirm(name);
+      if (refused) {
+        setProblem(refused);
+        inputRef.current?.focus();
       }
-      await onSaved(body.fullName);
-    } catch {
-      setProblem("Your name could not be saved. Check your connection and try again.");
     } finally {
       setBusy(false);
     }
@@ -54,45 +68,50 @@ export default function FullNamePrompt({
     <div className="min-h-[calc(100vh-65px)] flex items-center justify-center p-4">
       <form
         onSubmit={submit}
+        noValidate
         aria-labelledby="full-name-title"
         className="w-full max-w-md rounded-3xl border border-cyan-400/20 bg-zinc-950/60 backdrop-blur-xl shadow-[0_0_60px_rgba(34,211,238,0.15)] p-6 md:p-8"
       >
-        <div className="text-[10px] uppercase tracking-[0.35em] text-cyan-400/80">Before you join {roomName}</div>
-        <h1 id="full-name-title" className="mt-2 text-2xl font-bold text-white">What is your full name?</h1>
+        <div className="text-[10px] uppercase tracking-[0.35em] text-cyan-400/80">Joining {roomName}</div>
+        <h1 id="full-name-title" className="mt-2 text-2xl font-bold text-white">Confirm your name</h1>
         <p className="mt-2 text-sm text-zinc-400">
-          KingsChat did not give us your name. The meeting&apos;s organisers see it in their attendance list. You will
-          only be asked once.
+          The meeting&apos;s organisers see this name in their attendance list. Others in the meeting see your display name.
         </p>
-        <label htmlFor="full-name" className="mt-6 block text-[11px] uppercase tracking-[0.25em] text-cyan-400/70 mb-2">
-          Full name
+        <label htmlFor="attendance-name" className="mt-6 block text-[11px] uppercase tracking-[0.25em] text-cyan-400/70 mb-2">
+          Full name for attendance <span aria-hidden="true" className="text-rose-300">*</span>
         </label>
         <input
-          id="full-name"
-          name="name"
+          id="attendance-name"
+          ref={inputRef}
+          name="attendance-name"
           autoComplete="name"
           autoFocus
+          required
+          aria-required="true"
           value={value}
+          disabled={!loaded}
           maxLength={FULL_NAME_MAX + 20}
           onChange={(e) => {
             setValue(e.target.value);
+            setTouched(true);
             if (problem) setProblem("");
           }}
           aria-invalid={problem ? true : undefined}
-          aria-describedby={problem ? "full-name-problem" : undefined}
-          placeholder="First and last name"
-          className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/10 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/30 text-lg text-white placeholder:text-zinc-500 transition"
+          aria-describedby={problem ? "attendance-name-problem" : undefined}
+          placeholder={loaded ? "Your first and last name" : "Loading…"}
+          className={`w-full px-4 py-3 rounded-xl bg-black/60 border ${problem ? "border-rose-400/70" : "border-white/10"} focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/30 text-lg text-white placeholder:text-zinc-500 transition disabled:opacity-60`}
         />
         {problem ? (
-          <p id="full-name-problem" role="alert" className="mt-2 text-sm text-rose-300">
+          <p id="attendance-name-problem" role="alert" className="mt-2 text-sm text-rose-300">
             {problem}
           </p>
         ) : null}
         <button
           type="submit"
-          disabled={busy}
+          disabled={busy || !loaded}
           className="mt-6 w-full rounded-xl bg-cyan-400 px-4 py-3 font-semibold text-black transition hover:bg-cyan-300 disabled:opacity-60"
         >
-          {busy ? "Saving…" : "Continue"}
+          {busy ? "Joining…" : "Join"}
         </button>
       </form>
     </div>

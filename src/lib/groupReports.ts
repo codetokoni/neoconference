@@ -29,18 +29,19 @@ import { getMeetingParticipants } from "@/lib/meeting-roles";
 import { chatStore } from "@/lib/chatStore";
 import { canEnd } from "@/lib/meetingLifecycle";
 import type { NeoEvent } from "@/types/event";
-import { matchesAttendee } from "@/lib/attendeeName";
+import { cleanFullName, matchesAttendee } from "@/lib/attendeeName";
 
 export interface ReportParticipant {
   /** userId, a lowercased email, or "name:<name>" for someone with neither. */
   key: string;
   userId?: string;
-  /** A name to show anyone: the full name, or a username, email or "Guest". */
+  /** A name to show anyone: the name the meeting showed them by, or a username, email or "Guest". */
   name: string;
   /**
-   * The full name by the attendee rules (src/lib/attendeeName.ts), filled in
-   * when the report is read (withAttendeeNames), never cached: "" when there
-   * is none ("Name unavailable" on screen, blank in a spreadsheet).
+   * The attendance name captured when they joined (src/lib/attendanceName.ts),
+   * set when the report is read (withAttendeeNames): "" when none was ("Name
+   * not captured" on screen and in a spreadsheet). For the meeting's hosts
+   * and report readers only, never shown in the meeting itself.
    */
   fullName?: string;
   /** The account's username (a KingsChat handle), filled in with fullName. */
@@ -317,12 +318,13 @@ export async function buildMeetingReport(eid: string, now: number = Date.now()):
   for (const row of rows) {
     if (row.username && SERVICE_IDENTITY.test(row.username)) continue;
     const userId = row.username && CLERK_USER_ID.test(row.username) ? row.username : undefined;
-    const key = userId ?? (row.email ? row.email.toLowerCase() : `name:${row.fullName.trim().toLowerCase()}`);
+    const shown = row.displayName ?? row.fullName;
+    const key = userId ?? (row.email ? row.email.toLowerCase() : `name:${shown.trim().toLowerCase()}`);
     const iv = row.intervals;
     people.set(key, {
       key,
       ...(userId ? { userId } : {}),
-      name: row.fullName || memberName.get(userId ?? "") || "Guest",
+      name: shown || memberName.get(userId ?? "") || "Guest",
       email: row.email || "",
       invited: false,
       status: "present",
@@ -444,23 +446,40 @@ export async function buildMeetingReport(eid: string, now: number = Date.now()):
 }
 
 /**
- * The report with each participant's full name and username, looked up from
- * their account by its id (src/lib/attendeeNames.ts). For anything that shows
- * or exports who came; a cached report gets them too, at reading time.
+ * The report with each participant's attendance name and username. The
+ * attendance name is the one recorded when they joined this meeting; the
+ * username is looked up from their account by its id
+ * (src/lib/attendeeNames.ts). For anything that shows or exports who came; a
+ * cached report gets them too, at reading time.
  */
 export async function withAttendeeNames(report: MeetingReport): Promise<MeetingReport> {
-  const { accountNames, recordFullName } = await import("@/lib/attendeeNames");
+  const { accountNames } = await import("@/lib/attendeeNames");
   const names = await accountNames(report.participants.map((p) => p.userId ?? ""));
   return {
     ...report,
     participants: report.participants.map((p) => {
-      // Someone with no account keeps the name they came in with; someone
-      // invited who never came and has no account has none.
-      const fullName = recordFullName(p.userId, p.userId ? "" : p.row?.fullName, names);
+      const fullName = capturedName(p);
       const username = (p.userId && names.get(p.userId)?.username) || "";
-      return { ...p, fullName, username, ...(p.row ? { row: { ...p.row, fullName } } : {}) };
+      return {
+        ...p,
+        fullName,
+        username,
+        ...(p.row ? { row: { ...p.row, fullName, ...(username ? { username } : {}) } } : {}),
+      };
     }),
   };
+}
+
+/**
+ * The attendance name a participant's record captured. A row built before
+ * names were captured (a cached report: no displayName) carried the name the
+ * meeting showed in fullName, which is not one; someone with no account came
+ * in with the name they typed; someone who never came has none.
+ */
+function capturedName(p: ReportParticipant): string {
+  if (!p.row) return "";
+  if (p.row.displayName === undefined) return p.userId ? "" : cleanFullName(p.row.fullName);
+  return cleanFullName(p.row.fullName);
 }
 
 /**

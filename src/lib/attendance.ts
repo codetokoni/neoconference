@@ -4,7 +4,7 @@
 //
 // Storage
 //   neo:attendance:<eventId>:events   Redis list
-//     entry = { ts, action, userId, name, email, role, source }
+//     entry = { ts, action, userId, name, email, role, source, attendanceName? }
 //     action = 'join' | 'leave'
 //     source = 'webhook' | 'beacon'  (both wired; either is sufficient)
 //
@@ -20,6 +20,7 @@
 
 import { kv } from "@/lib/kv";
 import type { NeoEvent } from "@/types/event";
+import { cleanFullName, NAME_NOT_CAPTURED } from "@/lib/attendeeName";
 
 const RETENTION_SECONDS = 90 * 24 * 60 * 60; // 90 days
 
@@ -31,7 +32,14 @@ export interface AttendanceEntry {
   ts: number;
   action: AttendanceAction;
   userId: string | null;
+  /** The name the meeting showed (their display name). */
   name: string;
+  /**
+   * On a join: the "Full name for attendance" the person confirmed before
+   * joining (src/lib/attendanceName.ts). Absent on entries from before it
+   * was asked, and from an app too old to ask.
+   */
+  attendanceName?: string;
   email?: string;
   /** Wire-format role at the moment the event was recorded. */
   role?: string;
@@ -162,7 +170,14 @@ export interface AttendanceInterval {
 }
 
 export interface AttendanceReportRow {
+  /**
+   * The attendance name captured when they joined this meeting (the latest,
+   * if they confirmed more than one); "" when none was. For an attendee
+   * without an account (a partner page's visitor), the name they typed.
+   */
   fullName: string;
+  /** The name the meeting showed them by (their display name). */
+  displayName: string;
   username: string;
   email: string;
   meetingTitle: string;
@@ -182,6 +197,9 @@ export interface AttendanceReportRow {
   inactivityWarnings: number;
   intervals: AttendanceInterval[];
 }
+
+/** A Clerk account id (attendance from a signed-in person). */
+const ACCOUNT_ID = /^user_[A-Za-z0-9]+$/;
 
 function formatDuration(ms: number): string {
   if (ms <= 0) return "0s";
@@ -236,6 +254,7 @@ export function buildAttendanceReport(
       key: string;
       userId: string | null;
       name: string;
+      attendanceName: string;
       email: string;
       role: string;
       events: AttendanceEntry[];
@@ -250,6 +269,7 @@ export function buildAttendanceReport(
         key,
         userId: e.userId,
         name: e.name || "",
+        attendanceName: cleanFullName(e.attendanceName),
         email: e.email || "",
         role: e.role || "",
         events: [],
@@ -259,6 +279,8 @@ export function buildAttendanceReport(
       // Prefer the most-recent non-empty values so a beacon that fired without
       // an email doesn't blank out a webhook-supplied one.
       if (e.name && e.name.length > 0) b.name = e.name;
+      // A reconnect after confirming a different name: the latest counts.
+      if (cleanFullName(e.attendanceName)) b.attendanceName = cleanFullName(e.attendanceName);
       if (e.email && e.email.length > 0) b.email = e.email;
       if (e.role && e.role.length > 0) b.role = e.role;
     }
@@ -319,7 +341,10 @@ export function buildAttendanceReport(
     })();
 
     rows.push({
-      fullName: b.name,
+      // An account's attendance name is only ever the one captured at a
+      // join; someone without an account came in with the name they typed.
+      fullName: b.userId && ACCOUNT_ID.test(b.userId) ? b.attendanceName : cleanFullName(b.name),
+      displayName: b.name,
       username: b.userId || "",
       email: b.email,
       meetingTitle,
@@ -369,7 +394,7 @@ export const ATTENDANCE_COLUMNS: Array<{ header: string; key: keyof AttendanceRe
 /** One report row as spreadsheet cells, keyed like ATTENDANCE_COLUMNS. */
 export function attendanceRowCells(row: AttendanceReportRow): Record<string, string | number> {
   return {
-    fullName: row.fullName,
+    fullName: cleanFullName(row.fullName) || NAME_NOT_CAPTURED,
     username: row.username,
     email: row.email,
     meetingTitle: row.meetingTitle,

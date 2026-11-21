@@ -1,30 +1,29 @@
 // src/lib/attendeeNames.ts
 //
-// Full names for attendance records, looked up from the accounts they belong
-// to (src/lib/attendeeName.ts has the rules).
+// Usernames for attendance records, looked up from the accounts they belong
+// to. Every record a meeting room writes carries the attendee's account id
+// (the LiveKit identity the token route stamps, or the signed-in caller for
+// a beacon), so a record is linked to its person by that id.
 //
-// Every record a meeting room writes carries the attendee's account id (the
-// LiveKit identity the token route stamps, or the signed-in caller for a
-// beacon), so a record is linked to its person by that id, never by a
-// username or an email. Names are looked up when a report is read or
-// exported, not stored in it: a cached report outlives the attendance
-// records it was built from (90 days), and a name someone adds later still
-// reaches the reports of meetings they were already in.
+// Full names are not looked up. The "Full name for attendance" is captured
+// when someone joins and recorded on that join's entry
+// (src/lib/attendanceName.ts), so a meeting keeps the name it was attended
+// under even if the person changes it later. A record from before names were
+// captured says "Name not captured".
 //
-// Records with no account id (a partner page's visitor, who typed a name to
-// come in) keep the name they came with. A record whose account no longer
-// exists, or has no name, has none: "Name unavailable" on screen, a blank
-// cell in an export.
+// The username is the account's (a KingsChat handle for KingsChat accounts),
+// looked up when a report is read or exported; a record whose account no
+// longer exists keeps its account id.
 
-import { accountFullName, cleanFullName } from "@/lib/attendeeName";
+import { cleanFullName } from "@/lib/attendeeName";
 import { CLERK_USER_ID } from "@/lib/groupAttendees";
 import type { AttendanceReportRow } from "@/lib/attendance";
 
 export interface AccountName {
-  /** "" when the account has no name. */
-  fullName: string;
   /** The account's username (a KingsChat handle for KingsChat accounts), or "". */
   username: string;
+  /** The account's primary email address, or "" (absent when a lookup did not say). */
+  email?: string;
 }
 
 /** Clerk returns at most this many accounts per lookup. */
@@ -42,7 +41,11 @@ async function clerkLookup(userIds: string[]): Promise<Map<string, AccountName>>
     const ids = userIds.slice(i, i + BATCH);
     const list = await cc.users.getUserList({ userId: ids, limit: BATCH });
     for (const u of list.data) {
-      out.set(u.id, { fullName: accountFullName(u), username: cleanFullName(u.username) });
+      const kc = (u.publicMetadata as { kingschat?: { username?: unknown } } | undefined)?.kingschat;
+      out.set(u.id, {
+        username: cleanFullName(kc?.username) || cleanFullName(u.username),
+        email: (u.primaryEmailAddress?.emailAddress || u.emailAddresses?.[0]?.emailAddress || "").toLowerCase(),
+      });
     }
   }
   return out;
@@ -58,10 +61,10 @@ export function __setNameLookup(fake: Lookup | null): void {
 }
 
 /**
- * Names for account ids. Only real account ids are looked up; an id with no
- * account is absent from the result. Never throws: if the lookup fails, the
- * ids it could not reach are absent too, and the report says so rather than
- * failing to open.
+ * Usernames for account ids. Only real account ids are looked up; an id with
+ * no account is absent from the result. Never throws: if the lookup fails,
+ * the ids it could not reach are absent too, and the report says so rather
+ * than failing to open.
  */
 export async function accountNames(ids: Iterable<string>, now: number = Date.now()): Promise<Map<string, AccountName>> {
   const wanted = Array.from(new Set(Array.from(ids).filter((id) => CLERK_USER_ID.test(id))));
@@ -91,20 +94,14 @@ export async function accountNames(ids: Iterable<string>, now: number = Date.now
 }
 
 /**
- * The full name for one attendance record: its account's, when it has an
- * account id; the name it came with, when it has none; "" otherwise.
+ * A meeting's attendance rows with each Username the account's (its id when
+ * there is none), and an Email the records lacked (a join only LiveKit
+ * reported carries none) filled in from the account.
  */
-export function recordFullName(
-  accountId: string | null | undefined,
-  cameWith: string | null | undefined,
-  names: Map<string, AccountName>,
-): string {
-  if (accountId && CLERK_USER_ID.test(accountId)) return names.get(accountId)?.fullName ?? "";
-  return cleanFullName(cameWith);
-}
-
-/** A meeting's attendance rows with each Full Name resolved by the rules. */
-export async function withFullNames(rows: AttendanceReportRow[]): Promise<AttendanceReportRow[]> {
+export async function withUsernames(rows: AttendanceReportRow[]): Promise<AttendanceReportRow[]> {
   const names = await accountNames(rows.map((r) => r.username));
-  return rows.map((r) => ({ ...r, fullName: recordFullName(r.username, r.fullName, names) }));
+  return rows.map((r) => {
+    const a = names.get(r.username);
+    return { ...r, username: a?.username || r.username, email: r.email || a?.email || "" };
+  });
 }

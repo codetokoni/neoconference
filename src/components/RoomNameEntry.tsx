@@ -4,9 +4,12 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Check, ChevronDown, Mic, MicOff, Pencil, Video, VideoOff, X } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import OpenInAppButton from "@/components/OpenInAppButton";
+import { attendanceNameProblem, cleanFullName, FULL_NAME_MAX } from "@/lib/attendeeName";
 
 export type RoomEntryValues = {
   username: string;
+  /** The "Full name for attendance" they confirmed (src/lib/attendanceName.ts). */
+  attendanceName?: string;
   videoEnabled: boolean;
   audioEnabled: boolean;
   videoDeviceId?: string;
@@ -72,6 +75,10 @@ export function RoomNameEntry({
   copied,
   isHost = false,
   eventSlug,
+  attendanceName: savedAttendanceName = "",
+  attendanceLoaded = true,
+  attendanceError = "",
+  onConfirmAttendance,
 }: {
   roomName: string;
   defaultName: string;
@@ -80,8 +87,30 @@ export function RoomNameEntry({
   copied: boolean;
   isHost?: boolean;
   eventSlug?: string;
+  /** What the attendance field starts with: the name they confirmed last time, or a suggestion. */
+  attendanceName?: string;
+  /** False while that is still being fetched: the field waits rather than starting blank. */
+  attendanceLoaded?: boolean;
+  /** A refusal from the server (the join was turned back for want of a name). */
+  attendanceError?: string;
+  /** Saves the confirmed name before joining; resolves to a problem to show, or null. */
+  onConfirmAttendance?: (name: string) => Promise<string | null>;
 }) {
   const [name, setName] = useState(() => getSavedDisplayName() || defaultName);
+  // Required before joining, and never filled from a username or email
+  // (src/lib/attendeeName.ts). Fetched, so it arrives after the first paint.
+  const [attendance, setAttendance] = useState(savedAttendanceName);
+  const [attendanceTouched, setAttendanceTouched] = useState(false);
+  const [attendanceProblem, setAttendanceProblem] = useState(attendanceError);
+  const attendanceRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!attendanceTouched) setAttendance(savedAttendanceName);
+  }, [savedAttendanceName, attendanceTouched]);
+  useEffect(() => {
+    if (!attendanceError) return;
+    setAttendanceProblem(attendanceError);
+    attendanceRef.current?.focus();
+  }, [attendanceError]);
   // FRS §3.1/§3.2: camera and microphone are OFF by default on join. The
   // preview stays empty until the user opts in, which also matches how OS
   // permission prompts work — no capture until the user asks for it.
@@ -242,16 +271,34 @@ export function RoomNameEntry({
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  const submit = (e?: React.FormEvent) => {
+  const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (joining) return;
+    if (joining || !attendanceLoaded) return;
+    const problem = attendanceNameProblem(attendance);
+    if (problem) {
+      setAttendanceProblem(problem);
+      attendanceRef.current?.focus();
+      return;
+    }
+    const attendanceName = cleanFullName(attendance);
+    setAttendance(attendanceName);
     const trimmed = name.trim() || defaultName || "Guest";
+    setJoining(true);
+    if (onConfirmAttendance) {
+      const refused = await onConfirmAttendance(attendanceName);
+      if (refused) {
+        setJoining(false);
+        setAttendanceProblem(refused);
+        attendanceRef.current?.focus();
+        return;
+      }
+    }
     saveDisplayName(trimmed);
     saveLastChoices({ videoEnabled: video, audioEnabled: audio, videoDeviceId, audioDeviceId });
-    setJoining(true);
     setTimeout(() => {
       onSubmit({
         username: trimmed,
+        attendanceName,
         videoEnabled: video,
         audioEnabled: audio,
         videoDeviceId,
@@ -315,7 +362,7 @@ export function RoomNameEntry({
             </div>
           </div>
           {/* Right: Controls panel */}
-          <form onSubmit={submit} className="w-full rounded-3xl border border-cyan-400/20 bg-zinc-950/60 backdrop-blur-xl shadow-[0_0_60px_rgba(34,211,238,0.15)] p-6 md:p-8">
+          <form onSubmit={submit} noValidate className="w-full rounded-3xl border border-cyan-400/20 bg-zinc-950/60 backdrop-blur-xl shadow-[0_0_60px_rgba(34,211,238,0.15)] p-6 md:p-8">
             <OpenInAppButton slug={eventSlug || roomName} />
             <div className="flex items-start justify-between gap-3 mb-6">
               <div className="min-w-0 relative">
@@ -358,6 +405,41 @@ export function RoomNameEntry({
               placeholder="Enter your name"
               className="w-full px-4 py-3 mb-5 rounded-xl bg-black/60 border border-white/10 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/30 text-lg placeholder:text-zinc-500 transition"
             />
+
+            {/* Required. Only the meeting's organisers see it, in their
+                attendance list; the meeting shows the display name above. */}
+            <label htmlFor="attendance-name" className="block text-[11px] uppercase tracking-[0.25em] text-cyan-400/70 mb-2">
+              Full name for attendance <span aria-hidden="true" className="text-rose-300">*</span>
+            </label>
+            <input
+              id="attendance-name"
+              ref={attendanceRef}
+              name="attendance-name"
+              autoComplete="name"
+              required
+              aria-required="true"
+              value={attendance}
+              disabled={!attendanceLoaded}
+              maxLength={FULL_NAME_MAX + 20}
+              onChange={(e) => {
+                setAttendance(e.target.value);
+                setAttendanceTouched(true);
+                if (attendanceProblem) setAttendanceProblem("");
+              }}
+              aria-invalid={attendanceProblem ? true : undefined}
+              aria-describedby={attendanceProblem ? "attendance-name-problem" : "attendance-name-hint"}
+              placeholder={attendanceLoaded ? "Your first and last name" : "Loading…"}
+              className={`w-full px-4 py-3 rounded-xl bg-black/60 border ${attendanceProblem ? "border-rose-400/70" : "border-white/10"} focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/30 text-lg placeholder:text-zinc-500 transition disabled:opacity-60`}
+            />
+            {attendanceProblem ? (
+              <p id="attendance-name-problem" role="alert" className="mt-2 mb-5 text-sm text-rose-300">
+                {attendanceProblem}
+              </p>
+            ) : (
+              <p id="attendance-name-hint" className="mt-2 mb-5 text-[11px] text-zinc-500">
+                Shown only in the organisers&apos; attendance list.
+              </p>
+            )}
 
             {/* Mic level meter */}
             <div className="mb-5">
@@ -425,7 +507,7 @@ export function RoomNameEntry({
 
             <button
               type="submit"
-              disabled={joining}
+              disabled={joining || !attendanceLoaded}
               className={`group w-full py-3.5 rounded-xl font-bold text-lg tracking-wide transition active:scale-[0.99] ${joining ? "bg-cyan-400/40 text-black/70 cursor-not-allowed" : "bg-gradient-to-r from-cyan-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 text-black shadow-[0_0_30px_rgba(34,211,238,0.45)]"}`}
             >
               {joining ? (
