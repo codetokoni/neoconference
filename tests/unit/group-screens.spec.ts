@@ -56,6 +56,21 @@ const STUBS: Record<string, string> = {
       useSignIn: function () { return { isLoaded: true, signIn: window.__signIn, setActive: function (a) { window.__clerkCalls.push(["setActive", a]); return Promise.resolve(); } }; },
       useSignUp: function () { return { isLoaded: true, signUp: window.__signUp, setActive: function (a) { window.__clerkCalls.push(["setActive", a]); return Promise.resolve(); } }; },
     };`,
+  // A LiveKit room for the meeting's People panel: who is in it
+  // (window.__lkPeople), you (window.__lkMe), and the room's events.
+  "@livekit/components-react": `
+    module.exports = {
+      useParticipants: function () { return window.__lkPeople || []; },
+      useLocalParticipant: function () { return { localParticipant: window.__lkMe || { identity: "user_me#1" } }; },
+      useRoomContext: function () {
+        return window.__lkRoom || (window.__lkRoom = { name: "weekly-room", on: function () { return this; }, off: function () { return this; } });
+      },
+    };`,
+  "livekit-client": `
+    module.exports = {
+      RoomEvent: { DataReceived: "dataReceived", Reconnected: "reconnected", Connected: "connected", ParticipantPermissionsChanged: "participantPermissionsChanged" },
+      Track: { Source: { Camera: "camera", Microphone: "microphone", ScreenShare: "screen_share" } },
+    };`,
   "lucide-react": `
     var R = window.React;
     module.exports = new Proxy({ __esModule: true }, { get: function (t, name) {
@@ -357,6 +372,7 @@ const ENTRIES = [
   "src/components/feedback/FeedbackForm.tsx",
   "src/components/feedback/FeedbackButton.tsx",
   "src/app/dashboard/e/[slug]/FeedbackPanel.tsx",
+  "src/components/ParticipantsPanel.tsx",
   "src/app/dashboard/e/[slug]/MeetingReportPanel.tsx",
   "src/components/FullNamePrompt.tsx",
 ];
@@ -1075,3 +1091,68 @@ for (const width of [360, 1280]) {
     expect(errors).toEqual([]);
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Locked participant microphones in the People panel (src/lib/micLock.ts)    */
+/* -------------------------------------------------------------------------- */
+
+test("the People panel: Lock participant microphones, Allow to unmute one person, Unlock; a refusal says who may", async ({ page }) => {
+  const { errors } = await setup(page, 1280);
+  await page.evaluate(() => {
+    const w = window as unknown as {
+      __lkPeople: unknown[];
+      __mic: { locked: boolean; allowed: string[]; refuse: boolean; posts: string[] };
+    };
+    const md = (role: string) => JSON.stringify({ role });
+    w.__lkPeople = [
+      { identity: "user_me#1", name: "Musa", metadata: md("cohost") },
+      { identity: "user_g#1", name: "Grace", metadata: md("attendee") },
+      { identity: "user_h#1", name: "Hana", metadata: md("host") },
+    ];
+    w.__mic = { locked: false, allowed: [], refuse: false, posts: [] };
+    window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      // Not a group meeting: the calling and group pieces find nothing here.
+      if (!url.startsWith("/api/livekit/mic-lock")) return new Response("{}", { status: 404 });
+      if (init?.method !== "POST") return new Response(JSON.stringify({ locked: w.__mic.locked, allowed: w.__mic.allowed }), { status: 200 });
+      w.__mic.posts.push(String(init.body));
+      if (w.__mic.refuse) return new Response(JSON.stringify({ error: "forbidden" }), { status: 403 });
+      const b = JSON.parse(String(init.body)) as { action: string; participantIdentity?: string };
+      const who = (b.participantIdentity || "").split("#")[0];
+      if (b.action === "lock") w.__mic = { ...w.__mic, locked: true, allowed: [] };
+      if (b.action === "unlock") w.__mic = { ...w.__mic, locked: false, allowed: [] };
+      if (b.action === "allow") w.__mic = { ...w.__mic, allowed: [...w.__mic.allowed, who] };
+      if (b.action === "relock") w.__mic = { ...w.__mic, allowed: w.__mic.allowed.filter((x) => x !== who) };
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as typeof fetch;
+  });
+  await render(page, "src/components/ParticipantsPanel.tsx", { open: true, onClose: null, isHost: true, roomRole: "cohost", slug: "weekly", ownerUserId: "user_owner" });
+  const panel = page.getByRole("dialog", { name: "Participants" });
+  const posts = () => page.evaluate(() => (window as unknown as { __mic: { posts: string[] } }).__mic.posts.map((s) => JSON.parse(s)));
+
+  await panel.getByRole("button", { name: "Lock participant microphones" }).click();
+  await expect(panel.getByRole("button", { name: /Unlock participant microphones/ })).toBeVisible();
+  expect(await posts()).toEqual([{ slug: "weekly", room: "weekly-room", action: "lock" }]);
+  // Grace (a participant) can be allowed; Hana (a host) is never locked.
+  await expect(panel.getByRole("button", { name: "Allow to unmute" })).toHaveCount(1);
+
+  await panel.getByRole("button", { name: "Allow to unmute" }).click();
+  await expect(panel.getByRole("button", { name: "Lock microphone again" })).toBeVisible();
+  expect((await posts()).at(-1)).toEqual({ slug: "weekly", room: "weekly-room", action: "allow", participantIdentity: "user_g#1" });
+
+  await panel.getByRole("button", { name: "Lock microphone again" }).click();
+  await expect(panel.getByRole("button", { name: "Allow to unmute" })).toBeVisible();
+  expect((await posts()).at(-1)).toEqual({ slug: "weekly", room: "weekly-room", action: "relock", participantIdentity: "user_g#1" });
+
+  await panel.getByRole("button", { name: /Unlock participant microphones/ }).click();
+  await expect(panel.getByRole("button", { name: "Lock participant microphones" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: /Allow to unmute|Lock microphone again/ })).toHaveCount(0);
+
+  // The server refuses someone who is no longer a moderator: the panel says so.
+  await page.evaluate(() => { (window as unknown as { __mic: { refuse: boolean } }).__mic.refuse = true; });
+  await panel.getByRole("button", { name: "Lock participant microphones" }).click();
+  await expect(panel.getByText("Only an Owner, Host or Moderator can do that.")).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Lock participant microphones" })).toBeVisible();
+  await page.screenshot({ path: "test-results/group-screens/mic-lock-panel.png" });
+  expect(errors).toEqual([]);
+});

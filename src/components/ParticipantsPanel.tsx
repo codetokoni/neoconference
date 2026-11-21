@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParticipants, useLocalParticipant } from '@livekit/components-react';
+import { useParticipants, useLocalParticipant, useRoomContext } from '@livekit/components-react';
+import { accountOf, postMicLock, useMicLockState, type MicLockAction } from '@/components/conference/micLockClient';
 import AddGroupParticipants from '@/components/groups/AddGroupParticipants';
 import GroupCallingPanel from '@/components/groups/GroupCallingPanel';
 import RingIntoMeeting from '@/components/groups/RingIntoMeeting';
@@ -179,6 +180,23 @@ export default function ParticipantsPanel({
 
   // Panel-wide action: Mute All (FRS §5.1). Confirmation lives in the panel
   // body; server keeps host/cohost/self unmuted.
+  // Locked participant microphones (src/lib/micLock.ts): Owner, Host and
+  // Moderator lock or unlock everyone, and allow one person or lock them
+  // again. The server checks the caller's role on every one.
+  const room = useRoomContext();
+  const micLock = useMicLockState(isHost ? slug : undefined);
+  const micAction = useCallback(
+    async (action: MicLockAction, identity?: string) => {
+      setError(null);
+      setPending(identity ? identity + ':mic:' + action : 'mic:' + action);
+      const problem = await postMicLock(slug, room?.name, action, identity);
+      if (problem) setError(problem);
+      micLock.refresh();
+      setPending(null);
+    },
+    [slug, room, micLock],
+  );
+
   const muteAll = useCallback(async () => {
     setError(null);
     setPending('muteAll');
@@ -358,6 +376,30 @@ export default function ParticipantsPanel({
           >
             {pending === 'lock' ? '…' : isLocked ? 'Meeting locked · Unlock' : 'Lock meeting'}
           </button>
+          <button
+            type="button"
+            disabled={!!pending}
+            onClick={() => micAction(micLock.locked ? 'unlock' : 'lock')}
+            aria-pressed={micLock.locked}
+            data-mic-lock-toggle=""
+            style={{
+              width: '100%',
+              padding: '8px 10px',
+              fontSize: 12,
+              fontWeight: 600,
+              borderRadius: 6,
+              border: '1px solid ' + (micLock.locked ? 'rgba(251,191,36,0.6)' : 'rgba(148,163,184,0.35)'),
+              background: micLock.locked ? 'rgba(251,191,36,0.15)' : 'rgba(148,163,184,0.08)',
+              color: micLock.locked ? '#fde68a' : '#e2e8f0',
+              cursor: 'pointer',
+              opacity: pending === 'mic:lock' || pending === 'mic:unlock' ? 0.5 : 1,
+            }}
+            title={micLock.locked
+              ? 'Everyone may unmute themselves again. Nobody is unmuted.'
+              : 'Mute everyone except Owners, Hosts and Moderators, and keep them from unmuting until you allow it.'}
+          >
+            {pending === 'mic:lock' || pending === 'mic:unlock' ? '…' : micLock.locked ? '🔒 Unlock participant microphones' : 'Lock participant microphones'}
+          </button>
           {muteAllConfirm ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ fontSize: 12, color: '#ddd', lineHeight: 1.4 }}>
@@ -424,6 +466,27 @@ export default function ParticipantsPanel({
 
               {isHost && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {micLock.locked && !roleOf(p) ? (
+                    micLock.allowed?.includes(accountOf(id)) ? (
+                      <button
+                        type="button"
+                        disabled={!!pending}
+                        onClick={() => micAction('relock', id)}
+                        style={{ flex: '1 1 100%', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(251,191,36,0.55)', background: 'rgba(251,191,36,0.12)', color: '#fde68a', cursor: 'pointer', opacity: busy('mic:relock') ? 0.5 : 1 }}
+                      >
+                        {busy('mic:relock') ? '...' : 'Lock microphone again'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={!!pending}
+                        onClick={() => micAction('allow', id)}
+                        style={{ flex: '1 1 100%', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(52,211,153,0.5)', background: 'rgba(52,211,153,0.12)', color: '#bbf7d0', cursor: 'pointer', opacity: busy('mic:allow') ? 0.5 : 1 }}
+                      >
+                        {busy('mic:allow') ? '...' : 'Allow to unmute'}
+                      </button>
+                    )
+                  ) : null}
                   <button
                     type="button"
                     disabled={!!pending}

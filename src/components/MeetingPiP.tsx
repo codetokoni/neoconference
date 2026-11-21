@@ -52,6 +52,7 @@ import {
 } from 'livekit-client';
 import {
   ArrowUpRight,
+  Lock,
   Mic,
   MicOff,
   PhoneOff,
@@ -60,6 +61,7 @@ import {
   VideoOff,
 } from 'lucide-react';
 import { computeRemaining, IDLE_TIMER, type TimerState } from '@/lib/timer';
+import { enableMicrophone, MIC_LOCKED_MESSAGE, useMicLocked } from '@/components/conference/micLockClient';
 
 /* ------------------------------------------------------------------ */
 /*  Document PiP API type shims                                        */
@@ -378,6 +380,9 @@ function PiPContent({
   onLeave: () => void;
 }) {
   const { localParticipant } = useLocalParticipant();
+  // Locked by an Owner, Host or Moderator: the button shows a lock and
+  // turning the microphone on does nothing but say why.
+  const micLocked = useMicLocked();
   const featured = usePiPFeaturedTrack();
   const [micOn, setMicOn] = useState(false);
   const [camOn, setCamOn] = useState(false);
@@ -409,9 +414,7 @@ function PiPContent({
     if (!localParticipant || busy) return;
     setBusy(true);
     try {
-      await localParticipant.setMicrophoneEnabled(!localParticipant.isMicrophoneEnabled);
-    } catch {
-      // Device may be blocked — leave the current state.
+      await enableMicrophone(localParticipant, !localParticipant.isMicrophoneEnabled);
     } finally {
       setBusy(false);
     }
@@ -516,8 +519,8 @@ function PiPContent({
           onClick={toggleMic}
           active={micOn}
           activeIcon={<Mic size={18} />}
-          inactiveIcon={<MicOff size={18} />}
-          ariaLabel={micOn ? 'Mute microphone' : 'Unmute microphone'}
+          inactiveIcon={micLocked ? <Lock size={18} /> : <MicOff size={18} />}
+          ariaLabel={micLocked && !micOn ? `Microphone locked. ${MIC_LOCKED_MESSAGE}` : micOn ? 'Mute microphone' : 'Unmute microphone'}
           danger={!micOn}
         />
         <PiPControl

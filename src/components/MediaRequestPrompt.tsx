@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
 import { RoomEvent } from 'livekit-client';
+import { enableMicrophone } from '@/components/conference/micLockClient';
 
 /**
  * MediaRequestPrompt
@@ -45,7 +46,8 @@ export default function MediaRequestPrompt() {
   const allow = async () => {
     try {
       if (!localParticipant) return;
-      if (pending.kind === 'audio') await localParticipant.setMicrophoneEnabled(true);
+      // Through the lock: a locked microphone stays off and says why.
+      if (pending.kind === 'audio') await enableMicrophone(localParticipant, true);
       else await localParticipant.setCameraEnabled(true);
     } catch {
       // ignore

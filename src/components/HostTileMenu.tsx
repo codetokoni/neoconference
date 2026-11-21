@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react';
+import { accountOf, postMicLock, useMicLockState } from '@/components/conference/micLockClient';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 import { requestSpotlight, useSpotlit } from '@/components/SpotlightOverlay';
 
@@ -135,7 +136,10 @@ export function HostTileMenuPanel({
 }) {
   const { localParticipant } = useLocalParticipant();
   // useRoomContext call kept for hook stability (must be called before early return)
-  useRoomContext();
+  const room = useRoomContext();
+  // Locked participant microphones: "Allow to unmute" / "Lock microphone
+  // again" on someone who is locked (src/lib/micLock.ts).
+  const micLock = useMicLockState(isHost ? slug : undefined);
   const hiddenVideos = useHiddenVideos();
   const spotlit = useSpotlit();
   const open = true;
@@ -209,6 +213,23 @@ export function HostTileMenuPanel({
       }
     },
     [slug, participantIdentity],
+  );
+
+  const micAct = useCallback(
+    async (action: 'allow' | 'relock') => {
+      setError(null);
+      setPending('mic:' + action);
+      const problem = await postMicLock(slug, room?.name, action, participantIdentity);
+      setPending(null);
+      if (problem) {
+        setError(problem);
+        return;
+      }
+      micLock.refresh();
+      setOpen(false);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slug, room, participantIdentity],
   );
 
   const toggleHideLocal = useCallback(() => {
@@ -469,6 +490,25 @@ export function HostTileMenuPanel({
               onClick={() => call('muteAudio')}
               pending={pending === 'muteAudio'}
             />
+          )}
+          {showHostActions && micLock.locked && !targetIsElevated && (
+            micLock.allowed?.includes(accountOf(participantIdentity)) ? (
+              <MenuItem
+                label="Lock microphone again"
+                icon="🔒"
+                disabled={pending !== null}
+                onClick={() => micAct('relock')}
+                pending={pending === 'mic:relock'}
+              />
+            ) : (
+              <MenuItem
+                label="Allow to unmute"
+                icon="🎙"
+                disabled={pending !== null}
+                onClick={() => micAct('allow')}
+                pending={pending === 'mic:allow'}
+              />
+            )
           )}
           {showHostActions && (
             <>
