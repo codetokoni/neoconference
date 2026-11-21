@@ -27,7 +27,7 @@ t("both are on, video does not pause in the background (the floating window), an
 
 t("the meeting room passes them to its LiveKitRoom", () => {
   const page = readFileSync(join(process.cwd(), "src/app/room/[name]/page.tsx"), "utf8");
-  const room = page.slice(page.indexOf("<LiveKitRoom"), page.indexOf(">", page.indexOf("onDisconnected={onLeave}")));
+  const room = page.slice(page.indexOf("<LiveKitRoom"), page.indexOf(">", page.indexOf("onDisconnected={watch.onDisconnected}")));
   assert.ok(room.includes("options={ROOM_OPTIONS}"), "LiveKitRoom options");
 });
 
@@ -41,7 +41,7 @@ t("on joining, only what was chosen is published: off stays off, a chosen device
 
 t("the meeting room publishes by the join screen's choices", () => {
   const page = readFileSync(join(process.cwd(), "src/app/room/[name]/page.tsx"), "utf8");
-  const room = page.slice(page.indexOf("<LiveKitRoom"), page.indexOf(">", page.indexOf("onDisconnected={onLeave}")));
+  const room = page.slice(page.indexOf("<LiveKitRoom"), page.indexOf(">", page.indexOf("onDisconnected={watch.onDisconnected}")));
   assert.ok(room.includes("audio={joinMedia(choices.audioEnabled, choices.audioDeviceId)}"));
   assert.ok(room.includes("video={joinMedia(choices.videoEnabled, choices.videoDeviceId)}"));
 });
