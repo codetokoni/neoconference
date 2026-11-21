@@ -123,7 +123,8 @@ async function main() {
   const token = async (who: string, room: string, opts: { app?: "old" | "new"; nonce?: string } = {}) => {
     g.__who = who;
     const q = new URLSearchParams({ room, event: room, nonce: opts.nonce ?? "n1" });
-    if (opts.app) q.set("client", "android 1.2.14+5226 Pixel 8 / Android 15");
+    // 1.2.16 has the attendance step; 1.2.14 does not.
+    if (opts.app) q.set("client", opts.app === "new" ? "android 1.2.16+5230 Pixel 8 / Android 15" : "android 1.2.14+5226 Pixel 8 / Android 15");
     if (opts.app === "new") q.set("attendance", "1");
     const res = await R.token.GET(
       new NextRequest(`https://www.neolinguameet.com/api/livekit/token?${q}`, {
@@ -318,14 +319,22 @@ async function main() {
 
   console.log("the app");
 
-  await t("an app with the step must confirm too; an older app, which cannot ask, still gets in", async () => {
+  await t("an app with the step must confirm too; an older app, which cannot ask, must update (or gets in if APP_MIN_VERSION lets it)", async () => {
     assert.equal((await signIn({ user_id: "604", username: "app_user" })).ok, true);
     const appUser = byKc("604")[0];
     const fresh = await token(appUser, "room-b", { app: "new" });
     assert.equal(fresh.status, 400);
     assert.equal(fresh.body.error, "attendance_name_required");
     const old = await token(appUser, "room-b", { app: "old" });
-    assert.equal(old.status, 200, JSON.stringify(old.body));
+    assert.equal(old.status, 426, JSON.stringify(old.body));
+    assert.equal(old.body.error, "app_update_required");
+    process.env.APP_MIN_VERSION = "1.2.4";
+    try {
+      const letIn = await token(appUser, "room-b", { app: "old", nonce: "n-old" });
+      assert.equal(letIn.status, 200, JSON.stringify(letIn.body));
+    } finally {
+      delete process.env.APP_MIN_VERSION;
+    }
     assert.equal((await confirm(appUser, "Kemi Bello")).status, 200);
     assert.equal((await token(appUser, "room-b", { app: "new" })).status, 200);
   });

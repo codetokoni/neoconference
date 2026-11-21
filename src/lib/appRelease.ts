@@ -39,7 +39,11 @@ import { BRAND } from "@/lib/brand";
 // earlier that day, invites carry the app download link; 1.2.7 2026-10-20;
 // 1.2.6, the NeoLinguaMeet rename, 2026-10-19).
 export const LATEST_APP_VERSION = "1.2.17";
-export const MIN_APP_VERSION = "1.2.4";
+// Raised by the owner on 2026-11-21 from 1.2.4 to 1.2.16, the day it went
+// live, so every app join confirms a full name for attendance (#677). Apps
+// below it are refused with app_update_required; APP_MIN_VERSION in Vercel
+// lowers it again without a code change.
+export const MIN_APP_VERSION = "1.2.16";
 
 /**
  * From this date the minimum rises and older apps must update. Until then
