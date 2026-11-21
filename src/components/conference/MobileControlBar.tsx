@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, Video, VideoOff, MoreHorizontal, EyeOff, Lock } from 'lucide-react';
-import { enableMicrophone, MIC_LOCKED_MESSAGE, noteMicLocked, useMicLocked } from './micLockClient';
-import { MuteEveryoneMobileButton } from './MuteEveryone';
+import { enableCamera, enableMicrophone, MIC_LOCKED_MESSAGE, noteMicLocked, useMicLocked } from './micLockClient';
+import { HostMicControlsMobile, useIsModerator } from './MuteEveryone';
 import { useLocalParticipant } from '@livekit/components-react';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 
@@ -49,6 +49,7 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
   // Locked by an Owner, Host or Moderator (micLockClient.ts): the button
   // shows a lock and says why instead of trying.
   const micLocked = useMicLocked();
+  const moderator = useIsModerator();
   const toggleMic = useCallback(() => {
     if (micLocked && !isMicrophoneEnabled) {
       noteMicLocked();
@@ -58,7 +59,8 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
   }, [localParticipant, isMicrophoneEnabled, micLocked]);
 
   const toggleCam = useCallback(() => {
-    localParticipant?.setCameraEnabled(!isCameraEnabled).catch(() => {});
+    // Locked (micLockClient.ts): the camera stays off and says why.
+    void enableCamera(localParticipant, !isCameraEnabled);
   }, [localParticipant, isCameraEnabled]);
 
   /* ---- More menu: runtime toolbar scan (preserved exactly) ---- */
@@ -147,7 +149,9 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
     <div
       role="toolbar"
       aria-label="Call controls"
-      className="flex items-center justify-around px-4 py-2.5 bg-black/40 backdrop-blur-md border-t border-white/10"
+      // A moderator's two more buttons: less side padding, so the row still
+      // fits a 360px phone.
+      className={`flex items-center justify-around ${moderator ? 'px-2' : 'px-4'} py-2.5 bg-black/40 backdrop-blur-md border-t border-white/10`}
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 10px)' }}
     >
       {/* Mic */}
@@ -173,12 +177,16 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
       {/* Cam */}
       <button
         type="button"
-        aria-label={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
-        aria-pressed={isCameraEnabled}
+        aria-label={micLocked ? 'Camera locked' : isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
+        aria-pressed={micLocked ? undefined : isCameraEnabled}
+        title={micLocked ? MIC_LOCKED_MESSAGE : undefined}
+        data-mic-locked={micLocked ? 'true' : undefined}
         onClick={toggleCam}
         className={`${pill} ${isCameraEnabled ? pillEnabled : pillDisabled}`}
       >
-        {isCameraEnabled ? (
+        {micLocked ? (
+          <Lock className="w-4 h-4 text-amber-300" aria-hidden />
+        ) : isCameraEnabled ? (
           <Video className="w-4 h-4" />
         ) : (
           <VideoOff className="w-4 h-4 text-red-400" />
@@ -268,8 +276,8 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
         Leave
       </button>
 
-      {/* Owner, Host and Moderator: "Mute everyone", right of Leave. */}
-      <MuteEveryoneMobileButton />
+      {/* Owner, Host and Moderator: "Mute all" and "Lock mics", right of Leave. */}
+      <HostMicControlsMobile />
     </div>
   );
 }

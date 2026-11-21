@@ -1,19 +1,20 @@
 'use client';
 
-// The computer layout's control bar: LiveKit's own, plus a locked
-// microphone button while an Owner, Host or Moderator has locked this
-// person's microphone (micLockClient.ts).
+// The computer layout's control bar: LiveKit's own, plus locked microphone
+// and camera buttons while an Owner, Host or Moderator has locked this
+// person (micLockClient.ts), and a moderator's "Mute all" and "Lock".
 //
-// LiveKit's bar leaves the microphone button out by itself when the server
-// takes the permission away; this puts a button with a lock where it was,
-// which says why instead of trying. The wrapper is the bar (lk-control-bar)
+// LiveKit's bar leaves the microphone, camera and screen buttons out by
+// itself when the server takes publishing away; this puts buttons with a
+// lock where the microphone and camera were, which say why instead of
+// trying. The wrapper is the bar (lk-control-bar)
 // and LiveKit's own is laid out inside it (display: contents), so the
 // buttons sit in one row as before.
 
 import { ControlBar } from '@livekit/components-react';
 import { Lock } from 'lucide-react';
 import { MIC_LOCKED_MESSAGE, noteMicLocked, useMicLocked } from './micLockClient';
-import { MuteEveryoneControlBarButton } from './MuteEveryone';
+import { HostMicControlBarButtons } from './MuteEveryone';
 
 export default function NeoControlBar() {
   const locked = useMicLocked();
@@ -32,9 +33,22 @@ export default function NeoControlBar() {
           <span className="max-[760px]:hidden">Microphone</span>
         </button>
       ) : null}
+      {locked ? (
+        <button
+          type="button"
+          className="lk-button"
+          aria-label="Camera locked"
+          title={MIC_LOCKED_MESSAGE}
+          data-mic-locked="true"
+          onClick={noteMicLocked}
+        >
+          <Lock aria-hidden width={16} height={16} />
+          <span className="max-[760px]:hidden">Camera</span>
+        </button>
+      ) : null}
       <ControlBar controls={{ chat: true, settings: false }} style={{ display: 'contents' }} />
-      {/* Owner, Host and Moderator: "Mute everyone", right of Leave. */}
-      <MuteEveryoneControlBarButton />
+      {/* Owner, Host and Moderator: "Mute all" and "Lock", right of Leave. */}
+      <HostMicControlBarButtons />
     </div>
   );
 }

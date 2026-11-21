@@ -1204,7 +1204,7 @@ for (const width of [360, 768, 1280]) {
 /*  Locked participant microphones in the People panel (src/lib/micLock.ts)    */
 /* -------------------------------------------------------------------------- */
 
-test("the People panel: Lock participant microphones, Allow to unmute one person, Unlock; a refusal says who may", async ({ page }) => {
+test("the People panel: Lock microphones and cameras, Allow mic and camera one person, Unlock; a refusal says who may", async ({ page }) => {
   const { errors } = await setup(page, 1280);
   await page.evaluate(() => {
     const w = window as unknown as {
@@ -1238,29 +1238,29 @@ test("the People panel: Lock participant microphones, Allow to unmute one person
   const panel = page.getByRole("dialog", { name: "Participants" });
   const posts = () => page.evaluate(() => (window as unknown as { __mic: { posts: string[] } }).__mic.posts.map((s) => JSON.parse(s)));
 
-  await panel.getByRole("button", { name: "Lock participant microphones" }).click();
-  await expect(panel.getByRole("button", { name: /Unlock participant microphones/ })).toBeVisible();
+  await panel.getByRole("button", { name: "Lock microphones and cameras" }).click();
+  await expect(panel.getByRole("button", { name: /Unlock microphones and cameras/ })).toBeVisible();
   expect(await posts()).toEqual([{ slug: "weekly", room: "weekly-room", action: "lock" }]);
   // Grace (a participant) can be allowed; Hana (a host) is never locked.
-  await expect(panel.getByRole("button", { name: "Allow to unmute" })).toHaveCount(1);
+  await expect(panel.getByRole("button", { name: "Allow mic and camera" })).toHaveCount(1);
 
-  await panel.getByRole("button", { name: "Allow to unmute" }).click();
-  await expect(panel.getByRole("button", { name: "Lock microphone again" })).toBeVisible();
+  await panel.getByRole("button", { name: "Allow mic and camera" }).click();
+  await expect(panel.getByRole("button", { name: "Lock mic and camera again" })).toBeVisible();
   expect((await posts()).at(-1)).toEqual({ slug: "weekly", room: "weekly-room", action: "allow", participantIdentity: "user_g#1" });
 
-  await panel.getByRole("button", { name: "Lock microphone again" }).click();
-  await expect(panel.getByRole("button", { name: "Allow to unmute" })).toBeVisible();
+  await panel.getByRole("button", { name: "Lock mic and camera again" }).click();
+  await expect(panel.getByRole("button", { name: "Allow mic and camera" })).toBeVisible();
   expect((await posts()).at(-1)).toEqual({ slug: "weekly", room: "weekly-room", action: "relock", participantIdentity: "user_g#1" });
 
-  await panel.getByRole("button", { name: /Unlock participant microphones/ }).click();
-  await expect(panel.getByRole("button", { name: "Lock participant microphones" })).toBeVisible();
-  await expect(panel.getByRole("button", { name: /Allow to unmute|Lock microphone again/ })).toHaveCount(0);
+  await panel.getByRole("button", { name: /Unlock microphones and cameras/ }).click();
+  await expect(panel.getByRole("button", { name: "Lock microphones and cameras" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: /Allow mic and camera|Lock mic and camera again/ })).toHaveCount(0);
 
   // The server refuses someone who is no longer a moderator: the panel says so.
   await page.evaluate(() => { (window as unknown as { __mic: { refuse: boolean } }).__mic.refuse = true; });
-  await panel.getByRole("button", { name: "Lock participant microphones" }).click();
+  await panel.getByRole("button", { name: "Lock microphones and cameras" }).click();
   await expect(panel.getByText("Only an Owner, Host or Moderator can do that.")).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Lock participant microphones" })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Lock microphones and cameras" })).toBeVisible();
   await page.screenshot({ path: "test-results/group-screens/mic-lock-panel.png" });
   expect(errors).toEqual([]);
 });

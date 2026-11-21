@@ -16,8 +16,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRoomContext } from '@livekit/components-react';
 import { RoomEvent, type LocalParticipant } from 'livekit-client';
 
-export const MIC_LOCKED_MESSAGE = 'Your microphone is locked. An Owner, Host, or Moderator can allow you to unmute.';
-export const MIC_ALLOWED_MESSAGE = 'You can now unmute.';
+export const MIC_LOCKED_MESSAGE = 'Your microphone and camera are locked. An Owner, Host, or Moderator can allow you to turn them on.';
+export const MIC_ALLOWED_MESSAGE = 'You can now turn your microphone and camera on.';
 /** The window event a blocked attempt raises, for MicLockNotice. */
 export const MIC_LOCKED_EVENT = 'neo:mic-locked';
 const MICROPHONE = 2; // LiveKit's TrackSource.MICROPHONE
@@ -52,6 +52,25 @@ export async function enableMicrophone(lp: LocalParticipant | null | undefined, 
     return true;
   } catch {
     // Refused by LiveKit (the lock arrived in between): say why.
+    if (on && !micPermitted(lp.permissions as Perms)) noteMicLocked();
+    return false;
+  }
+}
+
+/**
+ * Turn the camera on or off. The lock takes the camera too (nothing may be
+ * published): turning it on while locked does nothing but say why.
+ */
+export async function enableCamera(lp: LocalParticipant | null | undefined, on: boolean): Promise<boolean> {
+  if (!lp) return false;
+  if (on && !micPermitted(lp.permissions as Perms)) {
+    noteMicLocked();
+    return false;
+  }
+  try {
+    await lp.setCameraEnabled(on);
+    return true;
+  } catch {
     if (on && !micPermitted(lp.permissions as Perms)) noteMicLocked();
     return false;
   }

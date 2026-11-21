@@ -108,11 +108,11 @@ export async function POST(req: Request) {
       next = { locked: false, allowed: [] };
       break;
     case "allow":
-      if (!prev.locked) return NextResponse.json({ error: "not_locked", message: "Microphones are not locked." }, { status: 409 });
+      if (!prev.locked) return NextResponse.json({ error: "not_locked", message: "Nothing is locked." }, { status: 409 });
       next = { ...prev, allowed: Array.from(new Set([...prev.allowed, target])) };
       break;
     case "relock":
-      if (!prev.locked) return NextResponse.json({ error: "not_locked", message: "Microphones are not locked." }, { status: 409 });
+      if (!prev.locked) return NextResponse.json({ error: "not_locked", message: "Nothing is locked." }, { status: 409 });
       next = { ...prev, allowed: prev.allowed.filter((u) => u !== target) };
       break;
   }
@@ -130,7 +130,7 @@ export async function POST(req: Request) {
       // is told.
       console.error("[mic-lock] LiveKit unavailable; state put back", room, err);
       await saveMicLock(ev.id, prev);
-      const what = action === "lock" ? "mute everyone" : action === "unlock" ? "unmute everyone" : "change that microphone";
+      const what = action === "lock" ? "lock the microphones" : action === "unlock" ? "unlock the microphones" : "change that microphone";
       return NextResponse.json(
         { error: "livekit_unavailable", message: `Couldn't ${what}. The meeting server didn't answer. Try again.`, locked: prev.locked, allowed: prev.allowed },
         { status: 502 },

@@ -1,6 +1,6 @@
 // Run: npx tsx src/lib/__tests__/micLockFailure.smoke.ts
 //
-// "Mute everyone" when LiveKit does not answer (/api/livekit/mic-lock). The
+// "Lock mics" when LiveKit does not answer (/api/livekit/mic-lock). The
 // toolbar's label follows the state the server confirmed, so a press that
 // took no effect must not be confirmed: the lock is put back, the caller gets
 // a sentence to show, and a LiveKit that never answers is given up on rather
@@ -66,21 +66,21 @@ async function main() {
     return { status: res.status, body: (await res.json()) as { locked?: boolean; message?: string; error?: string } };
   };
 
-  await t("LiveKit unreachable: Mute everyone is refused, not confirmed, and the lock stays off", async () => {
+  await t("LiveKit unreachable: Lock mics is refused, not confirmed, and the lock stays off", async () => {
     g.__lkParticipants = undefined; // listParticipants throws
     const r = await press("lock");
     assert.equal(r.status, 502);
     assert.equal(r.body.locked, false);
-    assert.equal(r.body.message, "Couldn't mute everyone. The meeting server didn't answer. Try again.");
+    assert.equal(r.body.message, "Couldn't lock the microphones. The meeting server didn't answer. Try again.");
     assert.equal((await M.getMicLock("ev_fail")).locked, false);
   });
 
-  await t("the other way too: a failed Unmute everyone keeps everyone locked", async () => {
+  await t("the other way too: a failed Unlock mics keeps everyone locked", async () => {
     await M.saveMicLock("ev_fail", { locked: true, allowed: [] });
     const r = await press("unlock");
     assert.equal(r.status, 502);
     assert.equal(r.body.locked, true);
-    assert.match(String(r.body.message), /^Couldn't unmute everyone\./);
+    assert.match(String(r.body.message), /^Couldn't unlock the microphones\./);
     assert.equal((await M.getMicLock("ev_fail")).locked, true);
     await M.saveMicLock("ev_fail", { locked: false, allowed: [] });
   });

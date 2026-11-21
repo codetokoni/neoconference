@@ -1,16 +1,20 @@
 // src/lib/micLock.ts
 //
-// "Lock participant microphones": an Owner, Host or Moderator stops everyone
-// else in a meeting from using their microphone, and may let one person (or,
-// by unlocking, everyone) unmute again.
+// "Lock" (the toolbar) / "Lock participant microphones" (the People panel):
+// an Owner, Host or Moderator stops everyone else in a meeting from sending
+// anything — microphone, camera and screen sharing — and may let one person
+// (or, by unlocking, everyone) use them again. Chat, reactions and a raised
+// hand go on (they are data, a separate permission).
 //
 // Enforced by the media server, not by hiding a button: each locked
-// participant's LiveKit permission leaves the microphone out of
-// canPublishSources. LiveKit then takes down a microphone already published
-// (muted or not) and refuses to publish one again; camera and screen sharing
-// are untouched. Checked against a real LiveKit server (2026-11-21): a
-// revoked microphone disappeared at once, setMicrophoneEnabled(true) failed
-// with "insufficient permissions", and allowing it again switched nothing on.
+// participant's LiveKit permission has canPublish false. LiveKit then takes
+// down every track they publish and refuses to publish one again. Checked
+// against a real LiveKit server (2026-11-21, then for the microphone only):
+// a revoked track disappeared at once, publishing failed with "insufficient
+// permissions", and allowing it again switched nothing on.
+// (Until 2026-11-21 the lock took only the microphone, leaving the camera
+// and screen: LOCKED_SOURCES. A permission still in that shape counts as
+// locked and is brought up to the full lock.)
 //
 // The state lives in KV (neo:miclock:<eventId>) and is applied:
 //   - to everyone in the room when a moderator locks or unlocks, or to one
@@ -32,7 +36,7 @@ import { SERVICE_IDENTITY } from "@/lib/groupAttendees";
 
 /** LiveKit's TrackSource numbers (livekit_models.proto). */
 export const SOURCE = { CAMERA: 1, MICROPHONE: 2, SCREEN_SHARE: 3, SCREEN_SHARE_AUDIO: 4 } as const;
-/** What a locked participant may still publish. */
+/** What the earlier, microphone-only lock let a locked participant publish. */
 export const LOCKED_SOURCES: number[] = [SOURCE.CAMERA, SOURCE.SCREEN_SHARE, SOURCE.SCREEN_SHARE_AUDIO];
 /** The data message topic moderators' screens listen on. */
 export const MIC_LOCK_TOPIC = "mic_lock";
@@ -56,37 +60,46 @@ export function isElevatedWireRole(role: string | null | undefined): boolean {
   return role === "host" || role === "cohost";
 }
 
-/** Whether this person may use their microphone under this state. */
+/** Whether this person may use their microphone, camera and screen under this state. */
 export function micAllowedFor(state: MicLockState, who: { role?: string | null; userId: string }): boolean {
   if (!state.locked) return true;
   if (isElevatedWireRole(who.role)) return true;
   return state.allowed.includes(baseIdentity(who.userId));
 }
 
-/** A LiveKit permission with the microphone allowed or not, everything else kept. */
-export function withMicrophone<P extends { canPublishSources?: number[]; canPublish?: boolean }>(perm: P, allowed: boolean): P {
+/**
+ * A LiveKit permission with publishing allowed or not, everything else kept
+ * (subscribing and data, so chat and reactions go on). Locked: nothing may be
+ * published. Allowed: publishing again, with the sources it had before the
+ * lock (a list the earlier microphone-only lock made is cleared).
+ */
+export function withPublishing<P extends { canPublishSources?: number[]; canPublish?: boolean }>(perm: P, allowed: boolean): P {
+  if (!allowed) return { ...perm, canPublish: false, canPublishSources: [] };
   const current = (perm.canPublishSources ?? []).map(Number);
-  if (allowed) {
-    // Empty means "every source". A list we did not make keeps its sources.
-    const next = current.length === 0 || sameSources(current, LOCKED_SOURCES) ? [] : Array.from(new Set([...current, SOURCE.MICROPHONE]));
-    return { ...perm, canPublishSources: next };
-  }
-  const next = current.length === 0 ? LOCKED_SOURCES : current.filter((s) => s !== SOURCE.MICROPHONE);
-  // Taking the microphone out of a list that held only it would leave an
-  // empty list, which LiveKit reads as "every source".
-  return next.length === 0 ? { ...perm, canPublish: false, canPublishSources: [] } : { ...perm, canPublishSources: next };
+  // Empty means "every source". A list we did not make keeps its sources.
+  const next = current.length === 0 || sameSources(current, LOCKED_SOURCES) ? [] : Array.from(new Set([...current, SOURCE.MICROPHONE]));
+  return { ...perm, canPublish: true, canPublishSources: next };
 }
 
 function sameSources(a: number[], b: number[]): boolean {
   return a.length === b.length && a.every((s) => b.includes(s));
 }
 
-/** Whether a LiveKit permission lets the microphone be published. */
+/** Whether a LiveKit permission lets the microphone be published (false under either lock). */
 export function permitsMicrophone(perm: { canPublish?: boolean; canPublishSources?: number[] } | undefined): boolean {
   if (!perm) return true;
   if (perm.canPublish === false) return false;
   const list = (perm.canPublishSources ?? []).map(Number);
   return list.length === 0 || list.includes(SOURCE.MICROPHONE);
+}
+
+/**
+ * Whether a participant's permission is already what the state wants:
+ * allowed — the microphone may be published; locked — nothing may be (a
+ * microphone-only lock from before is not enough).
+ */
+export function permissionIsAsWanted(perm: { canPublish?: boolean; canPublishSources?: number[] } | undefined, allowed: boolean): boolean {
+  return allowed ? permitsMicrophone(perm) : perm?.canPublish === false;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -179,13 +192,13 @@ export async function applyMicLock(
         return;
       }
       const want = micAllowedFor(state, { role: wireRoleOf(p), userId: p.identity });
-      if (permitsMicrophone(p.permission) === want) {
+      if (permissionIsAsWanted(p.permission, want)) {
         r.unchanged++;
         return;
       }
       const base = p.permission ?? { canPublish: true, canSubscribe: true, canPublishData: true };
       try {
-        await svc.updateParticipant(room, p.identity, { permission: withMicrophone(base, want) });
+        await svc.updateParticipant(room, p.identity, { permission: withPublishing(base, want) });
         r.changed++;
       } catch (err) {
         // Usually someone who left between the list and the update.
@@ -235,7 +248,7 @@ export async function enforceMicLockFor(eventId: string, room: string, p: LkPart
   }
 }
 
-/** Grant for a join token: the sources to allow, when the microphone is locked. */
-export function tokenSources(state: MicLockState, who: { role?: string | null; userId: string }): number[] | null {
-  return micAllowedFor(state, who) ? null : LOCKED_SOURCES;
+/** Grant for a join token: nothing may be published while this person is locked. */
+export function lockedTokenGrant(state: MicLockState, who: { role?: string | null; userId: string }): { canPublish: false } | null {
+  return micAllowedFor(state, who) ? null : { canPublish: false };
 }

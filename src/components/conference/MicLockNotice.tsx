@@ -2,7 +2,7 @@
 
 // Tells the person when their microphone is locked, when they try to unmute
 // while it is ("Your microphone is locked. …"), and when they may unmute
-// again ("You can now unmute."). Rendered once inside the meeting, on top of
+// again ("You can now turn your microphone and camera on."). Rendered once inside the meeting, on top of
 // everything (a portal on <body>: a transformed toolbar would trap it).
 
 import { useEffect, useRef, useState } from 'react';

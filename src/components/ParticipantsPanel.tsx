@@ -398,7 +398,7 @@ export default function ParticipantsPanel({
               ? 'Everyone may unmute themselves again. Nobody is unmuted.'
               : 'Mute everyone except Owners, Hosts and Moderators, and keep them from unmuting until you allow it.'}
           >
-            {pending === 'mic:lock' || pending === 'mic:unlock' ? '…' : micLock.locked ? '🔒 Unlock participant microphones' : 'Lock participant microphones'}
+            {pending === 'mic:lock' || pending === 'mic:unlock' ? '…' : micLock.locked ? '🔒 Unlock microphones and cameras' : 'Lock microphones and cameras'}
           </button>
           {muteAllConfirm ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -474,7 +474,7 @@ export default function ParticipantsPanel({
                         onClick={() => micAction('relock', id)}
                         style={{ flex: '1 1 100%', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(251,191,36,0.55)', background: 'rgba(251,191,36,0.12)', color: '#fde68a', cursor: 'pointer', opacity: busy('mic:relock') ? 0.5 : 1 }}
                       >
-                        {busy('mic:relock') ? '...' : 'Lock microphone again'}
+                        {busy('mic:relock') ? '...' : 'Lock mic and camera again'}
                       </button>
                     ) : (
                       <button
@@ -483,7 +483,7 @@ export default function ParticipantsPanel({
                         onClick={() => micAction('allow', id)}
                         style={{ flex: '1 1 100%', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(52,211,153,0.5)', background: 'rgba(52,211,153,0.12)', color: '#bbf7d0', cursor: 'pointer', opacity: busy('mic:allow') ? 0.5 : 1 }}
                       >
-                        {busy('mic:allow') ? '...' : 'Allow to unmute'}
+                        {busy('mic:allow') ? '...' : 'Allow mic and camera'}
                       </button>
                     )
                   ) : null}

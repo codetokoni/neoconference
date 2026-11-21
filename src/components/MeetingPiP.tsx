@@ -61,7 +61,7 @@ import {
   VideoOff,
 } from 'lucide-react';
 import { computeRemaining, IDLE_TIMER, type TimerState } from '@/lib/timer';
-import { enableMicrophone, MIC_LOCKED_MESSAGE, useMicLocked } from '@/components/conference/micLockClient';
+import { enableCamera, enableMicrophone, MIC_LOCKED_MESSAGE, useMicLocked } from '@/components/conference/micLockClient';
 
 /* ------------------------------------------------------------------ */
 /*  Document PiP API type shims                                        */
@@ -424,7 +424,7 @@ function PiPContent({
     if (!localParticipant || busy) return;
     setBusy(true);
     try {
-      await localParticipant.setCameraEnabled(!localParticipant.isCameraEnabled);
+      await enableCamera(localParticipant, !localParticipant.isCameraEnabled);
     } catch {
       // ignore
     } finally {
@@ -527,8 +527,8 @@ function PiPContent({
           onClick={toggleCam}
           active={camOn}
           activeIcon={<Video size={18} />}
-          inactiveIcon={<VideoOff size={18} />}
-          ariaLabel={camOn ? 'Turn camera off' : 'Turn camera on'}
+          inactiveIcon={micLocked ? <Lock size={18} /> : <VideoOff size={18} />}
+          ariaLabel={micLocked && !camOn ? `Camera locked. ${MIC_LOCKED_MESSAGE}` : camOn ? 'Turn camera off' : 'Turn camera on'}
           danger={!camOn}
         />
         <div style={{ flex: 1 }} />

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { AccessToken, RoomServiceClient, type VideoGrant } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import { rememberMeeting } from "@/lib/deviceSessions";
 import { getPlanLimits, getPlanLimitsForUserId, type Plan, type PlanFeatureLimits } from "@/lib/plan";
 import { hasMeetingAdminPower, isAdmin } from "@/lib/roles";
@@ -481,9 +481,9 @@ export async function GET(req: NextRequest) {
         const { eventStore: __esMic } = await import("@/lib/eventStore");
         const __evMic = await __esMic.bySlug(eventSlug);
         if (__evMic) {
-          const { getMicLock, tokenSources } = await import("@/lib/micLock");
-          const sources = tokenSources(await getMicLock(__evMic.id), { role: participantRole, userId });
-          if (sources) at.addGrant({ canPublishSources: sources as unknown as VideoGrant["canPublishSources"] });
+          const { getMicLock, lockedTokenGrant } = await import("@/lib/micLock");
+          const lock = lockedTokenGrant(await getMicLock(__evMic.id), { role: participantRole, userId });
+          if (lock) at.addGrant(lock);
         }
       }
     } catch (micErr) {

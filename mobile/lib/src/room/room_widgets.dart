@@ -1025,7 +1025,7 @@ class MicLockButton extends StatelessWidget {
         controller.setMicLock(!locked);
       },
       icon: Icon(locked ? Icons.lock_open_rounded : Icons.lock_rounded, size: 18),
-      label: Text(locked ? 'Unlock participant microphones' : 'Lock participant microphones'),
+      label: Text(locked ? 'Unlock microphones and cameras' : 'Lock microphones and cameras'),
       style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
     );
   }
