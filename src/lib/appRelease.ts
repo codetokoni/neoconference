@@ -19,6 +19,8 @@
 // the minimum on a date, after a week of nudges.
 
 import { BRAND } from "@/lib/brand";
+// 1.2.19 live on the LoveWorld AppStore, 2026-11-21: someone allowed to
+// talk while the meeting is locked gets the microphone only.
 // 1.2.18 live on the LoveWorld AppStore, 2026-11-21: "Mute all" (once) and
 // "Lock" / "Unlock" (microphone, camera and screen) in the meeting bar.
 // 1.2.17 live on the LoveWorld AppStore, 2026-11-21: the same app as 1.2.16,
@@ -40,7 +42,7 @@ import { BRAND } from "@/lib/brand";
 // 1.2.9 2026-11-03 (says why it was signed out, Device sessions; 1.2.8
 // earlier that day, invites carry the app download link; 1.2.7 2026-10-20;
 // 1.2.6, the NeoLinguaMeet rename, 2026-10-19).
-export const LATEST_APP_VERSION = "1.2.18";
+export const LATEST_APP_VERSION = "1.2.19";
 // Raised by the owner on 2026-11-21 from 1.2.4 to 1.2.16, the day it went
 // live, so every app join confirms a full name for attendance (#677). Apps
 // below it are refused with app_update_required; APP_MIN_VERSION in Vercel
