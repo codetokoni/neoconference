@@ -1,6 +1,13 @@
 "use client";
 
-// "Your Prayer Time" in the zone embed. The number comes from the server
+// "Your Prayer Time" in the zone embed, and the heartbeat under it. The
+// beat (useAttendanceBeat) runs for every partner: it tells the server this
+// connection is still here, which keeps a room whose listeners are all on
+// locked phones from closing as idle. The counter (PrayerTimer) is shown
+// only where the partner has the prayer timer on; elsewhere the page beats
+// headless (AttendanceBeat).
+//
+// The number comes from the server
 // (src/lib/partners/attendance.ts), worked out from LiveKit's timestamps;
 // the page only adds the seconds since the server's answer while the
 // server says the visitor is connected. A slowed-down background tab or a
@@ -54,14 +61,19 @@ function shown(r: Reading | null, live: boolean): number {
   return r.seconds + (r.connected && live ? Math.max(0, (Date.now() - r.receivedAt) / 1000) : 0);
 }
 
-/** Inside <LiveKitRoom>: beats while connected and shows the visitor's prayer time. */
-export function PrayerTimer({ getSession, onTick }: { getSession: () => string | null; onTick?: (seconds: number, connected: boolean, sessionId: string | null) => void }) {
+/**
+ * Inside <LiveKitRoom>: beats while connected — on connecting (and
+ * reconnecting), then every 60 s on screen or every 3 min while hidden, and
+ * at once when the tab comes back (beatSchedule.ts). Each answer goes to
+ * `onReading`. Returns whether the room is connected.
+ */
+export function useAttendanceBeat(getSession: () => string | null, onReading?: (r: TimerReading) => void): boolean {
   const room = useRoomContext();
   const state = useConnectionState();
   const live = state === ConnectionState.Connected;
-  const [reading, setReading] = useState<Reading | null>(null);
-  const [, setTick] = useState(0);
   const busy = useRef(false);
+  const onReadingRef = useRef(onReading);
+  onReadingRef.current = onReading;
 
   const beat = useCallback(async () => {
     const session = getSession();
@@ -70,16 +82,39 @@ export function PrayerTimer({ getSession, onTick }: { getSession: () => string |
     busy.current = true;
     const r = await readTimer(session, sid);
     busy.current = false;
-    if (r) setReading({ ...r, receivedAt: Date.now() });
+    if (r) onReadingRef.current?.(r);
   }, [getSession, room]);
 
-  // Beat on connecting (and reconnecting), then every 60 s on screen or every
-  // 3 min while hidden, and at once when the tab comes back.
-  // (beatSchedule.ts).
   useEffect(() => {
     if (!live) return;
     return startBeating(() => void beat());
   }, [live, beat]);
+
+  return live;
+}
+
+/** The beat with nothing on screen: for a partner whose embed shows no prayer timer. */
+export function AttendanceBeat({ getSession }: { getSession: () => string | null }) {
+  useAttendanceBeat(getSession);
+  return null;
+}
+
+type OnTick = (seconds: number, connected: boolean, sessionId: string | null) => void;
+
+/**
+ * Under the badge in the meeting: the prayer timer where the partner has it
+ * on, and otherwise the beat alone — no counter, and no onTick, so the
+ * partner's page hears no prayer-time events.
+ */
+export function ZoneTimer({ prayerTimer, getSession, onTick }: { prayerTimer: boolean; getSession: () => string | null; onTick?: OnTick }) {
+  return prayerTimer ? <PrayerTimer getSession={getSession} onTick={onTick} /> : <AttendanceBeat getSession={getSession} />;
+}
+
+/** Inside <LiveKitRoom>: beats while connected and shows the visitor's prayer time. */
+export function PrayerTimer({ getSession, onTick }: { getSession: () => string | null; onTick?: OnTick }) {
+  const [reading, setReading] = useState<Reading | null>(null);
+  const [, setTick] = useState(0);
+  const live = useAttendanceBeat(getSession, (r) => setReading({ ...r, receivedAt: Date.now() }));
 
   // Redraw every second; the value itself comes from the clock, not from counting ticks.
   useEffect(() => {

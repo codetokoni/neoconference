@@ -81,6 +81,7 @@ async function main() {
     roles: await import("../../app/api/admin/partners/[id]/roles/route"),
     report: await import("../../app/api/admin/partners/[id]/zones/[zone]/report/route"),
     sessions: await import("../../app/api/partner/v1/join-sessions/route"),
+    redeem: await import("../../app/api/partner/embed/redeem/route"),
   };
 
   const jar: Record<string, string> = {};
@@ -135,6 +136,26 @@ async function main() {
       }),
     );
     return { status: res.status, body: (await res.json()) as J };
+  };
+
+  /** The embed page trading a code for its session, as the frame on `origin` would. */
+  const redeem = async (code: string, origin = PC, extra: Record<string, unknown> = {}) => {
+    const res = await R.redeem.POST(
+      new NextRequest("https://neolinguameet.com/api/partner/embed/redeem", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-forwarded-for": `10.2.0.${ip++ % 250}` },
+        body: JSON.stringify({ code, parentOrigin: origin, ...extra }),
+      }),
+    );
+    return { status: res.status, body: (await res.json()) as J };
+  };
+  /** What the frame is told about the prayer timer for a fresh visit. */
+  const prayerTimerShown = async (key: string, origin = PC) => {
+    const s = await issue(key, "FALF", origin);
+    assert.equal(s.status, 201, JSON.stringify(s.body));
+    const r = await redeem(s.body.code, origin);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    return r.body.features.prayerTimer as boolean;
   };
 
   const now = Date.now();
@@ -216,6 +237,70 @@ async function main() {
     assert.equal((await call("user_super", R.one.PATCH as never, { method: "PATCH", params: { id }, body: { status: "active" } })).status, 200);
     assert.equal((await call("user_super", R.one.PATCH as never, { method: "PATCH", params: { id }, body: { origins: [PC, NEW] } })).status, 200);
     assert.equal((await call("user_super", R.one.PATCH as never, { method: "PATCH", params: { id }, body: {} })).body.error, "nothing_to_change");
+  });
+
+  await t("show the prayer timer: on by default and for old integrations, switched off for one partner only, never by the page", async () => {
+    assert.equal((await S.getIntegration(id))!.prayerTimer, true, "made with it on");
+    assert.equal(await prayerTimerShown(firstKey), true);
+
+    // An integration stored before the setting existed has no such field: it reads as on.
+    const { kv } = await import("../kv");
+    const { prayerTimer: _gone, ...old } = (await S.getIntegration(id))!;
+    void _gone;
+    await kv.set(`neo:partner:${id}`, old);
+    assert.equal("prayerTimer" in (await S.getIntegration(id))!, false);
+    assert.equal(S.showsPrayerTimer((await S.getIntegration(id))!), true);
+    assert.equal(await prayerTimerShown(firstKey), true);
+    const detail = await call("user_super", R.one.GET as never, { params: { id } });
+    assert.equal(detail.body.integration.prayerTimer, undefined, "the Manage screen treats absent as on");
+
+    // Only true or false: a typo must not switch it off.
+    for (const bad of ["no", "false", 0, null, "off"]) {
+      const r = await call("user_super", R.one.PATCH as never, { method: "PATCH", params: { id }, body: { prayerTimer: bad } });
+      assert.equal(r.status, 400, String(bad));
+      assert.equal(r.body.error, "invalid_prayer_timer", String(bad));
+    }
+    assert.equal(S.showsPrayerTimer((await S.getIntegration(id))!), true);
+
+    // Changing it needs a fresh code, like every other partner edit.
+    tick(20 * 60_000);
+    assert.equal((await call("user_super", R.one.PATCH as never, { method: "PATCH", params: { id }, body: { prayerTimer: false } })).body.error, "step_up_required");
+    assert.equal((await call("user_analyst", R.one.PATCH as never, { method: "PATCH", params: { id }, body: { prayerTimer: false } })).body.error, "forbidden");
+    assert.equal(S.showsPrayerTimer((await S.getIntegration(id))!), true);
+    await stepUp("user_super");
+
+    const off = await call("user_super", R.one.PATCH as never, { method: "PATCH", params: { id }, body: { prayerTimer: false } });
+    assert.equal(off.status, 200, JSON.stringify(off.body));
+    assert.equal(off.body.integration.prayerTimer, false);
+    assert.equal(await prayerTimerShown(firstKey), false);
+    // The partner's page cannot turn it back on: redeem ignores anything it adds.
+    const s = await issue(firstKey);
+    const sneaky = await redeem(s.body.code, PC, { features: { prayerTimer: true }, prayerTimer: true });
+    assert.equal(sneaky.body.features.prayerTimer, false);
+    // It hides the counter only: the visitor still joins.
+    assert.equal(sneaky.status, 200);
+    assert.ok(sneaky.body.session);
+
+    // In the admin audit log: before (on, as an old record reads) and after.
+    const entry = (await audit.listAdminAudit({})).items.find((e) => e.action === "partner.update" && JSON.stringify(e.after ?? {}).includes("prayerTimer"));
+    assert.ok(entry, "partner.update with prayerTimer");
+    assert.deepEqual([(entry!.before as J).prayerTimer, (entry!.after as J).prayerTimer], [true, false]);
+    assert.ok((await S.listAudit(id, 50)).some((e) => e.action === "integration.update" && e.detail?.prayerTimer === false));
+
+    // A partner made with it off starts off.
+    const other = await call("user_super", R.list.POST as never, { method: "POST", body: { name: "NeoStream", ownerEmail: "church@example.com", origins: "https://neostream.example", prayerTimer: false } });
+    assert.equal(other.status, 201, JSON.stringify(other.body));
+    assert.equal(other.body.integration.prayerTimer, false);
+    assert.equal(await prayerTimerShown(other.body.secret, "https://neostream.example"), false);
+    const created = (await audit.listAdminAudit({})).items.find((e) => e.action === "partner.create" && e.targetId === other.body.integration.id);
+    assert.equal((created!.after as J).prayerTimer, false);
+    assert.equal((await call("user_super", R.list.POST as never, { method: "POST", body: { ...create, name: "Typo", prayerTimer: "off" } })).body.error, "invalid_prayer_timer");
+
+    const on = await call("user_super", R.one.PATCH as never, { method: "PATCH", params: { id }, body: { prayerTimer: true } });
+    assert.equal(on.status, 200);
+    assert.equal(await prayerTimerShown(firstKey), true);
+    // Each partner has its own: switching one back on leaves the other off.
+    assert.equal(await prayerTimerShown(other.body.secret, "https://neostream.example"), false);
   });
 
   let secondKey = "";

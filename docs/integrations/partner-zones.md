@@ -38,6 +38,7 @@ Who someone is comes only from the partner's server, which calls with its secret
    - **Meeting title**: for example `{zone} Prayer Meeting`.
    - **Make a zone's meeting on its first visit**: on by default. Off means an administrator connects each zone.
    - **Allow guests**: off by default. Guests join by name only and are shown as "(guest)".
+   - **Show the prayer timer**: on by default. Off for a partner whose meetings are not prayer meetings (NeoStream): see [Without the prayer timer](#without-the-prayer-timer). Integrations made before this setting existed have it on.
 2. Copy the **secret key** when it is shown. It is shown once only. Hand it to the partner's developers over a safe channel; it belongs in their server's environment.
 3. Give them `examples/prayerclouds/` and this document.
 
@@ -138,7 +139,7 @@ Errors are `{ "error": { "code", "message" } }`:
 | `left` | `reason`: `left`, `removed`, `opened_in_tab`, `replaced` (joined elsewhere) or `disconnected` |
 | `meeting-ended` | — |
 | `permission-denied` | `device`: `camera`, `microphone` or `media` (once per device) |
-| `prayer-time` | `seconds`, `connected`, `sessionId`: the visitor's prayer time, every second in the meeting (see [Prayer time and reports](#prayer-time-and-reports)) |
+| `prayer-time` | `seconds`, `connected`, `sessionId`: the visitor's prayer time, every second in the meeting (see [Prayer time and reports](#prayer-time-and-reports)). Never sent when the integration has **Show the prayer timer** off. |
 | `error` | `code`, `message` (and `status` for your endpoint's failures) |
 
 The frame is created with `allow="camera; microphone; fullscreen; display-capture; autoplay; clipboard-write"`. If you write the iframe yourself instead, keep those and follow the protocol below.
@@ -165,6 +166,16 @@ In the meeting, "Your Prayer Time" shows `HH:MM:SS` under the toolbar on phones,
 - **Refresh and rejoin:** a reload or a rejoin in the same session resumes the total. A new session starts from 00:00:00.
 - **Leaving:** the left screen shows the session's total.
 - **Mirroring it:** the widget's `prayer-time` event carries the same value to the partner's page.
+
+### Without the prayer timer
+
+An integration with **Show the prayer timer** off (Admin > Integrations > Partner zones > the partner > Manage) has:
+- no "Your Prayer Time" in the meeting, and no session total on the left or ended screens;
+- no `prayer-time` events to the partner's page.
+
+The heartbeat goes on. It tells the server which connections are still there, and it keeps a room whose listeners are all on locked phones from closing as idle. So attendance is still counted on the server, and the reports below still work.
+
+The frame learns the setting from the server's answer to redeem (`features.prayerTimer`), read from the integration. Nothing the partner's page sends can turn it on or off. A change applies to pages opened (or sessions renewed) after it.
 
 ### The counting rules
 
@@ -356,9 +367,10 @@ There is no SQL, so uniqueness uses set-if-absent keys:
 
 **Automated**
 - `npx tsx src/lib/__tests__/partnerZones.smoke.ts`: issue, redeem, join, codes, origins, guests, waiting room, lock, cap, reopen, switches, key rotation, framing and embedded translation.
-- `npx tsx src/lib/__tests__/adminPartners.smoke.ts`: the admin routes.
+- `npx tsx src/lib/__tests__/adminPartners.smoke.ts`: the admin routes, including **Show the prayer timer** (old integrations read as on; only true or false is accepted; redeem reports it).
 - `npx tsx src/lib/__tests__/partnerAttendance.smoke.ts`: the timer and the counting rules, through the real LiveKit webhook (start on connection, reload, reconnect grace, two tabs, abrupt close, new session, isolated zones).
 - `npx tsx src/lib/__tests__/partnerReports.smoke.ts`: report access, totals, timezone boundaries, CSV, public figures and 304s.
+- `npx tsx src/lib/__tests__/partnerPrayerTimer.smoke.ts`: the frame with the prayer timer on (counter and `prayer-time`) and off (neither, heartbeat kept).
 - `npx tsx src/lib/__tests__/partnerModeration.smoke.ts`: who may mute, what Mute and Mute all touch, and that a leader removed mid-meeting loses it.
 - All of them run in `npm run test:smoke`.
 

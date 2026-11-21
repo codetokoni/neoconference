@@ -1,7 +1,11 @@
 // POST /api/partner/embed/redeem — the embed page trades a one-time code
 // for its meeting session.
 //
-//   { code, parentOrigin }  →  { session, meeting: { title }, participant: { name, verified } }
+//   { code, parentOrigin }  →  { session, meeting: { title, zoneId }, participant: { name, verified },
+//                               features: { prayerTimer } }
+//
+// features come from the integration as the administrator set it, read
+// here on the server: nothing the partner's page sends can change them.
 //
 // parentOrigin is the origin of the page that handed the code over, as the
 // browser reported it on the postMessage (event.origin), not anything the
@@ -10,7 +14,7 @@
 // open-in-new-tab hand-off is redeemed by this site's own page instead.
 
 import { NextRequest } from "next/server";
-import { PartnerError, getIntegration, getZone, redeemCode, signSession } from "@/lib/partners/store";
+import { PartnerError, getIntegration, getZone, redeemCode, showsPrayerTimer, signSession } from "@/lib/partners/store";
 import { fail, ipOf, limit, ok, readJson } from "@/lib/partners/http";
 import { linkOrigin, isOwnHost } from "@/lib/brand";
 
@@ -47,6 +51,7 @@ export async function POST(req: NextRequest) {
       session: signSession(grant),
       meeting: { title: zone?.title ?? grant.zoneId, zoneId: grant.zoneId },
       participant: { name: grant.displayName, verified: grant.verified },
+      features: { prayerTimer: showsPrayerTimer(integration) },
     });
   } catch (e) {
     return fail(e);

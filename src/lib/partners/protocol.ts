@@ -24,6 +24,7 @@
 //   permission-denied { device: "camera" | "microphone" | "media" }
 //   prayer-time { seconds, connected, sessionId }   each second in the meeting:
 //                          the visitor's counted time in the current prayer session
+//                          (never sent when the integration's prayer timer is off)
 //   error  { code, message }
 // Everything after request-session goes only to the origin the code was
 // redeemed for (verified by the server), never to "*".

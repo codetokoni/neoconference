@@ -55,7 +55,19 @@ export type PartnerIntegration = {
   timezone?: string;
   /** Aggregate figures a zone's public page may show; none unless switched on. */
   publicStats?: PublicStat[];
+  /**
+   * Show "Your Prayer Time" in the embed and send prayer-time events to the
+   * partner's page. Absent (every integration made before the switch): on.
+   * Off (NeoStream, whose meetings are not prayer meetings) hides the counter
+   * only: the embed still beats, so the server knows who is connected.
+   */
+  prayerTimer?: boolean;
 };
+
+/** Whether the embed shows the prayer timer: on unless switched off. */
+export function showsPrayerTimer(i: Pick<PartnerIntegration, "prayerTimer">): boolean {
+  return i.prayerTimer !== false;
+}
 
 export const PUBLIC_STATS = ["sessions", "uniqueParticipants", "connectedNow", "totalPrayerSeconds", "averagePrayerSeconds"] as const;
 export type PublicStat = (typeof PUBLIC_STATS)[number];
@@ -219,6 +231,7 @@ export async function createIntegration(input: {
   autoCreateZones?: boolean;
   guestAccess?: boolean;
   titleTemplate?: string;
+  prayerTimer?: boolean;
   by?: string;
 }): Promise<PartnerIntegration> {
   const at = nowIso();
@@ -231,6 +244,7 @@ export async function createIntegration(input: {
     autoCreateZones: input.autoCreateZones ?? true,
     guestAccess: input.guestAccess ?? false,
     titleTemplate: (input.titleTemplate || "{zone} Meeting").slice(0, 80),
+    prayerTimer: input.prayerTimer ?? true,
     lifecycle: "permanent",
     status: "active",
     createdAt: at,
@@ -245,7 +259,7 @@ export async function createIntegration(input: {
 }
 
 export type IntegrationPatch = Partial<
-  Pick<PartnerIntegration, "name" | "ownerUserId" | "ownerEmail" | "origins" | "autoCreateZones" | "guestAccess" | "titleTemplate" | "status" | "timezone" | "publicStats">
+  Pick<PartnerIntegration, "name" | "ownerUserId" | "ownerEmail" | "origins" | "autoCreateZones" | "guestAccess" | "titleTemplate" | "status" | "timezone" | "publicStats" | "prayerTimer">
 >;
 
 export async function updateIntegration(id: string, patch: IntegrationPatch, by?: string): Promise<PartnerIntegration> {

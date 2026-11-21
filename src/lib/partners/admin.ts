@@ -17,6 +17,7 @@ import {
   listPartnerKeys,
   listZonePage,
   normalizeOrigin,
+  showsPrayerTimer,
   type IntegrationPatch,
   type PartnerIntegration,
 } from "@/lib/partners/store";
@@ -64,6 +65,12 @@ function readTemplate(raw: unknown): string {
   return t;
 }
 
+/** Only true or false: a typo ("no", 0) must not quietly switch the timer off. */
+function readPrayerTimer(raw: unknown): boolean {
+  if (typeof raw !== "boolean") throw new PartnerError(400, "invalid_prayer_timer", "Show the prayer timer is true or false.");
+  return raw;
+}
+
 /** The fields an administrator may set at creation. */
 export async function readCreate(body: Record<string, unknown>) {
   const owner = await accountByEmail(body.ownerEmail);
@@ -75,6 +82,7 @@ export async function readCreate(body: Record<string, unknown>) {
     autoCreateZones: body.autoCreateZones === undefined ? true : body.autoCreateZones === true,
     guestAccess: body.guestAccess === true,
     titleTemplate: body.titleTemplate === undefined || body.titleTemplate === "" ? "{zone} Meeting" : readTemplate(body.titleTemplate),
+    prayerTimer: body.prayerTimer === undefined ? true : readPrayerTimer(body.prayerTimer),
   };
 }
 
@@ -86,6 +94,7 @@ export async function readPatch(body: Record<string, unknown>): Promise<Integrat
   if ("autoCreateZones" in body) patch.autoCreateZones = body.autoCreateZones === true;
   if ("guestAccess" in body) patch.guestAccess = body.guestAccess === true;
   if ("titleTemplate" in body) patch.titleTemplate = readTemplate(body.titleTemplate);
+  if ("prayerTimer" in body) patch.prayerTimer = readPrayerTimer(body.prayerTimer);
   if ("status" in body) {
     if (body.status !== "active" && body.status !== "disabled") throw new PartnerError(400, "invalid_status", "Status is active or disabled.");
     patch.status = body.status;
@@ -137,7 +146,8 @@ export function changes(before: PartnerIntegration, patch: IntegrationPatch) {
   const b: Record<string, unknown> = {};
   const a: Record<string, unknown> = {};
   for (const k of Object.keys(patch) as (keyof IntegrationPatch)[]) {
-    b[k] = before[k];
+    // An integration from before the switch has no prayerTimer: it was on.
+    b[k] = k === "prayerTimer" ? showsPrayerTimer(before) : before[k];
     a[k] = patch[k];
   }
   return { before: b, after: a };
