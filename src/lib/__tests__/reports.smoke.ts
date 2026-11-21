@@ -333,6 +333,37 @@ const leave = (eid: string, userId: string, name: string, ts: number) =>
     });
   }
 
+  // Last, because it reopens and ends the first meeting again, which the
+  // checks above count on being as it was.
+  await t("a meeting used again gets a new report: live, then finished again; not its first one's", async () => {
+    // saregionalmeeting showed its 3 November trial's one person after 700
+    // people came on 20 November (2026-11-21).
+    const first = (await getMeetingReport(ev.id))!;
+    const reopened = first.builtAt + 60 * MIN;
+    await eventStore.update(ev.id, (p) => ({ ...p, state: "live", startedAt: new Date(reopened).toISOString(), endedAt: undefined }));
+    await recordAttendance(ev.id, { action: "join", userId: "user_bo", name: "Bo", source: "webhook", ts: reopened + MIN });
+    const live = (await getMeetingReport(ev.id, reopened + 5 * MIN))!;
+    assert.equal(live.state, "live");
+    assert.ok(live.summary.attended > first.summary.attended, "the new session's people are in it");
+    await recordAttendance(ev.id, { action: "leave", userId: "user_bo", name: "Bo", source: "webhook", ts: reopened + 30 * MIN });
+    await endMeeting(ev.id, reopened + 60 * MIN);
+    const ended = (await getMeetingReport(ev.id, reopened + 70 * MIN))!;
+    assert.equal(ended.state, "ended");
+    assert.equal(ended.builtAt, reopened + 70 * MIN, "built again, not the first saved one");
+    assert.equal(ended.participants.find((p) => p.userId === "user_bo")?.status, "present");
+    // …and that one is saved and served until the meeting is used again.
+    const after = (await getMeetingReport(ev.id, reopened + 200 * MIN))!;
+    assert.equal(after.builtAt, ended.builtAt);
+    // Saved without the join/leave intervals (most of a big meeting's size);
+    // the times, minutes and spreadsheet cells are all still there.
+    const bo = after.participants.find((p) => p.userId === "user_bo")!;
+    assert.deepEqual(bo.row?.intervals, []);
+    assert.ok(bo.attendedMs > 0 && bo.joinedAt !== null && bo.leftAt !== null);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await meetingWorkbook(after));
+    assert.ok(wb.getWorksheet("Attendance")!.rowCount > 1);
+  });
+
   console.log(`\n${n} checks passed`);
 })().catch((err) => {
   console.error(err);
