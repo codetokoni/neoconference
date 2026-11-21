@@ -221,7 +221,8 @@ void main() {
     expect(screen.contains(leave.center), isTrue);
     expect(find.text('Leave').hitTestable(), findsOneWidget);
 
-    final big = tester.getRect(find.byType(ParticipantTile).first);
+    // The big tile, by its key: the host's tile in the pinned row comes first.
+    final big = tester.getRect(find.byKey(const ValueKey('focus:ada#1')));
     expect(big.height, greaterThan(120), reason: 'the big tile was squeezed to nothing under a 96pt strip');
     for (final name in ['Ada', 'Ben', 'Cy']) {
       final m = menuOf(name);

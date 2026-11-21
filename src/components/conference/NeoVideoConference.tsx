@@ -21,6 +21,8 @@ import {
 import { RoomEvent, Track } from 'livekit-client';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 import { enlargedTileGone } from './roomLayout';
+import { keepOrder } from './keptPlace';
+import { rolePins, showPinnedRow, type PinRole } from './rolePins';
 import NeoControlBar from './NeoControlBar';
 
 /**
@@ -42,12 +44,23 @@ import NeoControlBar from './NeoControlBar';
  * - The enlarged tile never goes stale: when that person leaves, or their
  *   video is hidden (on this screen or for everyone), or it is you and
  *   "Hide me" is on, the gallery comes back instead of an empty stage.
+ * - The Owner, Hosts and Moderators are pinned in a row at the top, in
+ *   that order, for everyone (rolePins.ts). The row stays through speaker
+ *   changes, screen shares and an enlarged tile; the gallery or the
+ *   enlarged tile is the main area below it, and enlarging someone there
+ *   leaves the row as it is.
  *
  * Nothing here touches the call: tracks, publications and the connection
  * are LiveKit's, and moving between the grid and the focus view only moves
  * tiles.
  */
-export default function NeoVideoConference({ hideSelf = false }: { hideSelf?: boolean }) {
+export default function NeoVideoConference({
+  hideSelf = false,
+  ownerUserId = null,
+}: {
+  hideSelf?: boolean;
+  ownerUserId?: string | null;
+}) {
   const [widget, setWidget] = useState<{ showChat: boolean; unreadMessages: number; showSettings?: boolean }>({ showChat: false, unreadMessages: 0 });
   const lastAutoFocusedScreenShareTrack = useRef<TrackReferenceOrPlaceholder | null>(null);
 
@@ -61,9 +74,40 @@ export default function NeoVideoConference({ hideSelf = false }: { hideSelf?: bo
   const layoutContext = useCreateLayoutContext();
   const screenShareTracks = tracks.filter(isTrackReference).filter((t) => t.publication.source === Track.Source.ScreenShare);
   const focusTrack = usePinnedTracks(layoutContext)?.[0];
-  const carouselTracks = tracks.filter((t) => !sameTrack(t, focusTrack));
 
   const participants = useParticipants();
+
+  // The row of Owner, Hosts and Moderators. useParticipants redraws on a
+  // metadata change, so a promotion moves someone into the row at once;
+  // first-seen order keeps people of one role where they were through a
+  // reconnect.
+  const seen = useRef(new Map<string, number>());
+  // "Hide me" takes you out of the row too, as it does out of the grid.
+  const pins = rolePins(keepOrder(seen.current, participants), ownerUserId).filter(
+    (p) => !(hideSelf && p.person.isLocal),
+  );
+  const pinnedIds = new Set(pins.map((p) => p.person.identity));
+  const isPinnedCamera = (t: TrackReferenceOrPlaceholder) =>
+    t.source === Track.Source.Camera && pinnedIds.has(t.participant.identity);
+  const rest = tracks.filter((t) => !isPinnedCamera(t));
+  const rowShown = showPinnedRow({
+    pinned: pins.length,
+    rest: rest.map((t) => ({ identity: t.participant.identity, isLocal: t.participant.isLocal })),
+    sharing: screenShareTracks.length > 0,
+  });
+  // Their camera tile; a placeholder (initials) when the camera is off or
+  // the track list has not caught up with someone who just came in.
+  const pinnedTracks: { trackRef: TrackReferenceOrPlaceholder; role: PinRole }[] = rowShown
+    ? pins.map(({ person, role }) => ({
+        role,
+        trackRef: tracks.find((t) => t.source === Track.Source.Camera && t.participant.identity === person.identity) ?? {
+          participant: person,
+          source: Track.Source.Camera,
+        },
+      }))
+    : [];
+  const mainTracks = rowShown ? rest : tracks;
+  const carouselTracks = mainTracks.filter((t) => !sameTrack(t, focusTrack));
   const hidden = useHiddenVideos();
   const clearPin = () => layoutContext.pin.dispatch?.({ msg: 'clear_pin' });
 
@@ -138,33 +182,53 @@ export default function NeoVideoConference({ hideSelf = false }: { hideSelf?: bo
         }`
     : '';
 
+  const main =
+    focusTrack && !focusGone ? (
+        <div className="lk-focus-layout-wrapper neo-focus-wrapper">
+          <div className="neo-focus-bar" data-neo-focus-bar="true">
+            <span className="neo-focus-bar-label">
+              Enlarged on your screen: <strong>{focusName}</strong>
+            </span>
+            <button type="button" className="neo-focus-bar-back" onClick={clearPin}>
+              Back to gallery
+            </button>
+          </div>
+          <FocusLayoutContainer>
+            <CarouselLayout tracks={carouselTracks}>
+              <NeoTile />
+            </CarouselLayout>
+            <FocusLayout trackRef={focusTrack} data-neo-identity={focusTrack.participant.identity} data-neo-source={focusTrack.source} />
+          </FocusLayoutContainer>
+        </div>
+      ) : (
+        <div className="lk-grid-layout-wrapper">
+          <GridLayout tracks={mainTracks}>
+            <NeoTile />
+          </GridLayout>
+        </div>
+      );
+
   return (
     <div className="lk-video-conference">
       <LayoutContextProvider value={layoutContext} onWidgetChange={setWidget}>
         <div className="lk-video-conference-inner">
-          {focusTrack && !focusGone ? (
-            <div className="lk-focus-layout-wrapper neo-focus-wrapper">
-              <div className="neo-focus-bar" data-neo-focus-bar="true">
-                <span className="neo-focus-bar-label">
-                  Enlarged on your screen: <strong>{focusName}</strong>
-                </span>
-                <button type="button" className="neo-focus-bar-back" onClick={clearPin}>
-                  Back to gallery
-                </button>
+          {rowShown ? (
+            <div className="neo-pinned-stage">
+              <div className="neo-pinned-row" data-neo-pinned-row="true" aria-label="Owner, hosts and moderators" role="group">
+                {pinnedTracks.map(({ trackRef, role }) => (
+                  <ParticipantTile
+                    key={trackRef.participant.identity}
+                    trackRef={trackRef}
+                    data-neo-identity={trackRef.participant.identity}
+                    data-neo-source={trackRef.source}
+                    data-neo-pinned={role}
+                  />
+                ))}
               </div>
-              <FocusLayoutContainer>
-                <CarouselLayout tracks={carouselTracks}>
-                  <NeoTile />
-                </CarouselLayout>
-                <FocusLayout trackRef={focusTrack} data-neo-identity={focusTrack.participant.identity} data-neo-source={focusTrack.source} />
-              </FocusLayoutContainer>
+              {main}
             </div>
           ) : (
-            <div className="lk-grid-layout-wrapper">
-              <GridLayout tracks={tracks}>
-                <NeoTile />
-              </GridLayout>
-            </div>
+            main
           )}
           {/* LiveKit's bar, with a locked microphone button when it is locked. */}
           <NeoControlBar />
