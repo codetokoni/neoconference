@@ -13,11 +13,13 @@
 
 import { ControlBar } from '@livekit/components-react';
 import { Lock } from 'lucide-react';
-import { MIC_LOCKED_MESSAGE, noteMicLocked, useMicLocked } from './micLockClient';
+import { CAM_LOCKED_MESSAGE, MIC_LOCKED_MESSAGE, noteCamLocked, noteMicLocked, useCamLocked, useMicLocked } from './micLockClient';
 import { HostMicControlBarButtons } from './MuteEveryone';
 
 export default function NeoControlBar() {
   const locked = useMicLocked();
+  // Locked on its own while allowed to talk: the microphone is theirs, the camera not.
+  const camLocked = useCamLocked();
   return (
     <div className="lk-control-bar" data-neo-control-bar="">
       {locked ? (
@@ -33,14 +35,14 @@ export default function NeoControlBar() {
           <span className="max-[760px]:hidden">Microphone</span>
         </button>
       ) : null}
-      {locked ? (
+      {camLocked ? (
         <button
           type="button"
           className="lk-button"
           aria-label="Camera locked"
-          title={MIC_LOCKED_MESSAGE}
+          title={locked ? MIC_LOCKED_MESSAGE : CAM_LOCKED_MESSAGE}
           data-mic-locked="true"
-          onClick={noteMicLocked}
+          onClick={noteCamLocked}
         >
           <Lock aria-hidden width={16} height={16} />
           <span className="max-[760px]:hidden">Camera</span>

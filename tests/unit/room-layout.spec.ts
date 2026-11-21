@@ -1420,13 +1420,54 @@ test("on a computer, the bar shows locked microphone and camera buttons only whi
   await expect(cam).toBeVisible();
   // LiveKit's own bar is laid out in the same row.
   await expect(page.locator("[data-lk-stock-bar]")).toHaveCSS("display", "contents");
+  // Allowed to talk while still locked: the microphone only (LiveKit's list holds just it).
   await page.evaluate(() => {
     const w = window as unknown as MicWin;
-    (w.__room.localParticipant.permissions as { canPublish: boolean }).canPublish = true;
+    Object.assign(w.__room.localParticipant.permissions as object, { canPublish: true, canPublishSources: [2] });
+    w.__room.emit("participantPermissionsChanged");
+  });
+  await expect(locked).toHaveCount(0);
+  await expect(cam).toBeVisible();
+  await expect(cam).toHaveAttribute("title", "Your camera is locked. An Owner, Host, or Moderator can unlock it.");
+  // Unlocked: neither.
+  await page.evaluate(() => {
+    const w = window as unknown as MicWin;
+    Object.assign(w.__room.localParticipant.permissions as object, { canPublish: true, canPublishSources: [] });
     w.__room.emit("participantPermissionsChanged");
   });
   await expect(locked).toHaveCount(0);
   await expect(cam).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("allowed to talk while locked: the phone says so, the microphone works, the camera stays locked and says why", async ({ page }) => {
+  const errors = await load(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await micSetup(page, true);
+  await loadMicScreens(page);
+  await page.evaluate(() => {
+    const w = window as unknown as MicWin;
+    const Bar = w.__mods.MobileControlBar.default as (p: Record<string, unknown>) => null;
+    const Notice = w.__mods.MicLockNotice.default as () => null;
+    w.ReactDOM.createRoot(document.getElementById("app")!).render(
+      w.React.createElement("div", null, w.React.createElement(Bar, { onLeave: () => {} }), w.React.createElement(Notice)),
+    );
+  });
+  await expect(page.getByRole("button", { name: "Microphone locked" })).toBeVisible();
+  await page.evaluate(() => {
+    const w = window as unknown as MicWin;
+    Object.assign(w.__room.localParticipant.permissions as object, { canPublish: true, canPublishSources: [2] });
+    w.__room.emit("participantPermissionsChanged");
+  });
+  const notice = page.locator("[data-mic-lock-notice]");
+  await expect(notice).toContainText("You can now unmute. Your camera stays locked.");
+  // The microphone is theirs: the button unmutes.
+  await page.getByRole("button", { name: "Unmute microphone" }).click();
+  expect(await page.evaluate(() => (window as unknown as MicWin).__micCalls)).toEqual([true]);
+  // The camera says why and is never turned on.
+  await page.getByRole("button", { name: "Camera locked" }).click();
+  await expect(notice).toContainText("Your camera is locked.");
+  expect(await page.evaluate(() => (window as unknown as MicWin & { __camCalls?: boolean[] }).__camCalls ?? [])).toEqual([]);
   expect(errors).toEqual([]);
 });
 
@@ -1491,7 +1532,7 @@ test("a participant's computer bar has neither Mute all nor Lock", async ({ page
   expect(errors).toEqual([]);
 });
 
-test("a host's phone menu: Allow mic and camera on someone locked, Lock mic and camera again once allowed, nothing while unlocked", async ({ page }) => {
+test("a host's phone menu: Allow to unmute on someone locked, Lock microphone again once allowed, nothing while unlocked", async ({ page }) => {
   const errors = await load(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await micSetup(page, false);
@@ -1523,7 +1564,7 @@ test("a host's phone menu: Allow mic and camera on someone locked, Lock mic and 
 
   // Locked, Grace not allowed.
   let sheet = await open();
-  await sheet.getByRole("button", { name: "Allow mic and camera" }).click();
+  await sheet.getByRole("button", { name: "Allow to unmute" }).click();
   await expect.poll(posts).toEqual([
     { url: "/api/livekit/mic-lock", method: "POST", body: JSON.stringify({ slug: "weekly", room: "weekly-room", action: "allow", participantIdentity: "user_g#1" }) },
   ]);
@@ -1532,7 +1573,7 @@ test("a host's phone menu: Allow mic and camera on someone locked, Lock mic and 
   // Allowed: the item is now Lock microphone again.
   await page.evaluate(() => { (window as unknown as MicWin).__lockAnswer = { locked: true, allowed: ["user_g"] }; });
   sheet = await open();
-  await sheet.getByRole("button", { name: "Lock mic and camera again" }).click();
+  await sheet.getByRole("button", { name: "Lock microphone again" }).click();
   await expect.poll(async () => (await posts()).at(-1)?.body).toBe(
     JSON.stringify({ slug: "weekly", room: "weekly-room", action: "relock", participantIdentity: "user_g#1" }),
   );
@@ -1541,6 +1582,6 @@ test("a host's phone menu: Allow mic and camera on someone locked, Lock mic and 
   await page.evaluate(() => { (window as unknown as MicWin).__lockAnswer = { locked: false, allowed: [] }; });
   sheet = await open();
   await expect(sheet.getByRole("button", { name: "Mute mic" })).toBeVisible();
-  await expect(sheet.getByRole("button", { name: /Allow mic and camera|Lock mic and camera again/ })).toHaveCount(0);
+  await expect(sheet.getByRole("button", { name: /Allow to unmute|Lock microphone again/ })).toHaveCount(0);
   expect(errors).toEqual([]);
 });

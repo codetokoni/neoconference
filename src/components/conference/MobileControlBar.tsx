@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, Video, VideoOff, MoreHorizontal, EyeOff, Lock } from 'lucide-react';
-import { enableCamera, enableMicrophone, MIC_LOCKED_MESSAGE, noteMicLocked, useMicLocked } from './micLockClient';
+import { CAM_LOCKED_MESSAGE, enableCamera, enableMicrophone, MIC_LOCKED_MESSAGE, noteMicLocked, useCamLocked, useMicLocked } from './micLockClient';
 import { HostMicControlsMobile, useIsModerator } from './MuteEveryone';
 import { useLocalParticipant } from '@livekit/components-react';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
@@ -49,6 +49,8 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
   // Locked by an Owner, Host or Moderator (micLockClient.ts): the button
   // shows a lock and says why instead of trying.
   const micLocked = useMicLocked();
+  // The camera stays locked for someone only allowed to talk.
+  const camLocked = useCamLocked();
   const moderator = useIsModerator();
   const toggleMic = useCallback(() => {
     if (micLocked && !isMicrophoneEnabled) {
@@ -177,14 +179,14 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
       {/* Cam */}
       <button
         type="button"
-        aria-label={micLocked ? 'Camera locked' : isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
-        aria-pressed={micLocked ? undefined : isCameraEnabled}
-        title={micLocked ? MIC_LOCKED_MESSAGE : undefined}
-        data-mic-locked={micLocked ? 'true' : undefined}
+        aria-label={camLocked ? 'Camera locked' : isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
+        aria-pressed={camLocked ? undefined : isCameraEnabled}
+        title={camLocked ? (micLocked ? MIC_LOCKED_MESSAGE : CAM_LOCKED_MESSAGE) : undefined}
+        data-mic-locked={camLocked ? 'true' : undefined}
         onClick={toggleCam}
         className={`${pill} ${isCameraEnabled ? pillEnabled : pillDisabled}`}
       >
-        {micLocked ? (
+        {camLocked ? (
           <Lock className="w-4 h-4 text-amber-300" aria-hidden />
         ) : isCameraEnabled ? (
           <Video className="w-4 h-4" />

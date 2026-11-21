@@ -112,6 +112,7 @@ class RoomView {
     required this.elapsed,
     this.micOn = false,
     this.micLocked = false,
+    this.camLocked = false,
     this.micLockOn = false,
     this.micLockBusy = false,
     this.cameraOn = false,
@@ -161,6 +162,10 @@ class RoomView {
   /// An Owner, Host or Moderator locked this person's microphone: the Mic
   /// button shows a lock and says why instead of unmuting.
   final bool micLocked;
+
+  /// The camera is locked: with the microphone, or on its own while this
+  /// person is allowed to talk.
+  final bool camLocked;
 
   /// Participant microphones are locked in this meeting (the toolbar's
   /// "Unmute everyone"), as the server last confirmed it.
