@@ -19,7 +19,8 @@ void main() {
 
   test('a network failure is words, with no session ID', () {
     final said = describeActionError(dnsFailure);
-    expect(said, "Couldn't reach NeoLinguaMeet. Check your connection and try again.");
+    // A failed lookup names DNS (dns_failure_text_test.dart).
+    expect(said, startsWith("Your network couldn't find NeoLinguaMeet's servers."));
     expect(said, isNot(contains('sess_')));
   });
 
@@ -46,7 +47,7 @@ void main() {
     await tester.tap(find.text('Schedule meeting'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining("Couldn't reach NeoLinguaMeet"), findsOneWidget);
+    expect(find.textContaining("Your network couldn't find NeoLinguaMeet's servers"), findsOneWidget);
     expect(find.textContaining('sess_'), findsNothing);
     expect(find.textContaining('ClientException'), findsNothing);
   });
