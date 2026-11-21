@@ -14,7 +14,7 @@ import "./apiV1-stubs/install";
 
 process.env.CLERK_SECRET_KEY = "sk_test_capacity";
 process.env.PLATFORM_OWNER_EMAILS = "platform@example.com";
-process.env.ADMIN_EMAILS = "";
+process.env.ADMIN_EMAILS = "listed@example.com";
 process.env.KV_REST_API_URL = "https://kv.invalid";
 process.env.KV_REST_API_TOKEN = "stub";
 process.env.NEXT_PUBLIC_LIVEKIT_URL = "wss://lk.test";
@@ -36,6 +36,7 @@ g.__users = {
   user_mod: { emails: ["mod@example.com"] },
   user_ann: { emails: ["ann@example.com"] },
   user_admin: { emails: ["platform@example.com"] },
+  user_listed: { emails: ["listed@example.com"] },
 };
 g.__lkParticipants = { big: [{ identity: "user_owner#a" }] };
 
@@ -78,10 +79,10 @@ async function main() {
     g.__rooms = [{ name: "big", numParticipants: a }, { name: "other", numParticipants: total - a - 3 }, { name: "small", numParticipants: 3 }];
     C.__resetConnectedCache();
   };
-  async function join(who: string) {
+  async function join(who: string, link = "room=big&event=big") {
     g.__who = who;
     await rememberConfirmation(who, "Test Attendee");
-    const res = await token.GET(new NextRequest("https://www.neoconference.app/api/livekit/token?room=big&event=big&nonce=z1"));
+    const res = await token.GET(new NextRequest(`https://www.neoconference.app/api/livekit/token?${link}&nonce=z1`));
     return { status: res.status, body: (await res.json()) as Record<string, unknown> };
   }
 
@@ -133,6 +134,13 @@ async function main() {
     for (const who of ["user_host", "user_mod"]) {
       assert.equal((await join(who)).body.error, "room_full", `${who} at the limit itself`);
     }
+  });
+
+  await t("on a bare room link (no meeting to read roles from) an ADMIN_EMAILS admin still gets in; an attendee does not", async () => {
+    connected(990);
+    const r = await join("user_listed", "room=big");
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal((await join("user_ann", "room=big")).body.error, "room_full");
   });
 
   await t("when LiveKit cannot be counted, nobody is refused", async () => {
