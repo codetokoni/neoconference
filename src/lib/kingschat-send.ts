@@ -95,8 +95,11 @@ async function refreshKcAccessToken(
   }
 }
 
-/** The sender's usable access token, refreshing it when near expiry. */
-async function senderToken(
+/**
+ * A usable KingsChat access token for an account, refreshing it when near
+ * expiry. Also used to read people's KingsChat names (kcNameBackfill.ts).
+ */
+export async function senderToken(
   senderClerkId: string,
 ): Promise<{ token: string } | { reason: 'sender_not_linked' | 'refresh_failed' }> {
   let tokens = await loadKcTokens(senderClerkId);

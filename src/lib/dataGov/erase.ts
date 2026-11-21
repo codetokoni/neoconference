@@ -429,6 +429,7 @@ export const ERASE_STEPS: EraseStep[] = [
           `neo:push:${p.uid}`,
           `neo:fcm:${p.uid}`,
           `neo:kc:tokens:${p.uid}`,
+          `neo:kc:name-backfill:tried:${p.uid}`,
           `neo:presence:${p.uid}`,
           `apiplan:${p.uid}`,
         ],
