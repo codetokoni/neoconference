@@ -31,6 +31,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useRoomContext } from '@livekit/components-react';
+import { enableMicrophone } from '@/components/conference/micLockClient';
 
 // WakeLock and WakeLockSentinel come from the DOM typings. A local copy of
 // them used to live here and clashed with the real ones once the compiler
@@ -148,9 +149,8 @@ export default function BackgroundContinuity({
     };
 
     const togglePlay = () => {
-      const lp = room?.localParticipant;
-      if (!lp) return;
-      lp.setMicrophoneEnabled(true).catch(() => {});
+      // Headset and keyboard media keys: through the lock, like the button.
+      void enableMicrophone(room?.localParticipant, true);
     };
     const togglePause = () => {
       const lp = room?.localParticipant;

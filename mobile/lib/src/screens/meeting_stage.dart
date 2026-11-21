@@ -933,11 +933,14 @@ class _Controls extends StatelessWidget {
         children: [
           Expanded(
             child: NeoControlButton(
-              icon: room.micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
-              // "Mute everyone": tapping says why rather than failing.
-              label: room.micLocked ? 'Locked' : (room.micOn ? 'Mute' : 'Unmute'),
-              semanticLabel: room.micLocked ? 'Microphone muted by the host' : null,
-              tint: room.micLocked ? null : p.spectrumAt(3),
+              // Locked: a lock, and a tap says why (RoomController.toggleMic).
+              icon: room.micLocked && !room.micOn
+                  ? Icons.lock_rounded
+                  : room.micOn
+                      ? Icons.mic_rounded
+                      : Icons.mic_off_rounded,
+              label: room.micLocked && !room.micOn ? 'Locked' : room.micOn ? 'Mute' : 'Unmute',
+              tint: p.spectrumAt(3),
               active: room.micOn,
               onPressed: onMic,
               onMenu: onMicMenu,
@@ -988,14 +991,14 @@ class _Controls extends StatelessWidget {
             Expanded(
               child: NeoControlButton(
                 // Off when it would mute, on when it would let people talk.
-                icon: room.everyoneMuted ? Icons.mic_rounded : Icons.mic_off_rounded,
+                icon: room.micLockOn ? Icons.mic_rounded : Icons.mic_off_rounded,
                 // Six to a phone's width: the full words did not fit.
-                label: room.everyoneMuted ? 'Unmute all' : 'Mute all',
-                semanticLabel: room.everyoneMuted ? 'Unmute everyone' : 'Mute everyone',
+                label: room.micLockOn ? 'Unmute all' : 'Mute all',
+                semanticLabel: room.micLockOn ? 'Unmute everyone' : 'Mute everyone',
                 shrinkLabel: true,
                 tint: p.spectrumAt(1),
-                active: room.everyoneMuted,
-                enabled: !room.everyoneMutedBusy,
+                active: room.micLockOn,
+                enabled: !room.micLockBusy,
                 onPressed: () => onEveryoneMuted!(),
               ),
             ),

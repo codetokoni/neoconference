@@ -5,7 +5,6 @@ import {
   CarouselLayout,
   Chat,
   ConnectionStateToast,
-  ControlBar,
   FocusLayout,
   FocusLayoutContainer,
   GridLayout,
@@ -22,7 +21,7 @@ import {
 import { RoomEvent, Track } from 'livekit-client';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 import { enlargedTileGone } from './roomLayout';
-import { MuteEveryoneControlBarButton } from './MuteEveryone';
+import NeoControlBar from './NeoControlBar';
 
 /**
  * The meeting's video layout on a computer or tablet: LiveKit's own
@@ -167,9 +166,8 @@ export default function NeoVideoConference({ hideSelf = false }: { hideSelf?: bo
               </GridLayout>
             </div>
           )}
-          <ControlBar controls={{ chat: true, settings: false }} />
-          {/* Owner, host and moderator: "Mute everyone", right of Leave. */}
-          <MuteEveryoneControlBarButton />
+          {/* LiveKit's bar, with a locked microphone button when it is locked. */}
+          <NeoControlBar />
         </div>
         <Chat style={{ display: widget.showChat ? 'grid' : 'none' } as CSSProperties} />
       </LayoutContextProvider>

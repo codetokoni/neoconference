@@ -213,6 +213,17 @@ export const DATA_MAP: DataLocation[] = [
     erasedBy: "personalKeys",
   },
   {
+    id: "kv.micLock",
+    store: "kv",
+    pattern: "neo:miclock:<eventId> = { locked, allowed: [<uid>], by: <uid>, at }",
+    holds: "Locked participant microphones in a meeting, who may unmute anyway, and who changed it last",
+    personal: "User ids (allowed to unmute; who changed it)",
+    exported: false,
+    onDelete: "expire",
+    why: "Meeting moderation state, not about the person; gone 30 days after its last change.",
+    ttl: "30 days",
+  },
+  {
     id: "kv.shortLived",
     store: "kv",
     pattern: "neo:presence:<uid>, neo:knock:<eventId>:<uid>, neo:group:<gid>:rate:<uid>, apiplan:<uid>, ratelimit:*, neo:video:joinrl:<ip>, neo:videochat:rl:<room>:<ip>, billing:pending:<nonce>, neo:rec-egress:<egressId>",

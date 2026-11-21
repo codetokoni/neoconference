@@ -219,11 +219,6 @@ export interface NeoEvent {
    *  someone remains able to unlock or promote. */
   isLocked?: boolean;
 
-  /** "Mute everyone": while set, ordinary participants cannot publish a
-   *  microphone (src/lib/micLock.ts). Cleared by "Unmute everyone" and
-   *  when the meeting ends or empties. */
-  micLock?: { locked: true; by: string; at: string };
-
   /** Marks a "personal room" — one event per owner that is always
    *  reachable at the same short URL. Middleware ignores state='ended'
    *  for permanent events and always routes /<slug> to /room/, so the

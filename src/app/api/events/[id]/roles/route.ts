@@ -34,7 +34,7 @@ import {
   MeetingRoleError,
 } from "@/lib/meeting-roles";
 import { isMeetingRole, RANK, toLegacyRole, type MeetingRole } from "@/lib/permissions";
-import { isMicLocked, planMicLock } from "@/lib/micLock";
+import { getMicLock, isPerson, micAllowedFor, permitsMicrophone, withMicrophone, type LkParticipant } from "@/lib/micLock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   await broadcastRoleToLiveKit(event.slug, {
     userId: userId || undefined,
     emails: email ? [email] : [],
-  }, role, isMicLocked(event));
+  }, role, event.id);
 
   return NextResponse.json({
     ok: true,
@@ -171,8 +171,7 @@ async function broadcastRoleToLiveKit(
   roomName: string,
   target: { userId?: string; emails?: string[] },
   role: MeetingRole,
-  /** "Mute everyone" is on: the new role decides whether they keep a microphone. */
-  micLocked: boolean
+  eventId?: string,
 ): Promise<void> {
   const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
@@ -195,14 +194,23 @@ async function broadcastRoleToLiveKit(
       return false;
     });
 
+    // Locked microphones follow the new role (src/lib/micLock.ts): a
+    // Moderator's is never locked, and someone demoted while they are locked
+    // is locked too.
+    const micState = eventId ? await getMicLock(eventId) : null;
     await Promise.all(
       matches.map(async (p) => {
         let md: Record<string, unknown> = {};
         try { md = p.metadata ? JSON.parse(p.metadata) : {}; } catch { md = {}; }
         md.role = wireRole;
         const metadata = JSON.stringify(md);
-        const [lock] = planMicLock([{ ...p, metadata }], micLocked);
-        await svc.updateParticipant(roomName, p.identity, metadata, lock?.permission);
+        const perm = p.permission as unknown as LkParticipant["permission"];
+        const want = micState ? micAllowedFor(micState, { role: wireRole, userId: p.identity }) : null;
+        if (want !== null && perm && isPerson(p as unknown as LkParticipant) && permitsMicrophone(perm) !== want) {
+          await svc.updateParticipant(roomName, p.identity, { metadata, permission: withMicrophone(perm, want) as never });
+        } else {
+          await svc.updateParticipant(roomName, p.identity, metadata);
+        }
       })
     );
   } catch (err) {

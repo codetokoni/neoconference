@@ -67,8 +67,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         state: "ended",
         // Ended on purpose: rejoiners come back as attendees (FRS §7.4).
         endedBy: "host" as const,
-        // "Mute everyone" belonged to this meeting, not the next one.
-        micLock: undefined,
         endedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }))

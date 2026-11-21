@@ -30,7 +30,6 @@ import CaptionsToggle from "@/components/CaptionsToggle";
 import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import ChatPanel from "@/components/ChatPanel";
-import { MicLockedNotice } from "@/components/conference/MuteEveryone";
 import { PrayerTimeSoFar, PrayerTimer } from "./PrayerTimer";
 import { EmbedBrand } from "./EmbedBrand";
 import { PeoplePanel } from "./PeoplePanel";
@@ -579,7 +578,6 @@ function ZoneEmbed() {
             )}
           </div>
           <VideoConference />
-          <MicLockedNotice />
           {/* Under the toolbar (about 60 px tall with two-line buttons on a phone): who runs the meeting, and the visitor's prayer time. */}
           <div style={{ position: "absolute", top: 78, left: 8, zIndex: 13, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, pointerEvents: "none" }}>
             <EmbedBrand />

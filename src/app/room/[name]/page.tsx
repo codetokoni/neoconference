@@ -30,6 +30,7 @@ import MobileMoreMenu from "@/components/MobileMoreMenu";
 import ConferenceErrorBoundary from "@/components/ConferenceErrorBoundary";
 import { RoomNameEntry, getLastChoices, getSavedDisplayName } from "@/components/RoomNameEntry";
 import FullNamePrompt from "@/components/FullNamePrompt";
+import MicLockNotice from "@/components/conference/MicLockNotice";
 import { needsFullName } from "@/lib/attendeeName";
 import PresenceHeartbeat from "@/components/groups/PresenceHeartbeat";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
@@ -60,7 +61,6 @@ import DesktopMoreMenu from "@/components/DesktopMoreMenu";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
 import EndMeetingButton from "@/components/EndMeetingButton";
-import { MicLockedNotice } from "@/components/conference/MuteEveryone";
 import TranscriptNoticeBanner from "@/components/TranscriptNoticeBanner";
 import MeetingTimer from "@/components/MeetingTimer";
 import InactivityDetector from "@/components/InactivityDetector";
@@ -982,7 +982,6 @@ function RoomContainer({
         <ConferenceErrorBoundary>
         <HiddenVideosProvider slug={eventSlug}>
         <RoleMetadataListener onRoleChange={setRoomRole} />
-        <MicLockedNotice />
         <TileRoleBadges ownerUserId={ownerUserId} />
         <ApplyPrejoinChoices choices={choices} />
         <PresenceHeartbeat eventSlug={eventSlug} />
@@ -1184,6 +1183,8 @@ function RoomContainer({
         <RoomIdleController /><MobileVideoConference hideSelf={hideSelf} />
         <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} roomRole={roomRole} slug={eventSlug} />
         <MediaRequestPrompt />
+        {/* "Your microphone is locked…" / "You can now unmute." */}
+        <MicLockNotice />
         <RoomAudioRenderer />
         <BackgroundContinuity eventName={roomName} eventSlug={eventSlug} />
         <HiddenVideoOverlay />

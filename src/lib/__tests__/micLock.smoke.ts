@@ -1,11 +1,10 @@
 // Run: npx tsx src/lib/__tests__/micLock.smoke.ts
 //
-// "Mute everyone" / "Unmute everyone" (src/lib/micLock.ts): a meeting-wide
-// microphone lock that LiveKit enforces through each ordinary participant's
-// canPublishSources. Through the real /api/livekit/micLock, /api/livekit/token
-// and /api/events/[id]/roles routes, with Clerk, KV and the LiveKit server
-// stood in for (./apiV1-stubs; its updateParticipant takes a locked
-// participant's microphone away, as livekit-server 1.9 does).
+// Locking participant microphones (src/lib/micLock.ts), through the real
+// /api/livekit/mic-lock and /api/livekit/token routes with Clerk, KV and
+// LiveKit's room service stood in for (./apiV1-stubs). That LiveKit itself
+// takes a revoked microphone down and refuses to publish it again is checked
+// against a real LiveKit server separately (the bench in the PR).
 
 import assert from "node:assert/strict";
 import "./apiV1-stubs/install";
@@ -19,22 +18,23 @@ process.env.NEXT_PUBLIC_LIVEKIT_URL = "wss://lk.test";
 process.env.LIVEKIT_API_KEY = "lk_key";
 process.env.LIVEKIT_API_SECRET = "lk_secret_that_is_long_enough_for_hs256";
 
-type Track = { sid: string; source: number; muted?: boolean };
-type LkPerson = { identity: string; metadata?: string; kind?: number; tracks?: Track[]; permission?: { canPublishSources?: number[] } };
-type Stubbed = typeof globalThis & {
+type Perm = { canPublish?: boolean; canSubscribe?: boolean; canPublishData?: boolean; canPublishSources?: number[]; hidden?: boolean };
+type P = { identity: string; metadata?: string; kind?: number; permission?: Perm };
+const g = globalThis as typeof globalThis & {
   __users: Record<string, { plan?: string; emails?: string[] }>;
   __who?: string;
-  __lkParticipants?: Record<string, LkPerson[]>;
-  __lkUpdated?: { identity: string; permission?: { canPublishSources?: number[] } }[];
-  __lkRoomMetadata?: Record<string, string>;
+  __lkParticipants?: Record<string, P[]>;
+  __lkUpdated?: Array<{ identity: string; permission?: Perm }>;
+  __lkData?: Array<{ room: string; data: { type: string; locked: boolean; allowed: string[] }; options?: { topic?: string } }>;
 };
-const g = globalThis as Stubbed;
 g.__users = {
   user_owner: { plan: "pro", emails: ["owner@example.com"] },
+  user_host: { emails: ["host@example.com"] },
   user_mod: { emails: ["mod@example.com"] },
   user_ann: { emails: ["ann@example.com"] },
   user_ben: { emails: ["ben@example.com"] },
   user_late: { emails: ["late@example.com"] },
+  user_stranger: { emails: ["stranger@example.com"] },
 };
 
 let finished = false;
@@ -52,185 +52,208 @@ const t = async (name: string, fn: () => Promise<void> | void) => {
   console.log("  ok  " + name);
 };
 
-const MIC = 2;
-const LOCKED = [1, 3, 4];
-/** The same, as a token spells it. */
-const JWT_LOCKED = ["camera", "screen_share", "screen_share_audio"];
-const mic = (sid: string): Track => ({ sid, source: MIC });
-const cam = (sid: string): Track => ({ sid, source: 1 });
-const screen = (sid: string): Track => ({ sid, source: 3 });
-const person = (identity: string, role: string, tracks: Track[], extra: Partial<LkPerson> = {}): LkPerson => ({
-  identity,
-  metadata: JSON.stringify({ role }),
-  tracks,
-  permission: { canPublishSources: [] },
-  ...extra,
-});
+const FULL: Perm = { canPublish: true, canSubscribe: true, canPublishData: true, canPublishSources: [] };
+const person = (identity: string, role: string): P => ({ identity, metadata: JSON.stringify({ role }), kind: 0, permission: { ...FULL } });
+const micOk = (identity: string) => {
+  const p = g.__lkParticipants!.room1.find((x) => x.identity === identity)!;
+  const s = p.permission?.canPublishSources ?? [];
+  return p.permission?.canPublish !== false && (s.length === 0 || s.includes(2));
+};
 
 async function main() {
   const { NextRequest } = await import("next/server");
   const { eventStore } = await import("../eventStore");
-  const L = await import("../micLock");
+  const roles = await import("../meeting-roles");
+  const M = await import("../micLock");
   const R = {
-    lock: await import("../../app/api/livekit/micLock/route"),
+    lock: await import("../../app/api/livekit/mic-lock/route"),
     token: await import("../../app/api/livekit/token/route"),
-    roles: await import("../../app/api/events/[id]/roles/route"),
   };
   const now = new Date().toISOString();
   await eventStore.create({
-    id: "ev_lock", slug: "lock-room", name: "Lock room", ownerUserId: "user_owner", ownerEmail: "owner@example.com",
-    state: "live", visibility: "unlisted", livekitRoom: "lock-room", waitingRoomEnabled: false, waitForHost: false,
-    createdAt: now, updatedAt: now,
-    roles: [{ identifier: "mod@example.com", role: "cohost", label: "mod@example.com", preApproved: true }],
+    id: "ev_mic", slug: "room1", name: "Mic meeting", ownerUserId: "user_owner", ownerEmail: "owner@example.com",
+    state: "live", visibility: "unlisted", livekitRoom: "room1", waitingRoomEnabled: false, waitForHost: false,
+    createdAt: now, updatedAt: now, roles: [],
   } as unknown as Parameters<typeof eventStore.create>[0]);
+  const owner = { userId: "user_owner", emails: ["owner@example.com"], isPlatformAdmin: false, role: "owner" as const, isOwner: true, reason: "owner" as const };
+  await roles.assignMeetingRole("ev_mic", { userId: "user_host" }, "host", owner);
+  await roles.assignMeetingRole("ev_mic", { userId: "user_mod" }, "moderator", owner);
 
-  const seat = () => {
-    g.__lkParticipants = {
-      "lock-room": [
-        person("user_owner#a", "host", [mic("TR_owner")]),
-        person("user_mod#a", "cohost", [mic("TR_mod")]),
-        person("user_ann#a", "attendee", [mic("TR_ann"), cam("TR_anncam"), screen("TR_annscr")]),
-        person("user_ben#a", "attendee", [cam("TR_bencam")]),
-        person("agent-captions", "attendee", [mic("TR_agent")], { kind: 4 }),
-      ],
-    };
-    g.__lkUpdated = [];
+  // Who is in the room, as LiveKit lists them (owner and host are "host" on
+  // the wire, the moderator "cohost"), with a captions agent and a recorder.
+  g.__lkParticipants = {
+    room1: [
+      person("user_owner#a", "host"),
+      person("user_host#b", "host"),
+      person("user_mod#c", "cohost"),
+      person("user_ann#d", "attendee"),
+      person("user_ann#e", "attendee"), // Ann on a second device
+      person("user_ben#f", "attendee"),
+      { identity: "agent-translate-1", kind: 4, permission: { ...FULL } },
+      { identity: "EG_rec1", kind: 2, permission: { ...FULL } },
+      // The captions worker joins as an ordinary participant: known by name.
+      { identity: "neo-captions", kind: 0, metadata: JSON.stringify({ role: "attendee" }), permission: { ...FULL } },
+    ],
   };
-  const inRoom = (id: string) => g.__lkParticipants!["lock-room"].find((p) => p.identity === id)!;
-  const sources = (id: string) => inRoom(id).permission?.canPublishSources ?? [];
-  const tracks = (id: string) => (inRoom(id).tracks ?? []).map((tr) => tr.source);
 
-  async function setLock(who: string, locked: unknown, room = "lock-room") {
+  async function act(who: string, action: string, participantIdentity?: string, extra: Record<string, unknown> = {}) {
     g.__who = who;
     const res = await R.lock.POST(
-      new NextRequest("https://neolinguameet.com/api/livekit/micLock", {
+      new Request("https://www.neoconference.app/api/livekit/mic-lock", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ roomName: room, locked }),
+        body: JSON.stringify({ slug: "room1", action, ...(participantIdentity ? { participantIdentity } : {}), ...extra }),
       }),
     );
     return { status: res.status, body: (await res.json()) as Record<string, unknown> };
   }
-  async function readLock(who: string) {
+  async function state(who: string) {
     g.__who = who;
-    const res = await R.lock.GET(new NextRequest("https://neolinguameet.com/api/livekit/micLock?room=lock-room"));
-    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+    const res = await R.lock.GET(new Request("https://www.neoconference.app/api/livekit/mic-lock?slug=room1"));
+    return (await res.json()) as Record<string, unknown>;
   }
-  async function tokenGrant(who: string) {
+  async function tokenSources(who: string) {
     g.__who = who;
-    const res = await R.token.GET(new NextRequest("https://neolinguameet.com/api/livekit/token?room=lock-room&event=lock-room&nonce=b1"));
+    const res = await R.token.GET(new NextRequest(`https://www.neoconference.app/api/livekit/token?room=room1&event=room1&nonce=z9`));
     const body = (await res.json()) as { token?: string };
     assert.equal(res.status, 200, JSON.stringify(body));
-    const claims = JSON.parse(Buffer.from(body.token!.split(".")[1], "base64url").toString());
-    return claims.video as { canPublishSources?: string[] };
+    const claims = JSON.parse(Buffer.from(body.token!.split(".")[1], "base64url").toString()) as { video: { canPublishSources?: string[] } };
+    return claims.video.canPublishSources ?? null;
   }
 
-  await t("only the owner, a host or a moderator may lock, checked on every call", async () => {
-    seat();
-    for (const who of ["user_ann", "user_late"]) {
-      const r = await setLock(who, true);
-      assert.equal(r.status, 403, who);
+  console.log("who may");
+
+  await t("an ordinary participant or a stranger may not lock, unlock, allow or lock again", async () => {
+    for (const who of ["user_ann", "user_stranger"]) {
+      for (const [action, target] of [["lock"], ["unlock"], ["allow", "user_ben#f"], ["relock", "user_ben#f"]] as Array<[string, string?]>) {
+        const r = await act(who, action, target);
+        assert.equal(r.status, 403, `${who} ${action}`);
+      }
     }
     g.__who = undefined;
-    assert.equal((await setLock(undefined as unknown as string, true)).status, 401);
-    assert.equal((await setLock("user_owner", "yes")).status, 400);
-    assert.equal((await setLock("user_owner", true, "no-such-room")).status, 404);
-    // Nothing changed for anyone.
-    assert.deepEqual(g.__lkUpdated, []);
-    assert.equal((await readLock("user_ann")).body.locked, false);
+    const res = await R.lock.POST(new Request("https://x.test/api/livekit/mic-lock", { method: "POST", body: JSON.stringify({ slug: "room1", action: "lock" }) }));
+    assert.equal(res.status, 401, "signed out");
+    assert.equal(micOk("user_ann#d"), true, "nothing changed");
+    assert.deepEqual(await state("user_owner"), { locked: false, allowed: [] });
   });
 
-  await t("Mute everyone: ordinary microphones go at once; cameras, screens, hosts and agents stay", async () => {
-    seat();
-    const r = await setLock("user_mod", true);
+  console.log("locking");
+
+  await t("a Moderator locks: everyone else's microphone is taken away at once; Owner, Host, Moderator and the agents keep theirs", async () => {
+    const r = await act("user_mod", "lock");
     assert.equal(r.status, 200, JSON.stringify(r.body));
-    assert.equal(r.body.locked, true);
-    assert.deepEqual(sources("user_ann#a"), LOCKED);
-    assert.deepEqual(sources("user_ben#a"), LOCKED);
-    assert.deepEqual(tracks("user_ann#a"), [1, 3]);
-    assert.deepEqual(tracks("user_owner#a"), [MIC]);
-    assert.deepEqual(tracks("user_mod#a"), [MIC]);
-    assert.deepEqual(tracks("agent-captions"), [MIC]);
-    assert.deepEqual(g.__lkUpdated!.map((u) => u.identity).sort(), ["user_ann#a", "user_ben#a"]);
-    // Every host's button reads this; the stored lock is what tokens follow.
-    assert.equal(JSON.parse(g.__lkRoomMetadata!["lock-room"]).micLock, true);
-    assert.equal((await readLock("user_owner")).body.locked, true);
-    // Pressing it again changes nobody.
-    g.__lkUpdated = [];
-    assert.equal((await setLock("user_owner", true)).status, 200);
-    assert.deepEqual(g.__lkUpdated, []);
+    assert.equal(r.body.changed, 3);
+    for (const id of ["user_ann#d", "user_ann#e", "user_ben#f"]) assert.equal(micOk(id), false, id);
+    for (const id of ["user_owner#a", "user_host#b", "user_mod#c", "agent-translate-1", "EG_rec1", "neo-captions"]) assert.equal(micOk(id), true, id);
+    // Camera and screen sharing stay; only the microphone is left out.
+    const ann = g.__lkParticipants!.room1.find((x) => x.identity === "user_ann#d")!.permission!;
+    assert.deepEqual(ann.canPublishSources, [1, 3, 4]);
+    assert.equal(ann.canPublish, true);
+    assert.equal(ann.canSubscribe, true);
+    assert.equal(ann.canPublishData, true);
+    const said = g.__lkData!.at(-1)!;
+    assert.deepEqual([said.data.type, said.data.locked, said.options?.topic], ["mic_lock", true, "mic_lock"]);
   });
 
-  await t("someone joining or reconnecting while locked gets no microphone; elevated roles do", async () => {
-    assert.deepEqual((await tokenGrant("user_late")).canPublishSources, JWT_LOCKED);
-    assert.deepEqual((await tokenGrant("user_ann")).canPublishSources, JWT_LOCKED);
-    assert.equal((await tokenGrant("user_owner")).canPublishSources, undefined);
-    assert.equal((await tokenGrant("user_mod")).canPublishSources, undefined);
+  await t("the moderators see the state; others only that it is locked", async () => {
+    assert.deepEqual(await state("user_host"), { locked: true, allowed: [] });
+    assert.deepEqual(await state("user_ben"), { locked: true, youMayUnmute: false });
   });
 
-  await t("a role change while locked: promoted gets the microphone back, demoted loses it", async () => {
-    g.__who = "user_owner";
-    const roles = (body: unknown) =>
-      R.roles.POST(
-        new NextRequest("https://neolinguameet.com/api/events/ev_lock/roles", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        }),
-        { params: Promise.resolve({ id: "ev_lock" }) },
-      );
-    const up = await roles({ userId: "user_ben", role: "moderator" });
-    assert.equal(up.status, 200, await up.clone().text());
-    assert.deepEqual(sources("user_ben#a"), []);
-    const down = await roles({ userId: "user_ben", role: "participant" });
-    assert.equal(down.status, 200, await down.clone().text());
-    assert.deepEqual(sources("user_ben#a"), LOCKED);
+  await t("someone who joins late, or rejoins, gets a token without the microphone; Owner, Host and Moderator do not", async () => {
+    assert.deepEqual(await tokenSources("user_late"), ["camera", "screen_share", "screen_share_audio"]);
+    assert.deepEqual(await tokenSources("user_ann"), ["camera", "screen_share", "screen_share_audio"]);
+    assert.equal(await tokenSources("user_mod"), null);
+    assert.equal(await tokenSources("user_host"), null);
+    assert.equal(await tokenSources("user_owner"), null);
   });
 
-  await t("LiveKit unreachable: the lock is put back and the caller keeps the last state", async () => {
-    const saved = g.__lkParticipants;
-    g.__lkParticipants = undefined; // listParticipants throws
-    const r = await setLock("user_owner", false);
-    assert.equal(r.status, 502);
-    assert.equal(r.body.locked, true);
-    assert.match(String(r.body.message), /Couldn't unmute everyone/);
-    assert.equal((await readLock("user_owner")).body.locked, true);
-    g.__lkParticipants = saved;
+  await t("a reconnect with a token from before the lock is locked when LiveKit says they joined", async () => {
+    const back = person("user_late#g", "attendee");
+    g.__lkParticipants!.room1.push(back);
+    const r = await M.enforceMicLockFor("ev_mic", "room1", back as never);
+    assert.equal(r?.changed, 1);
+    assert.equal(micOk("user_late#g"), false);
   });
 
-  await t("Unmute everyone lifts the lock; nobody is unmuted for them", async () => {
-    g.__lkUpdated = [];
-    const r = await setLock("user_owner", false);
+  console.log("allowing one person");
+
+  await t("allowing Ann lets her unmute on every device, without turning her microphone on; Ben stays locked", async () => {
+    const before = g.__lkUpdated!.length;
+    const r = await act("user_host", "allow", "user_ann#d");
     assert.equal(r.status, 200, JSON.stringify(r.body));
-    assert.equal(r.body.locked, false);
-    assert.deepEqual(sources("user_ann#a"), []);
-    assert.deepEqual(sources("user_ben#a"), []);
-    // Lifting changes permissions only: no microphone comes back by itself.
-    assert.deepEqual(tracks("user_ann#a"), [1, 3]);
-    assert.equal(JSON.parse(g.__lkRoomMetadata!["lock-room"]).micLock, false);
-    assert.equal((await tokenGrant("user_late")).canPublishSources, undefined);
+    assert.equal(micOk("user_ann#d"), true);
+    assert.equal(micOk("user_ann#e"), true);
+    assert.equal(micOk("user_ben#f"), false);
+    // Only permission changes: nothing published, nothing unmuted.
+    const changes = g.__lkUpdated!.slice(before);
+    assert.deepEqual(changes.map((c) => c.identity).sort(), ["user_ann#d", "user_ann#e"]);
+    assert.ok(changes.every((c) => c.permission && Object.keys(c).sort().join() === "identity,permission,room"));
+    assert.deepEqual(await state("user_ann"), { locked: true, youMayUnmute: true });
+    assert.deepEqual(await tokenSources("user_ann"), null, "and on rejoining");
   });
 
-  await t("locked with nobody in the room waits for the first token", async () => {
-    g.__lkParticipants = { other: [] };
-    const r = await setLock("user_owner", true);
-    assert.equal(r.status, 200, JSON.stringify(r.body));
-    assert.deepEqual((await tokenGrant("user_late")).canPublishSources, JWT_LOCKED);
-    await setLock("user_owner", false);
+  await t("locking Ann again takes her microphone away again", async () => {
+    const r = await act("user_owner", "relock", "user_ann#d");
+    assert.equal(r.status, 200);
+    assert.equal(micOk("user_ann#d"), false);
+    assert.equal(micOk("user_ann#e"), false);
+    assert.deepEqual(await state("user_owner"), { locked: true, allowed: [] });
   });
 
-  await t("planMicLock and the grant, alone", () => {
-    assert.deepEqual(L.micLockGrant({ micLock: { locked: true, by: "u", at: now } }, "attendee").canPublishSources, LOCKED);
-    assert.deepEqual(L.micLockGrant({ micLock: { locked: true, by: "u", at: now } }, "cohost"), {});
-    assert.deepEqual(L.micLockGrant({}, "attendee"), {});
-    assert.deepEqual(L.planMicLock([person("x", "attendee", [], { permission: { canPublishSources: LOCKED } })], true), []);
-    assert.equal(L.planMicLock([person("x", "host", [], { permission: { canPublishSources: LOCKED } })], true).length, 1);
-    assert.equal(JSON.parse(L.roomMetadataWithLock('{"theme":"dark"}', true)).theme, "dark");
-    assert.equal(JSON.parse(L.roomMetadataWithLock("not json", false)).micLock, false);
+  await t("allowing or locking again needs a person, and the lock to be on", async () => {
+    assert.equal((await act("user_mod", "allow")).status, 400);
+  });
+
+  await t("a Moderator's own microphone is never locked, whatever they are sent", async () => {
+    const r = await act("user_host", "relock", "user_mod#c");
+    assert.equal(r.status, 200);
+    assert.equal(micOk("user_mod#c"), true);
+  });
+
+  console.log("unlocking");
+
+  await t("unlocking lets everyone unmute; nobody is unmuted", async () => {
+    const before = g.__lkUpdated!.length;
+    const r = await act("user_mod", "unlock");
+    assert.equal(r.status, 200);
+    for (const id of ["user_ann#d", "user_ann#e", "user_ben#f", "user_late#g"]) assert.equal(micOk(id), true, id);
+    assert.ok(g.__lkUpdated!.slice(before).every((c) => c.permission && !("metadata" in c && c.metadata !== undefined)));
+    assert.deepEqual(g.__lkParticipants!.room1.find((x) => x.identity === "user_ben#f")!.permission!.canPublishSources, []);
+    assert.equal(await tokenSources("user_late"), null);
+    assert.equal((await act("user_mod", "allow", "user_ben#f")).status, 409, "nothing to allow when unlocked");
+  });
+
+  await t("a reconnect with a token from the lock is let go when LiveKit says they joined", async () => {
+    const stale = { ...person("user_ben#h", "attendee"), permission: { ...FULL, canPublishSources: [1, 3, 4] } };
+    g.__lkParticipants!.room1.push(stale);
+    await M.enforceMicLockFor("ev_mic", "room1", stale as never);
+    assert.equal(micOk("user_ben#h"), true);
+  });
+
+  console.log("the rules");
+
+  await t("a permission keeps what it had; only the microphone changes", () => {
+    assert.deepEqual(M.withMicrophone({ canPublish: true, canPublishSources: [], hidden: false } as Perm, false), { canPublish: true, canPublishSources: [1, 3, 4], hidden: false });
+    assert.deepEqual(M.withMicrophone({ canPublish: true, canPublishSources: [1, 3, 4] }, true), { canPublish: true, canPublishSources: [] });
+    assert.deepEqual(M.withMicrophone({ canPublish: true, canPublishSources: [1] }, true), { canPublish: true, canPublishSources: [1, 2] });
+    assert.deepEqual(M.withMicrophone({ canPublish: true, canPublishSources: [2] }, false), { canPublish: false, canPublishSources: [] });
+    assert.equal(M.permitsMicrophone({ canPublish: true, canPublishSources: [1, 3, 4] }), false);
+    assert.equal(M.permitsMicrophone(undefined), true);
+  });
+
+  await t("a room in another meeting cannot be named", async () => {
+    await eventStore.create({
+      id: "ev_other", slug: "other-room", name: "Other", ownerUserId: "user_stranger", ownerEmail: "stranger@example.com",
+      state: "live", visibility: "unlisted", livekitRoom: "other-room", createdAt: now, updatedAt: now, roles: [],
+    } as unknown as Parameters<typeof eventStore.create>[0]);
+    const r = await act("user_owner", "lock", undefined, { room: "other-room" });
+    assert.equal(r.status, 400);
+    assert.equal(r.body.error, "room_not_this_meeting");
   });
 
   finished = true;
-  console.log(`\n${n} checks passed`);
+  console.log(`micLock: ${n} checks passed`);
 }
 
 main().catch((e) => {

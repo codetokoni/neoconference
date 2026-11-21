@@ -4,18 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:livekit_client/livekit_client.dart' show ParticipantPermissions;
-// ignore: implementation_imports
-import 'package:livekit_client/src/proto/livekit_models.pb.dart' as lk_models;
 import 'package:neoconference/src/meetings/room_view.dart';
-import 'package:neoconference/src/room/room_controller.dart';
 import 'package:neoconference/src/screens/meeting_stage.dart';
 
-/// "Mute everyone" / "Unmute everyone": a meeting-wide microphone lock the
-/// server enforces through LiveKit (POST /api/livekit/micLock). The app reads
-/// it from the room's metadata and from what LiveKit lets this device
-/// publish, and shows the toggle right of Leave to owners, hosts and
-/// moderators.
+/// "Mute everyone" / "Unmute everyone" in the control bar, right of Leave:
+/// the host sheets' "Lock participant microphones" (POST /api/livekit/mic-lock,
+/// enforced by LiveKit; mic_lock_test.dart has the rule and the notices),
+/// for owners, hosts and moderators.
 /// Roboto, what Android draws the bar in, from the Flutter SDK: the test
 /// font draws every letter as a square and says "Leave" does not fit when
 /// it does. False when the SDK's copy cannot be found.
@@ -37,34 +32,9 @@ void main() {
   var realFont = false;
   setUpAll(() async => realFont = await loadRoboto());
 
-  group('reading the lock', () {
-    test('the room metadata says which way it went', () {
-      expect(roomMicLock('{"micLock":true}'), isTrue);
-      expect(roomMicLock('{"micLock":false,"other":1}'), isFalse);
-      expect(roomMicLock(null), isNull);
-      expect(roomMicLock('not json'), isNull);
-      expect(roomMicLock('{"micLock":"yes"}'), isNull);
-    });
-
-    test('a microphone left out of what this device may publish is locked', () {
-      const s = lk_models.TrackSource.values;
-      ParticipantPermissions perms(List<lk_models.TrackSource> sources) =>
-          ParticipantPermissions(canPublish: true, canPublishSources: sources);
-      final camera = s.firstWhere((x) => x.value == 1);
-      final mic = s.firstWhere((x) => x.value == 2);
-      final screen = s.firstWhere((x) => x.value == 3);
-      expect(micLockedBy(perms([camera, screen])), isTrue);
-      expect(micLockedBy(perms([camera, mic, screen])), isFalse);
-      // No list at all allows everything: the usual, unlocked case.
-      expect(micLockedBy(perms(const [])), isFalse);
-      expect(micLockedBy(null), isFalse);
-    });
-  });
-
   group('the control bar', () {
     Widget stage({
-      bool everyoneMuted = false,
-      bool micLocked = false,
+      bool micLockOn = false,
       Future<void> Function()? onEveryoneMuted,
     }) =>
         MaterialApp(
@@ -76,8 +46,7 @@ void main() {
                 link: RoomLinkState.live,
                 elapsed: const Duration(minutes: 1),
                 canManage: onEveryoneMuted != null,
-                everyoneMuted: everyoneMuted,
-                micLocked: micLocked,
+                micLockOn: micLockOn,
               ),
               actions: RoomActions(
                 toggleMic: () async {},
@@ -114,7 +83,7 @@ void main() {
 
     testWidgets('while locked it reads Unmute all, from the server-confirmed state', (tester) async {
       await phone(tester);
-      await tester.pumpWidget(stage(everyoneMuted: true, onEveryoneMuted: () async {}));
+      await tester.pumpWidget(stage(micLockOn: true, onEveryoneMuted: () async {}));
       await tester.pump();
       expect(find.text('Unmute all'), findsOneWidget);
       expect(find.bySemanticsLabel('Unmute everyone'), findsOneWidget);
@@ -127,7 +96,7 @@ void main() {
         return;
       }
       await phone(tester, width: 360);
-      await tester.pumpWidget(stage(everyoneMuted: true, onEveryoneMuted: () async {}));
+      await tester.pumpWidget(stage(micLockOn: true, onEveryoneMuted: () async {}));
       await tester.pump();
       expect(tester.takeException(), isNull);
       for (final label in ['Unmute all', 'Leave', 'Unmute', 'More']) {
@@ -144,14 +113,6 @@ void main() {
       await tester.pump();
       expect(find.text('Mute all'), findsNothing);
       expect(find.text('Unmute all'), findsNothing);
-    });
-
-    testWidgets("a locked participant's microphone says so", (tester) async {
-      await phone(tester);
-      await tester.pumpWidget(stage(micLocked: true));
-      await tester.pump();
-      expect(find.text('Locked'), findsOneWidget);
-      expect(find.bySemanticsLabel('Microphone muted by the host'), findsOneWidget);
     });
   });
 }

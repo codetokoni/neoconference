@@ -31,6 +31,8 @@ export class RoomServiceClient {
   // ({ room: [{ identity }] }); otherwise it throws, as it always did, so
   // routes that fail open on it behave as before.
   async listParticipants(room) {
+    // globalThis.__lkHang: LiveKit not answering at all (a call that never returns).
+    if (globalThis.__lkHang) return new Promise(() => {});
     const all = globalThis.__lkParticipants;
     if (!all) throw new Error("listParticipants: not stubbed");
     return all[room] ?? [];
@@ -58,26 +60,23 @@ export class RoomServiceClient {
     (globalThis.__lkMuted ??= []).push({ room, identity, trackSid, muted });
     return {};
   }
-  // Recorded in globalThis.__lkUpdated ([{ room, identity, metadata, permission }])
-  // and applied to the participant in globalThis.__lkParticipants. As the
-  // real server (1.9) does, a permission whose canPublishSources leaves out
-  // the microphone (2) takes their published microphone away.
-  async updateParticipant(room, identity, metadata, permission) {
+  // Both of LiveKit's forms: (room, identity, { metadata, permission }) and
+  // (room, identity, metadata, permission). Applied to the participant in
+  // globalThis.__lkParticipants and recorded in globalThis.__lkUpdated.
+  async updateParticipant(room, identity, a, b) {
+    const opts = typeof a === "object" && a !== null ? a : { metadata: a, permission: b };
     const p = (globalThis.__lkParticipants?.[room] ?? []).find((x) => x.identity === identity);
     if (!p) throw new Error("twirp error not_found: participant not found");
-    (globalThis.__lkUpdated ??= []).push({ room, identity, metadata, permission });
-    if (metadata !== undefined) p.metadata = metadata;
-    if (permission) {
-      p.permission = permission;
-      const sources = permission.canPublishSources ?? [];
-      if (sources.length && !sources.includes(2)) p.tracks = (p.tracks ?? []).filter((t) => t.source !== 2);
-    }
+    if (opts.metadata !== undefined) p.metadata = opts.metadata;
+    if (opts.permission !== undefined) p.permission = { ...opts.permission };
+    (globalThis.__lkUpdated ??= []).push({ room, identity, ...opts });
     return p;
   }
-  // Room metadata in globalThis.__lkRoomMetadata ({ room: metadata }).
-  async updateRoomMetadata(room, metadata) {
-    if (globalThis.__livekitDown) throw new Error("twirp error unavailable");
-    (globalThis.__lkRoomMetadata ??= {})[room] = metadata;
-    return { name: room, metadata };
+  // Recorded in globalThis.__lkData ([{ room, data (parsed JSON), kind, options }]).
+  async sendData(room, data, kind, options) {
+    let parsed;
+    try { parsed = JSON.parse(new TextDecoder().decode(data)); } catch { parsed = null; }
+    (globalThis.__lkData ??= []).push({ room, data: parsed, kind, options });
+    return {};
   }
 }
