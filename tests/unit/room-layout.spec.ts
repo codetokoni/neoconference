@@ -66,6 +66,9 @@ function moduleScript(file: string, name: string): string {
       if (name === "./MobileParticipantTile") return window.__mods.MobileParticipantTile;
       if (name === "./keptPlace") return window.__mods.keptPlace;
       if (name === "./micLockClient" || name === "@/components/conference/micLockClient") return window.__mods.micLockClient;
+      if (name === "./MuteEveryone") return window.__mods.MuteEveryone;
+      // The room page's /room/<room>?event=<slug>; none here, so the room's name.
+      if (name === "next/navigation") return { useParams: function () { return null; }, useSearchParams: function () { return null; } };
       if (name === "livekit-client") return {
         RoomEvent: { DataReceived: "dataReceived", ParticipantConnected: "participantConnected", ParticipantDisconnected: "participantDisconnected", ParticipantPermissionsChanged: "participantPermissionsChanged", Connected: "connected", Reconnected: "reconnected" },
         ParticipantEvent: new Proxy({}, { get: function (_t, k) { return String(k); } }),
@@ -144,6 +147,7 @@ async function load(page: Page): Promise<string[]> {
         useLocalParticipant: function () { return { localParticipant: window.__room.localParticipant, isMicrophoneEnabled: !!window.__micOn, isCameraEnabled: false }; },
         ControlBar: function (props) { return window.React.createElement("div", { "data-lk-stock-bar": "", style: props && props.style }); },
         useRoomContext: function () { return window.__room; },
+        useRoomInfo: function () { return { name: window.__room.name || "", metadata: undefined }; },
         useIsSpeaking: function () { return false; },
         useTracks: function () { return []; },
         VideoTrack: function () { return null; },
@@ -922,6 +926,8 @@ type MicWin = Win & {
   __micOn: boolean;
   __fetches: Array<{ url: string; method: string; body: string }>;
   __lockAnswer: { locked: boolean; allowed: string[] };
+  /** The next POST to /api/livekit/mic-lock fails as the server does when LiveKit does not answer. */
+  __lockFail?: boolean;
   __room: Win["__room"] & { name?: string; localParticipant: Record<string, unknown> };
 };
 
@@ -946,6 +952,10 @@ async function micSetup(page: Page, locked: boolean) {
       const url = String(input);
       w.__fetches.push({ url, method: init?.method || "GET", body: typeof init?.body === "string" ? init.body : "" });
       if (url.startsWith("/api/livekit/mic-lock")) {
+        if (init?.method === "POST" && w.__lockFail) {
+          const fail = { error: "livekit_unavailable", message: "Couldn't mute everyone. The meeting server didn't answer. Try again." };
+          return new Response(JSON.stringify(fail), { status: 502, headers: { "content-type": "application/json" } });
+        }
         const body = init?.method === "POST" ? { ok: true } : w.__lockAnswer;
         return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
       }
@@ -955,6 +965,7 @@ async function micSetup(page: Page, locked: boolean) {
 }
 
 async function loadMicScreens(page: Page) {
+  await page.addScriptTag({ content: moduleScript("src/components/conference/MuteEveryone.tsx", "MuteEveryone") });
   await page.addScriptTag({ content: moduleScript("src/components/conference/MicLockNotice.tsx", "MicLockNotice") });
   await page.addScriptTag({ content: moduleScript("src/components/conference/MobileControlBar.tsx", "MobileControlBar") });
   await page.addScriptTag({ content: moduleScript("src/components/conference/NeoControlBar.tsx", "NeoControlBar") });
@@ -1034,6 +1045,58 @@ test("on a computer, the bar shows a locked microphone button only while it is l
     w.__room.emit("participantPermissionsChanged");
   });
   await expect(locked).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("a host's computer bar: Mute everyone right of Leave, labelled from the server's state, kept on a failure", async ({ page }) => {
+  const errors = await load(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await micSetup(page, false);
+  await page.evaluate(() => {
+    const w = window as unknown as MicWin;
+    w.__lockAnswer = { locked: false, allowed: [] };
+    w.__room.localParticipant.metadata = JSON.stringify({ role: "host" });
+  });
+  await loadMicScreens(page);
+  await page.evaluate(() => {
+    const w = window as unknown as MicWin;
+    const Bar = w.__mods.NeoControlBar.default as () => null;
+    w.ReactDOM.createRoot(document.getElementById("app")!).render(w.React.createElement(Bar));
+  });
+  const mute = page.getByRole("button", { name: "Mute everyone" });
+  await expect(mute).toBeVisible();
+  // After LiveKit's bar, whose last button is Leave.
+  expect(await mute.evaluate((b) => b.previousElementSibling?.hasAttribute("data-lk-stock-bar"))).toBe(true);
+
+  // Pressed: the lock is asked for, and the label follows what the server then says.
+  await page.evaluate(() => ((window as unknown as MicWin).__lockAnswer = { locked: true, allowed: [] }));
+  await mute.click();
+  const unmute = page.getByRole("button", { name: "Unmute everyone" });
+  await expect(unmute).toBeVisible();
+  const posts = await page.evaluate(() => (window as unknown as MicWin).__fetches.filter((f) => f.method === "POST").map((f) => JSON.parse(f.body)));
+  expect(posts).toEqual([{ slug: "weekly-room", room: "weekly-room", action: "lock" }]);
+
+  // A press that fails keeps the confirmed label and says why.
+  await page.evaluate(() => ((window as unknown as MicWin).__lockFail = true));
+  await unmute.click();
+  await expect(page.getByRole("alert")).toHaveText("Couldn't mute everyone. The meeting server didn't answer. Try again.");
+  await expect(page.getByRole("button", { name: "Unmute everyone" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("a participant's computer bar has no Mute everyone", async ({ page }) => {
+  const errors = await load(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await micSetup(page, false);
+  await page.evaluate(() => ((window as unknown as MicWin).__room.localParticipant.metadata = JSON.stringify({ role: "attendee" })));
+  await loadMicScreens(page);
+  await page.evaluate(() => {
+    const w = window as unknown as MicWin;
+    const Bar = w.__mods.NeoControlBar.default as () => null;
+    w.ReactDOM.createRoot(document.getElementById("app")!).render(w.React.createElement(Bar));
+  });
+  await expect(page.locator("[data-lk-stock-bar]")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /everyone/ })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

@@ -20,10 +20,15 @@ Future<bool> loadRoboto() async {
   final dir = Directory('$root/bin/cache/artifacts/material_fonts');
   if (!dir.existsSync()) return false;
   final loader = FontLoader('Roboto');
+  var added = 0;
   for (final name in ['roboto-regular.ttf', 'roboto-medium.ttf', 'roboto-bold.ttf']) {
     final file = File('${dir.path}/$name');
-    if (file.existsSync()) loader.addFont(Future.value(ByteData.sublistView(file.readAsBytesSync())));
+    if (!file.existsSync()) continue;
+    loader.addFont(Future.value(ByteData.sublistView(file.readAsBytesSync())));
+    added++;
   }
+  // Without the regular weight the bar would still be drawn in squares.
+  if (added == 0 || !File('${dir.path}/roboto-regular.ttf').existsSync()) return false;
   await loader.load();
   return true;
 }
