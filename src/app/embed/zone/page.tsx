@@ -30,7 +30,7 @@ import CaptionsToggle from "@/components/CaptionsToggle";
 import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
 import ChatPanel from "@/components/ChatPanel";
-import { PrayerTimeSoFar, PrayerTimer } from "./PrayerTimer";
+import { PrayerTimeSoFar, ZoneTimer } from "./PrayerTimer";
 import { EmbedBrand } from "./EmbedBrand";
 import { PeoplePanel } from "./PeoplePanel";
 import { setEmbedSession } from "@/lib/partners/embedAuth";
@@ -38,6 +38,8 @@ import { PROTOCOL_VERSION, parseParentMessage, type EmbedEvent } from "@/lib/par
 
 type Meeting = { title: string; zoneId: string };
 type Participant = { name: string; verified: boolean };
+/** What the partner's integration switches on, as the server answered at redeem. */
+type Features = { prayerTimer: boolean };
 /** `moderator`: a zone leader, who may mute others (the server checks each time). */
 type Live = { token: string; wsUrl: string; room: string; moderator: boolean };
 
@@ -101,6 +103,8 @@ function ZoneEmbed() {
   const [phase, setPhase] = useState<Phase>({ k: "handshake" });
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [participant, setParticipant] = useState<Participant | null>(null);
+  // Off until the server says: a partner without the timer never sees it flash.
+  const [features, setFeatures] = useState<Features>({ prayerTimer: false });
   const [notice, setNotice] = useState<string | null>(null);
 
   const sessionRef = useRef<string | null>(null);
@@ -233,7 +237,7 @@ function ZoneEmbed() {
     async (code: string, parentOrigin: string) => {
       setPhase({ k: "redeeming" });
       try {
-        const r = await post<{ session: string; meeting: Meeting; participant: Participant }>("/api/partner/embed/redeem", {
+        const r = await post<{ session: string; meeting: Meeting; participant: Participant; features?: Partial<Features> }>("/api/partner/embed/redeem", {
           code,
           parentOrigin,
         });
@@ -242,6 +246,7 @@ function ZoneEmbed() {
         if (parentOrigin !== "self") parentOriginRef.current = parentOrigin;
         setMeeting(r.meeting);
         setParticipant(r.participant);
+        setFeatures({ prayerTimer: r.features?.prayerTimer === true });
         emit({ type: "ready", meeting: r.meeting, participant: r.participant });
         if (wantJoinRef.current || tabMode) void join();
         else setPhase({ k: "prejoin" });
@@ -391,7 +396,8 @@ function ZoneEmbed() {
   const [showChat, setShowChat] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
   const getSession = useCallback(() => sessionRef.current, []);
-  // The partner's page hears the visitor's prayer time each second while it counts.
+  // The partner's page hears the visitor's prayer time each second while it
+  // counts; only PrayerTimer calls this, so a partner without it hears none.
   const onPrayerTick = useCallback(
     (seconds: number, connected: boolean, sessionId: string | null) => emit({ type: "prayer-time", seconds, connected, sessionId }),
     [emit],
@@ -578,10 +584,10 @@ function ZoneEmbed() {
             )}
           </div>
           <VideoConference />
-          {/* Under the toolbar (about 60 px tall with two-line buttons on a phone): who runs the meeting, and the visitor's prayer time. */}
+          {/* Under the toolbar (about 60 px tall with two-line buttons on a phone): who runs the meeting, and the visitor's prayer time where the partner shows it. */}
           <div style={{ position: "absolute", top: 78, left: 8, zIndex: 13, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, pointerEvents: "none" }}>
             <EmbedBrand />
-            <PrayerTimer getSession={getSession} onTick={onPrayerTick} />
+            <ZoneTimer prayerTimer={features.prayerTimer} getSession={getSession} onTick={onPrayerTick} />
           </div>
           <LiveCaptions />
           <CaptionsToggle roomRole="attendee" roomName={phase.live.room} eventSlug={phase.live.room} />
@@ -662,7 +668,7 @@ function ZoneEmbed() {
                   : "You left the meeting"}
           </h1>
           <p className="mt-1 text-sm opacity-75">{title}</p>
-          <PrayerTimeSoFar session={sessionRef.current} />
+          {features.prayerTimer && <PrayerTimeSoFar session={sessionRef.current} />}
           {phase.reason !== "removed" && (
             <button type="button" onClick={() => void join()} className={primaryBtn}>
               Rejoin
@@ -687,7 +693,7 @@ function ZoneEmbed() {
         <>
           <h1 className="text-lg font-semibold">The meeting has ended</h1>
           <p className="mt-1 text-sm opacity-75">{title}</p>
-          <PrayerTimeSoFar session={sessionRef.current} />
+          {features.prayerTimer && <PrayerTimeSoFar session={sessionRef.current} />}
           <button type="button" onClick={() => void join()} className={secondaryBtn}>
             Join again
           </button>

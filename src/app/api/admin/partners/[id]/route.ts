@@ -3,7 +3,8 @@
 //       (?zones=<search>&page=<n>, 50 a page) and its own audit trail.
 // PATCH /api/admin/partners/[id] (integrations:write + fresh code): change
 //       name, owner (by email), approved websites, automatic zones, guest
-//       access, the meeting title, or switch it on or off.
+//       access, the meeting title, whether the embed shows the prayer
+//       timer (prayerTimer), or switch it on or off.
 
 import { NextResponse } from "next/server";
 import { actorOf, requireAdmin } from "@/lib/admin/context";

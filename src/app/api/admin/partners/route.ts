@@ -49,6 +49,7 @@ export async function POST(req: Request) {
         autoCreateZones: integration.autoCreateZones,
         guestAccess: integration.guestAccess,
         titleTemplate: integration.titleTemplate,
+        prayerTimer: integration.prayerTimer,
         key: meta.masked,
       },
     });

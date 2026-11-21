@@ -9,6 +9,11 @@ import { fmtTime, useAdmin, type ApiResult } from "../AdminApi";
 import { Badge, Confirm, Dialog, Empty, Labeled, LoadState, Panel, btn, field } from "../ui";
 import type { AuditEvent, PartnerIntegration, PartnerKeyMeta, ZoneMapping } from "@/lib/partners/store";
 
+/** As src/lib/partners/store.ts showsPrayerTimer (that module is server code): absent is on. */
+const showsPrayerTimer = (i: Pick<PartnerIntegration, "prayerTimer">) => i.prayerTimer !== false;
+const PRAYER_TIMER_LABEL = "Show the prayer timer";
+const PRAYER_TIMER_HINT = "\"Your Prayer Time\" in the meeting, and prayer-time events to the partner's page. Off for meetings that are not prayer meetings.";
+
 type Msg = { kind: "ok" | "err"; text: string } | null;
 type ShowSecret = (s: { title: string; value: string; note: string }) => void;
 type Row = PartnerIntegration & { activeKeys: number; zones: number };
@@ -113,13 +118,14 @@ function CreatePartner({ onCreated, setMsg }: { onCreated: (name: string, secret
   const [titleTemplate, setTitleTemplate] = useState("{zone} Meeting");
   const [autoCreateZones, setAuto] = useState(true);
   const [guestAccess, setGuests] = useState(false);
+  const [prayerTimer, setPrayerTimer] = useState(true);
   const [busy, setBusy] = useState(false);
   const create = async () => {
     setMsg(null);
     setBusy(true);
     const r = await adminFetch<{ integration: PartnerIntegration; secret: string }>("/api/admin/partners", {
       method: "POST",
-      json: { name, ownerEmail, origins, titleTemplate, autoCreateZones, guestAccess },
+      json: { name, ownerEmail, origins, titleTemplate, autoCreateZones, guestAccess, prayerTimer },
     });
     setBusy(false);
     if (!r.ok) {
@@ -161,6 +167,9 @@ function CreatePartner({ onCreated, setMsg }: { onCreated: (name: string, secret
           </label>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={guestAccess} onChange={(e) => setGuests(e.target.checked)} /> Allow guests (name only, marked as guests)
+          </label>
+          <label className="flex items-center gap-2" title={PRAYER_TIMER_HINT}>
+            <input type="checkbox" checked={prayerTimer} onChange={(e) => setPrayerTimer(e.target.checked)} /> {PRAYER_TIMER_LABEL}
           </label>
         </div>
         <div className="md:col-span-2">
@@ -491,6 +500,7 @@ function Settings({ integration, save }: { integration: PartnerIntegration; save
   const [titleTemplate, setTitleTemplate] = useState(integration.titleTemplate);
   const [autoCreateZones, setAuto] = useState(integration.autoCreateZones);
   const [guestAccess, setGuests] = useState(integration.guestAccess);
+  const [prayerTimer, setPrayerTimer] = useState(showsPrayerTimer(integration));
   const [timezone, setTimezone] = useState(integration.timezone ?? "UTC");
   const [publicStats, setPublicStats] = useState<string[]>(integration.publicStats ?? []);
   const [busy, setBusy] = useState(false);
@@ -502,6 +512,7 @@ function Settings({ integration, save }: { integration: PartnerIntegration; save
     if (titleTemplate !== integration.titleTemplate) patch.titleTemplate = titleTemplate;
     if (autoCreateZones !== integration.autoCreateZones) patch.autoCreateZones = autoCreateZones;
     if (guestAccess !== integration.guestAccess) patch.guestAccess = guestAccess;
+    if (prayerTimer !== showsPrayerTimer(integration)) patch.prayerTimer = prayerTimer;
     if (timezone.trim() !== (integration.timezone ?? "UTC")) patch.timezone = timezone.trim();
     if ([...publicStats].sort().join() !== [...(integration.publicStats ?? [])].sort().join()) patch.publicStats = publicStats;
     if (!Object.keys(patch).length) return;
@@ -535,6 +546,9 @@ function Settings({ integration, save }: { integration: PartnerIntegration; save
         </label>
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={guestAccess} onChange={(e) => setGuests(e.target.checked)} /> Allow guests
+        </label>
+        <label className="flex items-center gap-2" title={PRAYER_TIMER_HINT}>
+          <input type="checkbox" checked={prayerTimer} onChange={(e) => setPrayerTimer(e.target.checked)} /> {PRAYER_TIMER_LABEL}
         </label>
       </div>
       <Labeled label="Report timezone (today, this week, this month)">
