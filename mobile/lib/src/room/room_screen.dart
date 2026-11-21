@@ -460,6 +460,7 @@ class _InMeetingState extends State<_InMeeting> {
               : CaptionStrip(state: state),
           actions: RoomActions(
             toggleMic: controller.toggleMic,
+            toggleEveryoneMuted: state.canManage ? controller.toggleEveryoneMuted : null,
             dismissCallEnded: controller.dismissCallEnded,
             toggleCamera: controller.toggleCamera,
             toggleHand: controller.toggleHand,
@@ -597,6 +598,9 @@ class _InMeetingState extends State<_InMeeting> {
       },
       elapsed: DateTime.now().difference(_joinedAt),
       micOn: state.micOn,
+      micLocked: state.micLocked,
+      everyoneMuted: state.everyoneMuted,
+      everyoneMutedBusy: state.everyoneMutedBusy,
       cameraOn: state.cameraOn,
       screenSharing: state.screenSharing,
       handRaised: state.handRaised,

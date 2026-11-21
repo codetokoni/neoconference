@@ -78,6 +78,8 @@ export async function runMeetingSweep(options?: {
         state: "ended",
         // The room is gone and nobody ended it: the same as it emptying.
         endedBy: "room_empty" as const,
+        // "Mute everyone" belonged to this meeting, not the next one.
+        micLock: undefined,
         endedAt: inferredEndedAt(prev),
         updatedAt: new Date().toISOString(),
       }));

@@ -204,6 +204,24 @@ String? participantRole(String? metadata) {
 /// Whether the metadata marks the meeting's owner.
 bool participantIsOwner(String? metadata) => _metadata(metadata)?['owner'] == true;
 
+/// "Mute everyone", as the room's metadata says it (the server writes it on
+/// every change: /api/livekit/micLock). Null when it says nothing.
+bool? roomMicLock(String? metadata) {
+  final locked = _metadata(metadata)?['micLock'];
+  return locked is bool ? locked : null;
+}
+
+/// Whether these permissions keep the microphone off: "Mute everyone" takes
+/// the microphone (TrackSource 2) out of what this person may publish, and
+/// LiveKit refuses it until a host puts it back. An empty list allows all.
+bool micLockedBy(ParticipantPermissions? permissions) {
+  final sources = permissions?.canPublishSources ?? const [];
+  return sources.isNotEmpty && !sources.any((s) => s.value == 2);
+}
+
+const micLockedMessage =
+    'The host has muted everyone. You can unmute when they allow it.';
+
 /// What to tell a host when the waiting list changes from [before] to
 /// [after], or null when nobody new is waiting.
 ///
@@ -283,9 +301,21 @@ class RoomState {
     this.liveStream,
     this.liveOn,
     this.mediaRequest,
+    this.micLocked = false,
+    this.everyoneMuted = false,
+    this.everyoneMutedBusy = false,
   });
 
   final JoinPhase phase;
+
+  /// "Mute everyone" keeps this person's microphone off: LiveKit will not
+  /// take it until a host lifts it.
+  final bool micLocked;
+
+  /// The meeting's "Mute everyone" lock as the server last confirmed it,
+  /// for a host's or moderator's button.
+  final bool everyoneMuted;
+  final bool everyoneMutedBusy;
 
   /// A host or moderator asking this person to unmute or turn their camera
   /// on, waiting for an answer. Null when nobody is asking.
@@ -530,6 +560,9 @@ class RoomState {
     bool clearLiveOn = false,
     MediaRequest? mediaRequest,
     bool clearMediaRequest = false,
+    bool? micLocked,
+    bool? everyoneMuted,
+    bool? everyoneMutedBusy,
     bool clearMessage = false,
     bool clearRecording = false,
     bool clearChatError = false,
@@ -599,6 +632,9 @@ class RoomState {
         liveStream: clearLiveStream ? null : (liveStream ?? this.liveStream),
         liveOn: clearLiveOn ? null : (liveOn ?? this.liveOn),
         mediaRequest: clearMediaRequest ? null : (mediaRequest ?? this.mediaRequest),
+        micLocked: micLocked ?? this.micLocked,
+        everyoneMuted: everyoneMuted ?? this.everyoneMuted,
+        everyoneMutedBusy: everyoneMutedBusy ?? this.everyoneMutedBusy,
       );
 }
 
@@ -1145,6 +1181,7 @@ class RoomController extends StateNotifier<RoomState> {
     // switch that only claims to change this would be worse than not
     // offering it, so the preference is honoured here.
     await _applyJoinDefaults();
+    unawaited(_readMicLock());
 
     await _loadChatHistory();
     _startChatPolling();
@@ -1283,10 +1320,25 @@ class RoomController extends StateNotifier<RoomState> {
           final role = participantRole(e.participant.metadata);
           if (role != null && role != state.role) {
             state = state.copyWith(role: role);
+            // Made a host or moderator: their button needs the lock's state.
+            if (state.canManage) unawaited(_readMicLock());
             return;
           }
         }
         _bump();
+      })
+      // "Mute everyone": the server took this microphone away, or gave it
+      // back (LiveKit unpublishes it; this app did not mute it).
+      ..on<ParticipantPermissionsUpdatedEvent>((e) {
+        if (e.participant is LocalParticipant) _applyMicPermissions(announce: true);
+      })
+      ..on<LocalTrackUnpublishedEvent>((_) => _syncLocalMedia())
+      // Another host pressed it: every host's button follows the server.
+      ..on<RoomMetadataChangedEvent>((e) {
+        final locked = roomMicLock(e.metadata);
+        if (locked != null && locked != state.everyoneMuted) {
+          state = state.copyWith(everyoneMuted: locked);
+        }
       });
   }
 
@@ -1817,6 +1869,11 @@ class RoomController extends StateNotifier<RoomState> {
     final me = room.localParticipant;
     if (me == null) return;
     final wantOn = !me.isMicrophoneEnabled();
+    // LiveKit would refuse it ("insufficient permissions"): say why instead.
+    if (wantOn && state.micLocked) {
+      state = state.copyWith(message: micLockedMessage);
+      return;
+    }
     await me.setMicrophoneEnabled(wantOn);
     _syncLocalMedia();
 
@@ -2178,6 +2235,66 @@ class RoomController extends StateNotifier<RoomState> {
       state = state.copyWith(message: 'Everyone else muted.');
     } on ApiException catch (e) {
       state = state.copyWith(message: e.message);
+    }
+  }
+
+  // ---- "Mute everyone" / "Unmute everyone" --------------------------------
+
+  /// Whether this microphone is locked (from the permissions LiveKit gave
+  /// this device), and for a host or moderator whether the meeting is.
+  Future<void> _readMicLock() async {
+    _applyMicPermissions();
+    final fromRoom = roomMicLock(room.metadata);
+    if (fromRoom != null) state = state.copyWith(everyoneMuted: fromRoom);
+    if (!state.canManage) return;
+    try {
+      final body = await api.get('/api/livekit/micLock', {'room': slug});
+      if (_disposed) return;
+      if (body is Map && body['locked'] is bool) {
+        state = state.copyWith(everyoneMuted: body['locked'] as bool);
+      }
+    } catch (_) {
+      // The room's metadata will say when it changes.
+    }
+  }
+
+  void _applyMicPermissions({bool announce = false}) {
+    if (_disposed) return;
+    final me = room.localParticipant;
+    if (me == null) return;
+    final locked = micLockedBy(me.permissions);
+    if (locked != state.micLocked) {
+      state = state.copyWith(
+        micLocked: locked,
+        message: !announce
+            ? null
+            : locked
+                ? micLockedMessage
+                : 'The host has let everyone unmute. Tap Unmute to talk.',
+      );
+    }
+    _syncLocalMedia();
+  }
+
+  /// Mutes every ordinary participant and keeps them muted, or lifts it.
+  /// The button shows what the server confirmed; a failure leaves it as it
+  /// was and says why.
+  Future<void> toggleEveryoneMuted() async {
+    if (state.everyoneMutedBusy) return;
+    final want = !state.everyoneMuted;
+    state = state.copyWith(everyoneMutedBusy: true);
+    try {
+      final body = await api.post('/api/livekit/micLock', {'roomName': slug, 'locked': want});
+      final locked = body is Map && body['locked'] is bool ? body['locked'] as bool : want;
+      state = state.copyWith(
+        everyoneMuted: locked,
+        everyoneMutedBusy: false,
+        message: locked
+            ? 'Everyone is muted until you unmute everyone.'
+            : 'Everyone can unmute themselves again.',
+      );
+    } catch (e) {
+      state = state.copyWith(everyoneMutedBusy: false, message: describeActionError(e));
     }
   }
 

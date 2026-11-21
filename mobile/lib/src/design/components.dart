@@ -201,6 +201,17 @@ class NeoAvatar extends StatelessWidget {
 /// apps become guesswork under pressure, and the label is also what a
 /// screen reader announces. The tap target is the whole column, always at
 /// least 44pt wide.
+/// Scales [child] down to fit when [shrink], instead of letting it be cut.
+class _MaybeShrink extends StatelessWidget {
+  const _MaybeShrink({required this.shrink, required this.child});
+  final bool shrink;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      shrink ? FittedBox(fit: BoxFit.scaleDown, child: child) : child;
+}
+
 class NeoControlButton extends StatelessWidget {
   const NeoControlButton({
     super.key,
@@ -214,7 +225,15 @@ class NeoControlButton extends StatelessWidget {
     this.onMenu,
     this.menuLabel,
     this.tint,
+    this.semanticLabel,
+    this.shrinkLabel = false,
   });
+
+  /// Make the label smaller rather than cut it short when the button is
+  /// narrow ("Unmute all" on a 360pt phone, six buttons to a row).
+
+  /// What a screen reader says, when the visible [label] is shortened to
+  /// fit (Mute all for "Mute everyone"). Null says [label].
 
   /// This button's own colour, for a theme of every colour (Coat of Many).
   /// Null keeps the theme's primary.
@@ -233,6 +252,8 @@ class NeoControlButton extends StatelessWidget {
   /// press on the button opens it too.
   final VoidCallback? onMenu;
   final String? menuLabel;
+  final String? semanticLabel;
+  final bool shrinkLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -259,7 +280,7 @@ class NeoControlButton extends StatelessWidget {
     final button = Semantics(
       button: true,
       enabled: enabled,
-      label: label,
+      label: semanticLabel ?? label,
       child: InkWell(
         onTap: enabled ? onPressed : null,
         onLongPress: enabled ? onMenu : null,
@@ -322,7 +343,12 @@ class NeoControlButton extends StatelessWidget {
               // usually by wrapping it in Expanded. A hard-coded width here
               // pushed the Leave button off a 393pt screen — the one
               // control that must always be reachable.
-              Text(
+              // The shortened words are not read out twice.
+              ExcludeSemantics(
+                excluding: semanticLabel != null,
+                child: _MaybeShrink(
+                  shrink: shrinkLabel,
+                  child: Text(
                 label,
                 maxLines: 1,
                 textAlign: TextAlign.center,
@@ -330,6 +356,8 @@ class NeoControlButton extends StatelessWidget {
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: enabled ? p.textMuted : p.textFaint,
                     ),
+                  ),
+                ),
               ),
             ],
           ),

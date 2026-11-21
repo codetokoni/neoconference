@@ -60,6 +60,7 @@ import DesktopMoreMenu from "@/components/DesktopMoreMenu";
 import RaiseHandButton from "@/components/RaiseHandButton";
 import SpotlightOverlay from "@/components/SpotlightOverlay";
 import EndMeetingButton from "@/components/EndMeetingButton";
+import { MicLockedNotice } from "@/components/conference/MuteEveryone";
 import TranscriptNoticeBanner from "@/components/TranscriptNoticeBanner";
 import MeetingTimer from "@/components/MeetingTimer";
 import InactivityDetector from "@/components/InactivityDetector";
@@ -981,6 +982,7 @@ function RoomContainer({
         <ConferenceErrorBoundary>
         <HiddenVideosProvider slug={eventSlug}>
         <RoleMetadataListener onRoleChange={setRoomRole} />
+        <MicLockedNotice />
         <TileRoleBadges ownerUserId={ownerUserId} />
         <ApplyPrejoinChoices choices={choices} />
         <PresenceHeartbeat eventSlug={eventSlug} />

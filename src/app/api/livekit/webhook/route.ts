@@ -258,6 +258,8 @@ export async function POST(req: Request) {
         state: 'ended',
         // Emptied, not ended by anyone: rejoining keeps roles and reopens it.
         endedBy: 'room_empty' as const,
+        // "Mute everyone" belonged to this meeting, not the next one.
+        micLock: undefined,
         // This close's own time. Only a meeting in progress gets here, so a
         // stored endedAt is left over from an earlier end — keeping it, as
         // `prev.endedAt || endedAt` did, recorded a restarted meeting as

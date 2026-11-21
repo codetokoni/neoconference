@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, Video, VideoOff, MoreHorizontal, EyeOff } from 'lucide-react';
 import { useLocalParticipant } from '@livekit/components-react';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
+import { MuteEveryoneMobileButton, useMyMicLocked } from './MuteEveryone';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -21,6 +22,8 @@ type ToolbarItem = { label: string; el: HTMLButtonElement };
 
 export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
+  // "Mute everyone": the server will not take this microphone back until the host lifts it.
+  const micLocked = useMyMicLocked();
   const [moreOpen, setMoreOpen] = useState(false);
   const [items, setItems] = useState<ToolbarItem[]>([]);
   const moreRef = useRef<HTMLDivElement>(null);
@@ -45,8 +48,9 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
 
   /* ---- mic / cam ---- */
   const toggleMic = useCallback(() => {
+    if (micLocked && !isMicrophoneEnabled) return;
     localParticipant?.setMicrophoneEnabled(!isMicrophoneEnabled).catch(() => {});
-  }, [localParticipant, isMicrophoneEnabled]);
+  }, [localParticipant, isMicrophoneEnabled, micLocked]);
 
   const toggleCam = useCallback(() => {
     localParticipant?.setCameraEnabled(!isCameraEnabled).catch(() => {});
@@ -144,10 +148,12 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
       {/* Mic */}
       <button
         type="button"
-        aria-label={isMicrophoneEnabled ? 'Mute microphone' : 'Unmute microphone'}
+        aria-label={micLocked ? 'Microphone muted by the host' : isMicrophoneEnabled ? 'Mute microphone' : 'Unmute microphone'}
         aria-pressed={isMicrophoneEnabled}
+        aria-disabled={micLocked || undefined}
         onClick={toggleMic}
         className={`${pill} ${isMicrophoneEnabled ? pillEnabled : pillDisabled}`}
+        style={micLocked ? { opacity: 0.5 } : undefined}
       >
         {isMicrophoneEnabled ? (
           <Mic className="w-4 h-4" />
@@ -254,6 +260,9 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
       >
         Leave
       </button>
+
+      {/* Owner, host and moderator: "Mute everyone", right of Leave. */}
+      <MuteEveryoneMobileButton />
     </div>
   );
 }

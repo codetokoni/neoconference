@@ -193,6 +193,7 @@ class _MeetingStageState extends State<MeetingStage> {
                     onChat: widget.actions.openChat,
                     onMore: _openMore,
                     onLeave: widget.actions.leave,
+                    onEveryoneMuted: widget.actions.toggleEveryoneMuted,
                   ),
                 ],
               ),
@@ -897,6 +898,7 @@ class _Controls extends StatelessWidget {
     this.onChat,
     this.onMicMenu,
     this.onCameraMenu,
+    this.onEveryoneMuted,
   });
 
   final RoomView room;
@@ -910,6 +912,10 @@ class _Controls extends StatelessWidget {
   final VoidCallback onMore;
   final Future<void> Function() onLeave;
   final VoidCallback? onChat;
+
+  /// "Mute everyone" / "Unmute everyone", right of Leave. Null for anyone
+  /// who may not, and the button is not there.
+  final Future<void> Function()? onEveryoneMuted;
 
   @override
   Widget build(BuildContext context) {
@@ -928,8 +934,10 @@ class _Controls extends StatelessWidget {
           Expanded(
             child: NeoControlButton(
               icon: room.micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
-              label: room.micOn ? 'Mute' : 'Unmute',
-              tint: p.spectrumAt(3),
+              // "Mute everyone": tapping says why rather than failing.
+              label: room.micLocked ? 'Locked' : (room.micOn ? 'Mute' : 'Unmute'),
+              semanticLabel: room.micLocked ? 'Microphone muted by the host' : null,
+              tint: room.micLocked ? null : p.spectrumAt(3),
               active: room.micOn,
               onPressed: onMic,
               onMenu: onMicMenu,
@@ -976,6 +984,21 @@ class _Controls extends StatelessWidget {
               onPressed: onLeave,
             ),
           ),
+          if (onEveryoneMuted != null)
+            Expanded(
+              child: NeoControlButton(
+                // Off when it would mute, on when it would let people talk.
+                icon: room.everyoneMuted ? Icons.mic_rounded : Icons.mic_off_rounded,
+                // Six to a phone's width: the full words did not fit.
+                label: room.everyoneMuted ? 'Unmute all' : 'Mute all',
+                semanticLabel: room.everyoneMuted ? 'Unmute everyone' : 'Mute everyone',
+                shrinkLabel: true,
+                tint: p.spectrumAt(1),
+                active: room.everyoneMuted,
+                enabled: !room.everyoneMutedBusy,
+                onPressed: () => onEveryoneMuted!(),
+              ),
+            ),
         ],
       ),
     );

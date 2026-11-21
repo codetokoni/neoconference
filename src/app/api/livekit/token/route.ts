@@ -11,6 +11,7 @@ import { needsAppUpdate, nudgeKey, nudgeMessage, NUDGE_TTL_SECONDS, shouldNudgeU
 import { kv } from "@/lib/kv";
 import { recordAppJoin } from "@/lib/appVersionCounts";
 import { accountFullName } from "@/lib/attendeeName";
+import { micLockGrant } from "@/lib/micLock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -447,6 +448,9 @@ export async function GET(req: NextRequest) {
             );
           }
         }
+        // "Mute everyone" is on: an ordinary participant joining or
+        // reconnecting now may publish everything but a microphone.
+        if (__evLock) at.addGrant(micLockGrant(__evLock, participantRole));
       }
     } catch (lockErr) {
       console.error("[livekit/token] lock check error:", lockErr);

@@ -58,4 +58,26 @@ export class RoomServiceClient {
     (globalThis.__lkMuted ??= []).push({ room, identity, trackSid, muted });
     return {};
   }
+  // Recorded in globalThis.__lkUpdated ([{ room, identity, metadata, permission }])
+  // and applied to the participant in globalThis.__lkParticipants. As the
+  // real server (1.9) does, a permission whose canPublishSources leaves out
+  // the microphone (2) takes their published microphone away.
+  async updateParticipant(room, identity, metadata, permission) {
+    const p = (globalThis.__lkParticipants?.[room] ?? []).find((x) => x.identity === identity);
+    if (!p) throw new Error("twirp error not_found: participant not found");
+    (globalThis.__lkUpdated ??= []).push({ room, identity, metadata, permission });
+    if (metadata !== undefined) p.metadata = metadata;
+    if (permission) {
+      p.permission = permission;
+      const sources = permission.canPublishSources ?? [];
+      if (sources.length && !sources.includes(2)) p.tracks = (p.tracks ?? []).filter((t) => t.source !== 2);
+    }
+    return p;
+  }
+  // Room metadata in globalThis.__lkRoomMetadata ({ room: metadata }).
+  async updateRoomMetadata(room, metadata) {
+    if (globalThis.__livekitDown) throw new Error("twirp error unavailable");
+    (globalThis.__lkRoomMetadata ??= {})[room] = metadata;
+    return { name: room, metadata };
+  }
 }

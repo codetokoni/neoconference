@@ -297,6 +297,24 @@ body.neo-room-idle .lk-control-bar {
   box-shadow: 0 8px 22px rgba(244,63,94,0.45);
 }
 
+/* "Mute everyone" (src/components/conference/MuteEveryone.tsx): while the
+   lock is on the host's button stays lit. A locked participant's microphone
+   button is hidden by LiveKit's control bar itself (no permission for it). */
+.lk-control-bar .neo-mute-everyone[data-locked="true"] {
+  background: rgba(251,191,36,0.16) !important;
+  border-color: rgba(251,191,36,0.45) !important;
+  color: #fde68a !important;
+}
+.lk-control-bar .neo-mute-everyone[disabled] { opacity: 0.6; cursor: progress; }
+.neo-mic-locked-notice { bottom: 100px; }
+@media (max-width: 640px) {
+  .neo-mic-locked-notice {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
+    white-space: normal !important;
+    border-radius: 14px !important;
+  }
+}
+
 /* Chat / sidebar panel */
 .lk-chat,
 .lk-chat-form,

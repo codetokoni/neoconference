@@ -34,6 +34,7 @@ import {
   MeetingRoleError,
 } from "@/lib/meeting-roles";
 import { isMeetingRole, RANK, toLegacyRole, type MeetingRole } from "@/lib/permissions";
+import { isMicLocked, planMicLock } from "@/lib/micLock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -156,7 +157,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   await broadcastRoleToLiveKit(event.slug, {
     userId: userId || undefined,
     emails: email ? [email] : [],
-  }, role);
+  }, role, isMicLocked(event));
 
   return NextResponse.json({
     ok: true,
@@ -169,7 +170,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 async function broadcastRoleToLiveKit(
   roomName: string,
   target: { userId?: string; emails?: string[] },
-  role: MeetingRole
+  role: MeetingRole,
+  /** "Mute everyone" is on: the new role decides whether they keep a microphone. */
+  micLocked: boolean
 ): Promise<void> {
   const apiKey = process.env.LIVEKIT_API_KEY;
   const apiSecret = process.env.LIVEKIT_API_SECRET;
@@ -197,7 +200,9 @@ async function broadcastRoleToLiveKit(
         let md: Record<string, unknown> = {};
         try { md = p.metadata ? JSON.parse(p.metadata) : {}; } catch { md = {}; }
         md.role = wireRole;
-        await svc.updateParticipant(roomName, p.identity, JSON.stringify(md));
+        const metadata = JSON.stringify(md);
+        const [lock] = planMicLock([{ ...p, metadata }], micLocked);
+        await svc.updateParticipant(roomName, p.identity, metadata, lock?.permission);
       })
     );
   } catch (err) {

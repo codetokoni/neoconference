@@ -15,6 +15,7 @@ import { gateStatus, noteKnock } from "@/lib/waitingRoom";
 import type { NeoEvent, WaitingRoomEntry } from "@/types/event";
 import { PartnerError, leadsZone, type JoinGrant } from "@/lib/partners/store";
 import { rememberIdentity } from "@/lib/partners/attendance";
+import { micLockGrant } from "@/lib/micLock";
 
 /**
  * The visitor's identity in the room: fixed per (integration, partner user),
@@ -141,6 +142,8 @@ export async function joinZone(grant: JoinGrant, now = Date.now()): Promise<Join
   const at = new AccessToken(apiKey, apiSecret, { identity, name, ttl: "2h" });
   // A participant to LiveKit, whatever the partner or the browser says.
   at.addGrant({ room, roomJoin: true, canPublish: true, canSubscribe: true, canPublishData: true });
+  // "Mute everyone" is on: no microphone until a host lifts it (zone leaders keep theirs).
+  at.addGrant(micLockGrant(ev, moderator ? "cohost" : "attendee"));
   const planLimits = { ...limits };
   try {
     const switches = ["recording", "breakouts", "livestream", "translation", "branding"] as const;
