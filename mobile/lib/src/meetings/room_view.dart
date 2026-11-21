@@ -111,6 +111,7 @@ class RoomView {
     required this.link,
     required this.elapsed,
     this.micOn = false,
+    this.micLocked = false,
     this.cameraOn = false,
     this.screenSharing = false,
     this.handRaised = false,
@@ -154,6 +155,10 @@ class RoomView {
   final Duration elapsed;
 
   final bool micOn;
+
+  /// An Owner, Host or Moderator locked this person's microphone: the Mic
+  /// button shows a lock and says why instead of unmuting.
+  final bool micLocked;
   final bool cameraOn;
   final bool screenSharing;
   final bool handRaised;

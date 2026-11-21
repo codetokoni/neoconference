@@ -998,8 +998,13 @@ class _Controls extends StatelessWidget {
         children: [
           Expanded(
             child: NeoControlButton(
-              icon: room.micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
-              label: room.micOn ? 'Mute' : 'Unmute',
+              // Locked: a lock, and a tap says why (RoomController.toggleMic).
+              icon: room.micLocked && !room.micOn
+                  ? Icons.lock_rounded
+                  : room.micOn
+                      ? Icons.mic_rounded
+                      : Icons.mic_off_rounded,
+              label: room.micLocked && !room.micOn ? 'Locked' : room.micOn ? 'Mute' : 'Unmute',
               tint: p.spectrumAt(3),
               active: room.micOn,
               onPressed: onMic,

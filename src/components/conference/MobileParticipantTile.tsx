@@ -10,7 +10,8 @@ import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { MicOff } from 'lucide-react';
 import { ParticipantEvent, Track, type Participant } from 'livekit-client';
-import { useIsSpeaking, VideoTrack } from '@livekit/components-react';
+import { useIsSpeaking, useRoomContext, VideoTrack } from '@livekit/components-react';
+import { accountOf, postMicLock, useMicLockState } from './micLockClient';
 import {
   getAvatarColor,
   getAvatarColorRGB,
@@ -729,6 +730,15 @@ function MobileParticipantTileInner({
                   loading={pending === 'muteAudio'}
                   onClick={() => handleModerate('muteAudio')}
                 />
+                {!participantIsHost && (
+                  <MicLockItems
+                    slug={slug}
+                    identity={participant.identity}
+                    disabled={pending !== null}
+                    onError={setMenuError}
+                    onDone={() => setMenuOpen(false)}
+                  />
+                )}
                 <MenuBtn
                   label="Turn off camera"
                   disabled={pending !== null}
@@ -846,6 +856,47 @@ function MenuSection({ label }: { label: string }) {
 /* ------------------------------------------------------------------ */
 /*  Menu button (internal)                                             */
 /* ------------------------------------------------------------------ */
+
+/**
+ * "Allow to unmute" / "Lock microphone again" while participant microphones
+ * are locked (src/lib/micLock.ts). Mounted only while the menu is open, so a
+ * room of hundreds of tiles does not each ask for the lock.
+ */
+function MicLockItems({
+  slug,
+  identity,
+  disabled,
+  onError,
+  onDone,
+}: {
+  slug: string;
+  identity: string;
+  disabled: boolean;
+  onError: (m: string | null) => void;
+  onDone: () => void;
+}) {
+  const room = useRoomContext();
+  const lock = useMicLockState(slug);
+  const [busy, setBusy] = useState(false);
+  if (!lock.locked) return null;
+  const allowed = lock.allowed?.includes(accountOf(identity)) ?? false;
+  const act = async () => {
+    onError(null);
+    setBusy(true);
+    const problem = await postMicLock(slug, room?.name, allowed ? 'relock' : 'allow', identity);
+    setBusy(false);
+    if (problem) onError(problem);
+    else onDone();
+  };
+  return (
+    <MenuBtn
+      label={allowed ? 'Lock microphone again' : 'Allow to unmute'}
+      disabled={disabled || busy}
+      loading={busy}
+      onClick={act}
+    />
+  );
+}
 
 function MenuBtn({
   label,

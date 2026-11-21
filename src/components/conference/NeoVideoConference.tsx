@@ -5,7 +5,6 @@ import {
   CarouselLayout,
   Chat,
   ConnectionStateToast,
-  ControlBar,
   FocusLayout,
   FocusLayoutContainer,
   GridLayout,
@@ -24,6 +23,7 @@ import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 import { enlargedTileGone } from './roomLayout';
 import { keepOrder } from './keptPlace';
 import { rolePins, showPinnedRow, type PinRole } from './rolePins';
+import NeoControlBar from './NeoControlBar';
 
 /**
  * The meeting's video layout on a computer or tablet: LiveKit's own
@@ -230,7 +230,8 @@ export default function NeoVideoConference({
           ) : (
             main
           )}
-          <ControlBar controls={{ chat: true, settings: false }} />
+          {/* LiveKit's bar, with a locked microphone button when it is locked. */}
+          <NeoControlBar />
         </div>
         <Chat style={{ display: widget.showChat ? 'grid' : 'none' } as CSSProperties} />
       </LayoutContextProvider>

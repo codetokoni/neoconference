@@ -106,6 +106,9 @@ export const PERMISSIONS = {
   /* --- moderation --- */
   "participant:mute": RANK.moderator,
   "participant:muteAll": RANK.moderator,
+  // Lock participant microphones, allow one person to unmute, lock them
+  // again (src/lib/micLock.ts): Owner, Host and Moderator.
+  "participant:micLock": RANK.moderator,
   "participant:requestUnmute": RANK.moderator,
   "participant:kick": RANK.host,
   "participant:spotlight": RANK.moderator,

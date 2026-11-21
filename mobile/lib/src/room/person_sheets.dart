@@ -144,6 +144,14 @@ class PersonActionsSheet extends ConsumerWidget {
             const Divider(height: 16),
             item(Icons.mic_off_rounded, 'Mute microphone',
                 () => run(() => controller.moderate(person.id, 'muteAudio'))),
+            // Participant microphones are locked: let this person unmute, or
+            // lock them again. Owners, Hosts and Moderators are never locked.
+            if (state.micLockOn && !person.elevated)
+              state.micAllowed.contains(person.id.split('#').first)
+                  ? item(Icons.lock_rounded, 'Lock microphone again',
+                      () => run(() => controller.lockMicrophoneAgain(person.id)))
+                  : item(Icons.lock_open_rounded, 'Allow to unmute',
+                      () => run(() => controller.allowToUnmute(person.id))),
             item(Icons.videocam_off_rounded, 'Turn off camera',
                 () => run(() => controller.moderate(person.id, 'muteVideo'))),
             item(Icons.record_voice_over_rounded, 'Ask to unmute mic',

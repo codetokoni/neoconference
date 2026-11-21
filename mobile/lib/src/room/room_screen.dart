@@ -597,6 +597,7 @@ class _InMeetingState extends State<_InMeeting> {
       },
       elapsed: DateTime.now().difference(_joinedAt),
       micOn: state.micOn,
+      micLocked: state.micLocked,
       cameraOn: state.cameraOn,
       screenSharing: state.screenSharing,
       handRaised: state.handRaised,
