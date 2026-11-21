@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, Video, VideoOff, MoreHorizontal, EyeOff, Lock } from 'lucide-react';
 import { enableMicrophone, MIC_LOCKED_MESSAGE, noteMicLocked, useMicLocked } from './micLockClient';
+import { MuteEveryoneMobileButton } from './MuteEveryone';
 import { useLocalParticipant } from '@livekit/components-react';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 
@@ -266,6 +267,9 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
       >
         Leave
       </button>
+
+      {/* Owner, Host and Moderator: "Mute everyone", right of Leave. */}
+      <MuteEveryoneMobileButton />
     </div>
   );
 }

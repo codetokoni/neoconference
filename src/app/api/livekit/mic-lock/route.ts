@@ -35,6 +35,24 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Action = "lock" | "unlock" | "allow" | "relock";
+
+/**
+ * LiveKit's client has no time limit of its own: with the server not
+ * answering, the toolbar's "Mute everyone" stayed busy for ever. Each call
+ * here gets this long.
+ */
+const LIVEKIT_TIMEOUT_MS = 8_000;
+
+function withTimeout<T>(p: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("livekit_timeout")), LIVEKIT_TIMEOUT_MS);
+  });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
+
+/** LiveKit's answer for a room nobody has joined yet. */
+const noSuchRoom = (err: unknown) => /not.?found|does not exist/i.test(String((err as Error)?.message ?? err));
 const ACTIONS: Action[] = ["lock", "unlock", "allow", "relock"];
 
 export async function GET(req: Request) {
@@ -104,14 +122,26 @@ export async function POST(req: Request) {
   const room = roomName;
   let applied;
   try {
-    applied = await applyMicLock(svc, room, next, target ? { only: target } : {});
+    applied = await withTimeout(applyMicLock(svc, room, next, target ? { only: target } : {}));
   } catch (err) {
+    if (!noSuchRoom(err)) {
+      // LiveKit did not answer: nothing took effect. The last state goes
+      // back, so every button keeps showing what is true, and the caller
+      // is told.
+      console.error("[mic-lock] LiveKit unavailable; state put back", room, err);
+      await saveMicLock(ev.id, prev);
+      const what = action === "lock" ? "mute everyone" : action === "unlock" ? "unmute everyone" : "change that microphone";
+      return NextResponse.json(
+        { error: "livekit_unavailable", message: `Couldn't ${what}. The meeting server didn't answer. Try again.`, locked: prev.locked, allowed: prev.allowed },
+        { status: 502 },
+      );
+    }
     // No such room yet (nobody in it): the state is saved, and every join
     // takes it from the token.
-    console.warn("[mic-lock] could not apply to the room", room, err);
+    console.warn("[mic-lock] no room to apply to yet", room, err);
     applied = { changed: 0, unchanged: 0, failed: 0 };
   }
-  await announceMicLock(svc, room, next);
+  await withTimeout(announceMicLock(svc, room, next)).catch((err) => console.warn("[mic-lock] announce timed out", room, err));
   console.info("[mic-lock]", JSON.stringify({ event: ev.id, action, by: userId, ...applied }));
   return NextResponse.json({ ok: true, action, locked: next.locked, allowed: next.allowed, ...applied });
 }

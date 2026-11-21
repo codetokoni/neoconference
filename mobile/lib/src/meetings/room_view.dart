@@ -112,6 +112,8 @@ class RoomView {
     required this.elapsed,
     this.micOn = false,
     this.micLocked = false,
+    this.micLockOn = false,
+    this.micLockBusy = false,
     this.cameraOn = false,
     this.screenSharing = false,
     this.handRaised = false,
@@ -159,6 +161,11 @@ class RoomView {
   /// An Owner, Host or Moderator locked this person's microphone: the Mic
   /// button shows a lock and says why instead of unmuting.
   final bool micLocked;
+
+  /// Participant microphones are locked in this meeting (the toolbar's
+  /// "Unmute everyone"), as the server last confirmed it.
+  final bool micLockOn;
+  final bool micLockBusy;
   final bool cameraOn;
   final bool screenSharing;
   final bool handRaised;
@@ -305,12 +312,17 @@ class RoomActions {
     this.unpin,
     this.openCameraPicker,
     this.openMicPicker,
+    this.toggleEveryoneMuted,
   });
 
   final Future<void> Function() toggleMic;
   final Future<void> Function() toggleCamera;
   final Future<void> Function() toggleHand;
   final Future<void> Function() leave;
+
+  /// "Mute everyone" / "Unmute everyone". Null for anyone but the Owner, a
+  /// Host or a Moderator (the server checks again).
+  final Future<void> Function()? toggleEveryoneMuted;
 
   /// Null where the action is not available, which is how the screen knows
   /// to leave the control out rather than show one that does nothing.
