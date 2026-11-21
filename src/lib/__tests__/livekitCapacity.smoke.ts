@@ -173,6 +173,42 @@ async function main() {
     assert.ok(Date.now() - started < 4000, "within the timeout");
   });
 
+  console.log("asked after LiveKit refused a connection (/api/livekit/capacity)");
+
+  const capacity = await import("../../app/api/livekit/capacity/route");
+  const ask = async (who: string | undefined) => {
+    g.__who = who;
+    const res = await capacity.GET();
+    return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+  };
+
+  await t("signed in only; full or not, and never how many", async () => {
+    assert.equal((await ask(undefined)).status, 401);
+    connected(979);
+    assert.deepEqual((await ask("user_ann")).body, { full: false });
+    connected(980);
+    assert.deepEqual((await ask("user_ann")).body, { full: true, message: C.SERVICE_FULL_MESSAGE });
+    g.__livekitDown = true;
+    C.__resetConnectedCache();
+    try {
+      assert.deepEqual((await ask("user_ann")).body, { full: false }, "cannot count: not full");
+    } finally {
+      g.__livekitDown = false;
+    }
+  });
+
+  await t("the web room turns that answer into Meeting full or Could not connect, and never throws", async () => {
+    const O = await import("../connectOutcome");
+    const answer = (status: number, body: unknown) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+    assert.deepEqual(await O.explainConnectFailure(answer(200, { full: true, message: "Busy." })), { full: true, message: "Busy." });
+    assert.deepEqual(await O.explainConnectFailure(answer(200, { full: true })), { full: true, message: C.SERVICE_FULL_MESSAGE });
+    for (const [status, body] of [[200, { full: false }], [401, { error: "unauthenticated" }], [200, { full: "true" }]] as const) {
+      assert.deepEqual(await O.explainConnectFailure(answer(status, body)), { full: false, message: O.COULD_NOT_CONNECT });
+    }
+    const offline = (async () => { throw new TypeError("Failed to fetch"); }) as unknown as typeof fetch;
+    assert.deepEqual(await O.explainConnectFailure(offline), { full: false, message: O.COULD_NOT_CONNECT });
+  });
+
   console.log("joining a partner zone");
 
   await t("a partner's visitor is told the meeting is full too, and gets in below the line", async () => {

@@ -27,6 +27,7 @@ import 'live_stream.dart';
 import 'meeting_timer.dart';
 import 'plan_limit.dart';
 import 'reconnect_watchdog.dart';
+import 'service_full.dart';
 import 'translation_voice.dart';
 import 'weak_link.dart';
 import '../settings/meeting_defaults.dart';
@@ -856,12 +857,23 @@ class RoomController extends StateNotifier<RoomState> {
         debugPrint('[neo-room] rejoin try failed: $e');
         state = state.copyWith(phase: JoinPhase.failed);
       } else {
-        state = state.copyWith(
-          phase: JoinPhase.failed,
-          message: 'Could not join. ${describeActionError(e)}',
-        );
+        await _connectFailed(e);
       }
     }
+  }
+
+  /// A connection LiveKit refused: the meeting full when the server says the
+  /// whole service is (its count lags a few seconds behind, so LiveKit can
+  /// turn away someone the token route let in), otherwise could not join.
+  Future<void> _connectFailed(Object e) async {
+    final full = await serviceFullMessage(api);
+    if (_disposed) return;
+    state = full != null
+        ? state.copyWith(phase: JoinPhase.full, message: full)
+        : state.copyWith(
+            phase: JoinPhase.failed,
+            message: 'Could not join. ${describeActionError(e)}',
+          );
   }
 
   /// Rejoin or Try again, from the screen. The person asked, so the join
@@ -1109,10 +1121,7 @@ class RoomController extends StateNotifier<RoomState> {
         // Let in, and the connection itself failed. The timer is gone, so
         // staying on the waiting screen would wait forever; say so, as
         // join() does.
-        state = state.copyWith(
-          phase: JoinPhase.failed,
-          message: 'Could not join. ${describeActionError(e)}',
-        );
+        await _connectFailed(e);
       }
     } finally {
       _gateInFlight = false;

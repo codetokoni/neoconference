@@ -88,6 +88,8 @@ import {
   Timer as TimerIcon,
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
+import JoinProblem from "@/components/conference/JoinProblem";
+import { connectWatch, explainConnectFailure, type JoinProblem as JoinProblemInfo } from "@/lib/connectOutcome";
 
 // Shared toolbar button style — flat, transparent, lucide-icon + text label.
 // Used by inline buttons in this file and mirrored in MeetingPiP,
@@ -122,6 +124,11 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   const [error, setError] = useState<string | null>(null); const [waitingState, setWaitingState] = useState<"pending" | "denied" | null>(null); const [waitForHost, setWaitForHost] = useState<boolean>(false);
   const [choices, setChoices] = useState<LocalUserChoices | null>(null);
   const [copied, setCopied] = useState(false);
+  // A join that did not get in (components/conference/JoinProblem): turned
+  // back as full by the token route, or refused by LiveKit itself
+  // (src/lib/connectOutcome.ts). Try again bumps joinAttempt for a new token.
+  const [joinProblem, setJoinProblem] = useState<JoinProblemInfo | null>(null);
+  const [joinAttempt, setJoinAttempt] = useState(0);
   // The "Full name for attendance" (src/lib/attendanceName.ts): required
   // before joining, confirmed on the join screen (or, for a link that joins
   // straight in, FullNamePrompt). It starts with the name they confirmed last
@@ -246,6 +253,11 @@ export default function RoomPage({ params }: { params: { name: string } }) {
             }
             return;
           }
+          if (res.status === 403 && body?.error === "room_full") {
+            // The meeting's own cap, or the whole service (scope "service").
+            if (!cancelled) setJoinProblem({ full: true, message: body.message || "This meeting is full." });
+            return;
+          }
           if (res.status === 403 && body?.error === "wait_for_host") {
             if (!cancelled) {
               setWaitForHost(true);
@@ -270,7 +282,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, isSignedIn, roomName, choices, eventSlug, waitingState, waitForHost, tabNonce]);
+  }, [isLoaded, isSignedIn, roomName, choices, eventSlug, waitingState, waitForHost, tabNonce, joinAttempt]);
 
   // While waiting in the queue, re-knock every 4s. When the host admits us
   // the response flips to "admitted" and we clear waitingState which causes
@@ -427,6 +439,21 @@ export default function RoomPage({ params }: { params: { name: string } }) {
     );
   }
 
+  if (joinProblem) {
+    return (
+      <JoinProblem
+        full={joinProblem.full}
+        message={joinProblem.message}
+        onRetry={() => {
+          setJoinProblem(null);
+          setToken(null);
+          setWsUrl(null);
+          setJoinAttempt((n) => n + 1);
+        }}
+      />
+    );
+  }
+
   if (waitingState) {
     return (
       <div className="min-h-[calc(100vh-65px)] flex flex-col items-center justify-center p-8 gap-3 text-center">
@@ -456,6 +483,10 @@ export default function RoomPage({ params }: { params: { name: string } }) {
       // Leaving (or being disconnected) asks how it went: a tap of the stars,
       // and words if something did not work (src/lib/meetingFeedback.ts).
       onLeave={() => router.push(afterLeaveUrl(eventSlug))}
+      // Refused before ever getting in: say why, never "how did it go?".
+      onJoinFailed={() => {
+        void explainConnectFailure().then(setJoinProblem);
+      }}
     />
   );
 }
@@ -757,6 +788,7 @@ function RoomContainer({
   eventSlug,
   choices,
   onLeave,
+  onJoinFailed,
 }: {
   token: string;
   wsUrl: string;
@@ -765,8 +797,14 @@ function RoomContainer({
   eventSlug: string;
   choices: LocalUserChoices;
   onLeave: () => void;
+  onJoinFailed: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // A disconnect before the room ever connected is a refused join, not
+  // leaving (src/lib/connectOutcome.ts).
+  const leaveRef = useRef({ onLeave, onJoinFailed });
+  leaveRef.current = { onLeave, onJoinFailed };
+  const [watch] = useState(() => connectWatch(() => leaveRef.current));
   // Where room-wide overlays that are rendered from inside the toolbar
   // (the recording indicators) portal to. The toolbar's transform makes it
   // the containing block of anything absolutely positioned inside it, and
@@ -1034,7 +1072,8 @@ function RoomContainer({
         // What was chosen on the join screen, and nothing more (roomOptions.ts).
         audio={joinMedia(choices.audioEnabled, choices.audioDeviceId)}
         video={joinMedia(choices.videoEnabled, choices.videoDeviceId)}
-        onDisconnected={onLeave}
+        onConnected={watch.onConnected}
+        onDisconnected={watch.onDisconnected}
       >
         {/* Inside LiveKitRoom so a UI failure remounts the UI, not the call. */}
         <ConferenceErrorBoundary>
