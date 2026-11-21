@@ -123,6 +123,15 @@ async function main() {
     const claims = JSON.parse(Buffer.from(body.token!.split(".")[1], "base64url").toString()) as { video: { canPublish?: boolean } };
     return claims.video.canPublish === false;
   }
+  /** What the join token this person gets now lets them publish (by name; null for anything). */
+  async function tokenSources(who: string) {
+    g.__who = who;
+    await (await import("../attendanceName")).rememberConfirmation(who, "Test Attendee");
+    const res = await R.token.GET(new NextRequest(`https://www.neoconference.app/api/livekit/token?room=room1&event=room1&nonce=z9`));
+    const body = (await res.json()) as { token?: string };
+    const claims = JSON.parse(Buffer.from(body.token!.split(".")[1], "base64url").toString()) as { video: { canPublishSources?: string[] } };
+    return claims.video.canPublishSources ?? null;
+  }
 
   console.log("who may");
 
@@ -190,7 +199,7 @@ async function main() {
 
   console.log("allowing one person");
 
-  await t("allowing Ann lets her unmute on every device, without turning her microphone on; Ben stays locked", async () => {
+  await t("allowing Ann lets her unmute on every device, but not her camera or screen, and turns nothing on; Ben stays locked", async () => {
     const before = g.__lkUpdated!.length;
     const r = await act("user_host", "allow", "user_ann#d");
     assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -201,8 +210,14 @@ async function main() {
     const changes = g.__lkUpdated!.slice(before);
     assert.deepEqual(changes.map((c) => c.identity).sort(), ["user_ann#d", "user_ann#e"]);
     assert.ok(changes.every((c) => c.permission && Object.keys(c).sort().join() === "identity,permission,room"));
+    // Her microphone only: camera and screen stay locked (owner's decision, 2026-11-21).
+    for (const id of ["user_ann#d", "user_ann#e"]) {
+      const perm = g.__lkParticipants!.room1.find((x) => x.identity === id)!.permission!;
+      assert.deepEqual([perm.canPublish, perm.canPublishSources], [true, [2]], id);
+    }
     assert.deepEqual(await state("user_ann"), { locked: true, youMayUnmute: true });
-    assert.equal(await tokenLocked("user_ann"), false, "and on rejoining");
+    assert.equal(await tokenLocked("user_ann"), false, "and on rejoining...");
+    assert.deepEqual(await tokenSources("user_ann"), ["microphone"], "...with her microphone only");
   });
 
   await t("locking Ann again takes her microphone away again", async () => {
@@ -247,15 +262,20 @@ async function main() {
   console.log("the rules");
 
   await t("a permission keeps what it had; only publishing changes", () => {
-    assert.deepEqual(M.withPublishing({ canPublish: true, canPublishSources: [], hidden: false } as Perm, false), { canPublish: false, canPublishSources: [], hidden: false });
-    assert.deepEqual(M.withPublishing({ canPublish: false, canPublishSources: [] }, true), { canPublish: true, canPublishSources: [] });
-    // The earlier microphone-only lock's list is cleared on the way back.
-    assert.deepEqual(M.withPublishing({ canPublish: true, canPublishSources: [1, 3, 4] }, true), { canPublish: true, canPublishSources: [] });
-    assert.deepEqual(M.withPublishing({ canPublish: true, canPublishSources: [1] }, true), { canPublish: true, canPublishSources: [1, 2] });
-    // That earlier lock is locked, but not locked enough.
+    assert.deepEqual(M.withAccess({ canPublish: true, canPublishSources: [], hidden: false } as Perm, "none"), { canPublish: false, canPublishSources: [], hidden: false });
+    assert.deepEqual(M.withAccess({ canPublish: false, canPublishSources: [] }, "mic"), { canPublish: true, canPublishSources: [2] });
+    assert.deepEqual(M.withAccess({ canPublish: false, canPublishSources: [] }, "open"), { canPublish: true, canPublishSources: [] });
+    // A list a lock made is cleared on the way back: the mic-only one and the earlier lock's.
+    assert.deepEqual(M.withAccess({ canPublish: true, canPublishSources: [2] }, "open"), { canPublish: true, canPublishSources: [] });
+    assert.deepEqual(M.withAccess({ canPublish: true, canPublishSources: [1, 3, 4] }, "open"), { canPublish: true, canPublishSources: [] });
+    assert.deepEqual(M.withAccess({ canPublish: true, canPublishSources: [1] }, "open"), { canPublish: true, canPublishSources: [1, 2] });
+    // That earlier lock is locked, but not locked enough; mic-only is not open.
     assert.equal(M.permitsMicrophone({ canPublish: true, canPublishSources: [1, 3, 4] }), false);
-    assert.equal(M.permissionIsAsWanted({ canPublish: true, canPublishSources: [1, 3, 4] }, false), false);
-    assert.equal(M.permissionIsAsWanted({ canPublish: false, canPublishSources: [] }, false), true);
+    assert.equal(M.permissionIsAsWanted({ canPublish: true, canPublishSources: [1, 3, 4] }, "none"), false);
+    assert.equal(M.permissionIsAsWanted({ canPublish: false, canPublishSources: [] }, "none"), true);
+    assert.equal(M.permissionIsAsWanted({ canPublish: true, canPublishSources: [2] }, "mic"), true);
+    assert.equal(M.permissionIsAsWanted({ canPublish: true, canPublishSources: [2] }, "open"), false);
+    assert.equal(M.permissionIsAsWanted({ canPublish: true, canPublishSources: [] }, "mic"), false);
     assert.equal(M.permitsMicrophone(undefined), true);
   });
 

@@ -61,7 +61,7 @@ import {
   VideoOff,
 } from 'lucide-react';
 import { computeRemaining, IDLE_TIMER, type TimerState } from '@/lib/timer';
-import { enableCamera, enableMicrophone, MIC_LOCKED_MESSAGE, useMicLocked } from '@/components/conference/micLockClient';
+import { CAM_LOCKED_MESSAGE, enableCamera, enableMicrophone, MIC_LOCKED_MESSAGE, useCamLocked, useMicLocked } from '@/components/conference/micLockClient';
 
 /* ------------------------------------------------------------------ */
 /*  Document PiP API type shims                                        */
@@ -383,6 +383,7 @@ function PiPContent({
   // Locked by an Owner, Host or Moderator: the button shows a lock and
   // turning the microphone on does nothing but say why.
   const micLocked = useMicLocked();
+  const camLocked = useCamLocked();
   const featured = usePiPFeaturedTrack();
   const [micOn, setMicOn] = useState(false);
   const [camOn, setCamOn] = useState(false);
@@ -527,8 +528,8 @@ function PiPContent({
           onClick={toggleCam}
           active={camOn}
           activeIcon={<Video size={18} />}
-          inactiveIcon={micLocked ? <Lock size={18} /> : <VideoOff size={18} />}
-          ariaLabel={micLocked && !camOn ? `Camera locked. ${MIC_LOCKED_MESSAGE}` : camOn ? 'Turn camera off' : 'Turn camera on'}
+          inactiveIcon={camLocked ? <Lock size={18} /> : <VideoOff size={18} />}
+          ariaLabel={camLocked && !camOn ? `Camera locked. ${micLocked ? MIC_LOCKED_MESSAGE : CAM_LOCKED_MESSAGE}` : camOn ? 'Turn camera off' : 'Turn camera on'}
           danger={!camOn}
         />
         <div style={{ flex: 1 }} />

@@ -1028,12 +1028,12 @@ class _Controls extends StatelessWidget {
             child: NeoControlButton(
               shrinkLabel: tight,
               // Locked: a lock, and a tap says why (RoomController.toggleCamera).
-              icon: room.micLocked && !room.cameraOn
+              icon: room.camLocked && !room.cameraOn
                   ? Icons.lock_rounded
                   : room.cameraOn
                       ? Icons.videocam_rounded
                       : Icons.videocam_off_rounded,
-              label: room.micLocked && !room.cameraOn ? 'Locked' : room.cameraOn ? 'Stop' : 'Video',
+              label: room.camLocked && !room.cameraOn ? 'Locked' : room.cameraOn ? 'Stop' : 'Video',
               tint: p.spectrumAt(5),
               active: room.cameraOn,
               onPressed: onCamera,

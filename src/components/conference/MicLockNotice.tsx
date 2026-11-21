@@ -7,13 +7,23 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MIC_ALLOWED_MESSAGE, MIC_LOCKED_EVENT, MIC_LOCKED_MESSAGE, useMicLocked } from './micLockClient';
+import {
+  CAM_LOCKED_MESSAGE,
+  MIC_ALLOWED_MESSAGE,
+  MIC_LOCKED_EVENT,
+  MIC_LOCKED_MESSAGE,
+  MIC_ONLY_ALLOWED_MESSAGE,
+  useCamLocked,
+  useMicLocked,
+} from './micLockClient';
 
 const SHOW_MS = 6000;
 
 export default function MicLockNotice() {
   const locked = useMicLocked();
+  const camLocked = useCamLocked();
   const prev = useRef<boolean | null>(null);
+  const prevCam = useRef<boolean | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -22,15 +32,24 @@ export default function MicLockNotice() {
   useEffect(() => {
     const was = prev.current;
     prev.current = locked;
+    const wasCam = prevCam.current;
+    prevCam.current = camLocked;
     if (locked && was !== true) setMessage(MIC_LOCKED_MESSAGE);
-    else if (!locked && was === true) setMessage(MIC_ALLOWED_MESSAGE);
-  }, [locked]);
+    // Allowed to talk: the microphone only, the camera stays locked.
+    else if (!locked && was === true) setMessage(camLocked ? MIC_ONLY_ALLOWED_MESSAGE : MIC_ALLOWED_MESSAGE);
+    // Unlocked after being allowed to talk: the camera too now.
+    else if (!locked && !camLocked && wasCam === true) setMessage(MIC_ALLOWED_MESSAGE);
+  }, [locked, camLocked]);
 
   useEffect(() => {
-    const onAttempt = () => setMessage(MIC_LOCKED_MESSAGE);
+    const onAttempt = (e: Event) => {
+      const camera = (e as CustomEvent).detail === 'camera';
+      // A camera attempt by someone who may talk: only the camera is locked.
+      setMessage(camera && !locked ? CAM_LOCKED_MESSAGE : MIC_LOCKED_MESSAGE);
+    };
     window.addEventListener(MIC_LOCKED_EVENT, onAttempt);
     return () => window.removeEventListener(MIC_LOCKED_EVENT, onAttempt);
-  }, []);
+  }, [locked]);
 
   useEffect(() => {
     if (!message) return;

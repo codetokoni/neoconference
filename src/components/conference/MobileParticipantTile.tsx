@@ -903,7 +903,7 @@ function MicLockItems({
   };
   return (
     <MenuBtn
-      label={allowed ? 'Lock mic and camera again' : 'Allow mic and camera'}
+      label={allowed ? 'Lock microphone again' : 'Allow to unmute'}
       disabled={disabled || busy}
       loading={busy}
       onClick={act}

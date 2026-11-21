@@ -289,6 +289,7 @@ class RoomState {
     this.liveOn,
     this.mediaRequest,
     this.micLocked = false,
+    this.camLocked = false,
     this.micLockOn = false,
     this.micAllowed = const {},
     this.micLockBusy = false,
@@ -300,6 +301,10 @@ class RoomState {
   /// LiveKit lets them publish, but not the microphone (the server's
   /// src/lib/micLock.ts). The Mic button shows a lock and says why.
   final bool micLocked;
+
+  /// This person's camera (and screen) is locked: with the microphone, or on
+  /// its own while they are allowed to talk (src/lib/micLock.ts "mic").
+  final bool camLocked;
 
   /// Participant microphones are locked in this meeting, and whose account
   /// ids may unmute anyway — as a host or moderator's menus show it (from
@@ -554,6 +559,7 @@ class RoomState {
     MediaRequest? mediaRequest,
     bool clearMediaRequest = false,
     bool? micLocked,
+    bool? camLocked,
     bool? micLockOn,
     Set<String>? micAllowed,
     bool? micLockBusy,
@@ -627,6 +633,7 @@ class RoomState {
         liveOn: clearLiveOn ? null : (liveOn ?? this.liveOn),
         mediaRequest: clearMediaRequest ? null : (mediaRequest ?? this.mediaRequest),
         micLocked: micLocked ?? this.micLocked,
+        camLocked: camLocked ?? this.camLocked,
         micLockOn: micLockOn ?? this.micLockOn,
         micAllowed: micAllowed ?? this.micAllowed,
         micLockBusy: micLockBusy ?? this.micLockBusy,
@@ -636,6 +643,19 @@ class RoomState {
 /// What a locked microphone says, word for word as on the web.
 const kMicLockedMessage = 'Your microphone and camera are locked. An Owner, Host, or Moderator can allow you to turn them on.';
 const kMicAllowedMessage = 'You can now turn your microphone and camera on.';
+/// Allowed to talk while the meeting stays locked: the microphone only.
+const kMicOnlyAllowedMessage = 'You can now unmute. Your camera stays locked.';
+const kCamLockedMessage = 'Your camera is locked. An Owner, Host, or Moderator can unlock it.';
+
+/// Whether LiveKit's permission locks the camera: in the meeting, nothing may
+/// be published, or a list without the camera — someone allowed to talk while
+/// the meeting is locked has the microphone only. Before joining, not a lock.
+bool camLockedBy(ParticipantPermissions? perms, {bool joined = true}) {
+  if (perms == null) return false;
+  if (!perms.canPublish) return joined;
+  final sources = perms.canPublishSources;
+  return sources.isNotEmpty && !sources.any((s) => s.value == 1); // 1 = CAMERA
+}
 
 /// Whether LiveKit's permission locks this person: in the meeting, nothing
 /// may be published (the lock takes microphone, camera and screen), or the
@@ -1941,12 +1961,17 @@ class RoomController extends StateNotifier<RoomState> {
   }
 
   Future<void> toggleCamera() async {
+    // Locked and off: say why, as the Mic button does (RoomController.toggleMic).
+    if (state.camLocked && !state.cameraOn) {
+      state = state.copyWith(message: state.micLocked ? kMicLockedMessage : kCamLockedMessage);
+      return;
+    }
     final me = room.localParticipant;
     if (me == null) return;
     final wantOn = !me.isCameraEnabled();
-    // Locked: the camera too. Say why instead of trying.
-    if (wantOn && (state.micLocked || micLockedBy(me.permissions))) {
-      state = state.copyWith(micLocked: true, message: kMicLockedMessage);
+    // Locked, also while allowed to talk: say why instead of trying.
+    if (wantOn && (state.camLocked || camLockedBy(me.permissions))) {
+      state = state.copyWith(camLocked: true, message: state.micLocked ? kMicLockedMessage : kCamLockedMessage);
       return;
     }
     await me.setCameraEnabled(wantOn);
@@ -2009,9 +2034,9 @@ class RoomController extends StateNotifier<RoomState> {
     final me = room.localParticipant;
     if (me == null) return;
     final sharing = me.isScreenShareEnabled();
-    // Locked: no screen either. Say why instead of asking for the capture.
-    if (!sharing && (state.micLocked || micLockedBy(me.permissions))) {
-      state = state.copyWith(micLocked: true, message: kMicLockedMessage);
+    // Locked with the camera: no screen either. Say why instead of asking for the capture.
+    if (!sharing && (state.camLocked || camLockedBy(me.permissions))) {
+      state = state.copyWith(camLocked: true, message: state.micLocked ? kMicLockedMessage : kCamLockedMessage);
       return;
     }
     try {
@@ -2294,15 +2319,22 @@ class RoomController extends StateNotifier<RoomState> {
   /// permission, and what to tell the person when that changes.
   @visibleForTesting
   void syncMicLock([ParticipantPermissions? perms]) {
-    final locked = micLockedBy(
-      perms ?? room.localParticipant?.permissions,
-      joined: room.connectionState == ConnectionState.connected,
-    );
-    if (locked == state.micLocked) return;
-    state = state.copyWith(
-      micLocked: locked,
-      message: locked ? kMicLockedMessage : kMicAllowedMessage,
-    );
+    final p = perms ?? room.localParticipant?.permissions;
+    final joined = room.connectionState == ConnectionState.connected;
+    final locked = micLockedBy(p, joined: joined);
+    final camLocked = camLockedBy(p, joined: joined);
+    if (locked == state.micLocked && camLocked == state.camLocked) return;
+    final String message;
+    if (locked) {
+      message = kMicLockedMessage;
+    } else if (state.micLocked) {
+      // Allowed to talk (the camera may still be locked), or unlocked.
+      message = camLocked ? kMicOnlyAllowedMessage : kMicAllowedMessage;
+    } else {
+      // Unlocked after being allowed to talk: the camera too now.
+      message = kMicAllowedMessage;
+    }
+    state = state.copyWith(micLocked: locked, camLocked: camLocked, message: message);
     _syncLocalMedia();
   }
 
@@ -2325,8 +2357,8 @@ class RoomController extends StateNotifier<RoomState> {
   /// on one person. The server checks the caller's role every time.
   Future<void> setMicLock(bool locked) => _micLock(locked ? 'lock' : 'unlock',
       done: locked ? 'Microphones and cameras locked.' : 'Participants can turn their microphones and cameras on again.');
-  Future<void> allowToUnmute(String identity) => _micLock('allow', identity: identity, done: 'They can turn their mic and camera on now.');
-  Future<void> lockMicrophoneAgain(String identity) => _micLock('relock', identity: identity, done: 'Their mic and camera are locked again.');
+  Future<void> allowToUnmute(String identity) => _micLock('allow', identity: identity, done: 'They can unmute now.');
+  Future<void> lockMicrophoneAgain(String identity) => _micLock('relock', identity: identity, done: 'Microphone locked again.');
 
   Future<void> _micLock(String action, {String? identity, required String done}) async {
     try {

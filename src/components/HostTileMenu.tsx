@@ -498,7 +498,7 @@ export function HostTileMenuPanel({
           {showHostActions && micLock.locked && !targetIsElevated && (
             micLock.allowed?.includes(accountOf(participantIdentity)) ? (
               <MenuItem
-                label="Lock mic and camera again"
+                label="Lock microphone again"
                 icon="🔒"
                 disabled={pending !== null}
                 onClick={() => micAct('relock')}
@@ -506,7 +506,7 @@ export function HostTileMenuPanel({
               />
             ) : (
               <MenuItem
-                label="Allow mic and camera"
+                label="Allow to unmute"
                 icon="🎙"
                 disabled={pending !== null}
                 onClick={() => micAct('allow')}

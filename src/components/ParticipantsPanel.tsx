@@ -474,7 +474,7 @@ export default function ParticipantsPanel({
                         onClick={() => micAction('relock', id)}
                         style={{ flex: '1 1 100%', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(251,191,36,0.55)', background: 'rgba(251,191,36,0.12)', color: '#fde68a', cursor: 'pointer', opacity: busy('mic:relock') ? 0.5 : 1 }}
                       >
-                        {busy('mic:relock') ? '...' : 'Lock mic and camera again'}
+                        {busy('mic:relock') ? '...' : 'Lock microphone again'}
                       </button>
                     ) : (
                       <button
@@ -483,7 +483,7 @@ export default function ParticipantsPanel({
                         onClick={() => micAction('allow', id)}
                         style={{ flex: '1 1 100%', padding: '6px 10px', fontSize: 12, borderRadius: 6, border: '1px solid rgba(52,211,153,0.5)', background: 'rgba(52,211,153,0.12)', color: '#bbf7d0', cursor: 'pointer', opacity: busy('mic:allow') ? 0.5 : 1 }}
                       >
-                        {busy('mic:allow') ? '...' : 'Allow mic and camera'}
+                        {busy('mic:allow') ? '...' : 'Allow to unmute'}
                       </button>
                     )
                   ) : null}
