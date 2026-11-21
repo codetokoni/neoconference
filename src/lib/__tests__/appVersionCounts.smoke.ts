@@ -69,13 +69,13 @@ async function main() {
   const today = counts.utcDayOf(Date.now());
 
   await t("joins are counted per app version, each person once a day; the website is not counted", async () => {
-    assert.equal(await join("user_a", "android 1.2.10+5224 OPPO CPH2599 / Android 16"), 200);
-    assert.equal(await join("user_a", "android 1.2.10+5224 OPPO CPH2599 / Android 16"), 200, "a rejoin");
-    assert.equal(await join("user_b", "android 1.2.10+5224 Tecno X / Android 14"), 200);
-    await join("user_c", "android 1.2.9+5223 Samsung A15 / Android 14");
+    assert.equal(await join("user_a", "android 1.2.16+5230 OPPO CPH2599 / Android 16"), 200);
+    assert.equal(await join("user_a", "android 1.2.16+5230 OPPO CPH2599 / Android 16"), 200, "a rejoin");
+    assert.equal(await join("user_b", "android 1.2.16+5230 Tecno X / Android 14"), 200);
+    await join("user_c", "android 1.2.9+5223 Samsung A15 / Android 14"); // refused (below the minimum), still counted
     await join("user_d"); // the website
     assert.deepEqual(await counts.appVersionsOver([today]), [
-      { version: "1.2.10", people: 2 },
+      { version: "1.2.16", people: 2 },
       { version: "1.2.9", people: 1 },
     ]);
   });
@@ -88,15 +88,15 @@ async function main() {
 
   await t("over several days, a person is one person", async () => {
     const tomorrow = Date.now() + 86_400_000;
-    await counts.recordAppJoin("android 1.2.10+5224 OPPO", "user_a", tomorrow);
-    await counts.recordAppJoin("android 1.2.10+5224 OPPO", "user_new", tomorrow);
+    await counts.recordAppJoin("android 1.2.16+5230 OPPO", "user_a", tomorrow);
+    await counts.recordAppJoin("android 1.2.16+5230 OPPO", "user_new", tomorrow);
     const days = [today, counts.utcDayOf(tomorrow)];
     assert.equal((await counts.appVersionsOver(days))[0].people, 3, "user_a, user_b, user_new");
   });
 
   await t("Analytics carries the counts for its period, newest version first", async () => {
     const report = await buildAnalytics(periodFromQuery(new URLSearchParams(), 7));
-    assert.deepEqual(report.appVersions.map((x) => x.version), ["1.2.10", "1.2.9", "1.2.3"]);
+    assert.deepEqual(report.appVersions.map((x) => x.version), ["1.2.16", "1.2.9", "1.2.3"]);
     assert.equal(report.appVersions[0].people, 2);
   });
 
@@ -109,7 +109,7 @@ async function main() {
       throw new Error("store down");
     };
     try {
-      await counts.recordAppJoin("android 1.2.10+5224 OPPO", "user_x");
+      await counts.recordAppJoin("android 1.2.16+5230 OPPO", "user_x");
     } finally {
       store.get = realGet;
     }
