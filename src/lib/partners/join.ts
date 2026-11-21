@@ -16,6 +16,7 @@ import type { NeoEvent, WaitingRoomEntry } from "@/types/event";
 import { PartnerError, leadsZone, type JoinGrant } from "@/lib/partners/store";
 import { rememberIdentity } from "@/lib/partners/attendance";
 import { getMicLock, lockedTokenGrant } from "@/lib/micLock";
+import { capacityRefusal, connectedNow } from "@/lib/livekitCapacity";
 
 /**
  * The visitor's identity in the room: fixed per (integration, partner user),
@@ -111,6 +112,11 @@ export async function joinZone(grant: JoinGrant, now = Date.now()): Promise<Join
   const { svc, apiKey, apiSecret, wsUrl } = livekit();
   const room = ev.livekitRoom || ev.slug;
   const present = await humansIn(svc, room);
+
+  // The whole LiveKit account full (src/lib/livekitCapacity.ts). A visitor
+  // is never one of the people running the meeting.
+  const full = svc ? capacityRefusal(await connectedNow(svc), false) : null;
+  if (full) throw new PartnerError(403, "room_full", full.message);
 
   // The owner's plan caps how many can be in. Fails open when the room
   // cannot be read, like the main join route.

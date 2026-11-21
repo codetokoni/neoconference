@@ -10,6 +10,8 @@
 //   recording_hours    hours recorded this month (all owners) over a limit
 //   payment_failures   failed checkouts + failed payments in 24 hours ≥ N
 //   job_failures       a job (or "*") failed N times in a row
+//   livekit_connections  people connected across the LiveKit account ≥ N
+//                      (the account refuses joins at its limit, 1,000 on Ship)
 //
 // De-duplication: one open alert per rule and subject. While it is open (or
 // acknowledged) a condition that is still true only bumps its count. When
@@ -19,6 +21,7 @@
 // (so the history is true) but does not page anyone each time.
 //
 //   neo:ops:alert:rules            hash ruleId -> AlertRule (absent = the defaults)
+//   neo:ops:alert:rules:removed    hash ruleId -> when a LATER_DEFAULTS rule was deleted
 //   neo:ops:alerts                 hash alertId -> OpsAlert
 //   neo:ops:alerts:order           list of alertIds, newest first, capped at 500
 //   neo:ops:alert:open:<key>       alertId of the open alert for rule+subject
@@ -33,6 +36,7 @@ import { paymentFailures } from "@/lib/ops/queues";
 import { notifyOps, type NotifyResult } from "@/lib/ops/notify";
 import { newId, parseJson, readHash } from "@/lib/ops/util";
 import { BRAND } from "@/lib/brand";
+import { accountLimit, WARN_AT } from "@/lib/livekitCapacity";
 
 export const ALERT_KINDS = [
   { kind: "service_down", label: "Service down", unit: "minutes" },
@@ -43,6 +47,7 @@ export const ALERT_KINDS = [
   { kind: "recording_hours", label: "Recorded hours this month over", unit: "hours" },
   { kind: "payment_failures", label: "Payment failures in 24 h at least", unit: "failures" },
   { kind: "job_failures", label: "Job failed in a row at least", unit: "runs" },
+  { kind: "livekit_connections", label: "LiveKit connections at least", unit: "connections" },
 ] as const;
 
 export type AlertKind = (typeof ALERT_KINDS)[number]["kind"];
@@ -110,12 +115,28 @@ export const DEFAULT_RULES: AlertRule[] = [
   // only when it is worth a look. Admin → Ops alerts can still override it.
   { id: "default_r2_bytes", kind: "r2_bytes", target: "*", threshold: 50_000_000_000, cooldownMinutes: 1440, enabled: true, email: true, inApp: true },
   { id: "default_recording", kind: "recording_hours", target: "*", threshold: 500, cooldownMinutes: 1440, enabled: false, email: true, inApp: true },
+  // 800 of LiveKit's 1,000 (2026-11-21): time to act before joins are refused.
+  { id: "default_livekit_connections", kind: "livekit_connections", target: "*", threshold: WARN_AT, cooldownMinutes: 60, enabled: true, email: true, inApp: true },
 ];
+
+/**
+ * Defaults added after rules may already have been saved. Saved rules
+ * replace the defaults wholesale, so without this a store saved before one
+ * of these existed would never get it. Each applies until it is saved
+ * (then the saved copy) or deleted (then it stays gone).
+ */
+const LATER_DEFAULTS = new Set(["default_livekit_connections"]);
+const REMOVED = "neo:ops:alert:rules:removed";
 
 export async function listRules(): Promise<AlertRule[]> {
   const stored = await readHash<AlertRule>(RULES);
   const list = Object.values(stored);
-  return (list.length ? list : DEFAULT_RULES).sort((a, b) => a.id.localeCompare(b.id));
+  if (!list.length) return [...DEFAULT_RULES].sort((a, b) => a.id.localeCompare(b.id));
+  const removed = (await kv.hgetall(REMOVED)) ?? {};
+  for (const d of DEFAULT_RULES) {
+    if (LATER_DEFAULTS.has(d.id) && !stored[d.id] && !(d.id in removed)) list.push(d);
+  }
+  return list.sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /** Saving any rule turns the defaults into stored rules first, so editing one keeps the rest. */
@@ -134,6 +155,7 @@ export async function saveRule(rule: AlertRule): Promise<void> {
 
 export async function deleteRule(id: string): Promise<boolean> {
   await materialise();
+  if (LATER_DEFAULTS.has(id)) await kv.hset(REMOVED, { [id]: Date.now() });
   return Number(await kv.hdel(RULES, id)) > 0;
 }
 
@@ -246,6 +268,21 @@ async function findings(rule: AlertRule, results: ProbeResult[], now: number, ca
       const p = await once("pay", () => paymentFailures(24 * 60 * MIN, now));
       if (p.count >= rule.threshold) {
         out.push({ subject: "payments", title: "Payment failures", message: `${p.count} failed checkout(s) or payment(s) in the last 24 hours (threshold ${rule.threshold}).` });
+      }
+      break;
+    }
+    case "livekit_connections": {
+      const m = results.find((r) => r.id === "livekit")?.metrics;
+      const v = Number(m?.participants);
+      if (m && m.participants != null && Number.isFinite(v) && v >= rule.threshold) {
+        const limit = accountLimit();
+        out.push({
+          subject: "livekit",
+          title: "LiveKit connections near the limit",
+          message:
+            `${v.toLocaleString("en")} people connected across all meetings (alert at ${rule.threshold.toLocaleString("en")}). ` +
+            `At ${limit.toLocaleString("en")} LiveKit refuses new joins and people are told the meeting is full.`,
+        });
       }
       break;
     }
