@@ -30,6 +30,7 @@ import MobileMoreMenu from "@/components/MobileMoreMenu";
 import ConferenceErrorBoundary from "@/components/ConferenceErrorBoundary";
 import { RoomNameEntry, getLastChoices, getSavedDisplayName } from "@/components/RoomNameEntry";
 import FullNamePrompt from "@/components/FullNamePrompt";
+import MicLockNotice from "@/components/conference/MicLockNotice";
 import { displayNameFor } from "@/lib/attendeeName";
 import PresenceHeartbeat from "@/components/groups/PresenceHeartbeat";
 import ParticipantCountBadge from "@/components/ParticipantCountBadge";
@@ -1237,9 +1238,11 @@ function RoomContainer({
         <SpotlightOverlay isHost={roomRole === "host" || roomRole === "cohost"} />
         <ChatTranscriptDownloader roomName={roomName} />
         <InitialsOverlay />
-        <RoomIdleController /><MobileVideoConference hideSelf={hideSelf} />
+        <RoomIdleController /><MobileVideoConference hideSelf={hideSelf} ownerUserId={ownerUserId} />
         <HostMenuOverlay isHost={roomRole === "host" || roomRole === "cohost"} roomRole={roomRole} slug={eventSlug} />
         <MediaRequestPrompt />
+        {/* "Your microphone is locked…" / "You can now unmute." */}
+        <MicLockNotice />
         <RoomAudioRenderer />
         <BackgroundContinuity eventName={roomName} eventSlug={eventSlug} />
         <HiddenVideoOverlay />

@@ -162,15 +162,7 @@ class _MeetingStageState extends State<MeetingStage> {
                   behavior: HitTestBehavior.opaque,
                   child: room.people.isEmpty
                       ? const _Alone()
-                      // Pinning someone means seeing them large: the grid
-                      // gives way to the speaker view while a pin lasts.
-                      : shown == RoomLayout.speaker
-                          ? _SpeakerView(
-                              room: room,
-                              onPerson: widget.actions.openPersonMenu,
-                              onUnpin: widget.actions.unpin,
-                            )
-                          : _GridView(room: room, onPerson: widget.actions.openPersonMenu),
+                      : _withPinnedRow(room, compact, shown),
                 ),
               ),
             ),
@@ -201,6 +193,34 @@ class _MeetingStageState extends State<MeetingStage> {
         ),
         if (room.link == RoomLinkState.reconnecting)
           const Positioned.fill(child: _ReconnectingOverlay()),
+      ],
+    );
+  }
+
+  /// The Owner, Hosts and Moderators in a row above the main area, for
+  /// everyone: through speaker changes, a screen share (the share stays
+  /// the main view, under the row) and a person pinned to the big tile on
+  /// this screen. The main area has everyone else.
+  Widget _withPinnedRow(RoomView room, bool compact, RoomLayout shown) {
+    final main = room.mainArea;
+    // Pinning someone means seeing them large: the grid gives way to the
+    // speaker view while a pin lasts.
+    final stage = shown == RoomLayout.speaker
+        ? _SpeakerView(
+            room: main,
+            onPerson: widget.actions.openPersonMenu,
+            onUnpin: widget.actions.unpin,
+          )
+        : _GridView(room: main, onPerson: widget.actions.openPersonMenu);
+    if (!room.showsPinnedRow) return stage;
+    return Column(
+      children: [
+        PinnedRow(
+          people: room.rolePinned,
+          compact: compact,
+          onPerson: widget.actions.openPersonMenu,
+        ),
+        Expanded(child: stage),
       ],
     );
   }
@@ -726,6 +746,57 @@ class _GridView extends StatelessWidget {
   }
 }
 
+/// The row of the Owner, Hosts and Moderators at the top of the meeting.
+///
+/// Each tile is their camera, or their initials with their name and role
+/// when it is off. It scrolls sideways when there are more than fit.
+class PinnedRow extends StatelessWidget {
+  const PinnedRow({
+    super.key,
+    required this.people,
+    this.compact = false,
+    this.onPerson,
+  });
+
+  final List<PersonView> people;
+
+  /// A phone held sideways: a lower row, so the main area keeps its height.
+  final bool compact;
+  final void Function(PersonView person)? onPerson;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = compact ? 72.0 : 96.0;
+    return Semantics(
+      container: true,
+      label: 'Owner, hosts and moderators',
+      child: SizedBox(
+        key: const ValueKey('pinned-row'),
+        height: height + NeoSpace.sm,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(NeoSpace.md, NeoSpace.sm, NeoSpace.md, 0),
+          itemCount: people.length,
+          // Each tile follows its person when the row changes (someone
+          // promoted, or leaving), as the filmstrip's do.
+          findItemIndexCallback: (key) {
+            final id = (key as ValueKey<String>).value.substring(4);
+            final i = people.indexWhere((o) => o.id == id);
+            return i < 0 ? null : i;
+          },
+          separatorBuilder: (_, _) => const SizedBox(width: NeoSpace.sm),
+          itemBuilder: (context, i) => SizedBox(
+            key: ValueKey('pin:${people[i].id}'),
+            width: height * 4 / 3,
+            // The person, not the slot: tapping their menu acts on them.
+            child: ParticipantTile(person: people[i].asPinned, onLongPress: onPerson == null ? null : (_) => onPerson!(people[i])),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// One person's tile: video or avatar, with their name, mic state, and
 /// whatever else is true of them right now.
 class ParticipantTile extends StatelessWidget {
@@ -927,8 +998,13 @@ class _Controls extends StatelessWidget {
         children: [
           Expanded(
             child: NeoControlButton(
-              icon: room.micOn ? Icons.mic_rounded : Icons.mic_off_rounded,
-              label: room.micOn ? 'Mute' : 'Unmute',
+              // Locked: a lock, and a tap says why (RoomController.toggleMic).
+              icon: room.micLocked && !room.micOn
+                  ? Icons.lock_rounded
+                  : room.micOn
+                      ? Icons.mic_rounded
+                      : Icons.mic_off_rounded,
+              label: room.micLocked && !room.micOn ? 'Locked' : room.micOn ? 'Mute' : 'Unmute',
               tint: p.spectrumAt(3),
               active: room.micOn,
               onPressed: onMic,

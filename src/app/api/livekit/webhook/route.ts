@@ -24,6 +24,7 @@ import { publicOrigin } from '@/lib/publicOrigin';
 import { eventStore } from '@/lib/eventStore';
 import { recordAttendance } from '@/lib/attendance';
 import { nameForJoin } from '@/lib/attendanceName';
+import { enforceMicLockFor, type LkParticipant } from '@/lib/micLock';
 import { partnerParticipantEvent, partnerRoomClosed } from '@/lib/partners/attendanceHooks';
 import { disconnectReasonName } from '@/lib/disconnectReason';
 import { addRecordedSeconds, egressSeconds } from '@/lib/recordingUsage';
@@ -169,6 +170,9 @@ export async function POST(req: Request) {
         });
       }
       if (!left) {
+        // Locked microphones (src/lib/micLock.ts): a reconnect may reuse a
+        // token from before the lock or the unlock.
+        await enforceMicLockFor(ev.id, roomName, participant as unknown as LkParticipant);
         await activity.record('meeting.joined', {
           userId: baseIdentity.startsWith('user_') ? baseIdentity : null,
           account: ev.ownerUserId,
@@ -177,6 +181,22 @@ export async function POST(req: Request) {
         });
       }
       return NextResponse.json({ ok: true, recorded: event.event, eventId: ev.id });
+    }
+
+    // ----- track_published: a microphone published while it is locked -----
+    // (a client with an old token, between joining and the join's update).
+    if (event?.event === 'track_published') {
+      const roomName = event.room?.name;
+      const participant = event.participant;
+      const source = (event as { track?: { source?: number | string } }).track?.source;
+      const isMic = source === 2 || source === 'MICROPHONE';
+      if (!roomName || !participant?.identity || !isMic) {
+        return NextResponse.json({ ok: true, ignored: 'track_not_microphone' });
+      }
+      const ev = await eventStore.bySlug(roomName);
+      if (!ev) return NextResponse.json({ ok: true, ignored: 'event_not_found', roomName });
+      const r = await enforceMicLockFor(ev.id, roomName, participant as unknown as LkParticipant);
+      return NextResponse.json({ ok: true, micLock: r });
     }
 
     // ----- room_finished: transition NeoEvent state 'live' -> 'ended' -----

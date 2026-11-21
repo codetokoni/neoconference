@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { enlargedTileGone } from "../../src/components/conference/roomLayout";
+import { pinRoleOf, rolePins, showPinnedRow } from "../../src/components/conference/rolePins";
 
 /**
  * The meeting room's layout on a computer: the toolbar's own band, tile
@@ -65,8 +66,13 @@ function moduleScript(file: string, name: string): string {
       if (name === "./HostTileMenu") return window.__mods.HostTileMenu;
       if (name === "./MobileParticipantTile") return window.__mods.MobileParticipantTile;
       if (name === "./keptPlace") return window.__mods.keptPlace;
+      if (name === "./rolePins") return window.__mods.rolePins;
+      // The meeting layout's control bar, where a test has not loaded it: none.
+      if (name === "./NeoControlBar") return (window.__mods && window.__mods.NeoControlBar) || { __esModule: true, default: function () { return null; } };
+      if (name === "./roomLayout") return window.__mods.roomLayout;
+      if (name === "./micLockClient" || name === "@/components/conference/micLockClient") return window.__mods.micLockClient;
       if (name === "livekit-client") return {
-        RoomEvent: { DataReceived: "dataReceived", ParticipantConnected: "participantConnected", ParticipantDisconnected: "participantDisconnected" },
+        RoomEvent: { DataReceived: "dataReceived", ParticipantConnected: "participantConnected", ParticipantDisconnected: "participantDisconnected", ParticipantPermissionsChanged: "participantPermissionsChanged", Connected: "connected", Reconnected: "reconnected" },
         ParticipantEvent: new Proxy({}, { get: function (_t, k) { return String(k); } }),
         Track: { Source: { Camera: "camera", Microphone: "microphone", ScreenShare: "screen_share" } },
       };
@@ -89,6 +95,7 @@ function moduleScript(file: string, name: string): string {
       };
       if (name === "@/components/SpotlightOverlay") return window.__mods.SpotlightOverlay;
       if (name === "@/components/conference/roomLayout") return window.__mods.roomLayout;
+      if (name === "@/components/conference/rolePins") return window.__mods.rolePins;
       if (name === "@/components/conference/phoneStatusSlot") return window.__mods.phoneStatusSlot;
       if (name === "@/lib/timer") return window.__mods.timer;
       if (name === "@/lib/kv") return { kv: {} };
@@ -140,7 +147,8 @@ async function load(page: Page): Promise<string[]> {
       };
       window.__lk = {
         useParticipants: function () { return window.__participants; },
-        useLocalParticipant: function () { return { localParticipant: { identity: "me#1" } }; },
+        useLocalParticipant: function () { return { localParticipant: window.__room.localParticipant, isMicrophoneEnabled: !!window.__micOn, isCameraEnabled: false }; },
+        ControlBar: function (props) { return window.React.createElement("div", { "data-lk-stock-bar": "", style: props && props.style }); },
         useRoomContext: function () { return window.__room; },
         useIsSpeaking: function () { return false; },
         useTracks: function () { return []; },
@@ -160,7 +168,9 @@ async function load(page: Page): Promise<string[]> {
   await page.addScriptTag({ content: moduleScript("src/lib/timer.ts", "timer") });
   await page.addScriptTag({ content: moduleScript("src/components/MeetingTimer.tsx", "MeetingTimer") });
   await page.addScriptTag({ content: moduleScript("src/components/SpotlightOverlay.tsx", "SpotlightOverlay") });
+  await page.addScriptTag({ content: moduleScript("src/components/conference/micLockClient.ts", "micLockClient") });
   await page.addScriptTag({ content: moduleScript("src/components/HostTileMenu.tsx", "HostTileMenu") });
+  await page.addScriptTag({ content: moduleScript("src/components/conference/rolePins.ts", "rolePins") });
   await page.addScriptTag({ content: moduleScript("src/components/conference/MobileParticipantTile.tsx", "MobileParticipantTile") });
   await page.addScriptTag({ content: moduleScript("src/components/HostMenuOverlay.tsx", "HostMenuOverlay") });
   await page.addScriptTag({ content: moduleScript("src/components/HiddenVideoOverlay.tsx", "HiddenVideoOverlay") });
@@ -817,7 +827,7 @@ async function renderPhoneGrid(page: Page) {
       isLocal: p.identity === "me#1",
       isCameraEnabled: false,
       isMicrophoneEnabled: false,
-      metadata: "",
+      metadata: p.metadata ?? "",
       on() { return this; },
       off() { return this; },
       getTrackPublication() { return undefined; },
@@ -907,5 +917,549 @@ test("on a phone, a reader at the top stays at the top as people join and the ro
   await render(page, people);
   await frames(page);
   expect(await topPerson(page)).toBe("me#1");
+  expect(errors).toEqual([]);
+});
+
+/* ------------------------------------------------------------------ */
+/*  The row of Owner, Hosts and Moderators pinned at the top            */
+/* ------------------------------------------------------------------ */
+
+// Roles as the server writes them into LiveKit metadata: the token route
+// ('host' / 'cohost' and owner: true) and the roles route, which rewrites
+// 'role' for everyone in the room when someone is promoted or demoted.
+const md = (role: string, owner = false) => JSON.stringify({ role, ...(owner ? { owner: true } : {}), planLimits: {} });
+const owner = { identity: "user_o#1", name: "Olu", metadata: md("host", true) };
+const host = { identity: "user_h#1", name: "Hana", metadata: md("host") };
+const mod1 = { identity: "user_m1#1", name: "Mo", metadata: md("cohost") };
+const mod2 = { identity: "user_m2#1", name: "Mia", metadata: md("cohost") };
+const ben = { identity: "user_b#1", name: "Ben", metadata: md("attendee") };
+
+test("pinned: Owner, then Hosts, then Moderators; one role keeps the order it came in", () => {
+  const ids = (people: Person[], ownerUserId: string | null = null) =>
+    rolePins(people, ownerUserId).map((p) => `${p.person.identity}=${p.role}`);
+  expect(ids([me, mod2, ben, mod1, host, ada, owner])).toEqual([
+    "user_o#1=owner",
+    "user_h#1=host",
+    "user_m2#1=moderator",
+    "user_m1#1=moderator",
+  ]);
+  // The owner by the room's ownerUserId, for a token without the flag.
+  expect(ids([{ ...host, identity: "user_x#9" }, { identity: "user_o#2", name: "Olu", metadata: md("host") }], "user_o")).toEqual([
+    "user_o#2=owner",
+    "user_x#9=host",
+  ]);
+  // The owner's id alone is not a role: an owner the server has not made
+  // host (or whose metadata has not arrived) is not pinned.
+  expect(pinRoleOf({ identity: "user_o#3", metadata: "" }, "user_o")).toBeNull();
+  expect(pinRoleOf({ identity: "user_o#3", metadata: "not json" })).toBeNull();
+  // Only you would be left in the main area: no row.
+  expect(showPinnedRow({ pinned: 1, rest: [{ identity: "me#1", isLocal: true }], sharing: false })).toBe(false);
+  expect(showPinnedRow({ pinned: 1, rest: [{ identity: "me#1", isLocal: true }], sharing: true })).toBe(true);
+  expect(showPinnedRow({ pinned: 1, rest: [{ identity: "user_b#1", isLocal: false }], sharing: false })).toBe(true);
+  expect(showPinnedRow({ pinned: 0, rest: [{ identity: "user_b#1", isLocal: false }], sharing: false })).toBe(false);
+});
+
+type Track = {
+  participant: Person & { isLocal: boolean };
+  source: "camera" | "screen_share";
+  publication?: { trackSid: string; source: string; isSubscribed: boolean };
+};
+type DesktopOpts = { shares?: string[]; focus?: string; ownerUserId?: string | null; hideSelf?: boolean; cameraOff?: string[] };
+
+/** NeoVideoConference with LiveKit's layout components stood in for: each tile says whose it is and where it is. */
+async function renderDesktop(page: Page) {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.addStyleTag({ path: path.join(root, "src/app/room/[name]/initials-overlay.css") });
+  await page.addStyleTag({
+    content: `.lk-video-conference,.lk-video-conference-inner{height:700px;display:flex;flex-direction:column}.lk-participant-tile{background:#222;color:#fff}`,
+  });
+  await page.evaluate(() => {
+    const w = window as unknown as Win & Record<string, unknown>;
+    const R = w.React;
+    const h = R.createElement;
+    const Ctx = R.createContext<unknown>(null);
+    const lk = (w as unknown as { __lk: Record<string, unknown> }).__lk;
+    const tile = (props: Record<string, unknown>) => {
+      const ctx = R.useContext(Ctx) as Track | null;
+      const t = (props.trackRef as Track | undefined) ?? ctx!;
+      return h(
+        "div",
+        {
+          className: "lk-participant-tile",
+          "data-neo-identity": props["data-neo-identity"],
+          "data-neo-source": props["data-neo-source"],
+          "data-neo-pinned": props["data-neo-pinned"],
+          "data-lk-video-muted": t.publication ? "false" : "true",
+        },
+        h("span", { "data-lk-participant-name": t.participant.name }, t.participant.name),
+      );
+    };
+    const list = (cls: string) => (p: { tracks: Track[]; children: unknown }) =>
+      h("div", { className: cls }, p.tracks.map((t, i) => h(Ctx.Provider, { key: i, value: t }, p.children as never)));
+    Object.assign(lk, {
+      useTracks: () => w.__tracks,
+      useCreateLayoutContext: () => ({ pin: { dispatch: (m: unknown) => (w.__pinMsgs as unknown[]).push(m) }, widget: {} }),
+      usePinnedTracks: () => w.__focus,
+      useTrackRefContext: () => R.useContext(Ctx),
+      isTrackReference: (t: Track) => !!t.publication,
+      LayoutContextProvider: (p: { children: unknown }) => p.children,
+      GridLayout: list("lk-grid-layout"),
+      CarouselLayout: list("lk-carousel"),
+      FocusLayoutContainer: (p: { children: unknown }) => h("div", { className: "lk-focus-layout" }, p.children as never),
+      FocusLayout: (p: Record<string, unknown>) =>
+        h("div", { className: "lk-participant-tile", "data-focus": "true", "data-neo-identity": p["data-neo-identity"], "data-neo-source": p["data-neo-source"] }),
+      ParticipantTile: tile,
+      ControlBar: () => null,
+      Chat: () => null,
+      ConnectionStateToast: () => null,
+    });
+    w.__pinMsgs = [];
+    w.__focus = [];
+  });
+  await page.addScriptTag({ content: moduleScript("src/components/conference/keptPlace.ts", "keptPlace") });
+  await page.addScriptTag({ content: moduleScript("src/components/conference/NeoVideoConference.tsx", "NeoVideoConference") });
+  await page.evaluate(() => {
+    const w = window as unknown as Win & Record<string, unknown>;
+    const root = w.ReactDOM.createRoot(document.getElementById("app")!);
+    const Conf = w.__mods.NeoVideoConference.default as (p: Record<string, unknown>) => null;
+    const Badges = w.__mods.TileRoleBadges.default as (p: Record<string, unknown>) => null;
+    w.__renderDesktop = (people: Person[], opts: DesktopOpts = {}) => {
+      const parts = people.map((p) => ({ ...p, isLocal: p.identity === "me#1" }));
+      w.__participants = parts as never;
+      const tracks: Track[] = [];
+      for (const p of parts) {
+        const off = (opts.cameraOff ?? []).includes(p.identity);
+        tracks.push({
+          participant: p,
+          source: "camera",
+          ...(off ? {} : { publication: { trackSid: "cam_" + p.identity, source: "camera", isSubscribed: true } }),
+        });
+      }
+      for (const id of opts.shares ?? []) {
+        const p = parts.find((x) => x.identity === id)!;
+        tracks.push({ participant: p, source: "screen_share", publication: { trackSid: "scr_" + id, source: "screen_share", isSubscribed: true } });
+      }
+      w.__tracks = tracks;
+      w.__focus = opts.focus ? [tracks.find((t) => `${t.participant.identity}:${t.source}` === opts.focus)] : [];
+      root.render(
+        w.React.createElement(
+          w.React.Fragment,
+          null,
+          w.React.createElement(Conf, { ownerUserId: opts.ownerUserId ?? null, hideSelf: opts.hideSelf ?? false, tick: Math.random() }),
+          w.React.createElement(Badges, { ownerUserId: opts.ownerUserId ?? null }),
+        ),
+      );
+    };
+  });
+}
+
+const desktop = (page: Page, people: Person[], opts: DesktopOpts = {}) =>
+  page.evaluate(
+    ({ people, opts }) => (window as unknown as { __renderDesktop: (p: Person[], o: DesktopOpts) => void }).__renderDesktop(people, opts),
+    { people, opts },
+  );
+
+/** The pinned row, left to right, and what the main area shows. */
+const desktopLayout = (page: Page) =>
+  page.evaluate(() => {
+    const row = document.querySelector("[data-neo-pinned-row]");
+    const ids = (sel: string) =>
+      Array.from(document.querySelectorAll(sel)).map((t) => `${t.getAttribute("data-neo-identity")}:${t.getAttribute("data-neo-source")}`);
+    return {
+      row: row ? Array.from(row.children).map((t) => `${t.getAttribute("data-neo-identity")}=${t.getAttribute("data-neo-pinned")}`) : null,
+      grid: ids(".lk-grid-layout > .lk-participant-tile"),
+      carousel: ids(".lk-carousel > .lk-participant-tile"),
+      focus: ids("[data-focus]"),
+    };
+  });
+
+test("on a computer, the Owner, Hosts and Moderators are a row above the gallery, and the gallery has everyone else", async ({ page }) => {
+  const errors = await load(page);
+  await renderDesktop(page);
+  await desktop(page, [me, mod2, ben, owner, mod1, host, ada]);
+  const layout = await desktopLayout(page);
+  expect(layout.row).toEqual(["user_o#1=owner", "user_h#1=host", "user_m2#1=moderator", "user_m1#1=moderator"]);
+  expect(layout.grid).toEqual(["me#1:camera", "user_b#1:camera", "user_a#1:camera"]);
+  // Above the gallery, in the layout, not over it.
+  const [rowBox, gridBox] = await Promise.all([
+    page.locator("[data-neo-pinned-row]").boundingBox(),
+    page.locator(".lk-grid-layout").boundingBox(),
+  ]);
+  expect(rowBox!.y + rowBox!.height).toBeLessThanOrEqual(gridBox!.y + 0.5);
+  // Each pinned tile carries the role badge the room puts on every tile.
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Array.from(document.querySelectorAll("[data-neo-pinned-row] > .lk-participant-tile")).map(
+          (t) => t.querySelector("[data-tile-role-badge]")?.textContent ?? null,
+        ),
+      ),
+    )
+    .toEqual(["Owner", "Host", "Moderator", "Moderator"]);
+  expect(errors).toEqual([]);
+});
+
+test("on a computer, a join, a leave or a role change redraws the row at once, and a reconnect keeps its order", async ({ page }) => {
+  const errors = await load(page);
+  await renderDesktop(page);
+  await desktop(page, [me, ben, mod1]);
+  expect((await desktopLayout(page)).row).toEqual(["user_m1#1=moderator"]);
+  // The owner joins late.
+  await desktop(page, [me, ben, mod1, owner]);
+  expect((await desktopLayout(page)).row).toEqual(["user_o#1=owner", "user_m1#1=moderator"]);
+  // Ben is made a moderator (seen before Mo), then Mo is made a host.
+  const benMod = { ...ben, metadata: md("cohost") };
+  await desktop(page, [me, benMod, mod1, owner, ada]);
+  expect((await desktopLayout(page)).row).toEqual(["user_o#1=owner", "user_b#1=moderator", "user_m1#1=moderator"]);
+  const moHost = { ...mod1, metadata: md("host") };
+  await desktop(page, [me, benMod, moHost, owner, ada]);
+  expect((await desktopLayout(page)).row).toEqual(["user_o#1=owner", "user_m1#1=host", "user_b#1=moderator"]);
+  // Demoted: back in the gallery.
+  await desktop(page, [me, ben, moHost, owner, ada]);
+  let layout = await desktopLayout(page);
+  expect(layout.row).toEqual(["user_o#1=owner", "user_m1#1=host"]);
+  expect(layout.grid).toContain("user_b#1:camera");
+  // A reconnect: everyone gone, then back in LiveKit's new order. Mia was
+  // never seen before, Mx neither; they come after in the order they came.
+  await desktop(page, [me]);
+  expect((await desktopLayout(page)).row).toBeNull();
+  await desktop(page, [me, ada, owner, mod2, moHost, ben, { ...mod1, identity: "user_m3#1", name: "Mx", metadata: md("cohost") }]);
+  layout = await desktopLayout(page);
+  expect(layout.row).toEqual(["user_o#1=owner", "user_m1#1=host", "user_m2#1=moderator", "user_m3#1=moderator"]);
+  // The same people back in yet another order: the row does not move.
+  await desktop(page, [{ ...mod1, identity: "user_m3#1", name: "Mx", metadata: md("cohost") }, ben, moHost, mod2, owner, ada, me]);
+  expect((await desktopLayout(page)).row).toEqual(layout.row);
+  // The owner leaves.
+  await desktop(page, [me, ada, mod2, moHost, ben]);
+  expect((await desktopLayout(page)).row).toEqual(["user_m1#1=host", "user_m2#1=moderator"]);
+  expect(errors).toEqual([]);
+});
+
+test("on a computer, a camera that is off is still a pinned tile, with its name", async ({ page }) => {
+  const errors = await load(page);
+  await renderDesktop(page);
+  await desktop(page, [me, ben, owner, mod1], { cameraOff: [owner.identity] });
+  const off = page.locator('[data-neo-pinned-row] > [data-neo-identity="user_o#1"]');
+  await expect(off).toHaveAttribute("data-lk-video-muted", "true");
+  await expect(off).toContainText("Olu");
+  await expect(off.locator("[data-tile-role-badge]")).toHaveText("Owner");
+  expect(errors).toEqual([]);
+});
+
+test("on a computer, a screen share is the main view under the row, and an enlarged tile leaves the row alone", async ({ page }) => {
+  const errors = await load(page);
+  await renderDesktop(page);
+  // The owner shares: LiveKit's rule enlarges the share; the row stays.
+  await desktop(page, [me, ben, owner, mod1, ada], { shares: [owner.identity], focus: "user_o#1:screen_share" });
+  let layout = await desktopLayout(page);
+  expect(layout.row).toEqual(["user_o#1=owner", "user_m1#1=moderator"]);
+  expect(layout.focus).toEqual(["user_o#1:screen_share"]);
+  expect(layout.carousel).toEqual(["me#1:camera", "user_b#1:camera", "user_a#1:camera"]);
+  const [rowBox, focusBox] = await Promise.all([
+    page.locator("[data-neo-pinned-row]").boundingBox(),
+    page.locator(".neo-focus-wrapper").boundingBox(),
+  ]);
+  expect(rowBox!.y + rowBox!.height).toBeLessThanOrEqual(focusBox!.y + 0.5);
+  // A viewer enlarges Ben on their own screen: the row is as it was.
+  await desktop(page, [me, ben, owner, mod1, ada], { focus: "user_b#1:camera" });
+  layout = await desktopLayout(page);
+  expect(layout.row).toEqual(["user_o#1=owner", "user_m1#1=moderator"]);
+  expect(layout.focus).toEqual(["user_b#1:camera"]);
+  // Enlarging a moderator shows them large and keeps them in the row,
+  // with a badge on both of their tiles.
+  await desktop(page, [me, ben, owner, mod1, ada], { focus: "user_m1#1:camera" });
+  layout = await desktopLayout(page);
+  expect(layout.row).toEqual(["user_o#1=owner", "user_m1#1=moderator"]);
+  expect(layout.focus).toEqual(["user_m1#1:camera"]);
+  await expect
+    .poll(() => page.evaluate(() => document.querySelectorAll('[data-neo-identity="user_m1#1"] [data-tile-role-badge]').length))
+    .toBe(2);
+  expect(errors).toEqual([]);
+});
+
+test("on a computer, many moderators: the row scrolls sideways in one line and stays low", async ({ page }) => {
+  const errors = await load(page);
+  await renderDesktop(page);
+  const mods = Array.from({ length: 12 }, (_, i) => ({ identity: `user_mm${i}#1`, name: `Mod ${i}`, metadata: md("cohost") }));
+  await desktop(page, [me, ben, ...mods]);
+  const m = await page.evaluate(() => {
+    const row = document.querySelector<HTMLElement>("[data-neo-pinned-row]")!;
+    const tiles = Array.from(row.children) as HTMLElement[];
+    return {
+      scrolls: row.scrollWidth > row.clientWidth,
+      overflowX: getComputedStyle(row).overflowX,
+      lines: new Set(tiles.map((t) => Math.round(t.getBoundingClientRect().top))).size,
+      rowHeight: row.getBoundingClientRect().height,
+      firstLeft: tiles[0].getBoundingClientRect().left,
+    };
+  });
+  expect(m).toMatchObject({ scrolls: true, overflowX: "auto", lines: 1 });
+  expect(m.rowHeight).toBeLessThan(200);
+  // Scrolling starts from the first moderator, not from the middle.
+  expect(m.firstLeft).toBeGreaterThanOrEqual(0);
+  expect(errors).toEqual([]);
+});
+
+test("on a computer, a host and you alone: no row; a host hiding themselves is not in their own row", async ({ page }) => {
+  const errors = await load(page);
+  await renderDesktop(page);
+  await desktop(page, [me, owner]);
+  const layout = await desktopLayout(page);
+  expect(layout.row).toBeNull();
+  expect(layout.grid).toEqual(["me#1:camera", "user_o#1:camera"]);
+  const meHost = { ...me, metadata: md("host") };
+  await desktop(page, [meHost, ben, mod1], { hideSelf: true });
+  expect((await desktopLayout(page)).row).toEqual(["user_m1#1=moderator"]);
+  await desktop(page, [meHost, ben, mod1]);
+  expect((await desktopLayout(page)).row).toEqual(["me#1=host", "user_m1#1=moderator"]);
+  expect(errors).toEqual([]);
+});
+
+/** The phone grid's pinned row, left to right, with each tile's role label. */
+const phoneRow = (page: Page) =>
+  page.evaluate(() => {
+    const row = document.querySelector("[data-neo-pinned-row]");
+    if (!row) return null;
+    return Array.from(row.querySelectorAll("[data-lk-participant-identity]")).map((t) => {
+      const pill = Array.from(t.querySelectorAll("span")).find((s) => /^(OWNER|HOST|MODERATOR)$/.test(s.textContent || ""));
+      return `${t.getAttribute("data-lk-participant-identity")}=${pill?.textContent ?? "-"}`;
+    });
+  });
+
+async function phoneRowStyles(page: Page) {
+  await page.addStyleTag({
+    content: `.flex{display:flex}.overflow-x-auto{overflow-x:auto}.shrink-0{flex-shrink:0}.pt-3{padding-top:12px}.pb-1{padding-bottom:4px}.pb-2{padding-bottom:8px}.w-full{width:100%}`,
+  });
+}
+
+test("on a phone, the Owner, Hosts and Moderators are a row above the grid, labelled, and the grid has everyone else", async ({ page }) => {
+  const errors = await load(page);
+  await renderPhoneGrid(page);
+  await phoneRowStyles(page);
+  await render(page, [me, mod2, ben, owner, mod1, host, ada]);
+  await expect.poll(() => phoneRow(page)).toEqual(["user_o#1=OWNER", "user_h#1=HOST", "user_m2#1=MODERATOR", "user_m1#1=MODERATOR"]);
+  expect(await gridOrder(page)).toEqual(["me#1", "user_b#1", "user_a#1"]);
+  // Above the grid; one line that scrolls sideways when wider than the phone.
+  const m = await page.evaluate(() => {
+    const row = document.querySelector<HTMLElement>("[data-neo-pinned-row]")!;
+    const first = document.querySelector("[data-place]")!;
+    return {
+      above: row.getBoundingClientRect().bottom <= first.getBoundingClientRect().top + 0.5,
+      scrolls: row.scrollWidth > row.clientWidth,
+      overflowX: getComputedStyle(row).overflowX,
+      lines: new Set(Array.from(row.children).map((c) => Math.round(c.getBoundingClientRect().top))).size,
+    };
+  });
+  expect(m).toEqual({ above: true, scrolls: true, overflowX: "auto", lines: 1 });
+  // A promotion and a demotion redraw it.
+  await render(page, [me, mod2, { ...ben, metadata: md("host") }, owner, ada]);
+  await expect.poll(() => phoneRow(page)).toEqual(["user_o#1=OWNER", "user_b#1=HOST", "user_m2#1=MODERATOR"]);
+  expect(await gridOrder(page)).toEqual(["me#1", "user_a#1"]);
+  // You and the host alone: the ordinary grid.
+  await render(page, [me, owner]);
+  await expect.poll(() => phoneRow(page)).toBeNull();
+  expect(await gridOrder(page)).toEqual(["me#1", "user_o#1"]);
+  expect(errors).toEqual([]);
+});
+
+test("on a phone, a screen share stays the main view, under the pinned row", async ({ page }) => {
+  const errors = await load(page);
+  await renderPhoneGrid(page);
+  await phoneRowStyles(page);
+  await page.evaluate(() => {
+    const w = window as unknown as { __lk: Record<string, unknown> };
+    // The owner's share, as useTracks gives it.
+    w.__lk.useTracks = () => [
+      { participant: { identity: "user_o#1", name: "Olu" }, source: "screen_share", publication: { isSubscribed: true, track: {} } },
+    ];
+  });
+  await render(page, [me, ben, owner, mod1]);
+  await expect.poll(() => phoneRow(page)).toEqual(["user_o#1=OWNER", "user_m1#1=MODERATOR"]);
+  const order = await page.evaluate(() => {
+    const row = document.querySelector("[data-neo-pinned-row]")!.getBoundingClientRect();
+    const label = Array.from(document.querySelectorAll("div")).filter((d) => d.textContent?.startsWith("Sharing ·")).at(-1)!;
+    const share = label.previousElementSibling!.getBoundingClientRect();
+    const grid = document.querySelector("[data-place]")!.getBoundingClientRect();
+    return { rowAboveShare: row.bottom <= share.top + 0.5, shareAboveGrid: share.bottom <= grid.top + 0.5 };
+  });
+  expect(order).toEqual({ rowAboveShare: true, shareAboveGrid: true });
+  expect(errors).toEqual([]);
+});
+
+/* -------------------------------------------------------------------------- */
+/*  Locked participant microphones (src/lib/micLock.ts)                        */
+/* -------------------------------------------------------------------------- */
+
+type MicWin = Win & {
+  __micCalls: boolean[];
+  __micOn: boolean;
+  __fetches: Array<{ url: string; method: string; body: string }>;
+  __lockAnswer: { locked: boolean; allowed: string[] };
+  __room: Win["__room"] & { name?: string; localParticipant: Record<string, unknown> };
+};
+
+/** A participant whose LiveKit permission leaves the microphone out (or not). */
+async function micSetup(page: Page, locked: boolean) {
+  await page.evaluate((locked) => {
+    const w = window as unknown as MicWin;
+    w.__micCalls = [];
+    w.__micOn = false;
+    w.__fetches = [];
+    w.__lockAnswer = { locked: true, allowed: [] };
+    w.__room.name = "weekly-room";
+    Object.assign(w.__room.localParticipant, {
+      permissions: { canPublish: true, canPublishSources: locked ? [1, 3, 4] : [] },
+      isMicrophoneEnabled: false,
+      setMicrophoneEnabled: (on: boolean) => {
+        w.__micCalls.push(on);
+        return Promise.resolve();
+      },
+    });
+    window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      w.__fetches.push({ url, method: init?.method || "GET", body: typeof init?.body === "string" ? init.body : "" });
+      if (url.startsWith("/api/livekit/mic-lock")) {
+        const body = init?.method === "POST" ? { ok: true } : w.__lockAnswer;
+        return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("{}", { status: 404 });
+    }) as typeof fetch;
+  }, locked);
+}
+
+async function loadMicScreens(page: Page) {
+  await page.addScriptTag({ content: moduleScript("src/components/conference/MicLockNotice.tsx", "MicLockNotice") });
+  await page.addScriptTag({ content: moduleScript("src/components/conference/MobileControlBar.tsx", "MobileControlBar") });
+  await page.addScriptTag({ content: moduleScript("src/components/conference/NeoControlBar.tsx", "NeoControlBar") });
+}
+
+test("a locked participant's phone: the Mic button shows the lock and says why, and never turns the microphone on", async ({ page }) => {
+  const errors = await load(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await micSetup(page, true);
+  await loadMicScreens(page);
+  await page.evaluate(() => {
+    const w = window as unknown as MicWin;
+    const Bar = w.__mods.MobileControlBar.default as (p: Record<string, unknown>) => null;
+    const Notice = w.__mods.MicLockNotice.default as () => null;
+    w.ReactDOM.createRoot(document.getElementById("app")!).render(
+      w.React.createElement("div", null, w.React.createElement(Bar, { onLeave: () => {} }), w.React.createElement(Notice)),
+    );
+  });
+  const mic = page.getByRole("button", { name: "Microphone locked" });
+  await expect(mic).toBeVisible();
+  await expect(mic).toHaveAttribute("title", "Your microphone is locked. An Owner, Host, or Moderator can allow you to unmute.");
+  const notice = page.locator("[data-mic-lock-notice]");
+  await expect(notice).toContainText("Your microphone is locked. An Owner, Host, or Moderator can allow you to unmute.");
+  await notice.getByRole("button", { name: "Dismiss" }).click();
+  await expect(notice).toHaveText("");
+  // Tapping it, or the keyboard on it: no microphone, the reason again.
+  await mic.click();
+  await expect(notice).toContainText("Your microphone is locked.");
+  await notice.getByRole("button", { name: "Dismiss" }).click();
+  await mic.focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Space");
+  await expect(notice).toContainText("Your microphone is locked.");
+  // The headset and keyboard media keys (BackgroundContinuity), and "Ask to
+  // unmute" (MediaRequestPrompt), go through the same check.
+  const viaMediaKey = await page.evaluate(() => {
+    const w = window as unknown as MicWin;
+    const m = w.__mods.micLockClient as unknown as { enableMicrophone: (lp: unknown, on: boolean) => Promise<boolean> };
+    return m.enableMicrophone(w.__room.localParticipant, true);
+  });
+  expect(viaMediaKey).toBe(false);
+  expect(await page.evaluate(() => (window as unknown as MicWin).__micCalls)).toEqual([]);
+
+  // Allowed: told so, and the microphone stays off until they turn it on.
+  await page.evaluate(() => {
+    const w = window as unknown as MicWin;
+    (w.__room.localParticipant.permissions as { canPublishSources: number[] }).canPublishSources = [];
+    w.__room.emit("participantPermissionsChanged");
+  });
+  await expect(notice).toContainText("You can now unmute.");
+  const unmute = page.getByRole("button", { name: "Unmute microphone" });
+  await expect(unmute).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as MicWin).__micCalls)).toEqual([]);
+  await unmute.click();
+  expect(await page.evaluate(() => (window as unknown as MicWin).__micCalls)).toEqual([true]);
+  expect(errors).toEqual([]);
+});
+
+test("on a computer, the bar shows a locked microphone button only while it is locked", async ({ page }) => {
+  const errors = await load(page);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await micSetup(page, true);
+  await loadMicScreens(page);
+  await page.evaluate(() => {
+    const w = window as unknown as MicWin;
+    const Bar = w.__mods.NeoControlBar.default as () => null;
+    w.ReactDOM.createRoot(document.getElementById("app")!).render(w.React.createElement(Bar));
+  });
+  const locked = page.getByRole("button", { name: "Microphone locked" });
+  await expect(locked).toBeVisible();
+  await expect(locked).toHaveAttribute("title", /An Owner, Host, or Moderator can allow you to unmute/);
+  // LiveKit's own bar is laid out in the same row.
+  await expect(page.locator("[data-lk-stock-bar]")).toHaveCSS("display", "contents");
+  await page.evaluate(() => {
+    const w = window as unknown as MicWin;
+    (w.__room.localParticipant.permissions as { canPublishSources: number[] }).canPublishSources = [];
+    w.__room.emit("participantPermissionsChanged");
+  });
+  await expect(locked).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("a host's phone menu: Allow to unmute on someone locked, Lock microphone again once allowed, nothing while unlocked", async ({ page }) => {
+  const errors = await load(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await micSetup(page, false);
+  const open = async () => {
+    await page.evaluate(() => {
+      const w = window as unknown as MicWin & { __tileRoot?: import("react-dom/client").Root };
+      const Tile = w.__mods.MobileParticipantTile.MobileParticipantTile as (p: Record<string, unknown>) => null;
+      const g = {
+        identity: "user_g#1",
+        name: "Grace",
+        isLocal: false,
+        isCameraEnabled: false,
+        isMicrophoneEnabled: false,
+        metadata: "",
+        on() { return this; },
+        off() { return this; },
+        getTrackPublication() { return undefined; },
+      };
+      const root = (w.__tileRoot ??= w.ReactDOM.createRoot(document.getElementById("app")!));
+      root.render(
+        w.React.createElement("div", { style: { width: 180 }, key: String(Math.random()) },
+          w.React.createElement(Tile, { participant: g, localIsHost: true, localIsHostRank: true, participantIsHost: false, slug: "weekly" })),
+      );
+    });
+    await page.getByRole("button", { name: "Options for Grace" }).click();
+    return page.getByRole("menu", { name: "Options for Grace" });
+  };
+  const posts = () => page.evaluate(() => (window as unknown as MicWin).__fetches.filter((f) => f.method === "POST"));
+
+  // Locked, Grace not allowed.
+  let sheet = await open();
+  await sheet.getByRole("button", { name: "Allow to unmute" }).click();
+  await expect.poll(posts).toEqual([
+    { url: "/api/livekit/mic-lock", method: "POST", body: JSON.stringify({ slug: "weekly", room: "weekly-room", action: "allow", participantIdentity: "user_g#1" }) },
+  ]);
+  await expect(sheet).toHaveCount(0);
+
+  // Allowed: the item is now Lock microphone again.
+  await page.evaluate(() => { (window as unknown as MicWin).__lockAnswer = { locked: true, allowed: ["user_g"] }; });
+  sheet = await open();
+  await sheet.getByRole("button", { name: "Lock microphone again" }).click();
+  await expect.poll(async () => (await posts()).at(-1)?.body).toBe(
+    JSON.stringify({ slug: "weekly", room: "weekly-room", action: "relock", participantIdentity: "user_g#1" }),
+  );
+
+  // Not locked: neither.
+  await page.evaluate(() => { (window as unknown as MicWin).__lockAnswer = { locked: false, allowed: [] }; });
+  sheet = await open();
+  await expect(sheet.getByRole("button", { name: "Mute mic" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: /Allow to unmute|Lock microphone again/ })).toHaveCount(0);
   expect(errors).toEqual([]);
 });

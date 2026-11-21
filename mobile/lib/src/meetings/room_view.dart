@@ -29,6 +29,7 @@ class PersonView {
     this.isMe = false,
     this.role,
     this.owner = false,
+    this.camera,
   });
 
   final String id;
@@ -47,6 +48,33 @@ class PersonView {
 
   /// The meeting's owner, which the role alone does not say.
   final bool owner;
+
+  /// Their camera, while [video] shows their screen share instead. Null
+  /// when [video] is the camera (or there is none).
+  final Widget? camera;
+
+  /// Their place in the row pinned at the top of everyone's meeting: 0 the
+  /// Owner, 1 a Host, 2 a Moderator; null for everyone else. From the role
+  /// the server puts in their metadata, so every screen agrees.
+  int? get pinRank => switch (role) {
+        'host' => owner ? 0 : 1,
+        'cohost' => 2,
+        _ => null,
+      };
+
+  /// This person as their tile in the pinned row: their face, not their
+  /// screen, which is the main view below the row.
+  PersonView get asPinned => PersonView(
+        id: id,
+        name: name,
+        video: sharing ? camera : (camera ?? video),
+        muted: muted,
+        speaking: speaking,
+        handRaised: handRaised,
+        isMe: isMe,
+        role: role,
+        owner: owner,
+      );
 
   bool get cameraOn => video != null;
 
@@ -83,6 +111,7 @@ class RoomView {
     required this.link,
     required this.elapsed,
     this.micOn = false,
+    this.micLocked = false,
     this.cameraOn = false,
     this.screenSharing = false,
     this.handRaised = false,
@@ -126,6 +155,10 @@ class RoomView {
   final Duration elapsed;
 
   final bool micOn;
+
+  /// An Owner, Host or Moderator locked this person's microphone: the Mic
+  /// button shows a lock and says why instead of unmuting.
+  final bool micLocked;
   final bool cameraOn;
   final bool screenSharing;
   final bool handRaised;
@@ -173,6 +206,60 @@ class RoomView {
 
   List<PersonView> get others =>
       [for (final person in people) if (person != focus) person];
+
+  /// The Owner, then Hosts, then Moderators, pinned in a row at the top
+  /// for everyone. People of one role keep their order in [people] (the
+  /// order they came in), so the row does not shuffle as people speak.
+  List<PersonView> get rolePinned {
+    final at = <String, int>{for (var i = 0; i < people.length; i++) people[i].id: i};
+    final pins = [for (final person in people) if (person.pinRank != null) person];
+    // List.sort is not stable: ties go by their place in the meeting.
+    pins.sort((a, b) {
+      final byRank = a.pinRank!.compareTo(b.pinRank!);
+      return byRank != 0 ? byRank : at[a.id]!.compareTo(at[b.id]!);
+    });
+    return pins;
+  }
+
+  /// Who the main area shows while the row is up: everyone not in it, and
+  /// from the row whoever is sharing (the share is the main view) and
+  /// whoever this person pinned to the big tile.
+  List<PersonView> get _mainPeople => [
+        for (final person in people)
+          if (person.pinRank == null || person.sharing || person.id == pinnedId) person,
+      ];
+
+  /// Whether the pinned row is shown: when there is someone to pin and the
+  /// main area would still show someone other than this device, or a
+  /// share. With only this device left there (a host alone, or a host and
+  /// you in a call of two) the row would shrink the host to a strip above
+  /// your own face; the ordinary layout shows everyone instead.
+  bool get showsPinnedRow =>
+      rolePinned.isNotEmpty && _mainPeople.any((p) => !p.isMe || p.sharing);
+
+  /// The meeting as the main area below the pinned row sees it.
+  RoomView get mainArea => showsPinnedRow ? _withPeople(_mainPeople) : this;
+
+  RoomView _withPeople(List<PersonView> people) => RoomView(
+        title: title,
+        people: people,
+        link: link,
+        elapsed: elapsed,
+        micOn: micOn,
+        cameraOn: cameraOn,
+        screenSharing: screenSharing,
+        handRaised: handRaised,
+        recording: recording,
+        liveOn: liveOn,
+        canManage: canManage,
+        unreadChat: unreadChat,
+        waitingCount: waitingCount,
+        onPhoneCall: onPhoneCall,
+        callEndedMuted: callEndedMuted,
+        pinnedId: pinnedId,
+        timerLabel: timerLabel,
+        timerUrgent: timerUrgent,
+      );
 
   /// mm:ss, or h:mm:ss once it has been going that long.
   String get clock {

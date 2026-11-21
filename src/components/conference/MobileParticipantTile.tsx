@@ -10,7 +10,8 @@ import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { MicOff } from 'lucide-react';
 import { ParticipantEvent, Track, type Participant } from 'livekit-client';
-import { useIsSpeaking, VideoTrack } from '@livekit/components-react';
+import { useIsSpeaking, useRoomContext, VideoTrack } from '@livekit/components-react';
+import { accountOf, postMicLock, useMicLockState } from './micLockClient';
 import {
   getAvatarColor,
   getAvatarColorRGB,
@@ -18,6 +19,7 @@ import {
 } from '@/lib/avatarColor';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 import { requestSpotlight, useSpotlit } from '@/components/SpotlightOverlay';
+import { PIN_ROLE_LABEL, type PinRole } from './rolePins';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -34,6 +36,9 @@ interface MobileParticipantTileProps {
    *  long-press menu's host items for an owner whose role has not arrived. */
   localIsOwner?: boolean;
   participantIsHost: boolean;
+  /** Their role, said on the tile (Owner, Host, Moderator). Without it a
+   *  host or moderator's tile says HOST, as it always has. */
+  roleBadge?: PinRole | null;
   slug: string;
   onSpotlight?: (participantId: string) => void;
   isVisible?: boolean;
@@ -100,6 +105,7 @@ function MobileParticipantTileInner({
   localIsHostRank = false,
   localIsOwner = false,
   participantIsHost,
+  roleBadge = null,
   slug,
   onSpotlight,
   isVisible = true,
@@ -597,7 +603,7 @@ function MobileParticipantTileInner({
         ) : null}
 
         {/* Host badge */}
-        {participantIsHost && (
+        {(roleBadge || participantIsHost) && (
           <span
             className="shrink-0 font-medium text-cyan-400"
             style={{
@@ -608,7 +614,7 @@ function MobileParticipantTileInner({
               padding: '1px 2px',
             }}
           >
-            HOST
+            {roleBadge ? PIN_ROLE_LABEL[roleBadge].toUpperCase() : 'HOST'}
           </span>
         )}
 
@@ -724,6 +730,15 @@ function MobileParticipantTileInner({
                   loading={pending === 'muteAudio'}
                   onClick={() => handleModerate('muteAudio')}
                 />
+                {!participantIsHost && (
+                  <MicLockItems
+                    slug={slug}
+                    identity={participant.identity}
+                    disabled={pending !== null}
+                    onError={setMenuError}
+                    onDone={() => setMenuOpen(false)}
+                  />
+                )}
                 <MenuBtn
                   label="Turn off camera"
                   disabled={pending !== null}
@@ -842,6 +857,47 @@ function MenuSection({ label }: { label: string }) {
 /*  Menu button (internal)                                             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * "Allow to unmute" / "Lock microphone again" while participant microphones
+ * are locked (src/lib/micLock.ts). Mounted only while the menu is open, so a
+ * room of hundreds of tiles does not each ask for the lock.
+ */
+function MicLockItems({
+  slug,
+  identity,
+  disabled,
+  onError,
+  onDone,
+}: {
+  slug: string;
+  identity: string;
+  disabled: boolean;
+  onError: (m: string | null) => void;
+  onDone: () => void;
+}) {
+  const room = useRoomContext();
+  const lock = useMicLockState(slug);
+  const [busy, setBusy] = useState(false);
+  if (!lock.locked) return null;
+  const allowed = lock.allowed?.includes(accountOf(identity)) ?? false;
+  const act = async () => {
+    onError(null);
+    setBusy(true);
+    const problem = await postMicLock(slug, room?.name, allowed ? 'relock' : 'allow', identity);
+    setBusy(false);
+    if (problem) onError(problem);
+    else onDone();
+  };
+  return (
+    <MenuBtn
+      label={allowed ? 'Lock microphone again' : 'Allow to unmute'}
+      disabled={disabled || busy}
+      loading={busy}
+      onClick={act}
+    />
+  );
+}
+
 function MenuBtn({
   label,
   onClick,
@@ -896,6 +952,7 @@ export const MobileParticipantTile = React.memo(
     prev.localIsHostRank === next.localIsHostRank &&
     prev.localIsOwner === next.localIsOwner &&
     prev.participantIsHost === next.participantIsHost &&
+    prev.roleBadge === next.roleBadge &&
     prev.slug === next.slug &&
     prev.isVisible === next.isVisible &&
     prev.aspect === next.aspect,

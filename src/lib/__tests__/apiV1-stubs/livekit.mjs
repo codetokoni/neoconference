@@ -58,4 +58,23 @@ export class RoomServiceClient {
     (globalThis.__lkMuted ??= []).push({ room, identity, trackSid, muted });
     return {};
   }
+  // Both of LiveKit's forms: (room, identity, { metadata, permission }) and
+  // (room, identity, metadata, permission). Applied to the participant in
+  // globalThis.__lkParticipants and recorded in globalThis.__lkUpdated.
+  async updateParticipant(room, identity, a, b) {
+    const opts = typeof a === "object" && a !== null ? a : { metadata: a, permission: b };
+    const p = (globalThis.__lkParticipants?.[room] ?? []).find((x) => x.identity === identity);
+    if (!p) throw new Error("twirp error not_found: participant not found");
+    if (opts.metadata !== undefined) p.metadata = opts.metadata;
+    if (opts.permission !== undefined) p.permission = { ...opts.permission };
+    (globalThis.__lkUpdated ??= []).push({ room, identity, ...opts });
+    return p;
+  }
+  // Recorded in globalThis.__lkData ([{ room, data (parsed JSON), kind, options }]).
+  async sendData(room, data, kind, options) {
+    let parsed;
+    try { parsed = JSON.parse(new TextDecoder().decode(data)); } catch { parsed = null; }
+    (globalThis.__lkData ??= []).push({ room, data: parsed, kind, options });
+    return {};
+  }
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient, type VideoGrant } from "livekit-server-sdk";
 import { rememberMeeting } from "@/lib/deviceSessions";
 import { getPlanLimits, getPlanLimitsForUserId, type Plan, type PlanFeatureLimits } from "@/lib/plan";
 import { hasMeetingAdminPower, isAdmin } from "@/lib/roles";
@@ -457,6 +457,23 @@ export async function GET(req: NextRequest) {
       }
     } catch (lockErr) {
       console.error("[livekit/token] lock check error:", lockErr);
+    }
+
+    // Locked microphones (src/lib/micLock.ts): someone who joins, or rejoins,
+    // while their microphone is locked may publish everything but it. Owners,
+    // Hosts and Moderators never are. A failed read locks nobody.
+    try {
+      if (eventSlug) {
+        const { eventStore: __esMic } = await import("@/lib/eventStore");
+        const __evMic = await __esMic.bySlug(eventSlug);
+        if (__evMic) {
+          const { getMicLock, tokenSources } = await import("@/lib/micLock");
+          const sources = tokenSources(await getMicLock(__evMic.id), { role: participantRole, userId });
+          if (sources) at.addGrant({ canPublishSources: sources as unknown as VideoGrant["canPublishSources"] });
+        }
+      }
+    } catch (micErr) {
+      console.error("[livekit/token] mic lock check error:", micErr);
     }
 
     // JWT metadata is read by the client to gate premium UI (recording

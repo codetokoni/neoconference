@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Mic, MicOff, Video, VideoOff, MoreHorizontal, EyeOff } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, MoreHorizontal, EyeOff, Lock } from 'lucide-react';
+import { enableMicrophone, MIC_LOCKED_MESSAGE, noteMicLocked, useMicLocked } from './micLockClient';
 import { useLocalParticipant } from '@livekit/components-react';
 import { useHiddenVideos } from '@/components/HiddenVideosProvider';
 
@@ -44,9 +45,16 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
   }, []);
 
   /* ---- mic / cam ---- */
+  // Locked by an Owner, Host or Moderator (micLockClient.ts): the button
+  // shows a lock and says why instead of trying.
+  const micLocked = useMicLocked();
   const toggleMic = useCallback(() => {
-    localParticipant?.setMicrophoneEnabled(!isMicrophoneEnabled).catch(() => {});
-  }, [localParticipant, isMicrophoneEnabled]);
+    if (micLocked && !isMicrophoneEnabled) {
+      noteMicLocked();
+      return;
+    }
+    void enableMicrophone(localParticipant, !isMicrophoneEnabled);
+  }, [localParticipant, isMicrophoneEnabled, micLocked]);
 
   const toggleCam = useCallback(() => {
     localParticipant?.setCameraEnabled(!isCameraEnabled).catch(() => {});
@@ -144,12 +152,16 @@ export default function MobileControlBar({ onLeave }: MobileControlBarProps) {
       {/* Mic */}
       <button
         type="button"
-        aria-label={isMicrophoneEnabled ? 'Mute microphone' : 'Unmute microphone'}
-        aria-pressed={isMicrophoneEnabled}
+        aria-label={micLocked ? 'Microphone locked' : isMicrophoneEnabled ? 'Mute microphone' : 'Unmute microphone'}
+        aria-pressed={micLocked ? undefined : isMicrophoneEnabled}
+        title={micLocked ? MIC_LOCKED_MESSAGE : undefined}
+        data-mic-locked={micLocked ? 'true' : undefined}
         onClick={toggleMic}
         className={`${pill} ${isMicrophoneEnabled ? pillEnabled : pillDisabled}`}
       >
-        {isMicrophoneEnabled ? (
+        {micLocked ? (
+          <Lock className="w-4 h-4 text-amber-300" aria-hidden />
+        ) : isMicrophoneEnabled ? (
           <Mic className="w-4 h-4" />
         ) : (
           <MicOff className="w-4 h-4 text-red-400" />
