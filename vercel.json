@@ -31,6 +31,10 @@
     {
       "path": "/api/cron/partner-totals",
       "schedule": "20 6 * * *"
+    },
+    {
+      "path": "/api/cron/kc-name-backfill",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

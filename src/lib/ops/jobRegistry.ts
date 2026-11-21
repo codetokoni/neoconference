@@ -139,6 +139,17 @@ export const JOBS: JobDef[] = [
     route: "/api/cron/automation",
     load: () => import("@/app/api/cron/automation/route") as Promise<RouteModule>,
   }),
+  routeJob({
+    name: "kc-name-backfill",
+    label: "Fill in KingsChat names",
+    description: "Reads the full name from KingsChat for accounts that signed in with KingsChat before names were kept, so attendance reports show it. A batch every 10 minutes until everyone with stored KingsChat tokens is named or tried; then it only checks that it is done.",
+    schedule: "*/10 * * * *",
+    scheduleText: "Every 10 minutes",
+    retrySafe: true,
+    retryNote: "Only names accounts still without a KingsChat name, and never replaces a name someone saved, so a second run only continues where the first stopped.",
+    route: "/api/cron/kc-name-backfill",
+    load: () => import("@/app/api/cron/kc-name-backfill/route") as Promise<RouteModule>,
+  }),
   {
     name: "meeting-sweep",
     label: "Stale meeting sweep",

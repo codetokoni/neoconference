@@ -16,7 +16,7 @@ import { errorMessage, firstClerkError } from '@/lib/errorMessage';
 import { clerkClient } from '@clerk/nextjs/server';
 import { cleanFullName, kcProfileName, localFullName, splitFullName } from '@/lib/attendeeName';
 
-const PROFILE_URL = 'https://connect.kingsch.at/developer/api/profile';
+export const PROFILE_URL = 'https://connect.kingsch.at/developer/api/profile';
 
 export type KcSignInResult =
   | { ok: true; ticket: string; userId: string }

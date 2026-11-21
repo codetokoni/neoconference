@@ -319,8 +319,8 @@ export const DATA_MAP: DataLocation[] = [
   {
     id: "kv.kingschat",
     store: "kv",
-    pattern: "neo:kc:tokens:<uid>; neo:kc:handle-to-clerk:<handle> = <uid>",
-    holds: "KingsChat sign-in tokens and handle lookup",
+    pattern: "neo:kc:tokens:<uid>; neo:kc:handle-to-clerk:<handle> = <uid>; neo:kc:name-backfill:tried:<uid> (30 days)",
+    holds: "KingsChat sign-in tokens and handle lookup; whether filling in a KingsChat name was tried (no name given, or failures)",
     personal: "OAuth access/refresh tokens; KingsChat handle (key)",
     exported: false,
     onDelete: "delete",
