@@ -119,6 +119,7 @@ export function HostTileMenuPanel({
   isHost,
   roomRole,
   targetRole = null,
+  targetIsOwner = false,
   slug,
 }: {
   participantIdentity: string;
@@ -132,6 +133,9 @@ export function HostTileMenuPanel({
    *  Demote (only meaningful when the target actually holds an
    *  elevated role right now). */
   targetRole?: string | null;
+  /** The target is the meeting's owner (LiveKit metadata `owner`). Nobody
+   *  can change the owner's role, so the Role items are hidden. */
+  targetIsOwner?: boolean;
   slug: string;
 }) {
   const { localParticipant } = useLocalParticipant();
@@ -553,7 +557,7 @@ export function HostTileMenuPanel({
               for host+ and target-aware Demote. Same server route as the
               ParticipantsPanel role controls (/api/events/[id]/roles), so
               the rank ladder is enforced identically. */}
-          {showHostActions && isHostRank && (
+          {showHostActions && isHostRank && !targetIsOwner && (
             <>
               <div
                 style={{
