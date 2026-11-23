@@ -1,6 +1,8 @@
 import { S3Client, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { tmpdir } from 'node:os';
+import { lookup as dnsLookup, type LookupAddress, type LookupAllOptions } from 'node:dns';
+import { Agent as HttpsAgent } from 'node:https';
 
 /**
  * Cloudflare R2 client + helpers.
@@ -44,6 +46,53 @@ function stripChecksumMiddlewares(s3: S3Client): void {
 let client: S3Client | null = null;
 let clientFor = '';
 
+/** How long a looked-up address is used before looking again. */
+const LOOKUP_FRESH_MS = 10 * 60_000;
+
+export type Resolver = (hostname: string, options: LookupAllOptions, callback: (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void) => void;
+type AgentLookup = (
+  hostname: string,
+  options: { all?: boolean; family?: number },
+  callback: (err: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void,
+) => void;
+
+/**
+ * A name lookup that remembers its answers, for R2's connections.
+ *
+ * The nightly backup connects to R2 first, then spends two minutes reading
+ * the store, then writes. On 22 and 23 Nov 2026 the write failed at the
+ * name lookup ("getaddrinfo EBUSY …r2.cloudflarestorage.com"): the process
+ * was short of file slots by then, and a lookup needs some. With this, the
+ * write reuses the address found at the start. An answer is reused for
+ * LOOKUP_FRESH_MS; after that it is looked up again, and if that fails the
+ * last answer is used rather than failing.
+ */
+export function cachedLookup(resolve: Resolver = dnsLookup as unknown as Resolver, now: () => number = Date.now): AgentLookup {
+  const known = new Map<string, { at: number; addresses: LookupAddress[] }>();
+  const answer = (options: { all?: boolean }, list: LookupAddress[], cb: Parameters<AgentLookup>[2]) =>
+    options.all ? cb(null, list) : cb(null, list[0].address, list[0].family);
+  return (hostname, options, callback) => {
+    const hit = known.get(hostname);
+    if (hit && now() - hit.at < LOOKUP_FRESH_MS) return answer(options ?? {}, hit.addresses, callback);
+    resolve(hostname, { ...(options?.family ? { family: options.family } : {}), all: true }, (err, list) => {
+      if (!err && list?.length) {
+        known.set(hostname, { at: now(), addresses: list });
+        return answer(options ?? {}, list, callback);
+      }
+      if (hit) return answer(options ?? {}, hit.addresses, callback);
+      callback(err ?? Object.assign(new Error(`no address for ${hostname}`), { code: 'ENOTFOUND' }), [] as LookupAddress[]);
+    });
+  };
+}
+
+let resolverForTests: Resolver | undefined;
+
+/** Tests only: how R2's name is looked up (undefined: the system's), and a new client. */
+export function __setR2Resolver(r: Resolver | undefined): void {
+  resolverForTests = r;
+  client = null;
+}
+
 /** HOME for libraries that look up the home directory; a temporary folder if unset. */
 export function ensureHome(): void {
   if (!process.env.HOME) process.env.HOME = tmpdir();
@@ -82,6 +131,9 @@ export function r2Client(): S3Client {
     },
     requestChecksumCalculation: 'WHEN_REQUIRED',
     responseChecksumValidation: 'WHEN_REQUIRED',
+    // Connections kept open between requests, and R2's address remembered
+    // (cachedLookup): a write late in a long job needs no name lookup.
+    requestHandler: { httpsAgent: new HttpsAgent({ keepAlive: true, lookup: cachedLookup(resolverForTests) as never }) },
   };
   const s3 = new S3Client(config);
   stripChecksumMiddlewares(s3);
