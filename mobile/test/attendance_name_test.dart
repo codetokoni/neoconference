@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -14,6 +15,16 @@ import 'package:neoconference/src/room/room_controller.dart';
 /// pre-filled with the name confirmed last time, checked by the same rules as
 /// the server, and saved before the meeting is asked for a token.
 void main() {
+  // A meeting controller starts LiveKit's device list, which asks WebRTC;
+  // without this the test could end before that failed, and fail late.
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('FlutterWebRTC.Method'),
+      (call) async => call.method == 'getSources' ? {'sources': <Object>[]} : null,
+    );
+  });
+
   group('the rules (the same as the server\'s)', () {
     test('blank or only spaces: asked for it', () {
       expect(attendanceNameProblem(''), attendanceNameRequired);
