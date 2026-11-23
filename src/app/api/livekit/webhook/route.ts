@@ -39,7 +39,7 @@ import {
 } from '@/lib/meetingLifecycle';
 import { clearedForNewSession } from '@/lib/waitingRoom';
 import { egressOutcome, recordMediaEvent } from '@/lib/ops/media';
-import { queueSession } from '@/lib/attendanceGroups';
+import { markSessionStart, queueSession } from '@/lib/attendanceGroups';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -243,6 +243,11 @@ export async function POST(req: Request) {
       // 'ended' here, every time the last person left, is what made its
       // owner rejoin as an attendee.
       if (!canEnd(ev)) {
+        // Its session did end, though: that is when its attendance by
+        // church or group goes out (src/lib/attendanceGroups.ts).
+        await queueSession(ev, Date.parse(isoFromWebhookCreatedAt(event.createdAt))).catch((err) =>
+          console.warn('[webhook] could not queue attendance by group', err),
+        );
         await recordWebhookRejection({
           event: 'room_finished',
           room: roomName,
@@ -316,6 +321,11 @@ export async function POST(req: Request) {
       if (!ev) {
         return NextResponse.json({ ok: true, ignored: 'event_not_found', roomName });
       }
+      // This session starts now, even for a meeting that started long ago
+      // (src/lib/attendanceGroups.ts). Before the early return below.
+      await markSessionStart(ev.id, Date.parse(isoFromWebhookCreatedAt(event.createdAt))).catch((err) =>
+        console.warn('[webhook] could not mark the session start', err),
+      );
       const now = Date.now();
       const goLive = goesLiveWhenRoomStarts(ev, now);
       if (ev.startedAt && !goLive) {

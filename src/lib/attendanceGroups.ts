@@ -56,6 +56,7 @@ export interface AttendanceGroup {
 }
 
 const choiceKey = (eventId: string) => `neo:event:${eventId}:attgroups:choice`;
+const sessionKey = (eventId: string) => `neo:event:${eventId}:attgroups:session`;
 const PENDING = "neo:attgroups:pending";
 const sentKey = (eventId: string, start: number) => `neo:attgroups:sent:${eventId}:${start}`;
 const sendsKey = (eventId: string) => `neo:event:${eventId}:attgroups:sends`;
@@ -263,9 +264,35 @@ export function fileName(meeting: string, start: number, group: string | null): 
 /* ------------------------------ sending -------------------------------- */
 
 /** When a session of a meeting with groups ends: send its attendance a few minutes later. */
+/** The longest a session is taken to have run, when nothing says when it began. */
+export const MAX_SESSION_MS = 24 * 60 * 60_000;
+
+/**
+ * LiveKit opened this meeting's room: its session runs from here. A meeting
+ * used again (Fridays and Mondays on one link) keeps its first startedAt for
+ * good, so without this every session would run from the very first one —
+ * everyone since then in the spreadsheet, and, being "sent once" by that same
+ * start, every session after the first never sent. An always-open room never
+ * ends at all, so this is the only start its sessions have.
+ */
+export async function markSessionStart(eventId: string, at: number): Promise<void> {
+  if (!Number.isFinite(at)) return;
+  await kv.set(sessionKey(eventId), String(at), { ex: SENT_S });
+}
+
+/** When the session ending at `end` began: its room's start, else the meeting's, never more than a day before. */
+export async function sessionStart(ev: Pick<NeoEvent, "id" | "startedAt">, end: number): Promise<number | null> {
+  const marked = Number(await kv.get(sessionKey(ev.id)));
+  const first = Date.parse(ev.startedAt || "");
+  const start = Number.isFinite(marked) && marked > 0 && marked < end ? marked : first;
+  if (!Number.isFinite(start)) return null;
+  return Math.max(start, end - MAX_SESSION_MS);
+}
+
 export async function queueSession(ev: Pick<NeoEvent, "id" | "attendanceGroups" | "startedAt">, end: number): Promise<boolean> {
-  const start = Date.parse(ev.startedAt || "");
-  if (!groupNames(ev).length || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return false;
+  if (!groupNames(ev).length || !Number.isFinite(end)) return false;
+  const start = await sessionStart(ev, end);
+  if (start === null || end <= start) return false;
   await kv.zadd(PENDING, { score: end, member: JSON.stringify({ eventId: ev.id, start, end }) });
   return true;
 }
