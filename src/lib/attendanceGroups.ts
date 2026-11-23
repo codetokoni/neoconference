@@ -222,7 +222,8 @@ export async function sessionWorkbook(s: SessionByGroup, only?: string): Promise
       { header: "Times joined", key: "timesJoined", width: 13 },
     ];
     sheet.getRow(1).font = { bold: true };
-    for (const r of rows) sheet.addRow(only ? { ...r, email: undefined } : r);
+    // A leader's copy has no Email column, so no email address is written.
+    for (const r of rows) sheet.addRow(r);
   }
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

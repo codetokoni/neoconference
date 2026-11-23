@@ -249,6 +249,7 @@ async function main() {
     const s = await sheets(await download(leaderLink));
     assert.deepEqual(Object.keys(s), ["Summary", "Soweto"]);
     assert.equal(s.Soweto[0].includes("Email"), false);
+    assert.equal(JSON.stringify(s).includes("@example.com"), false, "no email address anywhere in a leader's file");
     assert.deepEqual(s.Soweto.slice(1).map((r) => r[0]), ["Ann Mokoena", "Ben Dlamini"]);
     assert.equal((await download("x".repeat(32))).status, 404);
     assert.equal((await download("short")).status, 404);
@@ -298,6 +299,16 @@ async function main() {
     assert.equal(end.status, 200);
     assert.deepEqual(await AG.sendDue(Date.now() + 6 * 60_000), { sent: 1, skipped: 0 });
     assert.match(sent.find((s) => s.to === "soweto.lead@example.com")!.text, /1 of your people attended/);
+  });
+
+  await t("one session queued twice (the end route and LiveKit's room_finished) is sent once", async () => {
+    sent.length = 0;
+    const start = Date.now() - 40 * 60_000;
+    const ev = { id: "ev_sa", attendanceGroups: (await eventStore.byId("ev_sa"))!.attendanceGroups, startedAt: new Date(start).toISOString() };
+    assert.equal(await AG.queueSession(ev, start + 20 * 60_000), true);
+    assert.equal(await AG.queueSession(ev, start + 21 * 60_000), true);
+    assert.deepEqual(await AG.sendDue(Date.now()), { sent: 1, skipped: 1 });
+    assert.equal(sent.filter((x) => x.to === "region@example.com").length, 1);
   });
 
   await t("a meeting with no list is never queued", async () => {
