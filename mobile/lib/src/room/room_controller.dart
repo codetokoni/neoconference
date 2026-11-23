@@ -27,6 +27,7 @@ import 'live_stream.dart';
 import 'meeting_timer.dart';
 import 'plan_limit.dart';
 import 'reconnect_watchdog.dart';
+import 'big_meeting.dart';
 import 'service_full.dart';
 import 'translation_voice.dart';
 import 'weak_link.dart';
@@ -998,7 +999,66 @@ class RoomController extends StateNotifier<RoomState> {
         message: 'The server did not return a way to connect.',
       );
     }
-    return body.cast<String, dynamic>();
+    final creds = body.cast<String, dynamic>();
+    // Big-meeting receiving (big_meeting.dart): how to connect and join.
+    _receive = ReceiveMode.of(creds);
+    return creds;
+  }
+
+  /// What the token route said about receiving, for the connection it gave.
+  ReceiveMode _receive = const ReceiveMode();
+  final _spokeAt = <String, int>{};
+  final _liveAt = <String, int>{};
+  Timer? _planTimer;
+
+  final _applier = ReceiveApplier();
+
+  /// Re-plans what this phone receives, once a burst of changes settles.
+  void _schedulePlan() {
+    if (_disposed || !_receive.selective || _planTimer != null) return;
+    _planTimer = Timer(const Duration(milliseconds: 150), () {
+      _planTimer = null;
+      _applyReceivePlan();
+    });
+  }
+
+  static PubSource _sourceOf(TrackSource s) => switch (s) {
+        TrackSource.microphone => PubSource.microphone,
+        TrackSource.camera => PubSource.camera,
+        TrackSource.screenShareVideo => PubSource.screenShare,
+        TrackSource.screenShareAudio => PubSource.screenShareAudio,
+        _ => PubSource.unknown,
+      };
+
+  void _applyReceivePlan() {
+    if (_disposed || !_receive.selective) return;
+    final targets = <PlanTarget>[];
+    final priority = <String>{};
+    for (final p in room.remoteParticipants.values) {
+      final role = participantRole(p.metadata);
+      if (role == 'host' || role == 'cohost') priority.add(p.identity);
+      for (final pub in p.trackPublications.values) {
+        targets.add(PlanTarget(
+          info: PubInfo(
+            key: '${p.identity}/${pub.sid}',
+            identity: p.identity,
+            audio: pub.kind == TrackType.AUDIO,
+            source: _sourceOf(pub.source),
+            muted: pub.muted,
+          ),
+          subscribed: pub.subscribed,
+          set: (want) => want ? pub.subscribe() : pub.unsubscribe(),
+        ));
+      }
+    }
+    final plan = receivePlan(
+      [for (final t in targets) t.info],
+      spokeAt: _spokeAt,
+      liveAt: _liveAt,
+      shown: ShownTiles.instance.ids,
+      priority: priority,
+    );
+    _applier.apply(targets, plan);
   }
 
   void _handleJoinRefusal(ApiException e) {
@@ -1165,8 +1225,21 @@ class RoomController extends StateNotifier<RoomState> {
     _roomUsed = true;
     _listener = room.createListener();
     _wireEvents();
-    await room.connect(wsUrl, token);
+    // Big-meeting receiving: this phone subscribes by itself
+    // (_applyReceivePlan) to the people speaking and the tiles on screen.
+    await room.connect(
+      wsUrl,
+      token,
+      connectOptions: ConnectOptions(autoSubscribe: !_receive.selective),
+    );
     _wasIn = true;
+    // A new connection has its own subscriptions.
+    _applier.reset();
+    ShownTiles.instance.removeListener(_schedulePlan);
+    if (_receive.selective) {
+      ShownTiles.instance.addListener(_schedulePlan);
+      _schedulePlan();
+    }
     // Joining a meeting that is already being recorded: the status event
     // may have fired before this listener existed, so read it directly.
     if (room.isRecording) {
@@ -1273,7 +1346,10 @@ class RoomController extends StateNotifier<RoomState> {
       return;
     }
     try {
-      if (!await MeetingDefaults.joinMuted() && !micLockedBy(me.permissions)) {
+      // A big meeting (big_meeting.dart): everyone comes in muted.
+      if (_receive.joinMuted) {
+        state = state.copyWith(message: joinedMutedMessage);
+      } else if (!await MeetingDefaults.joinMuted() && !micLockedBy(me.permissions)) {
         await me.setMicrophoneEnabled(true);
       }
       if (!await MeetingDefaults.joinCameraOff()) {
@@ -1287,7 +1363,29 @@ class RoomController extends StateNotifier<RoomState> {
   }
 
   void _wireEvents() {
+    // Big-meeting receiving: every change in what is published, muted,
+    // spoken or who is here re-plans what this phone receives.
+    void live(Participant p, TrackPublication pub) {
+      if (p is RemoteParticipant) _liveAt['${p.identity}/${pub.sid}'] = DateTime.now().millisecondsSinceEpoch;
+      _schedulePlan();
+    }
+
     _listener!
+      ..on<TrackPublishedEvent>((e) => live(e.participant, e.publication))
+      ..on<TrackUnmutedEvent>((e) => live(e.participant, e.publication))
+      ..on<TrackMutedEvent>((_) => _schedulePlan())
+      ..on<TrackUnpublishedEvent>((_) => _schedulePlan())
+      ..on<ParticipantConnectedEvent>((_) => _schedulePlan())
+      ..on<ParticipantDisconnectedEvent>((_) => _schedulePlan())
+      ..on<ParticipantMetadataUpdatedEvent>((_) => _schedulePlan())
+      ..on<RoomReconnectedEvent>((_) => _schedulePlan())
+      ..on<ActiveSpeakersChangedEvent>((e) {
+        final t = DateTime.now().millisecondsSinceEpoch;
+        for (final sp in e.speakers) {
+          _spokeAt[sp.identity] = t;
+        }
+        _schedulePlan();
+      })
       ..on<DataReceivedEvent>(_onData)
       // Locked or allowed by an Owner, Host or Moderator (src/lib/micLock.ts).
       ..on<ParticipantPermissionsUpdatedEvent>((e) {
@@ -2758,6 +2856,8 @@ class RoomController extends StateNotifier<RoomState> {
   @override
   void dispose() {
     _disposed = true;
+    _planTimer?.cancel();
+    ShownTiles.instance.removeListener(_schedulePlan);
     _timerPoll?.cancel();
     debugPrint('[neo-room] controller DISPOSED for $slug');
     MeetingHeartbeat.instance.stop(slug);

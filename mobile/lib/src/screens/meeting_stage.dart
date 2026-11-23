@@ -5,6 +5,7 @@ import '../design/brand.dart';
 import '../design/components.dart';
 import '../design/tokens.dart';
 import '../meetings/room_view.dart';
+import '../room/big_meeting.dart';
 
 /// The live meeting.
 ///
@@ -816,8 +817,13 @@ class ParticipantTile extends StatelessWidget {
   /// Never for this device's own tile: its controls are the bar below.
   final void Function(PersonView person)? onLongPress;
 
+  // Shown while built: the meeting's grid and rows build tiles only on or
+  // near the screen, which is what big-meeting receiving goes by
+  // (room/big_meeting.dart).
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ShownTile(id: person.id, child: _tile(context));
+
+  Widget _tile(BuildContext context) {
     final p = NeoTheme.of(context);
     final video = person.video;
     final hold = onLongPress;
