@@ -35,12 +35,12 @@ async function meetingWithGroups(slug: unknown) {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(req?: Request) {
+export async function GET(req: Request) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const cc = await clerkClient();
   const user = await cc.users.getUser(userId);
-  const ev = await meetingWithGroups(req ? new URL(req.url).searchParams.get("event") : null);
+  const ev = await meetingWithGroups(new URL(req.url).searchParams.get("event"));
   const groups = ev ? { groups: groupNames(ev), group: await choiceOf(ev.id, userId) } : {};
   return NextResponse.json(
     { fullName: attendanceNamePrefill(user), saved: Boolean(savedAttendanceName(user)), ...groups },
