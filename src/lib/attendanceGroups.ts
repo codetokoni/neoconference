@@ -304,7 +304,16 @@ export interface SentSession {
   /** The owner's link (every group). */
   token: string;
   sentAt: number;
-  leaders: Array<{ group: string; kc: boolean; email: boolean }>;
+  leaders: LeaderSend[];
+}
+
+/** One leader's message: what reached them and, when something did not, why. */
+export interface LeaderSend {
+  group: string;
+  kc: boolean;
+  email: boolean;
+  /** Why a message did not go, in the owner's words (absent when all went). */
+  why?: string;
 }
 
 export async function listSends(eventId: string): Promise<SentSession[]> {
@@ -313,8 +322,8 @@ export async function listSends(eventId: string): Promise<SentSession[]> {
 }
 
 export type Senders = {
-  kc: (fromClerkId: string, toKcId: string, text: string) => Promise<{ ok: boolean }>;
-  mail: (to: string, subject: string, text: string) => Promise<{ ok: boolean }>;
+  kc: (fromClerkId: string, toKcId: string, text: string) => Promise<{ ok: boolean; reason?: string; status?: number; body?: string }>;
+  mail: (to: string, subject: string, text: string) => Promise<{ ok: boolean; error?: string }>;
   ownerEmail: (userId: string) => Promise<string>;
 };
 const realSenders: Senders = {
@@ -330,6 +339,18 @@ let senders = realSenders;
 /** Tests: record instead of sending. */
 export function __setAttendanceSenders(s: Senders | null) {
   senders = s ?? realSenders;
+}
+
+/** Why KingsChat did not take a leader's message, for the owner's panel. */
+export function kcRefusal(res: { reason?: string; status?: number; body?: string }): string {
+  if (res.reason === "sender_not_linked" || res.reason === "refresh_failed") {
+    return "KingsChat messages go from your own KingsChat account, and its sign-in has run out. Sign in with KingsChat again";
+  }
+  if (res.status) {
+    const said = (res.body ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+    return `KingsChat refused the message (${res.status}${said ? `: ${said}` : ", no reason given"})`;
+  }
+  return "The KingsChat message could not be sent";
 }
 
 /** Sends one session: the owner's link and each leader's. Once per session. */
@@ -348,12 +369,27 @@ export async function sendSession(eventId: string, start: number, end: number, n
     const count = s.groups.get(g.name)?.length ?? 0;
     const link = downloadUrl(await createDownload({ eventId, start, end, group: g.name }));
     const text = `Attendance for ${g.name}: ${ev.name}, ${when}.\n${count} of your people attended.\n\nSpreadsheet (full names and KingsChat handles): ${link}\n\nThe link works for 30 days.`;
-    const r = { group: g.name, kc: false, email: false };
+    const r: LeaderSend = { group: g.name, kc: false, email: false };
+    const why: string[] = [];
     if (g.leader.kcHandle) {
-      const kcId = await kcIdForHandle(g.leader.kcHandle).catch(() => null);
-      if (kcId) r.kc = (await senders.kc(ev.ownerUserId, kcId, text).catch(() => ({ ok: false }))).ok;
+      const handle = `@${g.leader.kcHandle}`;
+      const kcId = await kcIdForHandle(g.leader.kcHandle).then(
+        (id) => id ?? "unknown",
+        () => "lookup_failed",
+      );
+      if (kcId === "unknown") why.push(`Nobody has signed in here with ${handle} yet, so KingsChat cannot find them`);
+      else if (kcId === "lookup_failed") why.push(`Could not look up ${handle}`);
+      else {
+        const res = await senders.kc(ev.ownerUserId, kcId, text).catch((): { ok: boolean; reason?: string } => ({ ok: false, reason: "send_failed" }));
+        r.kc = res.ok;
+        if (!res.ok) why.push(kcRefusal(res));
+      }
     }
-    if (g.leader.email) r.email = (await senders.mail(g.leader.email, `Attendance for ${g.name}: ${ev.name}`, text).catch(() => ({ ok: false }))).ok;
+    if (g.leader.email) {
+      r.email = (await senders.mail(g.leader.email, `Attendance for ${g.name}: ${ev.name}`, text).catch(() => ({ ok: false }))).ok;
+      if (!r.email) why.push(`The email to ${g.leader.email} could not be sent`);
+    }
+    if (why.length) r.why = why.join(". ");
     sent.leaders.push(r);
   }
 

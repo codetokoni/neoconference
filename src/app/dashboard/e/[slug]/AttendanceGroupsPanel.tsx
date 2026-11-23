@@ -11,7 +11,7 @@ type Contact = { kcHandle?: string; email?: string };
 type Group = { name: string; leader?: Contact };
 type Row = { name: string; kcHandle: string; email: string };
 type Reach = { group: string; kcHandleKnown: boolean | null; ownerKcLinked: boolean | null };
-type Send = { start: number; end: number; attended: number; sentAt: number; download: string; leaders: Array<{ group: string; kc: boolean; email: boolean }> };
+type Send = { start: number; end: number; attended: number; sentAt: number; download: string; leaders: Array<{ group: string; kc: boolean; email: boolean; why?: string }> };
 type Data = { groups: Group[]; allowed: boolean; reach: Reach[]; sends: Send[] };
 
 const field =
@@ -167,9 +167,20 @@ export default function AttendanceGroupsPanel({ eventId }: { eventId: string }) 
                 </div>
                 {s.leaders.length > 0 && (
                   <p className='mt-1 text-xs text-slate-400'>
-                    Sent to {s.leaders.filter((l) => l.kc || l.email).length} of {s.leaders.length} leaders
-                    {s.leaders.some((l) => !l.kc && !l.email) ? ` (not reached: ${s.leaders.filter((l) => !l.kc && !l.email).map((l) => l.group).join(', ')})` : ''}.
+                    Sent to {s.leaders.filter((l) => l.kc || l.email).length} of {s.leaders.length} leaders.
                   </p>
+                )}
+                {s.leaders.some((l) => l.why || (!l.kc && !l.email)) && (
+                  <ul className='mt-1 space-y-0.5 text-xs text-amber-200/90'>
+                    {s.leaders
+                      .filter((l) => l.why || (!l.kc && !l.email))
+                      .map((l) => (
+                        <li key={l.group}>
+                          {l.group}
+                          {!l.kc && !l.email ? ', not reached' : ''}: {l.why ?? 'no reason was recorded'}.
+                        </li>
+                      ))}
+                  </ul>
                 )}
               </li>
             ))}
