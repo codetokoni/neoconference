@@ -229,6 +229,8 @@ async function main() {
   });
 
   await t("the owner's spreadsheet: a tab per group in their order, then Not given; full names, handles and emails", async () => {
+    // A pick no longer on the list (the owner renamed or removed it) counts as not given, not a tab of its own.
+    await AG.setChoice("ev_sa", "user_dee", "Cape Town");
     const res = await download(ownerToken);
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("content-type"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
