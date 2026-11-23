@@ -308,6 +308,7 @@ class RoomActions {
     this.openDetails,
     this.invite,
     this.openFeedback,
+    this.openChangeName,
     this.dismissCallEnded,
     this.openChat,
     this.openParticipants,
@@ -375,6 +376,9 @@ class RoomActions {
 
   /// Tell the organiser about a problem ("Send feedback").
   final VoidCallback? openFeedback;
+
+  /// The name everyone in the meeting sees ("Change my name").
+  final VoidCallback? openChangeName;
 
   /// Put away the call-ended reminder.
   final VoidCallback? dismissCallEnded;

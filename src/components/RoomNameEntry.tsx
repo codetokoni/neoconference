@@ -4,7 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Check, ChevronDown, Mic, MicOff, Pencil, Video, VideoOff, X } from "lucide-react";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import OpenInAppButton from "@/components/OpenInAppButton";
-import { attendanceNameProblem, cleanFullName, FULL_NAME_MAX } from "@/lib/attendeeName";
+import { attendanceNameProblem, cleanFullName, FULL_NAME_MAX, meetingNameProblem } from "@/lib/attendeeName";
 
 export type RoomEntryValues = {
   username: string;
@@ -79,6 +79,7 @@ export function RoomNameEntry({
   attendanceLoaded = true,
   attendanceError = "",
   onConfirmAttendance,
+  onChangeDisplayName,
 }: {
   roomName: string;
   defaultName: string;
@@ -95,8 +96,18 @@ export function RoomNameEntry({
   attendanceError?: string;
   /** Saves the confirmed name before joining; resolves to a problem to show, or null. */
   onConfirmAttendance?: (name: string) => Promise<string | null>;
+  /**
+   * Saves a changed "Display name" (the name everyone in meetings sees,
+   * /api/me/display-name) before joining; resolves to a problem to show, or
+   * null. Called only when the field was changed from `defaultName`.
+   */
+  onChangeDisplayName?: (name: string) => Promise<string | null>;
 }) {
-  const [name, setName] = useState(() => getSavedDisplayName() || defaultName);
+  // What meetings show this person by now (the server's), not a name typed
+  // on this browser before: that one never reached anyone.
+  const [name, setName] = useState(defaultName);
+  const [nameTouched, setNameTouched] = useState(false);
+  const [nameProblem, setNameProblem] = useState("");
   // Required before joining, and never filled from a username or email
   // (src/lib/attendeeName.ts). Fetched, so it arrives after the first paint.
   const [attendance, setAttendance] = useState(savedAttendanceName);
@@ -164,8 +175,8 @@ export function RoomNameEntry({
   }, [enumerate]);
 
   useEffect(() => {
-    if (!getSavedDisplayName() && defaultName) setName(defaultName);
-  }, [defaultName]);
+    if (!nameTouched) setName(defaultName);
+  }, [defaultName, nameTouched]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -282,8 +293,27 @@ export function RoomNameEntry({
     }
     const attendanceName = cleanFullName(attendance);
     setAttendance(attendanceName);
-    const trimmed = name.trim() || defaultName || "Guest";
+    const typedName = cleanFullName(name);
+    const nameChanged = nameTouched && typedName !== cleanFullName(defaultName);
+    if (nameChanged && typedName) {
+      const p = meetingNameProblem(typedName);
+      if (p) {
+        setNameProblem(p);
+        inputRef.current?.focus();
+        return;
+      }
+    }
+    const trimmed = typedName || defaultName || "Guest";
     setJoining(true);
+    if (nameChanged && onChangeDisplayName) {
+      const refused = await onChangeDisplayName(typedName);
+      if (refused) {
+        setJoining(false);
+        setNameProblem(refused);
+        inputRef.current?.focus();
+        return;
+      }
+    }
     if (onConfirmAttendance) {
       const refused = await onConfirmAttendance(attendanceName);
       if (refused) {
@@ -397,14 +427,24 @@ export function RoomNameEntry({
               </button>
             </div>
 
-            <label className="block text-[11px] uppercase tracking-[0.25em] text-cyan-400/70 mb-2">Display name</label>
+            <label htmlFor="display-name" className="block text-[11px] uppercase tracking-[0.25em] text-cyan-400/70 mb-2">Display name</label>
             <input
+              id="display-name"
               ref={inputRef}
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                setNameTouched(true);
+                setNameProblem("");
+              }}
               placeholder="Enter your name"
-              className="w-full px-4 py-3 mb-5 rounded-xl bg-black/60 border border-white/10 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/30 text-lg placeholder:text-zinc-500 transition"
+              aria-describedby="display-name-help"
+              aria-invalid={nameProblem ? true : undefined}
+              className="w-full px-4 py-3 mb-1 rounded-xl bg-black/60 border border-white/10 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/30 text-lg placeholder:text-zinc-500 transition"
             />
+            <p id="display-name-help" className={`text-xs mb-5 ${nameProblem ? "text-rose-300" : "text-zinc-400"}`} role={nameProblem ? "alert" : undefined}>
+              {nameProblem || "What everyone in the meeting sees. Saved for your next meetings."}
+            </p>
 
             {/* Required. Only the meeting's organisers see it, in their
                 attendance list; the meeting shows the display name above. */}

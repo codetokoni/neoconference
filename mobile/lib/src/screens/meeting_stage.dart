@@ -369,6 +369,16 @@ class _MeetingStageState extends State<MeetingStage> {
                   actions.openFeedback!();
                 },
               ),
+            if (actions.openChangeName != null)
+              ListTile(
+                leading: const Icon(Icons.badge_outlined),
+                title: const Text('Change my name'),
+                subtitle: const Text('What everyone in the meeting sees'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  actions.openChangeName!();
+                },
+              ),
             if (actions.enterPip != null)
               ListTile(
                 leading: const Icon(Icons.picture_in_picture_alt_rounded),

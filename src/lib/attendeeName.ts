@@ -175,13 +175,50 @@ export function attendanceNamePrefill(u: AttendanceAccount | null | undefined): 
   return "";
 }
 
+/* --------------------------- the meeting name --------------------------- */
+//
+// The name others see in meetings can be chosen: "Display name" on the join
+// screen, or "Change my name" in the meeting (/api/me/display-name). It is
+// saved on the account (publicMetadata.meetingName: what everyone in a
+// meeting sees anyway) and wins over the default below. Asked for in the SA
+// meeting of 23 Nov 2026 by someone shown by their KingsChat handle who
+// wanted their name and title instead. Attendance keeps its own full name.
+
+export const MEETING_NAME_MAX = 60;
+
+/** Letters and numbers (any script), with spaces and . , ' - ( ) & between. */
+const MEETING_NAME_CHARS = /^[\p{L}\p{N}][\p{L}\p{M}\p{N} .,'’‘()&-]*$/u;
+
+/** Why a chosen meeting name cannot be used, or "" when it can. */
+export function meetingNameProblem(v: unknown): string {
+  if (typeof v === "string" && v.replace(/\s+/g, " ").trim().length > MEETING_NAME_MAX) {
+    return `Keep it under ${MEETING_NAME_MAX} characters.`;
+  }
+  const name = cleanFullName(v);
+  if (!name) return "Enter the name others should see.";
+  if (name.includes("@")) return "Enter a name, not an email address.";
+  if (!MEETING_NAME_CHARS.test(name)) return "Use letters and numbers, with spaces, full stops, apostrophes or hyphens.";
+  if (name.replace(/[^\p{L}]/gu, "").length < 2) return "Enter at least two letters.";
+  return "";
+}
+
+/** The meeting name the person chose, or "" when they never did (or it is no longer valid). */
+export function chosenMeetingName(u: NamedAccount | null | undefined): string {
+  const md = u?.publicMetadata;
+  const v = isObj(md) ? cleanFullName(md.meetingName) : "";
+  return v && !meetingNameProblem(v) ? v : "";
+}
+
 /**
- * The name the meeting's tiles and people list show: a KingsChat account's
- * KingsChat username; otherwise the account's name, username or email.
+ * The name the meeting's tiles and people list show: the name the person
+ * chose (chosenMeetingName); otherwise a KingsChat account's KingsChat
+ * username; otherwise the account's name, username or email.
  * Never the attendance name.
  */
 export function displayNameFor(u: AttendanceAccount | null | undefined, fallback = ""): string {
   if (!u) return fallback;
+  const chosen = chosenMeetingName(u);
+  if (chosen) return chosen;
   if (isKcAccount(u)) return kcUsername(u) || fallback;
   return (
     localFullName(u) ||

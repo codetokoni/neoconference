@@ -396,6 +396,7 @@ const ENTRIES = [
   "src/app/dashboard/e/[slug]/MeetingReportPanel.tsx",
   "src/components/FullNamePrompt.tsx",
   "src/components/RoomNameEntry.tsx",
+  "src/components/conference/ChangeNameButton.tsx",
 ];
 let modules = "";
 
@@ -1262,5 +1263,132 @@ test("the People panel: Lock microphones and cameras, Allow to unmute one person
   await expect(panel.getByText("Only an Owner, Host or Moderator can do that.")).toBeVisible();
   await expect(panel.getByRole("button", { name: "Lock microphones and cameras" })).toBeVisible();
   await page.screenshot({ path: "test-results/group-screens/mic-lock-panel.png" });
+  expect(errors).toEqual([]);
+});
+
+/* -------------------------------------------------------------------------- */
+/*  The name others see in meetings (src/lib/attendeeName.ts chosenMeetingName) */
+/* -------------------------------------------------------------------------- */
+
+async function mountJoinCard(page: Page, refuse: string | null) {
+  await page.evaluate((refuse) => {
+    const w = window as unknown as {
+      __require: (id: string) => Record<string, unknown>;
+      React: typeof import("react");
+      ReactDOM: { createRoot: (el: Element) => { render: (n: unknown) => void } };
+      __named: string[];
+      __joined: string[];
+      __refuse: string | null;
+    };
+    w.__named = [];
+    w.__joined = [];
+    w.__refuse = refuse;
+    const C = w.__require("src/components/RoomNameEntry.tsx").RoomNameEntry as Parameters<typeof w.React.createElement>[0];
+    w.ReactDOM.createRoot(document.getElementById("app")!).render(
+      w.React.createElement(C, {
+        roomName: "saregionalmeeting",
+        defaultName: "rainy",
+        attendanceName: "Nomvula Dube",
+        attendanceLoaded: true,
+        copied: false,
+        onCopyLink: () => {},
+        onConfirmAttendance: async () => null,
+        onChangeDisplayName: async (n: string) => {
+          w.__named.push(n);
+          return w.__refuse;
+        },
+        onSubmit: (v: { username: string }) => {
+          w.__joined.push(v.username);
+        },
+      } as never),
+    );
+  }, refuse);
+}
+
+const joinCardState = (page: Page) =>
+  page.evaluate(() => {
+    const w = window as unknown as { __named: string[]; __joined: string[] };
+    return { named: w.__named, joined: w.__joined };
+  });
+
+test("the join card's Display name is saved when changed: checked first, refused with the reason", async ({ page }) => {
+  const { errors } = await setup(page, 390);
+  await mountJoinCard(page, null);
+  const name = page.getByLabel("Display name");
+  await expect(name).toHaveValue("rainy");
+  await expect(page.getByText("What everyone in the meeting sees. Saved for your next meetings.")).toBeVisible();
+  // An email: said under the field, nothing saved or joined.
+  await name.fill("rainy@example.com");
+  await page.getByRole("button", { name: /Join Room/ }).click();
+  await expect(page.locator("#display-name-help")).toHaveText("Enter a name, not an email address.");
+  await expect(name).toBeFocused();
+  expect(await joinCardState(page)).toEqual({ named: [], joined: [] });
+  // Refused by the server: its reason, not joined.
+  await page.evaluate(() => {
+    (window as unknown as { __refuse: string | null }).__refuse = "Your name could not be saved. Try again.";
+  });
+  await name.fill("  Pst   Nomvula ");
+  await page.getByRole("button", { name: /Join Room/ }).click();
+  await expect(page.locator("#display-name-help")).toHaveText("Your name could not be saved. Try again.");
+  expect((await joinCardState(page)).joined).toEqual([]);
+  // Saved: joins with it.
+  await page.evaluate(() => {
+    (window as unknown as { __refuse: string | null }).__refuse = null;
+  });
+  await page.getByRole("button", { name: /Join Room/ }).click();
+  await expect.poll(async () => (await joinCardState(page)).joined).toEqual(["Pst Nomvula"]);
+  expect((await joinCardState(page)).named).toEqual(["Pst Nomvula", "Pst Nomvula"]);
+  expect(errors).toEqual([]);
+});
+
+test("the join card does not save a name that was not changed", async ({ page }) => {
+  const { errors } = await setup(page, 390);
+  await mountJoinCard(page, null);
+  await page.getByRole("button", { name: /Join Room/ }).click();
+  await expect.poll(async () => (await joinCardState(page)).joined).toEqual(["rainy"]);
+  expect((await joinCardState(page)).named).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test("Change my name in the meeting: starts with the current name, sends it with the room, closes when saved, shows a refusal", async ({ page }) => {
+  const { errors } = await setup(page, 390);
+  await page.evaluate(() => {
+    const w = window as unknown as { __lkMe: unknown; __posts: string[]; __status: number };
+    w.__lkMe = { identity: "user_rainy#1", name: "rainy" };
+    w.__posts = [];
+    w.__status = 200;
+    window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) !== "/api/me/display-name" || init?.method !== "POST") return new Response("{}", { status: 404 });
+      w.__posts.push(String(init.body));
+      return w.__status === 200
+        ? new Response(JSON.stringify({ ok: true, name: "Pst Nomvula" }), { status: 200 })
+        : new Response(JSON.stringify({ error: "invalid_name", message: "Enter a name, not an email address." }), { status: 400 });
+    }) as typeof fetch;
+  });
+  await render(page, "src/components/conference/ChangeNameButton.tsx", { className: "tb" });
+  const posts = () => page.evaluate(() => (window as unknown as { __posts: string[] }).__posts.map((s) => JSON.parse(s)));
+  await page.getByRole("button", { name: "Change my name" }).click();
+  const dialog = page.getByRole("dialog", { name: "Change my name" });
+  const field = dialog.getByLabel("Name");
+  await expect(field).toHaveValue("rainy");
+  await field.fill("A");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("Enter at least two letters.");
+  expect(await posts()).toEqual([]);
+  await page.evaluate(() => {
+    (window as unknown as { __status: number }).__status = 400;
+  });
+  await field.fill("Pst Nomvula");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("Enter a name, not an email address.");
+  await page.evaluate(() => {
+    (window as unknown as { __status: number }).__status = 200;
+  });
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await posts()).toEqual([
+    { name: "Pst Nomvula", room: "weekly-room" },
+    { name: "Pst Nomvula", room: "weekly-room" },
+  ]);
   expect(errors).toEqual([]);
 });
