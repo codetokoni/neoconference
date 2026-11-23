@@ -5,6 +5,7 @@ import { Check, ChevronDown, Mic, MicOff, Pencil, Video, VideoOff, X } from "luc
 import { useIsMobile } from "@/hooks/useIsMobile";
 import OpenInAppButton from "@/components/OpenInAppButton";
 import { attendanceNameProblem, cleanFullName, FULL_NAME_MAX, meetingNameProblem } from "@/lib/attendeeName";
+import GroupPicker, { GROUP_REQUIRED } from "@/components/GroupPicker";
 
 export type RoomEntryValues = {
   username: string;
@@ -80,6 +81,8 @@ export function RoomNameEntry({
   attendanceError = "",
   onConfirmAttendance,
   onChangeDisplayName,
+  groups = [],
+  group: savedGroup = "",
 }: {
   roomName: string;
   defaultName: string;
@@ -94,8 +97,15 @@ export function RoomNameEntry({
   attendanceLoaded?: boolean;
   /** A refusal from the server (the join was turned back for want of a name). */
   attendanceError?: string;
-  /** Saves the confirmed name before joining; resolves to a problem to show, or null. */
-  onConfirmAttendance?: (name: string) => Promise<string | null>;
+  /**
+   * Saves the confirmed name (and, for a meeting that lists them, the church
+   * or group picked) before joining; resolves to a problem to show, or null.
+   */
+  onConfirmAttendance?: (name: string, group?: string) => Promise<string | null>;
+  /** The meeting's churches or groups to pick from (src/lib/attendanceGroups.ts); none: not asked. */
+  groups?: string[];
+  /** Their pick last time, for this meeting. */
+  group?: string;
   /**
    * Saves a changed "Display name" (the name everyone in meetings sees,
    * /api/me/display-name) before joining; resolves to a problem to show, or
@@ -106,6 +116,12 @@ export function RoomNameEntry({
   // What meetings show this person by now (the server's), not a name typed
   // on this browser before: that one never reached anyone.
   const [name, setName] = useState(defaultName);
+  const [group, setGroup] = useState(savedGroup);
+  const [groupTouched, setGroupTouched] = useState(false);
+  const [groupProblem, setGroupProblem] = useState("");
+  useEffect(() => {
+    if (!groupTouched) setGroup(savedGroup);
+  }, [savedGroup, groupTouched]);
   const [nameTouched, setNameTouched] = useState(false);
   const [nameProblem, setNameProblem] = useState("");
   // Required before joining, and never filled from a username or email
@@ -291,6 +307,11 @@ export function RoomNameEntry({
       attendanceRef.current?.focus();
       return;
     }
+    if (groups.length && !groups.includes(group)) {
+      setGroupProblem(GROUP_REQUIRED);
+      document.getElementById("attendance-group")?.focus();
+      return;
+    }
     const attendanceName = cleanFullName(attendance);
     setAttendance(attendanceName);
     const typedName = cleanFullName(name);
@@ -315,7 +336,7 @@ export function RoomNameEntry({
       }
     }
     if (onConfirmAttendance) {
-      const refused = await onConfirmAttendance(attendanceName);
+      const refused = await onConfirmAttendance(attendanceName, groups.length ? group : undefined);
       if (refused) {
         setJoining(false);
         setAttendanceProblem(refused);
@@ -480,6 +501,18 @@ export function RoomNameEntry({
                 Shown only in the organisers&apos; attendance list.
               </p>
             )}
+
+            <GroupPicker
+              groups={groups}
+              value={group}
+              onChange={(g) => {
+                setGroup(g);
+                setGroupTouched(true);
+                setGroupProblem("");
+              }}
+              problem={groupProblem}
+              className="mb-5"
+            />
 
             {/* Mic level meter */}
             <div className="mb-5">

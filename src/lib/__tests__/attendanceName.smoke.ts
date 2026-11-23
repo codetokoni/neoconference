@@ -106,7 +106,7 @@ async function main() {
   };
   const prefill = async (who: string) => {
     g.__who = who;
-    return (await (await R.fullName.GET()).json()) as { fullName: string; saved: boolean };
+    return (await (await R.fullName.GET(new Request("https://neolinguameet.com/api/me/full-name"))).json()) as { fullName: string; saved: boolean };
   };
   const confirm = async (who: string, fullName: unknown) => {
     g.__who = who;
@@ -386,7 +386,7 @@ async function main() {
     await R.fullName.POST(new Request("https://www.neolinguameet.com/api/me/full-name", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ fullName: "Someone Else", userId: grace }) }));
     assert.equal(g.__users[grace].privateMetadata?.attendanceName, "Grace Adebayo Okon");
     g.__who = undefined;
-    assert.equal((await R.fullName.GET()).status, 401);
+    assert.equal((await R.fullName.GET(new Request("https://neolinguameet.com/api/me/full-name"))).status, 401);
   });
 
   finished = true;

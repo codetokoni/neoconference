@@ -14,6 +14,7 @@ import { authorize } from "@/lib/authz";
 import { verifyMeetingPassword } from "@/lib/eventPassword";
 import { canEnd, endNeedsPin } from "@/lib/meetingLifecycle";
 import { activity } from "@/lib/activity";
+import { queueSession } from "@/lib/attendanceGroups";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +75,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   if (canEnd(ev)) {
     const startedMs = Date.parse(ev.startedAt || "");
+    // Its attendance by church or group goes out a few minutes from now
+    // (src/lib/attendanceGroups.ts). Never holds up ending the meeting.
+    await queueSession(ev, Date.now()).catch((err) => console.warn("[end] could not queue attendance by group", err));
     await activity.record("meeting.ended", {
       userId: gate.actor.userId,
       props: { eventId: ev.id, by: "host", minutes: Number.isFinite(startedMs) ? Math.max(0, Math.round((Date.now() - startedMs) / 60_000)) : null },

@@ -39,6 +39,7 @@ import {
 } from '@/lib/meetingLifecycle';
 import { clearedForNewSession } from '@/lib/waitingRoom';
 import { egressOutcome, recordMediaEvent } from '@/lib/ops/media';
+import { queueSession } from '@/lib/attendanceGroups';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -291,6 +292,9 @@ export async function POST(req: Request) {
         updatedAt: new Date().toISOString(),
       }));
       const startedMs = Date.parse(ev.startedAt || '');
+      // Its attendance by church or group goes out a few minutes from now
+      // (src/lib/attendanceGroups.ts). Never holds up the webhook's answer.
+      await queueSession(ev, Date.parse(endedAt)).catch((err) => console.warn('[webhook] could not queue attendance by group', err));
       await activity.record('meeting.ended', {
         userId: ev.ownerUserId,
         props: {

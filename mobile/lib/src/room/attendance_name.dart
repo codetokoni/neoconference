@@ -45,10 +45,15 @@ class AttendanceNameStep extends StatefulWidget {
     required this.title,
     required this.onConfirmed,
     this.error,
+    this.slug,
   });
 
   final ApiClient api;
   final String title;
+
+  /// The meeting's slug: for one that lists churches or groups
+  /// (src/lib/attendanceGroups.ts), the step asks which is theirs too.
+  final String? slug;
 
   /// Called once the server has accepted the name; joins the meeting.
   final Future<void> Function(String name) onConfirmed;
@@ -66,6 +71,11 @@ class _AttendanceNameStepState extends State<AttendanceNameStep> {
   bool _loaded = false;
   bool _busy = false;
   String? _problem;
+
+  /// The meeting's churches or groups (none: not asked), and their pick.
+  List<String> _groups = const [];
+  String? _group;
+  String? _groupProblem;
 
   @override
   void initState() {
@@ -87,9 +97,18 @@ class _AttendanceNameStepState extends State<AttendanceNameStep> {
   /// email (the server decides). Typing is not held up if it fails.
   Future<void> _loadSaved() async {
     try {
-      final body = await widget.api.get('/api/me/full-name');
+      final slug = widget.slug;
+      final body = await widget.api.get('/api/me/full-name', {'event': ?slug});
       final saved = body is Map ? body['fullName'] : null;
       if (mounted && saved is String && _field.text.isEmpty) _field.text = saved;
+      final groups = body is Map && body['groups'] is List ? (body['groups'] as List).whereType<String>().toList() : const <String>[];
+      final picked = body is Map ? body['group'] : null;
+      if (mounted) {
+        setState(() {
+          _groups = groups;
+          if (picked is String && groups.contains(picked)) _group = picked;
+        });
+      }
     } catch (_) {
       // Left blank to type in.
     } finally {
@@ -105,6 +124,10 @@ class _AttendanceNameStepState extends State<AttendanceNameStep> {
       _focus.requestFocus();
       return;
     }
+    if (_groups.isNotEmpty && _group == null) {
+      setState(() => _groupProblem = 'Choose your church or group.');
+      return;
+    }
     final name = cleanAttendanceName(_field.text);
     _field.text = name;
     setState(() {
@@ -112,7 +135,10 @@ class _AttendanceNameStepState extends State<AttendanceNameStep> {
       _problem = null;
     });
     try {
-      final body = await widget.api.post('/api/me/full-name', {'fullName': name});
+      final body = await widget.api.post('/api/me/full-name', {
+        'fullName': name,
+        if (_groups.isNotEmpty) ...{'event': widget.slug, 'group': _group},
+      });
       final saved = body is Map && body['fullName'] is String ? body['fullName'] as String : name;
       await widget.onConfirmed(saved);
     } on ApiException catch (e) {
@@ -193,6 +219,26 @@ class _AttendanceNameStepState extends State<AttendanceNameStep> {
                       border: const OutlineInputBorder(),
                     ),
                   ),
+                  if (_groups.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      key: const Key('attendance-group'),
+                      initialValue: _group,
+                      isExpanded: true,
+                      items: [for (final g in _groups) DropdownMenuItem(value: g, child: Text(g, overflow: TextOverflow.ellipsis))],
+                      onChanged: _busy ? null : (g) => setState(() {
+                        _group = g;
+                        _groupProblem = null;
+                      }),
+                      decoration: InputDecoration(
+                        labelText: 'Your church or group *',
+                        helperText: "Your group's leader gets their people's attendance after the meeting.",
+                        helperMaxLines: 2,
+                        errorText: _groupProblem,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   FilledButton(
                     key: const Key('attendance-join'),

@@ -118,7 +118,7 @@ export function cleanContact(raw: unknown): FeedbackContact | null | "invalid" {
 }
 
 /** The KingsChat id of whoever signed in here with this handle, or null. */
-async function kcIdForHandle(handle: string): Promise<string | null> {
+export async function kcIdForHandle(handle: string): Promise<string | null> {
   const clerkId = (await clerkIdsForKcHandles([handle]).catch(() => new Map<string, string>())).get(handle);
   return clerkId ? await kcIdForClerkUser(clerkId).catch(() => null) : null;
 }

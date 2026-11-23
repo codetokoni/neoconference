@@ -83,6 +83,10 @@ const isPublicRoute = createRouteMatcher([
   // comes from someone who never did. Bot check and rate limits in the route.
   '/feedback/(.*)',
   '/api/events/(.*)/feedback',
+  // A session's attendance by church or group: the link sent to a leader,
+  // who may have no account here (src/lib/attendanceGroups.ts). The token
+  // in the path is the key.
+  '/api/attendance-groups/(.*)',
   '/replay/(.*)',
   '/api/qr/(.*)',
   '/api/livekit/token(.*)',

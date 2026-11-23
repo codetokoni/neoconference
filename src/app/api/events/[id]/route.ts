@@ -1,7 +1,7 @@
 // src/app/api/events/[id]/route.ts
 // Owner-only PATCH for editable event metadata.
 // Whitelisted fields only: name, description, scheduledAt, visibility, password, waitingRoomEnabled,
-// feedbackContact (paid plans).
+// feedbackContact and attendanceGroups (paid plans).
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -55,6 +55,7 @@ export async function GET(
       endPinSet: Boolean(ev.endPin),
       hasPassword: Boolean(ev.password),
       feedbackContact: ev.feedbackContact ?? null,
+      attendanceGroups: ev.attendanceGroups ?? null,
     },
   });
 }
@@ -139,6 +140,20 @@ export async function PATCH(
       return NextResponse.json({ error: "plan_required" }, { status: 402 });
     }
     patch.feedbackContact = contact ?? undefined;
+  }
+
+  // Attendance by church or group (src/lib/attendanceGroups.ts), on a paid
+  // plan; null clears the list.
+  if ("attendanceGroups" in body) {
+    const { cleanGroups } = await import("@/lib/attendanceGroups");
+    // { groups: [...] } sets the list (an empty one clears it); null clears it.
+    const sent = body.attendanceGroups as { groups?: unknown } | null;
+    const groups = sent === null ? null : cleanGroups(sent?.groups ?? []);
+    if (groups && "problem" in groups) return NextResponse.json({ error: "invalid_attendance_groups", message: groups.problem }, { status: 400 });
+    if (groups && !contactAllowed(await getPlanForUserId(ev.ownerUserId))) {
+      return NextResponse.json({ error: "plan_required" }, { status: 402 });
+    }
+    patch.attendanceGroups = groups ? { groups } : undefined;
   }
 
   if (Object.keys(patch).length === 0) {

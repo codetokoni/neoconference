@@ -140,39 +140,11 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   // time; the token is only asked for after it is confirmed, and the server
   // turns a join back without one (attendance_name_required).
   const [attendancePrefill, setAttendancePrefill] = useState("");
+  // The meeting's churches or groups, and their pick (src/lib/attendanceGroups.ts).
+  const [attendanceGroups, setAttendanceGroups] = useState<string[]>([]);
+  const [attendanceGroup, setAttendanceGroup] = useState("");
   const [attendanceLoaded, setAttendanceLoaded] = useState(false);
   const [attendanceError, setAttendanceError] = useState("");
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
-    let cancelled = false;
-    fetch("/api/me/full-name", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j: { fullName?: unknown } | null) => {
-        if (!cancelled && typeof j?.fullName === "string") setAttendancePrefill(j.fullName);
-      })
-      .catch(() => {})
-      .finally(() => {
-        // An empty field to fill in beats a screen that never lets them type.
-        if (!cancelled) setAttendanceLoaded(true);
-      });
-    return () => { cancelled = true; };
-  }, [isLoaded, isSignedIn]);
-  const confirmAttendance = useCallback(async (fullName: string): Promise<string | null> => {
-    try {
-      const res = await fetch("/api/me/full-name", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ fullName }),
-      });
-      const body = (await res.json().catch(() => null)) as { fullName?: string; message?: string } | null;
-      if (!res.ok || !body?.fullName) return body?.message || "Your name could not be saved. Try again.";
-      setAttendancePrefill(body.fullName);
-      setAttendanceError("");
-      return null;
-    } catch {
-      return "Your name could not be saved. Check your connection and try again.";
-    }
-  }, []);
 
   // The "Display name" on the join screen, when changed: the name everyone in
   // meetings sees from now on (/api/me/display-name).
@@ -201,6 +173,41 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   // trailing `|| undefined` could not happen and typed every consumer as
   // possibly-missing.
   const eventSlug: string = searchParams?.get("event") || roomName;const [pageRoomRole, setPageRoomRole] = useState<string>("guest"); useEffect(() => { if (!eventSlug) return; let cancelled = false; fetch("/api/events/role?slug=" + encodeURIComponent(eventSlug), { cache: "no-store" }).then((r) => r.ok ? r.json() : null).then((j) => { if (!cancelled && j && typeof j.role === "string") setPageRoomRole(j.role); }).catch(() => {}); return () => { cancelled = true; }; }, [eventSlug]);
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    let cancelled = false;
+    fetch(`/api/me/full-name?event=${encodeURIComponent(eventSlug)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { fullName?: unknown; groups?: unknown; group?: unknown } | null) => {
+        if (cancelled) return;
+        if (typeof j?.fullName === "string") setAttendancePrefill(j.fullName);
+        if (Array.isArray(j?.groups)) setAttendanceGroups(j.groups.filter((g): g is string => typeof g === "string"));
+        if (typeof j?.group === "string") setAttendanceGroup(j.group);
+      })
+      .catch(() => {})
+      .finally(() => {
+        // An empty field to fill in beats a screen that never lets them type.
+        if (!cancelled) setAttendanceLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, [isLoaded, isSignedIn, eventSlug]);
+  const confirmAttendance = useCallback(async (fullName: string, group?: string): Promise<string | null> => {
+    try {
+      const res = await fetch("/api/me/full-name", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fullName, event: eventSlug, ...(group ? { group } : {}) }),
+      });
+      const body = (await res.json().catch(() => null)) as { fullName?: string; message?: string } | null;
+      if (!res.ok || !body?.fullName) return body?.message || "Your name could not be saved. Try again.";
+      setAttendancePrefill(body.fullName);
+      if (group) setAttendanceGroup(group);
+      setAttendanceError("");
+      return null;
+    } catch {
+      return "Your name could not be saved. Check your connection and try again.";
+    }
+  }, [eventSlug]);
   // ?join=1 — a "join now" link (a KingsChat message or a notification):
   // go in with this browser's last camera and microphone choices instead of
   // the join screen, after confirming the attendance name (FullNamePrompt).
@@ -411,10 +418,12 @@ export default function RoomPage({ params }: { params: { name: string } }) {
       <FullNamePrompt
         roomName={roomName}
         initial={attendancePrefill}
+        groups={attendanceGroups}
+        group={attendanceGroup}
         loaded={attendanceLoaded}
         error={attendanceError}
-        onConfirm={async (fullName) => {
-          const refused = await confirmAttendance(fullName);
+        onConfirm={async (fullName, group) => {
+          const refused = await confirmAttendance(fullName, group);
           if (refused) return refused;
           setChoices({ username: accountDisplayName || "Guest", attendanceName: fullName, ...getLastChoices() } as LocalUserChoices);
           return null;
@@ -443,6 +452,8 @@ export default function RoomPage({ params }: { params: { name: string } }) {
             attendanceLoaded={attendanceLoaded}
             attendanceError={attendanceError}
             onConfirmAttendance={confirmAttendance}
+            groups={attendanceGroups}
+            group={attendanceGroup}
             onChangeDisplayName={chooseDisplayName}
           />
         </div>
