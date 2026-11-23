@@ -89,6 +89,8 @@ import {
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import JoinProblem from "@/components/conference/JoinProblem";
+import BigMeetingReceiver from "@/components/conference/BigMeetingReceiver";
+import { receiveModeOf, type ReceiveMode } from "@/lib/bigMeeting";
 import { connectWatch, explainConnectFailure, type JoinProblem as JoinProblemInfo } from "@/lib/connectOutcome";
 
 // Shared toolbar button style — flat, transparent, lucide-icon + text label.
@@ -112,7 +114,7 @@ function StableLabel({ label, longest }: { label: string; longest: string }) {
   );
 }
 
-type TokenResponse = { token: string; wsUrl: string };
+type TokenResponse = { token: string; wsUrl: string; receive?: string; joinMuted?: boolean };
 
 export default function RoomPage({ params }: { params: { name: string } }) {
   // No support chat bubble over the meeting's own controls.
@@ -121,6 +123,8 @@ export default function RoomPage({ params }: { params: { name: string } }) {
   const { isLoaded, isSignedIn, user } = useUser();
   const [token, setToken] = useState<string | null>(null);
   const [wsUrl, setWsUrl] = useState<string | null>(null);
+  // Big-meeting receiving (src/lib/bigMeeting.ts), as the token route said.
+  const [receiveMode, setReceiveMode] = useState<ReceiveMode>({ receive: "all", joinMuted: false });
   const [error, setError] = useState<string | null>(null); const [waitingState, setWaitingState] = useState<"pending" | "denied" | null>(null); const [waitForHost, setWaitForHost] = useState<boolean>(false);
   const [choices, setChoices] = useState<LocalUserChoices | null>(null);
   const [copied, setCopied] = useState(false);
@@ -273,6 +277,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
         }
         const data = (await res.json()) as TokenResponse;
         if (cancelled) return;
+        setReceiveMode(receiveModeOf(data));
         setToken(data.token);
         setWsUrl(data.wsUrl);
       } catch (e) {
@@ -482,6 +487,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
       choices={choices}
       // Leaving (or being disconnected) asks how it went: a tap of the stars,
       // and words if something did not work (src/lib/meetingFeedback.ts).
+      receiveMode={receiveMode}
       onLeave={() => router.push(afterLeaveUrl(eventSlug))}
       // Refused before ever getting in: say why, never "how did it go?".
       onJoinFailed={() => {
@@ -787,6 +793,7 @@ function RoomContainer({
   roomName,
   eventSlug,
   choices,
+  receiveMode,
   onLeave,
   onJoinFailed,
 }: {
@@ -796,6 +803,7 @@ function RoomContainer({
   /** Always given: RoomPage falls back to roomName (see eventSlug there). */
   eventSlug: string;
   choices: LocalUserChoices;
+  receiveMode: ReceiveMode;
   onLeave: () => void;
   onJoinFailed: () => void;
 }) {
@@ -1069,8 +1077,12 @@ function RoomContainer({
         // Only the videos on screen, at the size shown: a 700-person meeting
         // overwhelmed phones without it (roomOptions.ts).
         options={ROOM_OPTIONS}
-        // What was chosen on the join screen, and nothing more (roomOptions.ts).
-        audio={joinMedia(choices.audioEnabled, choices.audioDeviceId)}
+        // Big-meeting receiving: the room subscribes by itself
+        // (BigMeetingReceiver) to the people speaking and the cameras on screen.
+        connectOptions={{ autoSubscribe: receiveMode.receive !== "selective" }}
+        // What was chosen on the join screen, and nothing more (roomOptions.ts);
+        // muted on entering a big meeting (src/lib/bigMeeting.ts).
+        audio={joinMedia(receiveMode.joinMuted ? false : choices.audioEnabled, choices.audioDeviceId)}
         video={joinMedia(choices.videoEnabled, choices.videoDeviceId)}
         onConnected={watch.onConnected}
         onDisconnected={watch.onDisconnected}
@@ -1282,6 +1294,7 @@ function RoomContainer({
         <MediaRequestPrompt />
         {/* "Your microphone and camera are locked…" / "You can now turn…" */}
         <MicLockNotice />
+        {receiveMode.receive === "selective" && <BigMeetingReceiver joinedMuted={receiveMode.joinMuted && choices.audioEnabled !== false} />}
         <RoomAudioRenderer />
         <BackgroundContinuity eventName={roomName} eventSlug={eventSlug} />
         <HiddenVideoOverlay />

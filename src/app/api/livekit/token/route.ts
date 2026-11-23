@@ -462,10 +462,10 @@ export async function GET(req: NextRequest) {
     // The whole LiveKit account full (src/lib/livekitCapacity.ts): say so,
     // rather than hand out a token LiveKit would refuse with a vague error.
     // Hosts, Moderators and platform admins may use the places kept back.
+    const elevated = isAdminJoiner || participantRole === "host" || participantRole === "cohost";
     {
       const { capacityRefusal, connectedNow } = await import("@/lib/livekitCapacity");
       const connected = await connectedNow(new RoomServiceClient(wsUrl, apiKey, apiSecret));
-      const elevated = isAdminJoiner || participantRole === "host" || participantRole === "cohost";
       const refusal = capacityRefusal(connected, elevated);
       if (refusal) {
         console.warn("[livekit/token] service_full", JSON.stringify({ room, connected: refusal.connected, limit: refusal.limit }));
@@ -512,6 +512,24 @@ export async function GET(req: NextRequest) {
     } catch (featureErr) {
       console.error("[livekit/token] feature controls unavailable:", featureErr);
     }
+    // Big-meeting receiving (src/lib/bigMeeting.ts), by the meeting owner's
+    // feature switch: the room receives only the people speaking and the
+    // cameras on screen, and someone joining a meeting of BIG_MEETING_AT or
+    // more (not its Hosts or Moderators) comes in muted. Off when unsure.
+    let receive: "selective" | "all" = "all";
+    let joinMuted = false;
+    try {
+      const fx = await featureDecisions(["big_meeting_receiving"], { userId: hostOwnerId, plan: metadataPlan });
+      if (fx.big_meeting_receiving.enabled) {
+        receive = "selective";
+        const { roomCountNow } = await import("@/lib/livekitCapacity");
+        const { BIG_MEETING_AT } = await import("@/lib/bigMeeting");
+        const inRoom = await roomCountNow(new RoomServiceClient(wsUrl, apiKey, apiSecret), room);
+        joinMuted = !elevated && inRoom != null && inRoom >= BIG_MEETING_AT;
+      }
+    } catch (bigErr) {
+      console.error("[livekit/token] big-meeting receiving unavailable:", bigErr);
+    }
     at.metadata = JSON.stringify({
       planLimits: metadataLimits,
       hostPlan: metadataPlan,
@@ -531,7 +549,7 @@ export async function GET(req: NextRequest) {
     if (sessionId) {
       await rememberMeeting(sessionId, room, at.identity ?? "").catch((e) => console.error("[livekit/token] could not note the meeting for its sign-in", e));
     }
-    return NextResponse.json({ token, wsUrl });
+    return NextResponse.json({ token, wsUrl, receive, ...(joinMuted ? { joinMuted } : {}) });
   } catch (err) {
     console.error("[livekit/token] Unexpected error:", err);
     return NextResponse.json(

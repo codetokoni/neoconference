@@ -42,7 +42,8 @@ t("on joining, only what was chosen is published: off stays off, a chosen device
 t("the meeting room publishes by the join screen's choices", () => {
   const page = readFileSync(join(process.cwd(), "src/app/room/[name]/page.tsx"), "utf8");
   const room = page.slice(page.indexOf("<LiveKitRoom"), page.indexOf(">", page.indexOf("onDisconnected={watch.onDisconnected}")));
-  assert.ok(room.includes("audio={joinMedia(choices.audioEnabled, choices.audioDeviceId)}"));
+  // Muted on entering a big meeting (src/lib/bigMeeting.ts); otherwise as chosen.
+  assert.ok(room.includes("audio={joinMedia(receiveMode.joinMuted ? false : choices.audioEnabled, choices.audioDeviceId)}"));
   assert.ok(room.includes("video={joinMedia(choices.videoEnabled, choices.videoDeviceId)}"));
 });
 

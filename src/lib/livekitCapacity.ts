@@ -64,7 +64,7 @@ const FRESH_MS = 5_000;
 /** A count slower than this is skipped (the join goes ahead). */
 const TIMEOUT_MS = 2_000;
 
-let last: { at: number; connected: number } | null = null;
+let last: { at: number; connected: number; byRoom: Map<string, number> } | null = null;
 
 /** Tests only: forget the reused count. */
 export function __resetConnectedCache(): void {
@@ -73,7 +73,17 @@ export function __resetConnectedCache(): void {
 
 /** Everyone connected across the account, or null when LiveKit cannot be read in time. */
 export async function connectedNow(svc: Pick<RoomServiceClient, "listRooms">, now = Date.now()): Promise<number | null> {
-  if (last && now - last.at < FRESH_MS) return last.connected;
+  return (await countsNow(svc, now))?.connected ?? null;
+}
+
+/** How many are in one meeting's LiveKit room now (from the same count), or null when unknown. */
+export async function roomCountNow(svc: Pick<RoomServiceClient, "listRooms">, room: string, now = Date.now()): Promise<number | null> {
+  const c = await countsNow(svc, now);
+  return c ? c.byRoom.get(room) ?? 0 : null;
+}
+
+async function countsNow(svc: Pick<RoomServiceClient, "listRooms">, now: number): Promise<{ connected: number; byRoom: Map<string, number> } | null> {
+  if (last && now - last.at < FRESH_MS) return last;
   try {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const rooms = await Promise.race([
@@ -82,9 +92,16 @@ export async function connectedNow(svc: Pick<RoomServiceClient, "listRooms">, no
         timer = setTimeout(() => reject(new Error("timed out")), TIMEOUT_MS);
       }),
     ]).finally(() => clearTimeout(timer));
-    const connected = (rooms ?? []).reduce((n, r) => n + Number((r as { numParticipants?: number }).numParticipants ?? 0), 0);
-    last = { at: now, connected };
-    return connected;
+    const byRoom = new Map<string, number>();
+    let connected = 0;
+    for (const r of rooms ?? []) {
+      const n = Number((r as { numParticipants?: number }).numParticipants ?? 0);
+      connected += n;
+      const name = (r as { name?: string }).name;
+      if (name) byRoom.set(name, n);
+    }
+    last = { at: now, connected, byRoom };
+    return last;
   } catch (e) {
     console.warn("[livekit-capacity] could not count connections", e instanceof Error ? e.message : e);
     return null;
