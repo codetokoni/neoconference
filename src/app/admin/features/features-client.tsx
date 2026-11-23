@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { fmtTime, fromZonedInput, toZonedInput, useAdmin, zoneLabel } from "../AdminApi";
 import { Badge, Confirm, LoadState, Notice, PageHeader, Panel, btn, field } from "../ui";
-import type { AccountOverride, FeatureDecision, FeatureKey, Maintenance } from "@/lib/platform/model";
+import { builtInPlanDefault, type AccountOverride, type FeatureDecision, type FeatureKey, type Maintenance } from "@/lib/platform/model";
 import type { Plan } from "@/lib/planLimits";
 
 type FeatureRow = { key: FeatureKey; label: string; catalog: boolean; enforcedAt: string | null };
@@ -161,7 +161,7 @@ function Matrix({ data, patch }: { data: Data; patch: (json: unknown, done: stri
                           value={data.perPlan[f.key]?.[p] === undefined ? "default" : data.perPlan[f.key]?.[p] ? "on" : "off"}
                           onChange={(e) => setPlanAsk({ feature: f, plan: p, value: e.target.value })}
                         >
-                          <option value="default">Default (on)</option>
+                          <option value="default">Default ({builtInPlanDefault(f.key, p) ? "on" : "off"})</option>
                           <option value="on">On</option>
                           <option value="off">Off</option>
                         </select>

@@ -440,6 +440,9 @@ export const FEATURES = [
   { key: "ai_summary", label: "AI meeting summary", catalog: false, enforcedAt: "Generating a meeting summary" },
   { key: "developer_api", label: "Developer API", catalog: false, enforcedAt: "Every /api/v1 request, and creating API keys" },
   { key: "group_calls", label: "Group calls", catalog: false, enforcedAt: "Starting a call from a group" },
+  // Off unless turned on (builtInPlanDefault): for a whole plan, or one
+  // account (the meeting's owner), while it is being proven.
+  { key: "big_meeting_receiving", label: "Big-meeting receiving (only speakers and on-screen cameras; join muted at 50+)", catalog: false, enforcedAt: "Joining a meeting (the LiveKit token's answer)" },
 ] as const;
 
 export type FeatureKey = (typeof FEATURES)[number]["key"];
@@ -496,9 +499,13 @@ export function controlsWithDefaults(raw: unknown): FeatureControls {
   };
 }
 
-/** Plan defaults for the features the plan catalog does not carry: on everywhere, as before. */
-export function builtInPlanDefault(_f: FeatureKey, _plan: Plan): boolean {
-  return true;
+/**
+ * Plan defaults for the features the plan catalog does not carry: on
+ * everywhere, as before — except big-meeting receiving, which stays off until
+ * an administrator turns it on for a plan or an account.
+ */
+export function builtInPlanDefault(f: FeatureKey, _plan: Plan): boolean {
+  return f !== "big_meeting_receiving";
 }
 
 export type FeatureSource = "global" | "account" | "plan" | "plan_default" | "exempt";
