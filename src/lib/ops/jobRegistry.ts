@@ -140,6 +140,17 @@ export const JOBS: JobDef[] = [
     load: () => import("@/app/api/cron/automation/route") as Promise<RouteModule>,
   }),
   routeJob({
+    name: "attendance-groups",
+    label: "Send attendance by group",
+    description: "After each session of a meeting that lists churches or groups, sends its owner a spreadsheet with a tab per group and each group's leader their own people (src/lib/attendanceGroups.ts). Waits five minutes after the session ends so late leaves are in.",
+    schedule: "*/10 * * * *",
+    scheduleText: "Every 10 minutes",
+    retrySafe: true,
+    retryNote: "Each session is claimed and marked sent once; a second run finds nothing left to send.",
+    route: "/api/cron/attendance-groups",
+    load: () => import("@/app/api/cron/attendance-groups/route") as Promise<RouteModule>,
+  }),
+  routeJob({
     name: "kc-name-backfill",
     label: "Fill in KingsChat names",
     description: "Reads the full name from KingsChat for accounts that signed in with KingsChat before names were kept, so attendance reports show it. Ran every 10 minutes until everyone with stored KingsChat tokens was named or tried (finished 21 Nov 2026); no longer scheduled. Run it by hand to pick up any account it missed.",

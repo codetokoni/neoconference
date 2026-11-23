@@ -260,6 +260,12 @@ export interface NeoEvent {
    * email. Paid plans only; set on the manage page. Never sent to attendees.
    */
   feedbackContact?: { kcHandle?: string; email?: string };
+  /**
+   * Attendance by church or group (src/lib/attendanceGroups.ts): the list
+   * attendees pick from when joining, each with a leader who is sent their
+   * group's attendance after every session. Paid plans.
+   */
+  attendanceGroups?: { groups: Array<{ name: string; leader?: { kcHandle?: string; email?: string } }> };
 
   /**
    * When true, an Android phone opening this meeting's link stays in the
