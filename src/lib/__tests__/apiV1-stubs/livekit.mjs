@@ -69,6 +69,7 @@ export class RoomServiceClient {
     if (!p) throw new Error("twirp error not_found: participant not found");
     if (opts.metadata !== undefined) p.metadata = opts.metadata;
     if (opts.permission !== undefined) p.permission = { ...opts.permission };
+    if (opts.name !== undefined) p.name = opts.name;
     (globalThis.__lkUpdated ??= []).push({ room, identity, ...opts });
     return p;
   }

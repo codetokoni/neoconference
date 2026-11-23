@@ -28,7 +28,7 @@ import "./initials-overlay.css";
 import ApplyPrejoinChoices from "@/components/ApplyPrejoinChoices";
 import MobileMoreMenu from "@/components/MobileMoreMenu";
 import ConferenceErrorBoundary from "@/components/ConferenceErrorBoundary";
-import { RoomNameEntry, getLastChoices, getSavedDisplayName } from "@/components/RoomNameEntry";
+import { RoomNameEntry, getLastChoices } from "@/components/RoomNameEntry";
 import FullNamePrompt from "@/components/FullNamePrompt";
 import MicLockNotice from "@/components/conference/MicLockNotice";
 import { displayNameFor } from "@/lib/attendeeName";
@@ -90,6 +90,7 @@ import {
 import { BRAND } from "@/lib/brand";
 import JoinProblem from "@/components/conference/JoinProblem";
 import BigMeetingReceiver from "@/components/conference/BigMeetingReceiver";
+import ChangeNameButton from "@/components/conference/ChangeNameButton";
 import { receiveModeOf, type ReceiveMode } from "@/lib/bigMeeting";
 import { connectWatch, explainConnectFailure, type JoinProblem as JoinProblemInfo } from "@/lib/connectOutcome";
 
@@ -172,6 +173,24 @@ export default function RoomPage({ params }: { params: { name: string } }) {
       return "Your name could not be saved. Check your connection and try again.";
     }
   }, []);
+
+  // The "Display name" on the join screen, when changed: the name everyone in
+  // meetings sees from now on (/api/me/display-name).
+  const chooseDisplayName = useCallback(async (name: string): Promise<string | null> => {
+    try {
+      const res = await fetch("/api/me/display-name", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const body = (await res.json().catch(() => null)) as { ok?: boolean; message?: string } | null;
+      if (!res.ok || !body?.ok) return body?.message || "Your name could not be saved. Try again.";
+      await user?.reload().catch(() => {});
+      return null;
+    } catch {
+      return "Your name could not be saved. Check your connection and try again.";
+    }
+  }, [user]);
 
   const roomName = decodeURIComponent(params.name);
   const searchParams = useSearchParams();
@@ -397,7 +416,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
         onConfirm={async (fullName) => {
           const refused = await confirmAttendance(fullName);
           if (refused) return refused;
-          setChoices({ username: getSavedDisplayName() || accountDisplayName || "Guest", attendanceName: fullName, ...getLastChoices() } as LocalUserChoices);
+          setChoices({ username: accountDisplayName || "Guest", attendanceName: fullName, ...getLastChoices() } as LocalUserChoices);
           return null;
         }}
       />
@@ -424,6 +443,7 @@ export default function RoomPage({ params }: { params: { name: string } }) {
             attendanceLoaded={attendanceLoaded}
             attendanceError={attendanceError}
             onConfirmAttendance={confirmAttendance}
+            onChangeDisplayName={chooseDisplayName}
           />
         </div>
       </div>
@@ -1249,6 +1269,7 @@ function RoomContainer({
             {copied ? "Invite copied!" : "Invite"}
           </button>
           <FeedbackButton eventSlug={eventSlug} className={TOOLBAR_BTN_CLASS} />
+          <ChangeNameButton className={TOOLBAR_BTN_CLASS} />
           <button
             type="button"
             data-room-chrome="true"

@@ -17,6 +17,7 @@ import '../events/event.dart' show apiProvider;
 import 'attendance_name.dart';
 import 'audio_routes.dart';
 import 'audio_sheets.dart';
+import 'change_name.dart';
 import 'meeting_feedback.dart';
 import 'meeting_sheets.dart';
 import 'meeting_presence.dart';
@@ -552,6 +553,11 @@ class _InMeetingState extends State<_InMeeting> {
             ),
             invite: () => shareMeeting(widget.title, widget.slug),
             openFeedback: () => openMeetingFeedback(context, slug: widget.slug, where: 'room'),
+            openChangeName: () => openChangeName(
+              context,
+              current: room.localParticipant?.name ?? '',
+              room: room.name,
+            ),
             openChat: () => _openChat(context, controller, state),
             openParticipants: () => _openParticipants(context, controller),
             openHostControls: state.canManage
