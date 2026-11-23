@@ -33,8 +33,13 @@ export function openFilesText(): string {
   return o ? `${o.total} open, ${o.sockets} sockets` : "open files unknown";
 }
 
+/**
+ * Out of file slots, however it shows: "too many open files" (EMFILE, or
+ * ENFILE for the whole system), or a name lookup that could not run for want
+ * of them ("getaddrinfo EBUSY", 22 and 23 Nov 2026; EAI_AGAIN).
+ */
 export const isTooManyOpenFiles = (e: unknown): boolean =>
-  /EMFILE|too many open files/i.test(e instanceof Error ? `${(e as { code?: string }).code ?? ""} ${e.message}` : String(e));
+  /EMFILE|ENFILE|too many open files|getaddrinfo (EBUSY|EAI_AGAIN)/i.test(e instanceof Error ? `${(e as { code?: string }).code ?? ""} ${e.message}` : String(e));
 
 /**
  * How long to wait before each retry. The process shares its file slots with
