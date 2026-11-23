@@ -130,6 +130,7 @@ class _RoomScreenState extends ConsumerState<RoomScreen> {
                     ? AttendanceNameStep(
                         api: ref.read(apiProvider),
                         title: widget.title,
+                        slug: widget.slug,
                         error: state.message,
                         onConfirmed: (_) => controller.nameConfirmed(),
                       )

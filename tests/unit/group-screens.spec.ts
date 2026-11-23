@@ -397,6 +397,7 @@ const ENTRIES = [
   "src/components/FullNamePrompt.tsx",
   "src/components/RoomNameEntry.tsx",
   "src/components/conference/ChangeNameButton.tsx",
+  "src/app/dashboard/e/[slug]/AttendanceGroupsPanel.tsx",
 ];
 let modules = "";
 
@@ -1389,6 +1390,197 @@ test("Change my name in the meeting: starts with the current name, sends it with
   expect(await posts()).toEqual([
     { name: "Pst Nomvula", room: "weekly-room" },
     { name: "Pst Nomvula", room: "weekly-room" },
+  ]);
+  expect(errors).toEqual([]);
+});
+
+/* -------------------------------------------------------------------------- */
+/*  Attendance by church or group (src/lib/attendanceGroups.ts)                */
+/* -------------------------------------------------------------------------- */
+
+for (const width of [360, 1280]) {
+  test(`the join card asks for the church or group when the meeting lists them, and sends it with the name, at ${width}px`, async ({ page }) => {
+    const { errors } = await setup(page, width);
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __require: (id: string) => Record<string, unknown>;
+        React: typeof import("react");
+        ReactDOM: { createRoot: (el: Element) => { render: (n: unknown) => void } };
+        __confirmed: Array<[string, string | undefined]>;
+        __joined: number;
+      };
+      w.__confirmed = [];
+      w.__joined = 0;
+      const C = w.__require("src/components/RoomNameEntry.tsx").RoomNameEntry as Parameters<typeof w.React.createElement>[0];
+      w.ReactDOM.createRoot(document.getElementById("app")!).render(
+        w.React.createElement(C, {
+          roomName: "sa",
+          defaultName: "ann_kc",
+          attendanceName: "Ann Mokoena",
+          attendanceLoaded: true,
+          copied: false,
+          onCopyLink: () => {},
+          groups: ["Soweto", "Pretoria", "Durban"],
+          onConfirmAttendance: async (n: string, g?: string) => {
+            w.__confirmed.push([n, g]);
+            return null;
+          },
+          onSubmit: () => {
+            w.__joined++;
+          },
+        } as never),
+      );
+    });
+    const state = () =>
+      page.evaluate(() => {
+        const w = window as unknown as { __confirmed: Array<[string, string | undefined]>; __joined: number };
+        return { __confirmed: w.__confirmed, __joined: w.__joined };
+      });
+    const pick = page.getByLabel("Your church or group");
+    await expect(pick).toBeVisible();
+    await expect(page.getByText("Your group's leader gets the attendance of their people after the meeting.")).toBeVisible();
+    await page.getByRole("button", { name: /Join Room/ }).click();
+    await expect(page.locator("#attendance-group-help")).toHaveText("Choose your church or group.");
+    await expect(pick).toBeFocused();
+    expect((await state()).__confirmed).toEqual([]);
+    await pick.selectOption("Pretoria");
+    await expect(page.locator("#attendance-group-help")).not.toHaveText("Choose your church or group.");
+    await page.getByRole("button", { name: /Join Room/ }).click();
+    await expect.poll(async () => (await state()).__joined).toBe(1);
+    expect((await state()).__confirmed).toEqual([["Ann Mokoena", "Pretoria"]]);
+    await expectNoSideScroll(page, `join card with groups @${width}`);
+    expect(errors).toEqual([]);
+  });
+}
+
+test("the join card does not ask when the meeting lists none, and starts with their last pick when it does", async ({ page }) => {
+  const { errors } = await setup(page, 390);
+  const mount = (groups: string[], group: string) =>
+    page.evaluate(
+      ({ groups, group }) => {
+        const w = window as unknown as {
+          __require: (id: string) => Record<string, unknown>;
+          React: typeof import("react");
+          ReactDOM: { createRoot: (el: Element) => { render: (n: unknown) => void } };
+          __confirmed: Array<[string, string | undefined]>;
+          __root?: { render: (n: unknown) => void };
+        };
+        w.__confirmed = [];
+        const C = w.__require("src/components/RoomNameEntry.tsx").RoomNameEntry as Parameters<typeof w.React.createElement>[0];
+        w.__root ??= w.ReactDOM.createRoot(document.getElementById("app")!);
+        w.__root.render(
+          w.React.createElement(C, {
+            key: groups.join("|") || "none",
+            roomName: "sa",
+            defaultName: "ann_kc",
+            attendanceName: "Ann Mokoena",
+            attendanceLoaded: true,
+            copied: false,
+            onCopyLink: () => {},
+            groups,
+            group,
+            onConfirmAttendance: async (n: string, g?: string) => {
+              w.__confirmed.push([n, g]);
+              return null;
+            },
+            onSubmit: () => {},
+          } as never),
+        );
+      },
+      { groups, group },
+    );
+  await mount([], "");
+  await expect(page.getByLabel("Your church or group")).toHaveCount(0);
+  await page.getByRole("button", { name: /Join Room/ }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __confirmed: unknown[] }).__confirmed)).toEqual([["Ann Mokoena", undefined]]);
+  await mount(["Soweto", "Pretoria"], "Soweto");
+  await expect(page.getByLabel("Your church or group")).toHaveValue("Soweto");
+  expect(errors).toEqual([]);
+});
+
+test("the full-name step for a link that joins straight in asks for the church or group too", async ({ page }) => {
+  const { errors } = await setup(page, 390);
+  await page.evaluate(() => {
+    const w = window as unknown as {
+      __require: (id: string) => { default: unknown };
+      React: typeof import("react");
+      ReactDOM: { createRoot: (el: Element) => { render: (n: unknown) => void } };
+      __confirmed: Array<[string, string | undefined]>;
+    };
+    w.__confirmed = [];
+    const C = w.__require("src/components/FullNamePrompt.tsx").default as Parameters<typeof w.React.createElement>[0];
+    w.ReactDOM.createRoot(document.getElementById("app")!).render(
+      w.React.createElement(C, {
+        roomName: "sa",
+        initial: "Ann Mokoena",
+        loaded: true,
+        groups: ["Soweto", "Pretoria"],
+        onConfirm: async (n: string, g?: string) => {
+          w.__confirmed.push([n, g]);
+          return null;
+        },
+      } as never),
+    );
+  });
+  const confirmed = () => page.evaluate(() => (window as unknown as { __confirmed: unknown[] }).__confirmed);
+  await page.getByRole("button", { name: "Join" }).click();
+  await expect(page.locator("#attendance-group-help")).toHaveText("Choose your church or group.");
+  expect(await confirmed()).toEqual([]);
+  await page.getByLabel("Your church or group").selectOption("Soweto");
+  await page.getByRole("button", { name: "Join" }).click();
+  await expect.poll(confirmed).toEqual([["Ann Mokoena", "Soweto"]]);
+  expect(errors).toEqual([]);
+});
+
+test("the owner's panel: the list with leaders, paste many, save, and the sessions sent with their downloads", async ({ page }) => {
+  const { errors } = await setup(page, 1280);
+  await page.evaluate(() => {
+    const w = window as unknown as { __patches: unknown[]; __data: Record<string, unknown> };
+    w.__patches = [];
+    w.__data = {
+      groups: [{ name: "Soweto", leader: { email: "soweto@example.com" } }, { name: "Pretoria", leader: { kcHandle: "pta_lead" } }],
+      allowed: true,
+      reach: [
+        { group: "Soweto", kcHandleKnown: null, ownerKcLinked: null },
+        { group: "Pretoria", kcHandleKnown: false, ownerKcLinked: true },
+      ],
+      sends: [{ start: Date.UTC(2026, 10, 23, 2, 30), end: Date.UTC(2026, 10, 23, 4, 4), attended: 865, sentAt: Date.UTC(2026, 10, 23, 4, 10), download: "https://neolinguameet.com/api/attendance-groups/tok", leaders: [{ group: "Soweto", kc: false, email: true }, { group: "Pretoria", kc: false, email: false }] }],
+    };
+    window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/events/ev_sa/attendance-groups") return new Response(JSON.stringify(w.__data), { status: 200 });
+      if (url === "/api/events/ev_sa" && init?.method === "PATCH") {
+        w.__patches.push(JSON.parse(String(init.body)));
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response("{}", { status: 404 });
+    }) as typeof fetch;
+  });
+  await render(page, "src/app/dashboard/e/[slug]/AttendanceGroupsPanel.tsx", { eventId: "ev_sa" });
+  await expect(page.getByLabel("Church or group 1")).toHaveValue("Soweto");
+  await expect(page.getByLabel("Leader's KingsChat for Pretoria")).toHaveValue("@pta_lead");
+  await expect(page.getByText("Nobody has signed in here with @pta_lead yet")).toBeVisible();
+  await expect(page.getByText("865 attended")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Download spreadsheet" })).toHaveAttribute("href", "https://neolinguameet.com/api/attendance-groups/tok");
+  await expect(page.getByText("Sent to 1 of 2 leaders (not reached: Pretoria).")).toBeVisible();
+  await page.getByLabel("Or paste many names, one per line").fill("Durban\nSoweto\n  Cape Town  ");
+  await page.getByRole("button", { name: "Add these" }).click();
+  await expect(page.getByLabel("Church or group 4")).toHaveValue("Cape Town");
+  await expect(page.getByLabel("Church or group 5")).toHaveCount(0);
+  await page.getByRole("button", { name: "Remove Pretoria" }).click();
+  await page.getByLabel("Leader's email for Durban").fill("dbn@example.com");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("status")).toHaveText("Saved: 3 churches or groups. People pick theirs when they next join.");
+  expect(await page.evaluate(() => (window as unknown as { __patches: unknown[] }).__patches)).toEqual([
+    {
+      attendanceGroups: {
+        groups: [
+          { name: "Soweto", leader: { kcHandle: "", email: "soweto@example.com" } },
+          { name: "Durban", leader: { kcHandle: "", email: "dbn@example.com" } },
+          { name: "Cape Town" },
+        ],
+      },
+    },
   ]);
   expect(errors).toEqual([]);
 });

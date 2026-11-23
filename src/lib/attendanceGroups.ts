@@ -146,7 +146,12 @@ export interface SessionByGroup {
 
 /** A session's attendance (joins between `start` and `end`), split by the group each person picked. */
 export async function sessionByGroup(ev: NeoEvent, start: number, end: number): Promise<SessionByGroup> {
-  const entries = (await listAttendance(ev.id)).filter((e) => e.ts >= start - 60_000 && e.ts <= end + SETTLE_MS);
+  const window = (await listAttendance(ev.id)).filter((e) => e.ts >= start - 60_000 && e.ts <= end + SETTLE_MS);
+  // Only people who joined in this session: a leave on its own is the end of
+  // the session before (two sessions of a permanent room can be minutes apart).
+  const who = (e: { userId: string | null; name: string }) => e.userId || `name:${e.name}`;
+  const joined = new Set(window.filter((e) => e.action === "join" && e.ts <= end).map(who));
+  const entries = window.filter((e) => joined.has(who(e)));
   // Everyone who joined in the session (the journal only has people who did).
   const raw: AttendanceReportRow[] = buildAttendanceReport({ name: ev.name, endedAt: new Date(end).toISOString() }, entries);
   const choices = await allChoices(ev.id);

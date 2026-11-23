@@ -29,6 +29,7 @@ import AttendancePanel from "./AttendancePanel";
 import MeetingReportPanel from "./MeetingReportPanel";
 import TranscriptsPanel from "./TranscriptsPanel";
 import FeedbackPanel from "./FeedbackPanel";
+import AttendanceGroupsPanel from "./AttendanceGroupsPanel";
 import { hasAttendance } from "@/lib/groupAttendees";
 
 export const dynamic = "force-dynamic";
@@ -331,6 +332,12 @@ export default async function EventAdminPage({
         <section className="space-y-3">
           <h2 className="text-sm uppercase tracking-widest text-slate-400">Waiting room</h2>
           <WaitingRoomPanel eventId={ev.id} initial={queue} />
+        </section>
+
+        {/* Attendance by church or group (src/lib/attendanceGroups.ts); notifications link here. */}
+        <section id="attendance-groups" className="space-y-3 scroll-mt-24">
+          <h2 className="text-sm uppercase tracking-widest text-slate-400">Attendance by church or group</h2>
+          <AttendanceGroupsPanel eventId={ev.id} />
         </section>
 
         {/* Feedback (src/lib/meetingFeedback.ts); notifications link to #feedback. */}

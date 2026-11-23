@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { attendanceNameProblem, cleanFullName, FULL_NAME_MAX } from "@/lib/attendeeName";
+import GroupPicker, { GROUP_REQUIRED } from "@/components/GroupPicker";
 
 export default function FullNamePrompt({
   roomName,
@@ -16,6 +17,8 @@ export default function FullNamePrompt({
   loaded,
   error = "",
   onConfirm,
+  groups = [],
+  group: savedGroup = "",
 }: {
   roomName: string;
   /** What the field starts with (the saved name, or a suggestion). */
@@ -24,9 +27,18 @@ export default function FullNamePrompt({
   loaded: boolean;
   /** A refusal to show (the server turned the join back for want of a name). */
   error?: string;
-  /** Saves it and goes on; resolves to a problem to show, or null. */
-  onConfirm: (fullName: string) => Promise<string | null>;
+  /** Saves it (and the church or group picked) and goes on; resolves to a problem to show, or null. */
+  onConfirm: (fullName: string, group?: string) => Promise<string | null>;
+  /** The meeting's churches or groups (src/lib/attendanceGroups.ts); none: not asked. */
+  groups?: string[];
+  group?: string;
 }) {
+  const [group, setGroup] = useState(savedGroup);
+  const [groupTouched, setGroupTouched] = useState(false);
+  const [groupProblem, setGroupProblem] = useState("");
+  useEffect(() => {
+    if (!groupTouched) setGroup(savedGroup);
+  }, [savedGroup, groupTouched]);
   const [value, setValue] = useState(initial);
   const [touched, setTouched] = useState(false);
   const [problem, setProblem] = useState(error);
@@ -49,12 +61,17 @@ export default function FullNamePrompt({
       inputRef.current?.focus();
       return;
     }
+    if (groups.length && !groups.includes(group)) {
+      setGroupProblem(GROUP_REQUIRED);
+      document.getElementById("attendance-group")?.focus();
+      return;
+    }
     const name = cleanFullName(value);
     setValue(name);
     setBusy(true);
     setProblem("");
     try {
-      const refused = await onConfirm(name);
+      const refused = await onConfirm(name, groups.length ? group : undefined);
       if (refused) {
         setProblem(refused);
         inputRef.current?.focus();
@@ -106,6 +123,17 @@ export default function FullNamePrompt({
             {problem}
           </p>
         ) : null}
+        <GroupPicker
+          groups={groups}
+          value={group}
+          onChange={(g) => {
+            setGroup(g);
+            setGroupTouched(true);
+            setGroupProblem("");
+          }}
+          problem={groupProblem}
+          className="mt-4"
+        />
         <button
           type="submit"
           disabled={busy || !loaded}
