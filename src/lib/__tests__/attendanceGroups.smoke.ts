@@ -293,6 +293,7 @@ async function main() {
     sent.length = 0;
     const start = Date.now() - 20 * 60_000;
     await eventStore.update("ev_sa", (prev) => ({ ...prev, state: "live", startedAt: new Date(start).toISOString() }));
+    await webhook({ event: "room_started", room: { name: "sa" }, createdAt: String(Math.floor(start / 1000)) });
     await webhook({ event: "participant_joined", room: { name: "sa" }, participant: person("user_ann#p", "ann_kc"), createdAt: String(Math.floor(start / 1000) + 60) });
     as("user_owner");
     const end = await R.end.POST(new NextRequest("https://neolinguameet.com/api/events/ev_sa/end", { method: "POST" }), { params: Promise.resolve({ id: "ev_sa" }) });
@@ -305,10 +306,53 @@ async function main() {
     sent.length = 0;
     const start = Date.now() - 40 * 60_000;
     const ev = { id: "ev_sa", attendanceGroups: (await eventStore.byId("ev_sa"))!.attendanceGroups, startedAt: new Date(start).toISOString() };
+    await AG.markSessionStart("ev_sa", start);
     assert.equal(await AG.queueSession(ev, start + 20 * 60_000), true);
     assert.equal(await AG.queueSession(ev, start + 21 * 60_000), true);
     assert.deepEqual(await AG.sendDue(Date.now()), { sent: 1, skipped: 1 });
     assert.equal(sent.filter((x) => x.to === "region@example.com").length, 1);
+  });
+
+  await t("a meeting used again on the same link: the next session runs from its own room start, and is sent too", async () => {
+    sent.length = 0;
+    // As /saregionalmeeting: first started weeks ago, ended by its host after every session.
+    await eventStore.update("ev_sa", (prev) => ({ ...prev, state: "ended", endedBy: "host", startedAt: new Date(Date.now() - 20 * 86_400_000).toISOString() }));
+    const start = Math.floor(Date.now() / 1000) - 15 * 60;
+    await webhook({ event: "room_started", room: { name: "sa" }, createdAt: String(start) });
+    await webhook({ event: "participant_joined", room: { name: "sa" }, participant: person("user_cy#n", "cy_kc"), createdAt: String(start + 60) });
+    as("user_owner");
+    assert.equal((await R.end.POST(new NextRequest("https://neolinguameet.com/api/events/ev_sa/end", { method: "POST" }), { params: Promise.resolve({ id: "ev_sa" }) })).status, 200);
+    assert.deepEqual(await AG.sendDue(Date.now() + 6 * 60_000), { sent: 1, skipped: 0 }, "not taken for an earlier session already sent");
+    const owner = sent.find((s) => s.to === "region@example.com")!;
+    assert.match(owner.text, /^1 attended on /, "only this session's people, not everyone since the first start");
+    assert.match(sent.find((s) => s.to === "pta@example.com")!.text, /1 of your people attended/);
+    assert.match(sent.find((s) => s.to === "soweto.lead@example.com")!.text, /\n0 of your people attended/, "nobody from Soweto came this time");
+  });
+
+  await t("an always-open room never ends, so its session goes out when the room empties", async () => {
+    sent.length = 0;
+    await eventStore.create({
+      id: "ev_perm", slug: "perm", name: "Always open", ownerUserId: "user_owner", ownerEmail: "user_owner@example.com",
+      state: "live", visibility: "unlisted", livekitRoom: "perm", waitingRoomEnabled: false, waitForHost: false, isPermanent: true,
+      startedAt: new Date(Date.now() - 60 * 86_400_000).toISOString(), createdAt: now, updatedAt: now, roles: [],
+    } as unknown as Parameters<typeof eventStore.create>[0]);
+    assert.equal((await patch("user_owner", "ev_perm", { attendanceGroups: { groups: [{ name: "Soweto", leader: { email: "soweto.lead@example.com" } }] } })).status, 200);
+    await namePost("user_ann", { fullName: "Ann Mokoena", event: "perm", group: "Soweto" });
+    const start = Math.floor(Date.now() / 1000) - 12 * 60;
+    await webhook({ event: "room_started", room: { name: "perm" }, createdAt: String(start) });
+    await webhook({ event: "participant_joined", room: { name: "perm" }, participant: person("user_ann#q", "ann_kc"), createdAt: String(start + 30) });
+    await webhook({ event: "participant_left", room: { name: "perm" }, participant: person("user_ann#q", "ann_kc"), createdAt: String(start + 300) });
+    const fin = await webhook({ event: "room_finished", room: { name: "perm" }, createdAt: String(start + 320) });
+    assert.equal(fin.body.reason, "permanent_room", "still not ended");
+    assert.equal((await eventStore.byId("ev_perm"))!.state, "live");
+    assert.deepEqual(await AG.sendDue(Date.now() + 6 * 60_000), { sent: 1, skipped: 0 });
+    assert.match(sent.find((s) => s.to === "soweto.lead@example.com")!.text, /1 of your people attended/);
+  });
+
+  await t("with no room start known, a session is never taken to have run more than a day", async () => {
+    const end = Date.now();
+    assert.equal(await AG.sessionStart({ id: "ev_unmarked", startedAt: new Date(end - 30 * 86_400_000).toISOString() }, end), end - AG.MAX_SESSION_MS);
+    assert.equal(await AG.sessionStart({ id: "ev_unmarked", startedAt: new Date(end - 3_600_000).toISOString() }, end), end - 3_600_000);
   });
 
   await t("a meeting with no list is never queued", async () => {
