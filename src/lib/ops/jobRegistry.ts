@@ -142,9 +142,9 @@ export const JOBS: JobDef[] = [
   routeJob({
     name: "kc-name-backfill",
     label: "Fill in KingsChat names",
-    description: "Reads the full name from KingsChat for accounts that signed in with KingsChat before names were kept, so attendance reports show it. A batch every 10 minutes until everyone with stored KingsChat tokens is named or tried; then it only checks that it is done.",
-    schedule: "*/10 * * * *",
-    scheduleText: "Every 10 minutes",
+    description: "Reads the full name from KingsChat for accounts that signed in with KingsChat before names were kept, so attendance reports show it. Ran every 10 minutes until everyone with stored KingsChat tokens was named or tried (finished 21 Nov 2026); no longer scheduled. Run it by hand to pick up any account it missed.",
+    schedule: null,
+    scheduleText: "Not scheduled (finished 21 Nov 2026)",
     retrySafe: true,
     retryNote: "Only names accounts still without a KingsChat name, and never replaces a name someone saved, so a second run only continues where the first stopped.",
     route: "/api/cron/kc-name-backfill",
