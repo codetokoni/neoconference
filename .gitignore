@@ -40,3 +40,6 @@ next-env.d.ts
 .clerk/
 playwright-report/
 test-results/
+
+# Built by npm run loadtest:build (scripts/loadtest/README.md)
+/scripts/loadtest/big-meeting-phone.js

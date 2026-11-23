@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test:smoke": "node scripts/run-smoke.mjs",
+    "loadtest:build": "esbuild scripts/loadtest/phone.ts --bundle --format=iife --target=chrome120 --alias:@=./src --outfile=scripts/loadtest/big-meeting-phone.js",
     "test:e2e": "playwright test --grep-invert \"@postdeploy\"",
     "test:e2e:ui": "playwright test --ui",
     "check:deploy": "node scripts/check-deploy.mjs",
