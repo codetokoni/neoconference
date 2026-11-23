@@ -36,6 +36,8 @@ g.__users = {
   user_ben: { emails: ["ben@example.com"] },
   user_cy: { emails: ["cy@example.com"] },
   user_dee: { emails: ["dee@example.com"] },
+  // A leader who has signed in with KingsChat, so a message can find them.
+  user_lead: { emails: ["lead@example.com"], metadata: { kingschat: { id: "kc_lead", username: "lead_kc" } } },
 };
 g.__lkParticipants = { sa: [] };
 
@@ -69,9 +71,12 @@ async function main() {
   };
   type Sent = { to: string; subject?: string; text: string; via: "kc" | "mail" };
   const sent: Sent[] = [];
+  // What KingsChat and the mailer answer; a test changes them to see a refusal.
+  let kcAnswer: { ok: boolean; reason?: string; status?: number; body?: string } = { ok: true };
+  let mailOk = true;
   AG.__setAttendanceSenders({
-    kc: async (_from, to, text) => (sent.push({ to, text, via: "kc" }), { ok: true }),
-    mail: async (to, subject, text) => (sent.push({ to, subject, text, via: "mail" }), { ok: true }),
+    kc: async (_from, to, text) => (sent.push({ to, text, via: "kc" }), kcAnswer),
+    mail: async (to, subject, text) => (to === "region@example.com" || mailOk ? (sent.push({ to, subject, text, via: "mail" }), { ok: true }) : { ok: false, error: "mail_failed" }),
     ownerEmail: async () => "region@example.com",
   });
 
@@ -264,7 +269,10 @@ async function main() {
     assert.equal(sends.length, 1);
     assert.equal(sends[0].attended, 4);
     assert.match(sends[0].download, new RegExp(`/api/attendance-groups/${ownerToken}$`));
-    assert.deepEqual(sends[0].leaders, [{ group: "Soweto", kc: false, email: true }, { group: "Pretoria", kc: false, email: true }]);
+    assert.deepEqual(sends[0].leaders, [
+      { group: "Soweto", kc: false, email: true },
+      { group: "Pretoria", kc: false, email: true, why: "Nobody has signed in here with @nobody_signed_in yet, so KingsChat cannot find them" },
+    ]);
     const reach = r.body.reach as Array<{ group: string; kcHandleKnown: boolean | null }>;
     assert.equal(reach.find((x) => x.group === "Pretoria")?.kcHandleKnown, false);
     as("user_ann");
@@ -347,6 +355,41 @@ async function main() {
     assert.equal((await eventStore.byId("ev_perm"))!.state, "live");
     assert.deepEqual(await AG.sendDue(Date.now() + 6 * 60_000), { sent: 1, skipped: 0 });
     assert.match(sent.find((s) => s.to === "soweto.lead@example.com")!.text, /1 of your people attended/);
+  });
+
+  await t("a leader not reached is told apart: KingsChat's refusal and status, a lapsed sign-in, an email that failed", async () => {
+    await eventStore.create({
+      id: "ev_why", slug: "why", name: "Why not", ownerUserId: "user_owner", ownerEmail: "user_owner@example.com",
+      state: "scheduled", visibility: "unlisted", livekitRoom: "why", waitingRoomEnabled: false, waitForHost: false, createdAt: now, updatedAt: now, roles: [],
+    } as unknown as Parameters<typeof eventStore.create>[0]);
+    const groups = { groups: [{ name: "Refused", leader: { kcHandle: "@lead_kc" } }, { name: "Mailed", leader: { email: "mailed@example.com" } }] };
+    assert.equal((await patch("user_owner", "ev_why", { attendanceGroups: groups })).status, 200);
+    const end = Date.now() - 10 * 60_000;
+    kcAnswer = { ok: false, reason: "send_failed", status: 400, body: "" };
+    mailOk = false;
+    let s = (await AG.sendSession("ev_why", end - 3_600_000, end))!;
+    assert.equal(sent.some((x) => x.to === "kc_lead"), true, "the known handle was tried");
+    assert.deepEqual(s.leaders, [
+      { group: "Refused", kc: false, email: false, why: "KingsChat refused the message (400, no reason given)" },
+      { group: "Mailed", kc: false, email: false, why: "The email to mailed@example.com could not be sent" },
+    ]);
+    kcAnswer = { ok: false, reason: "send_failed", status: 403, body: "  not\n allowed " };
+    mailOk = true;
+    s = (await AG.sendSession("ev_why", end - 7_200_000, end))!;
+    assert.deepEqual(s.leaders, [
+      { group: "Refused", kc: false, email: false, why: "KingsChat refused the message (403: not allowed)" },
+      { group: "Mailed", kc: false, email: true },
+    ]);
+    kcAnswer = { ok: false, reason: "sender_not_linked" };
+    s = (await AG.sendSession("ev_why", end - 10_800_000, end))!;
+    assert.match(s.leaders[0].why!, /sign-in has run out\. Sign in with KingsChat again$/);
+    kcAnswer = { ok: true };
+    s = (await AG.sendSession("ev_why", end - 14_400_000, end))!;
+    assert.deepEqual(s.leaders[0], { group: "Refused", kc: true, email: false }, "sent: no reason");
+    as("user_owner");
+    const panel = await json(await R.panel.GET(new Request("https://neolinguameet.com/api/events/ev_why/attendance-groups"), { params: Promise.resolve({ id: "ev_why" }) }));
+    const shown = (panel.body.sends as Array<{ leaders: Array<{ why?: string }> }>).map((x) => x.leaders[0].why ?? "");
+    assert.deepEqual(shown.slice(-1), ["KingsChat refused the message (400, no reason given)"], "the panel carries the reason");
   });
 
   await t("with no room start known, a session is never taken to have run more than a day", async () => {

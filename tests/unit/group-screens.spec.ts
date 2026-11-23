@@ -1544,7 +1544,12 @@ test("the owner's panel: the list with leaders, paste many, save, and the sessio
         { group: "Soweto", kcHandleKnown: null, ownerKcLinked: null },
         { group: "Pretoria", kcHandleKnown: false, ownerKcLinked: true },
       ],
-      sends: [{ start: Date.UTC(2026, 10, 23, 2, 30), end: Date.UTC(2026, 10, 23, 4, 4), attended: 865, sentAt: Date.UTC(2026, 10, 23, 4, 10), download: "https://neolinguameet.com/api/attendance-groups/tok", leaders: [{ group: "Soweto", kc: false, email: true }, { group: "Pretoria", kc: false, email: false }] }],
+      sends: [{ start: Date.UTC(2026, 10, 23, 2, 30), end: Date.UTC(2026, 10, 23, 4, 4), attended: 865, sentAt: Date.UTC(2026, 10, 23, 4, 10), download: "https://neolinguameet.com/api/attendance-groups/tok", leaders: [
+            { group: "Soweto", kc: false, email: true, why: "Nobody has signed in here with @soweto_lead yet, so KingsChat cannot find them" },
+            { group: "Pretoria", kc: false, email: false, why: "KingsChat refused the message (400, no reason given)" },
+            // A send from before the reason was kept.
+            { group: "Durban", kc: false, email: false },
+          ] }],
     };
     window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -1562,7 +1567,11 @@ test("the owner's panel: the list with leaders, paste many, save, and the sessio
   await expect(page.getByText("Nobody has signed in here with @pta_lead yet")).toBeVisible();
   await expect(page.getByText("865 attended")).toBeVisible();
   await expect(page.getByRole("link", { name: "Download spreadsheet" })).toHaveAttribute("href", "https://neolinguameet.com/api/attendance-groups/tok");
-  await expect(page.getByText("Sent to 1 of 2 leaders (not reached: Pretoria).")).toBeVisible();
+  await expect(page.getByText("Sent to 1 of 3 leaders.")).toBeVisible();
+  // Why each leader was missed: reached another way, not reached, and a send from before reasons were kept.
+  await expect(page.getByText("Soweto: Nobody has signed in here with @soweto_lead yet, so KingsChat cannot find them.")).toBeVisible();
+  await expect(page.getByText("Pretoria, not reached: KingsChat refused the message (400, no reason given).")).toBeVisible();
+  await expect(page.getByText("Durban, not reached: no reason was recorded.")).toBeVisible();
   await page.getByLabel("Or paste many names, one per line").fill("Durban\nSoweto\n  Cape Town  ");
   await page.getByRole("button", { name: "Add these" }).click();
   await expect(page.getByLabel("Church or group 4")).toHaveValue("Cape Town");
